@@ -1,0 +1,129 @@
+import { api } from "../api.js";
+import { t, translatePage } from "../i18n.js";
+
+const CATEGORY_COLORS = {
+  location: "#16a34a",
+  stay: "#7c3aed",
+  transport: "#2563eb",
+};
+
+export async function renderItineraryTab(container, trip) {
+  let days = await api.get(`/trips/${trip.id}/itinerary`);
+  days.forEach((d) => (d.entries ??= []));
+  const items = await api.get(`/trips/${trip.id}/items`);
+
+  function render() {
+    container.innerHTML = `
+      <div class="itinerary">
+        ${!trip.start_date || !trip.end_date ? `<p class="itinerary__hint">${t("itinerary.noDates")}</p>` : ""}
+        <div class="itinerary-days"></div>
+        <form class="itinerary-add-day">
+          <input type="date" name="date" required />
+          <button type="submit" data-i18n="itinerary.addDay"></button>
+        </form>
+      </div>
+    `;
+    translatePage(container);
+
+    const list = container.querySelector(".itinerary-days");
+    days.forEach((day) => list.appendChild(renderDay(day)));
+
+    container.querySelector(".itinerary-add-day").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const date = e.target.date.value;
+      if (!date || days.some((d) => d.date === date)) return;
+      const day = await api.put(`/trips/${trip.id}/itinerary/days/${date}`, { notes: null });
+      days.push(day);
+      days.sort((a, b) => a.date.localeCompare(b.date));
+      render();
+    });
+  }
+
+  function renderDay(day) {
+    const el = document.createElement("div");
+    el.className = "itinerary-day";
+    el.innerHTML = `
+      <h3>${formatDate(day.date)}</h3>
+      <textarea class="itinerary-day__notes" data-i18n-placeholder="itinerary.notesPlaceholder"></textarea>
+      <ul class="itinerary-day__entries"></ul>
+      <p class="itinerary-day__empty" data-i18n="itinerary.empty" hidden></p>
+      <form class="itinerary-day__add-item">
+        <select name="itemId">
+          <option value="" data-i18n="itinerary.selectItem"></option>
+          ${items.map((i) => `<option value="${i.id}">${escapeHtml(i.title)}</option>`).join("")}
+        </select>
+        <button type="submit" data-i18n="itinerary.addItem"></button>
+      </form>
+    `;
+    translatePage(el);
+
+    const notesEl = el.querySelector(".itinerary-day__notes");
+    notesEl.value = day.notes ?? "";
+    notesEl.addEventListener("blur", async () => {
+      const value = notesEl.value || null;
+      if (value === day.notes) return;
+      const updated = await api.put(`/trips/${trip.id}/itinerary/days/${day.date}`, { notes: value });
+      day.id = updated.id;
+      day.notes = value;
+    });
+
+    renderEntries(el, day);
+
+    el.querySelector(".itinerary-day__add-item").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const select = e.target.itemId;
+      if (!select.value) return;
+      const dayRecord = await ensureDay(day);
+      const entry = await api.post(`/itinerary/days/${dayRecord.id}/entries`, { item_id: select.value });
+      day.id = dayRecord.id;
+      day.entries.push(entry);
+      select.value = "";
+      renderEntries(el, day);
+    });
+
+    return el;
+  }
+
+  // Ensures `day` has a persisted id (creating it with empty notes if it
+  // doesn't), since entries can only be added to a day that already exists.
+  async function ensureDay(day) {
+    if (day.id) return day;
+    const created = await api.put(`/trips/${trip.id}/itinerary/days/${day.date}`, { notes: day.notes });
+    day.id = created.id;
+    return created;
+  }
+
+  function renderEntries(el, day) {
+    const list = el.querySelector(".itinerary-day__entries");
+    const emptyState = el.querySelector(".itinerary-day__empty");
+    list.innerHTML = "";
+    emptyState.hidden = day.entries.length > 0;
+
+    for (const entry of day.entries) {
+      const li = document.createElement("li");
+      li.innerHTML = `
+        <span class="dot" style="background:${CATEGORY_COLORS[entry.item_category] || "#71717a"}"></span>
+        <span>${escapeHtml(entry.item_title)}</span>
+        ${entry.note ? `<span class="itinerary-entry__note">${escapeHtml(entry.note)}</span>` : ""}
+        <button data-action="remove" aria-label="${t("common.remove")}">&times;</button>
+      `;
+      li.querySelector('[data-action="remove"]').addEventListener("click", async () => {
+        await api.delete(`/itinerary/days/${day.id}/entries/${entry.id}`);
+        day.entries = day.entries.filter((e) => e.id !== entry.id);
+        renderEntries(el, day);
+      });
+      list.appendChild(li);
+    }
+  }
+
+  render();
+}
+
+function formatDate(dateStr) {
+  const date = new Date(`${dateStr}T00:00:00`);
+  return new Intl.DateTimeFormat(undefined, { weekday: "short", year: "numeric", month: "short", day: "numeric" }).format(date);
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}

@@ -1,0 +1,20 @@
+version: "2"
+sql:
+  - engine: "sqlite"
+    queries: "queries"
+    schema: "../migrations/sqlite"
+    gen:
+      go:
+        package: "sqlitegen"
+        out: "sqlite/gen"
+        emit_json_tags: true
+        emit_interface: true
+  - engine: "postgresql"
+    queries: "queries"
+    schema: "../migrations/postgres"
+    gen:
+      go:
+        package: "postgresgen"
+        out: "postgres/gen"
+        emit_json_tags: true
+        emit_interface: true

@@ -1,0 +1,87 @@
+import { api } from "../api.js";
+import { t, translatePage } from "../i18n.js";
+
+// Renders an image picker (upload a file, or paste a URL) plus a preview
+// and remove button. `tripId` scopes the upload/url endpoints (media is
+// always created under a trip — see plan Section 3.4). `attachPath` is the
+// resource-specific endpoint that attaches/clears the resulting media asset
+// (e.g. `/trips/{id}/preview-image` or `/items/{id}/image`).
+export function renderImageField(container, { tripId, imageUrl, attachPath, onChanged }) {
+  function render(currentUrl) {
+    container.innerHTML = `
+      <div class="image-field">
+        ${currentUrl ? `<img class="image-field__preview" src="${escapeAttr(currentUrl)}" alt="" />` : ""}
+        <div class="image-field__controls">
+          <label class="image-field__upload">
+            <span data-i18n="image.upload"></span>
+            <input type="file" accept="image/*" hidden />
+          </label>
+          <form class="image-field__url-form">
+            <input type="url" name="url" data-i18n-placeholder="image.urlPlaceholder" />
+            <button type="submit" data-i18n="image.setUrl"></button>
+          </form>
+          ${currentUrl ? `<button type="button" data-action="remove" data-i18n="image.remove"></button>` : ""}
+        </div>
+        <p class="image-field__error" hidden></p>
+      </div>
+    `;
+    translatePage(container);
+
+    const errorEl = container.querySelector(".image-field__error");
+    const showError = (msg) => {
+      errorEl.textContent = msg;
+      errorEl.hidden = false;
+    };
+
+    container.querySelector('input[type="file"]').addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      errorEl.hidden = true;
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await fetch(`/api/trips/${tripId}/media`, { method: "POST", body: formData, credentials: "same-origin" });
+        const asset = await res.json();
+        if (!res.ok) throw new Error(asset.error || "upload failed");
+        await attach(asset.id, asset.url);
+      } catch (err) {
+        showError(err.message || t("common.error"));
+      }
+    });
+
+    container.querySelector(".image-field__url-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const input = e.target.url;
+      if (!input.value) return;
+      errorEl.hidden = true;
+      try {
+        const asset = await api.post(`/trips/${tripId}/media/url`, { url: input.value });
+        await attach(asset.id, asset.url);
+      } catch (err) {
+        showError(err.body?.error || t("common.error"));
+      }
+    });
+
+    const removeBtn = container.querySelector('[data-action="remove"]');
+    removeBtn?.addEventListener("click", async () => {
+      errorEl.hidden = true;
+      try {
+        await attach(null, null);
+      } catch (err) {
+        showError(err.body?.error || t("common.error"));
+      }
+    });
+  }
+
+  async function attach(mediaAssetId, url) {
+    const updated = await api.put(attachPath, { media_asset_id: mediaAssetId });
+    render(url);
+    onChanged?.(updated);
+  }
+
+  render(imageUrl);
+}
+
+function escapeAttr(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}

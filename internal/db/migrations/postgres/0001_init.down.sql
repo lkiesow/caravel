@@ -1,0 +1,12 @@
+DROP TABLE IF EXISTS itinerary_entries;
+DROP TABLE IF EXISTS itinerary_days;
+DROP TABLE IF EXISTS documents;
+DROP TABLE IF EXISTS item_dates;
+DROP TABLE IF EXISTS item_links;
+DROP TABLE IF EXISTS item_locations;
+DROP TABLE IF EXISTS items;
+DROP TABLE IF EXISTS media_assets;
+DROP TABLE IF EXISTS trips;
+DROP TABLE IF EXISTS sessions;
+DROP TABLE IF EXISTS auth_identities;
+DROP TABLE IF EXISTS users;

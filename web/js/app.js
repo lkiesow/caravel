@@ -3,12 +3,18 @@ import { api } from "./api.js";
 import { renderLoginPage } from "./pages/login-page.js";
 import { renderTripsPage } from "./pages/trips-page.js";
 import { renderTripDetailPage } from "./pages/trip-detail-page.js";
+import { renderTripEditorPage } from "./pages/trip-editor-page.js";
 import { createRouter } from "./router.js";
 
 const app = document.getElementById("app");
 
 const routes = [
   { pattern: "/trips", render: renderTripsPage },
+  // "/trips/new" must precede "/trips/:tripId" - same segment count, and
+  // the router's match() takes the first pattern that fits, so the literal
+  // route would otherwise never be reached (":tripId" swallows "new").
+  { pattern: "/trips/new", render: renderTripEditorPage },
+  { pattern: "/trips/:tripId/edit", render: renderTripEditorPage },
   { pattern: "/trips/:tripId", render: renderTripDetailPage },
 ];
 

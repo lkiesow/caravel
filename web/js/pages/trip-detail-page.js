@@ -1,7 +1,7 @@
 import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
-import { renderTripForm } from "../components/trip-form.js";
-import { renderImageField } from "../components/image-field.js";
+import { navigate } from "../router.js";
+import { icon } from "../icon.js";
 import "../components/leaflet-map.js";
 import { renderItemsTab } from "./locations-tab.js";
 import { renderItineraryTab } from "./itinerary-tab.js";
@@ -18,7 +18,9 @@ export async function renderTripDetailPage(container, { tripId }) {
     return;
   }
 
-  let activeTab = "overview";
+  // Locations (not Overview) is what users actually want to land on - see
+  // Stage 02 review.
+  let activeTab = "locations";
 
   function render() {
     container.innerHTML = `
@@ -26,6 +28,7 @@ export async function renderTripDetailPage(container, { tripId }) {
         <a href="/trips" data-link class="back-link" data-i18n="common.back"></a>
         <div class="page__header">
           <h1></h1>
+          <button data-action="edit-trip" data-i18n-aria-label="trip.editor.editTitle">${icon("pencil")}</button>
         </div>
         <nav class="trip-tabs">
           ${TABS.map((tab) => `<button data-tab="${tab}" data-i18n="trip.tabs.${tab}" class="${tab === activeTab ? "active" : ""}"></button>`).join("")}
@@ -35,6 +38,10 @@ export async function renderTripDetailPage(container, { tripId }) {
     `;
     translatePage(container);
     container.querySelector(".page__header h1").textContent = trip.title;
+
+    container.querySelector('[data-action="edit-trip"]').addEventListener("click", () => {
+      navigate(`/trips/${trip.id}/edit`);
+    });
 
     container.querySelectorAll("[data-tab]").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -59,8 +66,7 @@ export async function renderTripDetailPage(container, { tripId }) {
 
   function renderOverview(content) {
     content.innerHTML = `
-      <h4 data-i18n="trip.overview.image"></h4>
-      <div class="image-field-slot"></div>
+      ${trip.preview_image_url ? `<img class="trip-overview__image" src="${escapeAttr(trip.preview_image_url)}" alt="" />` : ""}
       <dl class="trip-overview">
         <dt data-i18n="trip.form.startDate"></dt>
         <dd>${trip.start_date ?? "—"}</dd>
@@ -71,41 +77,18 @@ export async function renderTripDetailPage(container, { tripId }) {
       </dl>
       <div class="trip-overview__actions">
         <button data-action="edit" data-i18n="common.edit"></button>
-        <button data-action="delete" data-i18n="common.delete"></button>
       </div>
-      <div class="trip-form-slot"></div>
     `;
     translatePage(content);
 
-    renderImageField(content.querySelector(".image-field-slot"), {
-      tripId: trip.id,
-      imageUrl: trip.preview_image_url,
-      attachPath: `/trips/${trip.id}/preview-image`,
-      onChanged: (updated) => {
-        trip = updated;
-      },
-    });
-
-    const formSlot = content.querySelector(".trip-form-slot");
     content.querySelector('[data-action="edit"]').addEventListener("click", () => {
-      renderTripForm(formSlot, trip, {
-        onSaved: (updated) => {
-          trip = updated;
-          render();
-        },
-        onCancel: () => {
-          formSlot.innerHTML = "";
-        },
-      });
-    });
-
-    content.querySelector('[data-action="delete"]').addEventListener("click", async () => {
-      if (!window.confirm(t("trip.deleteConfirm"))) return;
-      await api.delete(`/trips/${trip.id}`);
-      window.history.pushState({}, "", "/trips");
-      window.dispatchEvent(new PopStateEvent("popstate"));
+      navigate(`/trips/${trip.id}/edit`);
     });
   }
 
   render();
+}
+
+function escapeAttr(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }

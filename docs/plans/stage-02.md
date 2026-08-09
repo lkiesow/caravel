@@ -340,7 +340,7 @@ explicitly a "for now" scope per the review, admin options come later.
    Referrer-Policy fix. Independently testable via curl. **Done.**
 4. **Routing + trip editor unification** (Section 2, trip half) — new
    routes in `app.js`, `trip-editor-page.js`, Overview becomes read-only,
-   default tab → Locations.
+   default tab → Locations. **Done.**
 5. **Item view/editor split** (Section 2, item half) — `location-view-page.js`,
    `location-editor-page.js`, `locations-tab.js` navigation + card
    thumbnails, item date ranges (Section 4).

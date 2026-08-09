@@ -1,7 +1,7 @@
 import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
 import "../components/trip-card.js";
-import { renderTripForm } from "../components/trip-form.js";
+import { navigate } from "../router.js";
 
 export async function renderTripsPage(container) {
   container.innerHTML = `
@@ -10,7 +10,6 @@ export async function renderTripsPage(container) {
         <h1 data-i18n="trips.title"></h1>
         <button data-action="new-trip" data-i18n="trips.new"></button>
       </div>
-      <div class="trip-form-slot"></div>
       <p class="trips-empty" data-i18n="trips.empty" hidden></p>
       <div class="trip-grid"></div>
     </div>
@@ -19,7 +18,6 @@ export async function renderTripsPage(container) {
 
   const grid = container.querySelector(".trip-grid");
   const emptyState = container.querySelector(".trips-empty");
-  const formSlot = container.querySelector(".trip-form-slot");
 
   async function load() {
     const trips = await api.get("/trips");
@@ -37,20 +35,11 @@ export async function renderTripsPage(container) {
   }
 
   grid.addEventListener("trip-open", (e) => {
-    window.history.pushState({}, "", `/trips/${e.detail.tripId}`);
-    window.dispatchEvent(new PopStateEvent("popstate"));
+    navigate(`/trips/${e.detail.tripId}`);
   });
 
   container.querySelector('[data-action="new-trip"]').addEventListener("click", () => {
-    renderTripForm(formSlot, null, {
-      onSaved: async () => {
-        formSlot.innerHTML = "";
-        await load();
-      },
-      onCancel: () => {
-        formSlot.innerHTML = "";
-      },
-    });
+    navigate("/trips/new");
   });
 
   await load();

@@ -1,3 +1,11 @@
+// Navigates client-side from anywhere (not just inside a rendered page),
+// e.g. after a card's open event or a form's save/cancel/delete handler.
+export function navigate(path) {
+  if (path === window.location.pathname) return;
+  window.history.pushState({}, "", path);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
 // Minimal History API router. Routes are {pattern, render} where pattern
 // segments starting with ":" are captured as params, e.g. "/trips/:tripId".
 export function createRouter(routes, container) {

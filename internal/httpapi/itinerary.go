@@ -17,6 +17,7 @@ type itineraryEntryResponse struct {
 	ItemTitle    string  `json:"item_title"`
 	ItemCategory string  `json:"item_category"`
 	ItemType     string  `json:"item_type"`
+	ItemImageURL *string `json:"item_image_url"`
 	SortOrder    int     `json:"sort_order"`
 	Note         *string `json:"note"`
 }
@@ -57,6 +58,7 @@ func (s *Server) handleGetItinerary(w http.ResponseWriter, r *http.Request) {
 			ItemTitle:    e.ItemTitle,
 			ItemCategory: e.ItemCategory,
 			ItemType:     e.ItemType,
+			ItemImageURL: s.resolveImageURL(r.Context(), e.ItemImageID),
 			SortOrder:    e.SortOrder,
 			Note:         e.Note,
 		})
@@ -209,7 +211,8 @@ func (s *Server) handleCreateItineraryEntry(w http.ResponseWriter, r *http.Reque
 
 	writeJSON(w, http.StatusCreated, itineraryEntryResponse{
 		ID: entry.ID, ItemID: item.ID, ItemTitle: item.Title, ItemCategory: item.Category, ItemType: item.Type,
-		SortOrder: entry.SortOrder, Note: entry.Note,
+		ItemImageURL: s.resolveImageURL(r.Context(), item.ImageID),
+		SortOrder:    entry.SortOrder, Note: entry.Note,
 	})
 }
 

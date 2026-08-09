@@ -37,12 +37,7 @@ func (s *Server) tripToResponse(ctx context.Context, t db.Trip) tripResponse {
 		CreatedAt:      t.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:      t.UpdatedAt.UTC().Format(time.RFC3339),
 	}
-	if t.PreviewImageID != nil {
-		if asset, err := s.Store.GetMediaAssetByID(ctx, *t.PreviewImageID); err == nil {
-			url := mediaAssetToResponse(asset).URL
-			resp.PreviewImageURL = &url
-		}
-	}
+	resp.PreviewImageURL = s.resolveImageURL(ctx, t.PreviewImageID)
 	return resp
 }
 

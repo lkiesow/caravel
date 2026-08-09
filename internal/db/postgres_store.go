@@ -607,6 +607,7 @@ func (s *postgresStore) ListItineraryEntriesByTrip(ctx context.Context, tripID s
 			ItemTitle:    row.ItemTitle,
 			ItemCategory: row.ItemCategory,
 			ItemType:     row.ItemType,
+			ItemImageID:  strPtr(row.ItemImageID),
 		}
 	}
 	return entries, nil
@@ -649,6 +650,7 @@ func (s *postgresStore) CreateDocument(ctx context.Context, p CreateDocumentPara
 		ContentType: nullString(p.ContentType),
 		SizeBytes:   p.SizeBytes,
 		UploadedAt:  p.UploadedAt.UTC(),
+		Note:        nullString(p.Note),
 	})
 	if err != nil {
 		return Document{}, err
@@ -706,6 +708,7 @@ func postgresDocumentToDomain(d postgresgen.Document) Document {
 		ContentType: strPtr(d.ContentType),
 		SizeBytes:   d.SizeBytes,
 		UploadedAt:  d.UploadedAt,
+		Note:        strPtr(d.Note),
 	}
 }
 

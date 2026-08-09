@@ -12,9 +12,9 @@ import (
 )
 
 const createDocument = `-- name: CreateDocument :one
-INSERT INTO documents (id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at
+INSERT INTO documents (id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at, note)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at, note
 `
 
 type CreateDocumentParams struct {
@@ -26,6 +26,7 @@ type CreateDocumentParams struct {
 	ContentType sql.NullString `json:"content_type"`
 	SizeBytes   int64          `json:"size_bytes"`
 	UploadedAt  time.Time      `json:"uploaded_at"`
+	Note        sql.NullString `json:"note"`
 }
 
 func (q *Queries) CreateDocument(ctx context.Context, arg CreateDocumentParams) (Document, error) {
@@ -38,6 +39,7 @@ func (q *Queries) CreateDocument(ctx context.Context, arg CreateDocumentParams) 
 		arg.ContentType,
 		arg.SizeBytes,
 		arg.UploadedAt,
+		arg.Note,
 	)
 	var i Document
 	err := row.Scan(
@@ -49,6 +51,7 @@ func (q *Queries) CreateDocument(ctx context.Context, arg CreateDocumentParams) 
 		&i.ContentType,
 		&i.SizeBytes,
 		&i.UploadedAt,
+		&i.Note,
 	)
 	return i, err
 }
@@ -71,7 +74,7 @@ func (q *Queries) DeleteDocument(ctx context.Context, arg DeleteDocumentParams) 
 }
 
 const getDocumentByID = `-- name: GetDocumentByID :one
-SELECT id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at FROM documents WHERE id = $1
+SELECT id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at, note FROM documents WHERE id = $1
 `
 
 func (q *Queries) GetDocumentByID(ctx context.Context, id string) (Document, error) {
@@ -86,12 +89,13 @@ func (q *Queries) GetDocumentByID(ctx context.Context, id string) (Document, err
 		&i.ContentType,
 		&i.SizeBytes,
 		&i.UploadedAt,
+		&i.Note,
 	)
 	return i, err
 }
 
 const listItemDocuments = `-- name: ListItemDocuments :many
-SELECT id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at FROM documents WHERE item_id = $1 ORDER BY uploaded_at DESC
+SELECT id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at, note FROM documents WHERE item_id = $1 ORDER BY uploaded_at DESC
 `
 
 func (q *Queries) ListItemDocuments(ctx context.Context, itemID sql.NullString) ([]Document, error) {
@@ -112,6 +116,7 @@ func (q *Queries) ListItemDocuments(ctx context.Context, itemID sql.NullString) 
 			&i.ContentType,
 			&i.SizeBytes,
 			&i.UploadedAt,
+			&i.Note,
 		); err != nil {
 			return nil, err
 		}
@@ -127,7 +132,7 @@ func (q *Queries) ListItemDocuments(ctx context.Context, itemID sql.NullString) 
 }
 
 const listTripDocuments = `-- name: ListTripDocuments :many
-SELECT id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at FROM documents WHERE trip_id = $1 AND item_id IS NULL ORDER BY uploaded_at DESC
+SELECT id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at, note FROM documents WHERE trip_id = $1 AND item_id IS NULL ORDER BY uploaded_at DESC
 `
 
 func (q *Queries) ListTripDocuments(ctx context.Context, tripID string) ([]Document, error) {
@@ -148,6 +153,7 @@ func (q *Queries) ListTripDocuments(ctx context.Context, tripID string) ([]Docum
 			&i.ContentType,
 			&i.SizeBytes,
 			&i.UploadedAt,
+			&i.Note,
 		); err != nil {
 			return nil, err
 		}

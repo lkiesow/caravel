@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -35,6 +36,20 @@ func mediaAssetToResponse(m db.MediaAsset) mediaAssetResponse {
 		resp.URL = fmt.Sprintf("/api/media/%s/file", m.ID)
 	}
 	return resp
+}
+
+// resolveImageURL looks up imageID's media asset and returns its URL, or nil
+// if imageID is nil or the asset can't be found (e.g. already deleted).
+func (s *Server) resolveImageURL(ctx context.Context, imageID *string) *string {
+	if imageID == nil {
+		return nil
+	}
+	asset, err := s.Store.GetMediaAssetByID(ctx, *imageID)
+	if err != nil {
+		return nil
+	}
+	url := mediaAssetToResponse(asset).URL
+	return &url
 }
 
 // handleUploadMedia handles POST /api/trips/{tripId}/media (multipart, field "file").

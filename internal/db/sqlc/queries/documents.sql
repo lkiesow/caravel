@@ -1,6 +1,6 @@
 -- name: CreateDocument :one
-INSERT INTO documents (id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at)
-VALUES (sqlc.arg(id), sqlc.arg(trip_id), sqlc.arg(item_id), sqlc.arg(filename), sqlc.arg(storage_path), sqlc.arg(content_type), sqlc.arg(size_bytes), sqlc.arg(uploaded_at))
+INSERT INTO documents (id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at, note)
+VALUES (sqlc.arg(id), sqlc.arg(trip_id), sqlc.arg(item_id), sqlc.arg(filename), sqlc.arg(storage_path), sqlc.arg(content_type), sqlc.arg(size_bytes), sqlc.arg(uploaded_at), sqlc.arg(note))
 RETURNING *;
 
 -- name: GetDocumentByID :one

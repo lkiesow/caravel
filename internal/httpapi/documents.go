@@ -24,6 +24,7 @@ type documentResponse struct {
 	ContentType *string `json:"content_type"`
 	SizeBytes   int64   `json:"size_bytes"`
 	UploadedAt  string  `json:"uploaded_at"`
+	Note        *string `json:"note"`
 	DownloadURL string  `json:"download_url"`
 }
 
@@ -36,6 +37,7 @@ func documentToResponse(d db.Document) documentResponse {
 		ContentType: d.ContentType,
 		SizeBytes:   d.SizeBytes,
 		UploadedAt:  d.UploadedAt.UTC().Format(time.RFC3339),
+		Note:        d.Note,
 		DownloadURL: fmt.Sprintf("/api/documents/%s/download", d.ID),
 	}
 }
@@ -76,6 +78,11 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request, tripID s
 		contentTypePtr = &contentType
 	}
 
+	var notePtr *string
+	if note := strings.TrimSpace(r.FormValue("note")); note != "" {
+		notePtr = &note
+	}
+
 	doc, err := s.Store.CreateDocument(r.Context(), db.CreateDocumentParams{
 		ID:          id,
 		TripID:      tripID,
@@ -85,6 +92,7 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request, tripID s
 		ContentType: contentTypePtr,
 		SizeBytes:   size,
 		UploadedAt:  time.Now().UTC(),
+		Note:        notePtr,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not save document")

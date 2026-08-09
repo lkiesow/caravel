@@ -544,6 +544,7 @@ func (s *sqliteStore) ListItineraryEntriesByTrip(ctx context.Context, tripID str
 			ItemTitle:    row.ItemTitle,
 			ItemCategory: row.ItemCategory,
 			ItemType:     row.ItemType,
+			ItemImageID:  strPtr(row.ItemImageID),
 		}
 	}
 	return entries, nil
@@ -586,6 +587,7 @@ func (s *sqliteStore) CreateDocument(ctx context.Context, p CreateDocumentParams
 		ContentType: nullString(p.ContentType),
 		SizeBytes:   p.SizeBytes,
 		UploadedAt:  formatTime(p.UploadedAt),
+		Note:        nullString(p.Note),
 	})
 	if err != nil {
 		return Document{}, err
@@ -643,6 +645,7 @@ func sqliteDocumentToDomain(d sqlitegen.Document) Document {
 		ContentType: strPtr(d.ContentType),
 		SizeBytes:   d.SizeBytes,
 		UploadedAt:  parseTime(d.UploadedAt),
+		Note:        strPtr(d.Note),
 	}
 }
 

@@ -70,6 +70,7 @@ type CreateDocumentParams struct {
 	ContentType *string
 	SizeBytes   int64
 	UploadedAt  time.Time
+	Note        *string
 }
 
 type CreateItineraryEntryParams struct {

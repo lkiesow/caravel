@@ -27,6 +27,7 @@ type Document struct {
 	ContentType sql.NullString `json:"content_type"`
 	SizeBytes   int64          `json:"size_bytes"`
 	UploadedAt  time.Time      `json:"uploaded_at"`
+	Note        sql.NullString `json:"note"`
 }
 
 type Item struct {

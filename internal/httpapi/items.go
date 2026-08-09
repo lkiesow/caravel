@@ -45,12 +45,7 @@ func (s *Server) itemToResponse(ctx context.Context, i db.Item) itemResponse {
 		CreatedAt: i.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt: i.UpdatedAt.UTC().Format(time.RFC3339),
 	}
-	if i.ImageID != nil {
-		if asset, err := s.Store.GetMediaAssetByID(ctx, *i.ImageID); err == nil {
-			url := mediaAssetToResponse(asset).URL
-			resp.ImageURL = &url
-		}
-	}
+	resp.ImageURL = s.resolveImageURL(ctx, i.ImageID)
 	return resp
 }
 

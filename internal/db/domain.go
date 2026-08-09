@@ -75,6 +75,7 @@ type Document struct {
 	ContentType *string
 	SizeBytes   int64
 	UploadedAt  time.Time
+	Note        *string
 }
 
 // ItineraryDay.Date is a "YYYY-MM-DD" string — see the note on
@@ -102,6 +103,7 @@ type ItineraryEntryDetail struct {
 	ItemTitle    string
 	ItemCategory string
 	ItemType     string
+	ItemImageID  *string
 }
 
 // MediaAsset backs both trips.preview_image_id and items.image_id. Kind is

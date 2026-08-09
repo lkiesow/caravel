@@ -62,7 +62,8 @@ func (q *Queries) DeleteItineraryEntry(ctx context.Context, arg DeleteItineraryE
 
 const listItineraryEntriesByTrip = `-- name: ListItineraryEntriesByTrip :many
 SELECT e.id, e.itinerary_day_id, e.item_id, e.sort_order, e.note,
-       i.title AS item_title, i.category AS item_category, i.type AS item_type
+       i.title AS item_title, i.category AS item_category, i.type AS item_type,
+       i.image_id AS item_image_id
 FROM itinerary_entries e
 INNER JOIN itinerary_days d ON d.id = e.itinerary_day_id
 INNER JOIN items i ON i.id = e.item_id
@@ -79,6 +80,7 @@ type ListItineraryEntriesByTripRow struct {
 	ItemTitle      string         `json:"item_title"`
 	ItemCategory   string         `json:"item_category"`
 	ItemType       string         `json:"item_type"`
+	ItemImageID    sql.NullString `json:"item_image_id"`
 }
 
 func (q *Queries) ListItineraryEntriesByTrip(ctx context.Context, tripID string) ([]ListItineraryEntriesByTripRow, error) {
@@ -99,6 +101,7 @@ func (q *Queries) ListItineraryEntriesByTrip(ctx context.Context, tripID string)
 			&i.ItemTitle,
 			&i.ItemCategory,
 			&i.ItemType,
+			&i.ItemImageID,
 		); err != nil {
 			return nil, err
 		}

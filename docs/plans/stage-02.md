@@ -337,7 +337,7 @@ explicitly a "for now" scope per the review, admin options come later.
    milestone after this one. **Done.**
 3. **Backend groundwork (remaining)** — documents `note` column migration,
    itinerary entry image resolution (+ shared media-URL helper),
-   Referrer-Policy fix. Independently testable via curl.
+   Referrer-Policy fix. Independently testable via curl. **Done.**
 4. **Routing + trip editor unification** (Section 2, trip half) — new
    routes in `app.js`, `trip-editor-page.js`, Overview becomes read-only,
    default tab → Locations.

@@ -90,7 +90,11 @@
   "itinerary.addItem": "Eintrag hinzufügen",
   "itinerary.selectItem": "Eintrag auswählen…",
   "itinerary.empty": "Für diesen Tag ist noch nichts geplant.",
-  "documents.upload": "Dokument hochladen",
+  "documents.add": "Dokument hinzufügen",
+  "documents.dialogTitle": "Dokumente hinzufügen",
+  "documents.chooseFiles": "Dateien auswählen",
+  "documents.notePlaceholder": "Notiz (optional)",
+  "documents.upload": "Hochladen",
   "documents.empty": "Noch keine Dokumente.",
   "documents.deleteConfirm": "Dieses Dokument löschen? Das kann nicht rückgängig gemacht werden.",
   "item.detail.documents": "Dokumente"

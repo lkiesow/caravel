@@ -90,7 +90,11 @@
   "itinerary.addItem": "Add item",
   "itinerary.selectItem": "Choose an item…",
   "itinerary.empty": "Nothing planned for this day yet.",
-  "documents.upload": "Upload document",
+  "documents.add": "Add document",
+  "documents.dialogTitle": "Add documents",
+  "documents.chooseFiles": "Choose files",
+  "documents.notePlaceholder": "Note (optional)",
+  "documents.upload": "Upload",
   "documents.empty": "No documents yet.",
   "documents.deleteConfirm": "Delete this document? This cannot be undone.",
   "item.detail.documents": "Documents"

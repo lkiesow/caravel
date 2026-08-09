@@ -352,7 +352,7 @@ explicitly a "for now" scope per the review, admin options come later.
    thumbnails, item date ranges (Section 4). **Done.**
 6. **Itinerary entry thumbnails + click-through** (Section 5). **Done.**
 7. **Documents redesign** (Section 6) — add-document dialog, per-file
-   notes, read-only list.
+   notes, read-only list. **Done.**
 8. **Styling pass** (Section 8) — links, selection, button system + icons,
    input/button height consistency.
 9. **Header user menu** (Section 9).

@@ -1,5 +1,6 @@
 import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
+import { navigate } from "../router.js";
 
 const CATEGORY_COLORS = {
   site: "#16a34a",
@@ -102,11 +103,20 @@ export async function renderItineraryTab(container, trip) {
     for (const entry of day.entries) {
       const li = document.createElement("li");
       li.innerHTML = `
-        <span class="dot" style="background:${CATEGORY_COLORS[entry.item_category] || "#71717a"}"></span>
-        <span>${escapeHtml(entry.item_title)}</span>
+        <button type="button" class="itinerary-entry__link" data-action="open">
+          ${
+            entry.item_image_url
+              ? `<img class="itinerary-entry__thumb" src="${escapeAttr(entry.item_image_url)}" alt="" />`
+              : `<span class="dot" style="background:${CATEGORY_COLORS[entry.item_category] || "#71717a"}"></span>`
+          }
+          <span>${escapeHtml(entry.item_title)}</span>
+        </button>
         ${entry.note ? `<span class="itinerary-entry__note">${escapeHtml(entry.note)}</span>` : ""}
         <button data-action="remove" aria-label="${t("common.remove")}">&times;</button>
       `;
+      li.querySelector('[data-action="open"]').addEventListener("click", () => {
+        navigate(`/trips/${trip.id}/locations/${entry.item_id}`);
+      });
       li.querySelector('[data-action="remove"]').addEventListener("click", async () => {
         await api.delete(`/itinerary/days/${day.id}/entries/${entry.id}`);
         day.entries = day.entries.filter((e) => e.id !== entry.id);
@@ -126,4 +136,8 @@ function formatDate(dateStr) {
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+
+function escapeAttr(s) {
+  return escapeHtml(s);
 }

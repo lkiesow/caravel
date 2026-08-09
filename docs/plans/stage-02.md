@@ -350,7 +350,7 @@ explicitly a "for now" scope per the review, admin options come later.
 5. **Item view/editor split** (Section 2, item half) — `location-view-page.js`,
    `location-editor-page.js`, `locations-tab.js` navigation + card
    thumbnails, item date ranges (Section 4). **Done.**
-6. **Itinerary entry thumbnails + click-through** (Section 5).
+6. **Itinerary entry thumbnails + click-through** (Section 5). **Done.**
 7. **Documents redesign** (Section 6) — add-document dialog, per-file
    notes, read-only list.
 8. **Styling pass** (Section 8) — links, selection, button system + icons,

@@ -617,12 +617,37 @@ button {
   flex-shrink: 0;
 }
 
+.itinerary-entry__link {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.itinerary-entry__link:hover span:not(.dot) {
+  text-decoration: underline;
+}
+
+.itinerary-entry__thumb {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 0.25rem;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
 .itinerary-entry__note {
   color: var(--color-text-muted);
   font-size: 0.875rem;
 }
 
-.itinerary-day__entries button,
+.itinerary-day__entries button[data-action="remove"],
 .link-list button,
 .date-list button,
 .documents button[data-action="delete"] {

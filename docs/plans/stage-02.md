@@ -334,7 +334,7 @@ explicitly a "for now" scope per the review, admin options come later.
    **Done.**
 2. **Vendor Lucide icons** (Section 7) — sprite generation script, `icon()`
    helper, `.icon` CSS. Small, self-contained, and needed by nearly every
-   milestone after this one.
+   milestone after this one. **Done.**
 3. **Backend groundwork (remaining)** — documents `note` column migration,
    itinerary entry image resolution (+ shared media-URL helper),
    Referrer-Policy fix. Independently testable via curl.

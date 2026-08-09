@@ -2,7 +2,7 @@ import { api } from "../api.js";
 import { t } from "../i18n.js";
 
 const CATEGORY_COLORS = {
-  location: "#16a34a",
+  site: "#16a34a",
   stay: "#7c3aed",
   transport: "#2563eb",
 };
@@ -60,7 +60,7 @@ class LeafletMap extends HTMLElement {
 
   connectedCallback() {
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
-    this._activeCategories = new Set(["location", "stay", "transport"]);
+    this._activeCategories = new Set(["site", "stay", "transport"]);
     this._markers = [];
     this.load();
   }
@@ -91,7 +91,7 @@ class LeafletMap extends HTMLElement {
       <div class="map-wrap">
         <div id="map"></div>
         <div class="legend">
-          ${["location", "stay", "transport"]
+          ${["site", "stay", "transport"]
             .map(
               (cat) => `
               <label>

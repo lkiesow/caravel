@@ -3,11 +3,11 @@ import { t, translatePage } from "../i18n.js";
 import { renderTripForm } from "../components/trip-form.js";
 import { renderImageField } from "../components/image-field.js";
 import "../components/leaflet-map.js";
-import { renderItemsTab } from "./items-tab.js";
+import { renderItemsTab } from "./locations-tab.js";
 import { renderItineraryTab } from "./itinerary-tab.js";
 import { renderDocumentList } from "../components/document-list.js";
 
-const TABS = ["overview", "items", "map", "itinerary", "documents"];
+const TABS = ["overview", "locations", "map", "itinerary", "documents"];
 
 export async function renderTripDetailPage(container, { tripId }) {
   let trip;
@@ -46,7 +46,7 @@ export async function renderTripDetailPage(container, { tripId }) {
     const content = container.querySelector(".trip-tab-content");
     if (activeTab === "overview") {
       renderOverview(content);
-    } else if (activeTab === "items") {
+    } else if (activeTab === "locations") {
       renderItemsTab(content, trip.id);
     } else if (activeTab === "map") {
       content.innerHTML = `<leaflet-map trip-id="${trip.id}"></leaflet-map>`;

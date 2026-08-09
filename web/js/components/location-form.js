@@ -1,7 +1,7 @@
 import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
 
-const CATEGORIES = ["location", "stay", "transport"];
+const CATEGORIES = ["site", "stay", "transport"];
 
 // Renders a create/edit form for an item's core fields into `container`.
 // Pass an existing item to edit it, or null (with a tripId) to create one.
@@ -10,26 +10,26 @@ export function renderItemForm(container, item, { tripId, onSaved, onCancel }) {
     <form class="item-form" novalidate>
       <p class="item-form__error" hidden></p>
       <label>
-        <span data-i18n="item.form.category"></span>
+        <span data-i18n="location.form.category"></span>
         <select name="category">
           ${CATEGORIES.map((c) => `<option value="${c}">${t(`item.category.${c}`)}</option>`).join("")}
         </select>
       </label>
       <label>
-        <span data-i18n="item.form.type"></span>
-        <input type="text" name="type" data-i18n-placeholder="item.form.typePlaceholder" />
+        <span data-i18n="location.form.type"></span>
+        <input type="text" name="type" data-i18n-placeholder="location.form.typePlaceholder" />
       </label>
       <label>
-        <span data-i18n="item.form.title"></span>
+        <span data-i18n="location.form.title"></span>
         <input type="text" name="title" required />
       </label>
       <label>
-        <span data-i18n="item.form.notes"></span>
+        <span data-i18n="location.form.notes"></span>
         <textarea name="notes" rows="3"></textarea>
       </label>
       <label class="item-form__checkbox">
         <input type="checkbox" name="showOnMap" checked />
-        <span data-i18n="item.form.showOnMap"></span>
+        <span data-i18n="location.form.showOnMap"></span>
       </label>
       <div class="item-form__actions">
         <button type="submit" data-i18n="common.save"></button>

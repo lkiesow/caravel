@@ -1,5 +1,5 @@
 const CATEGORY_COLORS = {
-  location: "#16a34a",
+  site: "#16a34a",
   stay: "#7c3aed",
   transport: "#2563eb",
 };
@@ -82,7 +82,7 @@ class ItemCard extends HTMLElement {
   render() {
     const title = this.getAttribute("title") || "";
     const type = this.getAttribute("type") || "";
-    const category = this.getAttribute("category") || "location";
+    const category = this.getAttribute("category") || "site";
     const color = CATEGORY_COLORS[category] || "#71717a";
 
     this.shadowRoot.innerHTML = `

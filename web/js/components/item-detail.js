@@ -1,6 +1,6 @@
 import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
-import { renderItemForm } from "./item-form.js";
+import { renderItemForm } from "./location-form.js";
 import { renderImageField } from "./image-field.js";
 import { renderDocumentList } from "./document-list.js";
 

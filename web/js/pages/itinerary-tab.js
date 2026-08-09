@@ -2,7 +2,7 @@ import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
 
 const CATEGORY_COLORS = {
-  location: "#16a34a",
+  site: "#16a34a",
   stay: "#7c3aed",
   transport: "#2563eb",
 };

@@ -41,7 +41,9 @@ func openSQLite(path string) (*sql.DB, error) {
 			return nil, fmt.Errorf("create db dir: %w", err)
 		}
 	}
-	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)", path)
+	// foreign_keys must be enabled explicitly per-connection in SQLite, or
+	// ON DELETE CASCADE (used throughout the schema) silently does nothing.
+	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)", path)
 	conn, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
@@ -74,7 +76,14 @@ func migrateSQLite(conn *sql.DB) error {
 	if err != nil {
 		return err
 	}
-	target, err := sqlite.WithInstance(conn, &sqlite.Config{})
+	// NoTxWrap: SQLite treats PRAGMA foreign_keys as a no-op while a
+	// transaction is open, but golang-migrate wraps each migration file in
+	// one by default. Migrations that must disable FK enforcement (e.g. to
+	// recreate a referenced table without cascading deletes) need the
+	// pragma to take effect statement-by-statement, so migrations run
+	// without an enclosing transaction. This trades away all-or-nothing
+	// atomicity per migration file; migrations are tested before shipping.
+	target, err := sqlite.WithInstance(conn, &sqlite.Config{NoTxWrap: true})
 	if err != nil {
 		return err
 	}

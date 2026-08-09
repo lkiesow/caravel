@@ -331,6 +331,7 @@ explicitly a "for now" scope per the review, admin options come later.
 1. **Naming** (Section 1) — category-rename migration + FK pragma fix,
    `validCategories`, and the mechanical frontend file/translation-key
    renames. Done first so every later milestone builds on final names.
+   **Done.**
 2. **Vendor Lucide icons** (Section 7) — sprite generation script, `icon()`
    helper, `.icon` CSS. Small, self-contained, and needed by nearly every
    milestone after this one.

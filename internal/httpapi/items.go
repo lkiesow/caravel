@@ -14,7 +14,7 @@ import (
 	"caravel/internal/db"
 )
 
-var validCategories = map[string]bool{"location": true, "stay": true, "transport": true}
+var validCategories = map[string]bool{"site": true, "stay": true, "transport": true}
 
 type itemResponse struct {
 	ID        string  `json:"id"`
@@ -126,7 +126,7 @@ func (req itemRequest) validate() error {
 		return errors.New("title is required")
 	}
 	if !validCategories[req.Category] {
-		return errors.New("category must be one of: location, stay, transport")
+		return errors.New("category must be one of: site, stay, transport")
 	}
 	return nil
 }

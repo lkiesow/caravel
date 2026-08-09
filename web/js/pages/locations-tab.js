@@ -1,10 +1,10 @@
 import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
-import "../components/item-card.js";
-import { renderItemForm } from "../components/item-form.js";
+import "../components/location-card.js";
+import { renderItemForm } from "../components/location-form.js";
 import { renderItemDetail } from "../components/item-detail.js";
 
-const CATEGORIES = ["location", "stay", "transport"];
+const CATEGORIES = ["site", "stay", "transport"];
 
 export async function renderItemsTab(container, tripId) {
   let activeFilter = "all";
@@ -13,13 +13,13 @@ export async function renderItemsTab(container, tripId) {
     <div class="items-tab">
       <div class="items-tab__header">
         <div class="items-filter">
-          <button data-filter="all" class="active" data-i18n="items.filter.all"></button>
+          <button data-filter="all" class="active" data-i18n="locations.filter.all"></button>
           ${CATEGORIES.map((c) => `<button data-filter="${c}">${t(`item.category.${c}`)}</button>`).join("")}
         </div>
-        <button data-action="new-item" data-i18n="items.new"></button>
+        <button data-action="new-item" data-i18n="locations.new"></button>
       </div>
       <div class="item-form-slot"></div>
-      <p class="items-empty" data-i18n="items.empty" hidden></p>
+      <p class="items-empty" data-i18n="locations.empty" hidden></p>
       <div class="item-list"></div>
       <div class="item-detail-slot"></div>
     </div>

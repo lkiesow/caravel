@@ -73,6 +73,8 @@
   "trip.overview.image": "Titelbild",
   "trip.editor.newTitle": "Neue Reise",
   "trip.editor.editTitle": "Reise bearbeiten",
+  "trip.editor.basicInfo": "Basisinformationen",
+  "trip.editor.createButton": "Reise erstellen",
   "map.empty": "Noch keine Einträge mit Standort. Füge einem Eintrag einen Standort hinzu, damit er hier erscheint.",
   "map.viewOnGoogleMaps": "In Google Maps ansehen",
   "itinerary.noDates": "Lege im Tab \"Übersicht\" ein Start- und Enddatum fest, um einen Tag-für-Tag-Reiseplan zu erstellen, oder füge unten manuell Tage hinzu.",

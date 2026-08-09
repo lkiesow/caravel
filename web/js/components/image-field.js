@@ -6,7 +6,17 @@ import { t, translatePage } from "../i18n.js";
 // always created under a trip — see plan Section 3.4). `attachPath` is the
 // resource-specific endpoint that attaches/clears the resulting media asset
 // (e.g. `/trips/{id}/preview-image` or `/items/{id}/image`).
-export function renderImageField(container, { tripId, imageUrl, attachPath, onChanged }) {
+//
+// If `tripId`/`attachPath` aren't set yet (the entity doesn't exist yet,
+// e.g. a trip being created), this runs in staging mode instead: picks are
+// held in memory and previewed locally rather than uploaded immediately.
+// `onStaged({ kind: "file", file, previewUrl } | { kind: "url", url, previewUrl } | null)`
+// reports the current pick so the caller can upload it once the entity
+// exists.
+export function renderImageField(container, { tripId, imageUrl, attachPath, onChanged, onStaged }) {
+  const isStaging = !tripId || !attachPath;
+  const staged = { kind: null, file: null, url: null, previewUrl: null };
+
   function render(currentUrl) {
     container.innerHTML = `
       <div class="image-field">
@@ -37,6 +47,18 @@ export function renderImageField(container, { tripId, imageUrl, attachPath, onCh
       const file = e.target.files[0];
       if (!file) return;
       errorEl.hidden = true;
+
+      if (isStaging) {
+        if (staged.kind === "file" && staged.previewUrl) URL.revokeObjectURL(staged.previewUrl);
+        staged.kind = "file";
+        staged.file = file;
+        staged.url = null;
+        staged.previewUrl = URL.createObjectURL(file);
+        onStaged?.({ kind: "file", file, previewUrl: staged.previewUrl });
+        render(staged.previewUrl);
+        return;
+      }
+
       try {
         const formData = new FormData();
         formData.append("file", file);
@@ -54,6 +76,18 @@ export function renderImageField(container, { tripId, imageUrl, attachPath, onCh
       const input = e.target.url;
       if (!input.value) return;
       errorEl.hidden = true;
+
+      if (isStaging) {
+        if (staged.kind === "file" && staged.previewUrl) URL.revokeObjectURL(staged.previewUrl);
+        staged.kind = "url";
+        staged.file = null;
+        staged.url = input.value;
+        staged.previewUrl = input.value;
+        onStaged?.({ kind: "url", url: input.value, previewUrl: staged.previewUrl });
+        render(staged.previewUrl);
+        return;
+      }
+
       try {
         const asset = await api.post(`/trips/${tripId}/media/url`, { url: input.value });
         await attach(asset.id, asset.url);
@@ -65,6 +99,18 @@ export function renderImageField(container, { tripId, imageUrl, attachPath, onCh
     const removeBtn = container.querySelector('[data-action="remove"]');
     removeBtn?.addEventListener("click", async () => {
       errorEl.hidden = true;
+
+      if (isStaging) {
+        if (staged.kind === "file" && staged.previewUrl) URL.revokeObjectURL(staged.previewUrl);
+        staged.kind = null;
+        staged.file = null;
+        staged.url = null;
+        staged.previewUrl = null;
+        onStaged?.(null);
+        render(null);
+        return;
+      }
+
       try {
         await attach(null, null);
       } catch (err) {

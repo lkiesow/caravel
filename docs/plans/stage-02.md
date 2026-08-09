@@ -341,6 +341,12 @@ explicitly a "for now" scope per the review, admin options come later.
 4. **Routing + trip editor unification** (Section 2, trip half) — new
    routes in `app.js`, `trip-editor-page.js`, Overview becomes read-only,
    default tab → Locations. **Done.**
+4.5. **Trip editor follow-up** (hands-on review of Milestone 4) — cover
+   photo available directly in create mode via client-side staging
+   (`image-field.js` staging mode; upload+attach folded into the same save
+   that creates the trip; image stays fully optional), plus three
+   consistently-styled bordered cards (Basic Info / Cover Photo / Delete)
+   replacing the previous inconsistent styling. **Done.**
 5. **Item view/editor split** (Section 2, item half) — `location-view-page.js`,
    `location-editor-page.js`, `locations-tab.js` navigation + card
    thumbnails, item date ranges (Section 4).

@@ -349,7 +349,7 @@ explicitly a "for now" scope per the review, admin options come later.
    replacing the previous inconsistent styling. **Done.**
 5. **Item view/editor split** (Section 2, item half) — `location-view-page.js`,
    `location-editor-page.js`, `locations-tab.js` navigation + card
-   thumbnails, item date ranges (Section 4).
+   thumbnails, item date ranges (Section 4). **Done.**
 6. **Itinerary entry thumbnails + click-through** (Section 5).
 7. **Documents redesign** (Section 6) — add-document dialog, per-file
    notes, read-only list.

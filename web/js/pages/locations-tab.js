@@ -1,8 +1,7 @@
 import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
+import { navigate } from "../router.js";
 import "../components/location-card.js";
-import { renderItemForm } from "../components/location-form.js";
-import { renderItemDetail } from "../components/item-detail.js";
 
 const CATEGORIES = ["site", "stay", "transport"];
 
@@ -18,18 +17,14 @@ export async function renderItemsTab(container, tripId) {
         </div>
         <button data-action="new-item" data-i18n="locations.new"></button>
       </div>
-      <div class="item-form-slot"></div>
       <p class="items-empty" data-i18n="locations.empty" hidden></p>
       <div class="item-list"></div>
-      <div class="item-detail-slot"></div>
     </div>
   `;
   translatePage(container);
 
   const list = container.querySelector(".item-list");
   const emptyState = container.querySelector(".items-empty");
-  const formSlot = container.querySelector(".item-form-slot");
-  const detailSlot = container.querySelector(".item-detail-slot");
 
   async function load() {
     const query = activeFilter === "all" ? "" : `?category=${activeFilter}`;
@@ -42,6 +37,7 @@ export async function renderItemsTab(container, tripId) {
       card.setAttribute("title", item.title);
       card.setAttribute("category", item.category);
       if (item.type) card.setAttribute("type", item.type);
+      if (item.image_url) card.setAttribute("image-url", item.image_url);
       list.appendChild(card);
     }
   }
@@ -55,28 +51,11 @@ export async function renderItemsTab(container, tripId) {
   });
 
   container.querySelector('[data-action="new-item"]').addEventListener("click", () => {
-    renderItemForm(formSlot, null, {
-      tripId,
-      onSaved: async () => {
-        formSlot.innerHTML = "";
-        await load();
-      },
-      onCancel: () => {
-        formSlot.innerHTML = "";
-      },
-    });
+    navigate(`/trips/${tripId}/locations/new`);
   });
 
-  list.addEventListener("item-open", async (e) => {
-    await renderItemDetail(detailSlot, e.detail.itemId, {
-      onClose: () => {
-        detailSlot.innerHTML = "";
-      },
-      onDeleted: async () => {
-        detailSlot.innerHTML = "";
-        await load();
-      },
-    });
+  list.addEventListener("item-open", (e) => {
+    navigate(`/trips/${tripId}/locations/${e.detail.itemId}`);
   });
 
   await load();

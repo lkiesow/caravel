@@ -26,6 +26,13 @@ const styles = `
   .card:hover {
     border-color: var(--color-accent);
   }
+  .thumb {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.375rem;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
   .dot {
     width: 0.6rem;
     height: 0.6rem;
@@ -48,7 +55,7 @@ const styles = `
 
 class ItemCard extends HTMLElement {
   static get observedAttributes() {
-    return ["item-id", "title", "type", "category"];
+    return ["item-id", "title", "type", "category", "image-url"];
   }
 
   connectedCallback() {
@@ -84,10 +91,12 @@ class ItemCard extends HTMLElement {
     const type = this.getAttribute("type") || "";
     const category = this.getAttribute("category") || "site";
     const color = CATEGORY_COLORS[category] || "#71717a";
+    const imageUrl = this.getAttribute("image-url");
 
     this.shadowRoot.innerHTML = `
       <style>${styles}</style>
       <div class="card">
+        ${imageUrl ? `<img class="thumb" src="${escapeAttr(imageUrl)}" alt="" />` : ""}
         <span class="dot" style="background:${color}"></span>
         <div class="text">
           <h4>${escapeHtml(title)}</h4>
@@ -100,6 +109,10 @@ class ItemCard extends HTMLElement {
 
 function escapeHtml(s) {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+
+function escapeAttr(s) {
+  return escapeHtml(s);
 }
 
 customElements.define("item-card", ItemCard);

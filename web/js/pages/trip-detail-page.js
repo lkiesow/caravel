@@ -14,7 +14,7 @@ export async function renderTripDetailPage(container, { tripId }) {
   try {
     trip = await api.get(`/trips/${tripId}`);
   } catch {
-    container.innerHTML = `<p>${t("trips.empty")}</p><a href="/trips" data-link>${t("common.back")}</a>`;
+    container.innerHTML = `<p>${t("common.notFound")}</p><a href="/trips" data-link>${t("common.back")}</a>`;
     return;
   }
 

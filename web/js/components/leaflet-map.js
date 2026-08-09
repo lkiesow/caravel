@@ -13,6 +13,10 @@ const styles = `
     height: 60vh;
     min-height: 24rem;
   }
+  :host([lat]) {
+    height: 16rem;
+    min-height: 0;
+  }
   .map-wrap {
     position: relative;
     height: 100%;
@@ -55,7 +59,7 @@ const styles = `
 
 class LeafletMap extends HTMLElement {
   static get observedAttributes() {
-    return ["trip-id"];
+    return ["trip-id", "lat", "lng", "marker-title"];
   }
 
   connectedCallback() {
@@ -70,13 +74,32 @@ class LeafletMap extends HTMLElement {
   }
 
   async load() {
-    const tripId = this.getAttribute("trip-id");
-    if (!tripId) return;
+    // For a parser-inserted element with preset attributes, attributeChangedCallback
+    // can fire before connectedCallback attaches the shadow root (the node is
+    // already isConnected, but the reaction that calls attachShadow hasn't run
+    // yet) - bail out here and let connectedCallback's own load() call (which
+    // runs after the shadow root exists) handle it instead.
+    if (!this.shadowRoot) return;
 
     // connectedCallback and attributeChangedCallback both fire for the
-    // initial trip-id attribute, so two loads can race; only the most
-    // recent one is allowed to touch the DOM once its awaits resolve.
+    // initial attributes, so two loads can race; only the most recent one
+    // is allowed to touch the DOM once its awaits resolve.
     const generation = (this._generation = (this._generation || 0) + 1);
+
+    const lat = this.getAttribute("lat");
+    const lng = this.getAttribute("lng");
+    if (lat != null && lng != null) {
+      // Single-marker mode: an item's own location page embeds one point,
+      // driven directly by attributes - no trip-wide fetch, no legend.
+      this._singleMarker = { lat: Number(lat), lng: Number(lng), title: this.getAttribute("marker-title") || "" };
+      this._items = [];
+      await this.render(generation);
+      return;
+    }
+    this._singleMarker = null;
+
+    const tripId = this.getAttribute("trip-id");
+    if (!tripId) return;
 
     const items = await api.get(`/trips/${tripId}/map`);
     if (generation !== this._generation) return;
@@ -85,12 +108,16 @@ class LeafletMap extends HTMLElement {
   }
 
   async render(generation) {
+    const single = this._singleMarker;
     this.shadowRoot.innerHTML = `
       <link rel="stylesheet" href="/js/vendor/leaflet/leaflet.css" />
       <style>${styles}</style>
       <div class="map-wrap">
         <div id="map"></div>
-        <div class="legend">
+        ${
+          single
+            ? ""
+            : `<div class="legend">
           ${["site", "stay", "transport"]
             .map(
               (cat) => `
@@ -101,11 +128,12 @@ class LeafletMap extends HTMLElement {
               </label>`
             )
             .join("")}
-        </div>
+        </div>`
+        }
       </div>
     `;
 
-    if (!this._items.length) {
+    if (!single && !this._items.length) {
       this.shadowRoot.querySelector(".map-wrap").insertAdjacentHTML(
         "beforeend",
         `<p class="empty" style="position:absolute;inset:0;margin:0;">${t("map.empty")}</p>`
@@ -129,20 +157,34 @@ class LeafletMap extends HTMLElement {
 
     this.plotMarkers();
 
-    this.shadowRoot.querySelectorAll("[data-category]").forEach((cb) => {
-      cb.addEventListener("change", () => {
-        const cat = cb.getAttribute("data-category");
-        if (cb.checked) this._activeCategories.add(cat);
-        else this._activeCategories.delete(cat);
-        this.plotMarkers();
+    if (!single) {
+      this.shadowRoot.querySelectorAll("[data-category]").forEach((cb) => {
+        cb.addEventListener("change", () => {
+          const cat = cb.getAttribute("data-category");
+          if (cb.checked) this._activeCategories.add(cat);
+          else this._activeCategories.delete(cat);
+          this.plotMarkers();
+        });
       });
-    });
+    }
   }
 
   plotMarkers() {
     const L = this._L;
     this._markers.forEach((m) => m.remove());
     this._markers = [];
+
+    if (this._singleMarker) {
+      const { lat, lng, title } = this._singleMarker;
+      const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+      const marker = L.marker([lat, lng]).addTo(this._map);
+      marker.bindPopup(
+        `<strong>${escapeHtml(title)}</strong><br/><a href="${escapeAttr(mapsUrl)}" target="_blank" rel="noopener">${t("map.viewOnGoogleMaps")}</a>`
+      );
+      this._markers.push(marker);
+      this._map.setView([lat, lng], 14);
+      return;
+    }
 
     const visible = this._items.filter((item) => this._activeCategories.has(item.category));
 

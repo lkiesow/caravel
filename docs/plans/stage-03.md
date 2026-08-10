@@ -129,11 +129,18 @@ upload time — never server-verified.
   `image/svg+xml`, which browsers execute as script if rendered inline, a
   real inline-disposition XSS vector).
 - Set `Content-Disposition: inline; filename="..."` when `doc.ContentType`
-  is in the safe-list, else keep `attachment` as today.
+  is in the safe-list, else keep `attachment` as today. **Done.**
 - Since the stored `ContentType` is currently just the trusted-by-default
   client-supplied header, add server-side verification at upload time in
   `uploadDocument` via `http.DetectContentType` (sniff first 512 bytes) so
-  a mislabeled file can't get inline treatment it shouldn't have.
+  a mislabeled file can't get inline treatment it shouldn't have. **Done** —
+  `sniffContentType()` in `internal/httpapi/documents.go` now sniffs and
+  stores the detected type unconditionally, ignoring the client-supplied
+  header entirely. Verified end-to-end: a PDF gets `inline`, a `.zip` stays
+  `attachment`, and a `.svg` mislabeled as `image/png` gets sniffed down to
+  `text/plain` — served inline as literal text rather than executed as
+  markup (browsers only run embedded `<script>` for html/svg/xml content
+  types, not `text/plain`).
 
 ## 4. Linked images: fetch and cache locally instead of hotlinking
 

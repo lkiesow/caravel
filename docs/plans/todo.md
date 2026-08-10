@@ -13,11 +13,6 @@ Each item cites where it came from, so the reasoning behind it isn't lost.
 These aren't just suspicions from `notes.md` — each was checked against the
 actual source before going in this list.
 
-- **Documents always force a download, never display inline.**
-  `handleDownloadDocument` (`internal/httpapi/documents.go`) unconditionally
-  sets `Content-Disposition: attachment`, so a PDF or image document always
-  downloads instead of opening in the browser like the note expected.
-  (`notes.md`, verified)
 - **Linked (pasted-URL) images are hotlinked forever, never cached
   locally.** `handleCreateMediaURL` (`internal/httpapi/media.go`) stores the
   pasted URL verbatim and the frontend serves it directly from that URL for

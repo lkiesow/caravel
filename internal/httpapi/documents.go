@@ -3,6 +3,7 @@ package httpapi
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -15,6 +16,44 @@ import (
 )
 
 const maxDocumentUploadBytes = 50 << 20 // 50MB, per plan Section 3.4
+
+// inlineSafeContentTypes lists MIME types the browser can be trusted to
+// display inline instead of downloading. Deliberately excludes
+// image/svg+xml — SVG can embed <script> and browsers execute it when
+// rendered inline, making it an XSS vector unlike the raster/document types
+// below.
+var inlineSafeContentTypes = map[string]bool{
+	"application/pdf": true,
+	"image/png":       true,
+	"image/jpeg":      true,
+	"image/gif":       true,
+	"image/webp":      true,
+	"text/plain":      true,
+}
+
+func isInlineSafeContentType(contentType string) bool {
+	if i := strings.IndexByte(contentType, ';'); i >= 0 {
+		contentType = contentType[:i]
+	}
+	return inlineSafeContentTypes[strings.TrimSpace(contentType)]
+}
+
+// sniffContentType detects a file's MIME type from its content rather than
+// trusting the client-supplied multipart Content-Type header, so a
+// mislabeled upload (e.g. an HTML file declared as an image type) can't
+// get inline-display treatment it shouldn't. Rewinds f back to the start
+// once done so the caller can still read the full file afterward.
+func sniffContentType(f io.ReadSeeker) (string, error) {
+	buf := make([]byte, 512)
+	n, err := io.ReadFull(f, buf)
+	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+		return "", err
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return "", err
+	}
+	return http.DetectContentType(buf[:n]), nil
+}
 
 type documentResponse struct {
 	ID          string  `json:"id"`
@@ -57,6 +96,12 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request, tripID s
 	}
 	defer file.Close()
 
+	detectedContentType, err := sniffContentType(file)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "could not read uploaded file")
+		return
+	}
+
 	id := uuid.NewString()
 	filename := filepath.Base(header.Filename)
 	var key string
@@ -72,11 +117,7 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request, tripID s
 		return
 	}
 
-	contentType := header.Header.Get("Content-Type")
-	var contentTypePtr *string
-	if contentType != "" {
-		contentTypePtr = &contentType
-	}
+	contentTypePtr := &detectedContentType
 
 	var notePtr *string
 	if note := strings.TrimSpace(r.FormValue("note")); note != "" {
@@ -205,7 +246,11 @@ func (s *Server) handleDownloadDocument(w http.ResponseWriter, r *http.Request) 
 	if doc.ContentType != nil {
 		w.Header().Set("Content-Type", *doc.ContentType)
 	}
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, sanitizeForHeader(doc.Filename)))
+	disposition := "attachment"
+	if doc.ContentType != nil && isInlineSafeContentType(*doc.ContentType) {
+		disposition = "inline"
+	}
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`%s; filename="%s"`, disposition, sanitizeForHeader(doc.Filename)))
 	http.ServeContent(w, r, doc.Filename, doc.UploadedAt, f)
 }
 

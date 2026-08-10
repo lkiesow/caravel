@@ -14,6 +14,7 @@
   "auth.register.loginLink": "Anmelden",
   "auth.register.usernameTaken": "Dieser Benutzername ist bereits vergeben.",
   "auth.logout": "Abmelden",
+  "auth.userMenu": "Benutzermenü",
   "common.loading": "Wird geladen…",
   "common.error": "Etwas ist schiefgelaufen. Bitte versuche es erneut.",
   "common.notFound": "Nicht gefunden.",

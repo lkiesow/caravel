@@ -14,6 +14,7 @@
   "auth.register.loginLink": "Log in",
   "auth.register.usernameTaken": "That username is already taken.",
   "auth.logout": "Log out",
+  "auth.userMenu": "User menu",
   "common.loading": "Loading…",
   "common.error": "Something went wrong. Please try again.",
   "common.notFound": "Not found.",

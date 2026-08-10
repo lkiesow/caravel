@@ -1,6 +1,6 @@
 # Stage 02 — UI/UX Review Fixes
 
-> **Status: in progress.** Built one milestone at a time per the Workflow
+> **Status: complete.** Built one milestone at a time per the Workflow
 > section below, each with its own commit and a manual-testing checkpoint.
 
 ## Context
@@ -355,7 +355,7 @@ explicitly a "for now" scope per the review, admin options come later.
    notes, read-only list. **Done.**
 8. **Styling pass** (Section 8) — links, selection, button system + icons,
    input/button height consistency. **Done.**
-9. **Header user menu** (Section 9).
+9. **Header user menu** (Section 9). **Done.**
 
 ## Workflow: one milestone at a time, with a manual-testing checkpoint
 

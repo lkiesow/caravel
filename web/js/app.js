@@ -6,6 +6,7 @@ import { renderTripDetailPage } from "./pages/trip-detail-page.js";
 import { renderTripEditorPage } from "./pages/trip-editor-page.js";
 import { renderLocationEditorPage } from "./pages/location-editor-page.js";
 import { renderLocationViewPage } from "./pages/location-view-page.js";
+import { renderUserMenu } from "./components/user-menu.js";
 import { createRouter } from "./router.js";
 
 const app = document.getElementById("app");
@@ -28,15 +29,17 @@ async function renderAuthenticated(user) {
   app.innerHTML = `
     <header class="app-header">
       <strong>${t("app.name")}</strong>
-      <span>${user.display_name}</span>
-      <button data-action="logout" data-i18n="auth.logout"></button>
+      <div class="user-menu-slot"></div>
     </header>
     <main id="main"></main>
   `;
   translatePage(app);
-  app.querySelector('[data-action="logout"]').addEventListener("click", async () => {
-    await api.post("/auth/logout");
-    boot();
+
+  renderUserMenu(app.querySelector(".user-menu-slot"), user, {
+    onLogout: async () => {
+      await api.post("/auth/logout");
+      boot();
+    },
   });
 
   const router = createRouter(routes, document.getElementById("main"));

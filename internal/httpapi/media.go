@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"time"
@@ -17,7 +18,10 @@ import (
 	"caravel/internal/imaging"
 )
 
-const maxImageUploadBytes = 15 << 20 // 15MB, per plan Section 3.4
+const (
+	maxImageUploadBytes = 15 << 20 // 15MB, per plan Section 3.4
+	imageFetchTimeout   = 15 * time.Second
+)
 
 type mediaAssetResponse struct {
 	ID          string  `json:"id"`
@@ -30,7 +34,12 @@ type mediaAssetResponse struct {
 
 func mediaAssetToResponse(m db.MediaAsset) mediaAssetResponse {
 	resp := mediaAssetResponse{ID: m.ID, Kind: m.Kind, ContentType: m.ContentType, Width: m.Width, Height: m.Height}
-	if m.Kind == "url" && m.ExternalURL != nil {
+	// Any asset with a local StoragePath is served from this instance,
+	// regardless of Kind — Kind="url" now only means "was originally added
+	// by pasting a URL" (provenance), not "still served from that URL".
+	// Only assets created before this fetch-and-cache behavior existed
+	// (Kind="url" with no StoragePath) still fall back to hotlinking.
+	if m.StoragePath == nil && m.ExternalURL != nil {
 		resp.URL = *m.ExternalURL
 	} else {
 		resp.URL = fmt.Sprintf("/api/media/%s/file", m.ID)
@@ -126,11 +135,30 @@ func (s *Server) handleCreateMediaURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	result, err := fetchImage(r.Context(), req.URL)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "could not fetch image from url: "+err.Error())
+		return
+	}
+
+	id := uuid.NewString()
+	ext := extensionForContentType(result.ContentType)
+	key := fmt.Sprintf("%s/images/%s%s", trip.ID, id, ext)
+
+	if _, err := s.Blob.Put(r.Context(), key, bytes.NewReader(result.Data)); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not store image")
+		return
+	}
+
 	asset, err := s.Store.CreateMediaAsset(r.Context(), db.CreateMediaAssetParams{
-		ID:          uuid.NewString(),
+		ID:          id,
 		TripID:      trip.ID,
 		Kind:        "url",
+		StoragePath: &key,
 		ExternalURL: &req.URL,
+		ContentType: &result.ContentType,
+		Width:       &result.Width,
+		Height:      &result.Height,
 		CreatedAt:   time.Now().UTC(),
 	})
 	if err != nil {
@@ -140,9 +168,43 @@ func (s *Server) handleCreateMediaURL(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, mediaAssetToResponse(asset))
 }
 
-// handleServeMedia handles GET /api/media/{mediaId}/file — only meaningful
-// for kind="upload" assets; kind="url" assets are served directly from
-// their ExternalURL by the frontend and never hit this route.
+// fetchImage downloads rawURL (bounded by imageFetchTimeout and
+// maxImageUploadBytes, same limits as a direct upload) and decodes/resizes
+// it exactly like an uploaded file, so a pasted-URL image ends up stored
+// and served identically to one the user uploaded directly.
+func fetchImage(ctx context.Context, rawURL string) (imaging.Result, error) {
+	fetchCtx, cancel := context.WithTimeout(ctx, imageFetchTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(fetchCtx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return imaging.Result{}, err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return imaging.Result{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return imaging.Result{}, fmt.Errorf("server returned status %d", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxImageUploadBytes+1))
+	if err != nil {
+		return imaging.Result{}, err
+	}
+	if len(data) > maxImageUploadBytes {
+		return imaging.Result{}, fmt.Errorf("image exceeds maximum size of %d bytes", maxImageUploadBytes)
+	}
+
+	return imaging.DecodeAndResize(bytes.NewReader(data))
+}
+
+// handleServeMedia handles GET /api/media/{mediaId}/file — serves any asset
+// with a local StoragePath, regardless of Kind. Only pre-Stage-03 "url" kind
+// assets (created before linked images were fetched and cached locally)
+// have no StoragePath and never hit this route; the frontend serves those
+// directly from their ExternalURL instead.
 func (s *Server) handleServeMedia(w http.ResponseWriter, r *http.Request) {
 	mediaID := chi.URLParam(r, "mediaId")
 
@@ -159,7 +221,7 @@ func (s *Server) handleServeMedia(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "media not found")
 		return
 	}
-	if asset.Kind != "upload" || asset.StoragePath == nil {
+	if asset.StoragePath == nil {
 		writeError(w, http.StatusNotFound, "media not found")
 		return
 	}

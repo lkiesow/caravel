@@ -168,6 +168,18 @@ URL forever.
   clear error to the frontend rather than silently falling back to
   hotlinking.
 
+**Done.** `fetchImage()` in `internal/httpapi/media.go` fetches with a
+15s timeout and the same 15MB cap as direct uploads, then reuses
+`imaging.DecodeAndResize` and `Blob.Put` exactly like `handleUploadMedia`.
+`Kind="url"` is kept as provenance metadata; `mediaAssetToResponse` and
+`handleServeMedia` now key off `StoragePath != nil` instead of `Kind` to
+decide how an asset is served — pre-Stage-03 linked images (no
+`StoragePath`) still fall back to hotlinking since there's no backfill job,
+but every new one is fetched and served locally. Verified end-to-end:
+posting a URL now returns a local `/api/media/{id}/file` URL (not the raw
+external one) that serves the actual fetched bytes; a dead link or a
+non-image URL returns a clear 400 instead of silently hotlinking.
+
 ## 5. Tab state in the URL + breadcrumb navigation
 
 Confirmed: `trip-detail-page.js`'s Overview/Locations/Map/Itinerary/

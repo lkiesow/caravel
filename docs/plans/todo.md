@@ -13,12 +13,6 @@ Each item cites where it came from, so the reasoning behind it isn't lost.
 These aren't just suspicions from `notes.md` — each was checked against the
 actual source before going in this list.
 
-- **Linked (pasted-URL) images are hotlinked forever, never cached
-  locally.** `handleCreateMediaURL` (`internal/httpapi/media.go`) stores the
-  pasted URL verbatim and the frontend serves it directly from that URL for
-  as long as the trip exists — if the source disappears or changes, the
-  image silently breaks or changes underneath the trip. Uploaded images
-  don't have this problem; only pasted ones do. (`notes.md`, verified)
 - **Tab state isn't reflected in the URL, so browser back/forward skips
   over it.** The router itself is clean (single `popstate` listener in
   `router.js`, no page bypasses it with a direct `pushState`) — but the

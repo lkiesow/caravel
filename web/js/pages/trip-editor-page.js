@@ -3,6 +3,7 @@ import { t, translatePage } from "../i18n.js";
 import { navigate } from "../router.js";
 import { renderTripForm } from "../components/trip-form.js";
 import { renderImageField } from "../components/image-field.js";
+import { icon } from "../icon.js";
 
 // Two distinct layouts based on whether :tripId is present:
 //
@@ -34,7 +35,7 @@ export async function renderTripEditorPage(container, { tripId }) {
   function render() {
     container.innerHTML = `
       <div class="page trip-editor">
-        <a href="${trip ? `/trips/${trip.id}` : "/trips"}" data-link class="back-link" data-i18n="common.back"></a>
+        <a href="${trip ? `/trips/${trip.id}` : "/trips"}" data-link class="back-link">${icon("arrow-left")} <span data-i18n="common.back"></span></a>
         <div class="page__header">
           <h1 data-i18n="${trip ? "trip.editor.editTitle" : "trip.editor.newTitle"}"></h1>
         </div>
@@ -50,7 +51,7 @@ export async function renderTripEditorPage(container, { tripId }) {
             <div class="image-field-slot"></div>
           </div>
           <div class="editor-card trip-editor__actions">
-            <button data-action="delete" data-i18n="common.delete"></button>
+            <button class="btn btn-danger" data-action="delete">${icon("trash-2")} <span data-i18n="common.delete"></span></button>
           </div>
         `
             : `

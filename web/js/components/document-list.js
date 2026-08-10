@@ -1,5 +1,6 @@
 import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
+import { icon } from "../icon.js";
 
 // Renders a read-only document list (filename, size, note, download link,
 // delete) plus an "Add document" trigger that opens a native <dialog> for
@@ -15,21 +16,21 @@ export async function renderDocumentList(container, path) {
   function render() {
     container.innerHTML = `
       <div class="document-list">
-        <button type="button" class="document-list__add" data-i18n="documents.add"></button>
+        <button type="button" class="btn btn-primary document-list__add">${icon("plus")} <span data-i18n="documents.add"></span></button>
         <p class="documents-empty" data-i18n="documents.empty" hidden></p>
         <ul class="documents"></ul>
         <dialog class="document-dialog">
           <form class="document-dialog__form" novalidate>
             <h3 data-i18n="documents.dialogTitle"></h3>
-            <label class="document-dialog__picker">
+            <label class="image-field__upload">
               <span data-i18n="documents.chooseFiles"></span>
-              <input type="file" name="files" multiple data-i18n-aria-label="common.uploadFile" />
+              <input type="file" name="files" multiple hidden data-i18n-aria-label="common.uploadFile" />
             </label>
             <div class="document-dialog__files"></div>
             <p class="document-dialog__error" hidden></p>
             <div class="document-dialog__actions">
-              <button type="submit" data-i18n="documents.upload"></button>
-              <button type="button" data-action="cancel" data-i18n="common.cancel"></button>
+              <button type="submit" class="btn btn-primary">${icon("upload")} <span data-i18n="documents.upload"></span></button>
+              <button type="button" class="btn btn-secondary" data-action="cancel" data-i18n="common.cancel"></button>
             </div>
           </form>
         </dialog>
@@ -47,7 +48,7 @@ export async function renderDocumentList(container, path) {
         <a href="${doc.download_url}" target="_blank" rel="noopener">${escapeHtml(doc.filename)}</a>
         <span class="document-size">${formatSize(doc.size_bytes)}</span>
         ${doc.note ? `<span class="document-note">${escapeHtml(doc.note)}</span>` : ""}
-        <button data-action="delete" data-id="${doc.id}" aria-label="${t("common.remove")}">&times;</button>
+        <button class="icon-remove" data-action="delete" data-id="${doc.id}" aria-label="${t("common.remove")}">${icon("x")}</button>
       `;
       li.querySelector('[data-action="delete"]').addEventListener("click", async () => {
         if (!window.confirm(t("documents.deleteConfirm"))) return;

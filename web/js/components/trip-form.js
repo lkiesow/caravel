@@ -27,8 +27,8 @@ export function renderTripForm(container, trip, { onSaved, onCancel }) {
         <small data-i18n="trip.form.notesHint"></small>
       </label>
       <div class="trip-form__actions">
-        <button type="submit" data-i18n="${trip ? "common.save" : "trip.editor.createButton"}"></button>
-        <button type="button" data-action="cancel" data-i18n="common.cancel"></button>
+        <button type="submit" class="btn btn-primary" data-i18n="${trip ? "common.save" : "trip.editor.createButton"}"></button>
+        <button type="button" class="btn btn-secondary" data-action="cancel" data-i18n="common.cancel"></button>
       </div>
     </form>
   `;

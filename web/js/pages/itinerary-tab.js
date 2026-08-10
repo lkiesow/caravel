@@ -1,6 +1,7 @@
 import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
 import { navigate } from "../router.js";
+import { icon } from "../icon.js";
 
 const CATEGORY_COLORS = {
   site: "#16a34a",
@@ -20,7 +21,7 @@ export async function renderItineraryTab(container, trip) {
         <div class="itinerary-days"></div>
         <form class="itinerary-add-day">
           <input type="date" name="date" required />
-          <button type="submit" data-i18n="itinerary.addDay"></button>
+          <button type="submit" class="btn btn-primary">${icon("plus")} <span data-i18n="itinerary.addDay"></span></button>
         </form>
       </div>
     `;
@@ -53,7 +54,7 @@ export async function renderItineraryTab(container, trip) {
           <option value="" data-i18n="itinerary.selectItem"></option>
           ${items.map((i) => `<option value="${i.id}">${escapeHtml(i.title)}</option>`).join("")}
         </select>
-        <button type="submit" data-i18n="itinerary.addItem"></button>
+        <button type="submit" class="btn btn-primary">${icon("plus")} <span data-i18n="itinerary.addItem"></span></button>
       </form>
     `;
     translatePage(el);
@@ -112,7 +113,7 @@ export async function renderItineraryTab(container, trip) {
           <span>${escapeHtml(entry.item_title)}</span>
         </button>
         ${entry.note ? `<span class="itinerary-entry__note">${escapeHtml(entry.note)}</span>` : ""}
-        <button data-action="remove" aria-label="${t("common.remove")}">&times;</button>
+        <button class="icon-remove" data-action="remove" aria-label="${t("common.remove")}">${icon("x")}</button>
       `;
       li.querySelector('[data-action="open"]').addEventListener("click", () => {
         navigate(`/trips/${trip.id}/locations/${entry.item_id}`);

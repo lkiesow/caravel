@@ -2,13 +2,14 @@ import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
 import "../components/trip-card.js";
 import { navigate } from "../router.js";
+import { icon } from "../icon.js";
 
 export async function renderTripsPage(container) {
   container.innerHTML = `
     <div class="page trips-page">
       <div class="page__header">
         <h1 data-i18n="trips.title"></h1>
-        <button data-action="new-trip" data-i18n="trips.new"></button>
+        <button class="btn btn-primary" data-action="new-trip">${icon("plus")} <span data-i18n="trips.new"></span></button>
       </div>
       <p class="trips-empty" data-i18n="trips.empty" hidden></p>
       <div class="trip-grid"></div>

@@ -354,7 +354,7 @@ explicitly a "for now" scope per the review, admin options come later.
 7. **Documents redesign** (Section 6) — add-document dialog, per-file
    notes, read-only list. **Done.**
 8. **Styling pass** (Section 8) — links, selection, button system + icons,
-   input/button height consistency.
+   input/button height consistency. **Done.**
 9. **Header user menu** (Section 9).
 
 ## Workflow: one milestone at a time, with a manual-testing checkpoint

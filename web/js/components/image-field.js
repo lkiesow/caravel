@@ -1,5 +1,6 @@
 import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
+import { icon } from "../icon.js";
 
 // Renders an image picker (upload a file, or paste a URL) plus a preview
 // and remove button. `tripId` scopes the upload/url endpoints (media is
@@ -28,9 +29,9 @@ export function renderImageField(container, { tripId, imageUrl, attachPath, onCh
           </label>
           <form class="image-field__url-form">
             <input type="url" name="url" data-i18n-placeholder="image.urlPlaceholder" />
-            <button type="submit" data-i18n="image.setUrl"></button>
+            <button type="submit" class="btn btn-primary" data-i18n="image.setUrl"></button>
           </form>
-          ${currentUrl ? `<button type="button" data-action="remove" data-i18n="image.remove"></button>` : ""}
+          ${currentUrl ? `<button type="button" class="btn btn-secondary" data-action="remove">${icon("x")} <span data-i18n="image.remove"></span></button>` : ""}
         </div>
         <p class="image-field__error" hidden></p>
       </div>

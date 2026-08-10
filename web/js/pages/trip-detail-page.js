@@ -25,10 +25,10 @@ export async function renderTripDetailPage(container, { tripId }) {
   function render() {
     container.innerHTML = `
       <div class="page trip-detail">
-        <a href="/trips" data-link class="back-link" data-i18n="common.back"></a>
+        <a href="/trips" data-link class="back-link">${icon("arrow-left")} <span data-i18n="common.back"></span></a>
         <div class="page__header">
           <h1></h1>
-          <button data-action="edit-trip" data-i18n-aria-label="trip.editor.editTitle">${icon("pencil")}</button>
+          <button class="btn btn-secondary btn-icon" data-action="edit-trip" data-i18n-aria-label="trip.editor.editTitle">${icon("pencil")}</button>
         </div>
         <nav class="trip-tabs">
           ${TABS.map((tab) => `<button data-tab="${tab}" data-i18n="trip.tabs.${tab}" class="${tab === activeTab ? "active" : ""}"></button>`).join("")}
@@ -76,7 +76,7 @@ export async function renderTripDetailPage(container, { tripId }) {
         <dd class="trip-overview__notes">${trip.notes ?? "—"}</dd>
       </dl>
       <div class="trip-overview__actions">
-        <button data-action="edit" data-i18n="common.edit"></button>
+        <button class="btn btn-secondary" data-action="edit">${icon("pencil")} <span data-i18n="common.edit"></span></button>
       </div>
     `;
     translatePage(content);

@@ -33,7 +33,7 @@ export function renderLoginPage(container) {
               <input type="password" name="password" autocomplete="${mode === "login" ? "current-password" : "new-password"}" required minlength="8" />
             </label>
 
-            <button type="submit" data-i18n="${mode === "login" ? "auth.login.submit" : "auth.register.submit"}"></button>
+            <button type="submit" class="btn btn-primary" data-i18n="${mode === "login" ? "auth.login.submit" : "auth.register.submit"}"></button>
 
             <p class="auth-form__switch">
               <span data-i18n="${mode === "login" ? "auth.login.noAccount" : "auth.register.haveAccount"}"></span>

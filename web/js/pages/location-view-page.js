@@ -1,6 +1,7 @@
 import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
 import { navigate } from "../router.js";
+import { icon } from "../icon.js";
 import "../components/leaflet-map.js";
 
 const CATEGORY_COLORS = {
@@ -30,10 +31,10 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
 
   container.innerHTML = `
     <div class="page location-view">
-      <a href="/trips/${tripId}" data-link class="back-link" data-i18n="common.back"></a>
+      <a href="/trips/${tripId}" data-link class="back-link">${icon("arrow-left")} <span data-i18n="common.back"></span></a>
       <div class="page__header">
         <h1></h1>
-        <button data-action="edit" data-i18n="common.edit"></button>
+        <button class="btn btn-secondary" data-action="edit">${icon("pencil")} <span data-i18n="common.edit"></span></button>
       </div>
       <div class="location-view__meta">
         <span class="dot" style="background:${color}"></span>

@@ -32,8 +32,8 @@ export function renderItemForm(container, item, { tripId, onSaved, onCancel }) {
         <span data-i18n="location.form.showOnMap"></span>
       </label>
       <div class="item-form__actions">
-        <button type="submit" data-i18n="${item ? "common.save" : "location.editor.createButton"}"></button>
-        <button type="button" data-action="cancel" data-i18n="common.cancel"></button>
+        <button type="submit" class="btn btn-primary" data-i18n="${item ? "common.save" : "location.editor.createButton"}"></button>
+        <button type="button" class="btn btn-secondary" data-action="cancel" data-i18n="common.cancel"></button>
       </div>
     </form>
   `;

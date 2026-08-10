@@ -4,6 +4,7 @@ import { navigate } from "../router.js";
 import { renderItemForm } from "../components/location-form.js";
 import { renderImageField } from "../components/image-field.js";
 import { renderDocumentList } from "../components/document-list.js";
+import { icon } from "../icon.js";
 
 // Two distinct layouts based on whether :itemId is present:
 //
@@ -36,7 +37,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
   function render() {
     container.innerHTML = `
       <div class="page location-editor">
-        <a href="${item ? `/trips/${tripId}/locations/${item.id}` : `/trips/${tripId}`}" data-link class="back-link" data-i18n="common.back"></a>
+        <a href="${item ? `/trips/${tripId}/locations/${item.id}` : `/trips/${tripId}`}" data-link class="back-link">${icon("arrow-left")} <span data-i18n="common.back"></span></a>
         <div class="page__header">
           <h1 data-i18n="${item ? "location.editor.editTitle" : "location.editor.newTitle"}"></h1>
         </div>
@@ -66,7 +67,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
                 <span data-i18n="item.detail.address"></span>
                 <input type="text" name="address" />
               </label>
-              <button type="submit" data-i18n="item.detail.saveLocation"></button>
+              <button type="submit" class="btn btn-primary" data-i18n="item.detail.saveLocation"></button>
             </form>
           </div>
           <div class="editor-card">
@@ -75,7 +76,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
             <form class="link-form">
               <input type="url" name="url" data-i18n-placeholder="item.detail.linkUrl" required />
               <input type="text" name="label" data-i18n-placeholder="item.detail.linkLabel" />
-              <button type="submit" data-i18n="item.detail.addLink"></button>
+              <button type="submit" class="btn btn-primary">${icon("plus")} <span data-i18n="item.detail.addLink"></span></button>
             </form>
           </div>
           <div class="editor-card">
@@ -85,7 +86,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
               <input type="date" name="startDate" required />
               <input type="date" name="endDate" data-i18n-placeholder="item.detail.endDate" />
               <input type="text" name="label" data-i18n-placeholder="item.detail.dateLabel" />
-              <button type="submit" data-i18n="item.detail.addDate"></button>
+              <button type="submit" class="btn btn-primary">${icon("plus")} <span data-i18n="item.detail.addDate"></span></button>
             </form>
           </div>
           <div class="editor-card">
@@ -93,7 +94,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
             <div class="document-list-slot"></div>
           </div>
           <div class="editor-card trip-editor__actions">
-            <button data-action="delete" data-i18n="common.delete"></button>
+            <button class="btn btn-danger" data-action="delete">${icon("trash-2")} <span data-i18n="common.delete"></span></button>
           </div>
         `
             : `
@@ -195,7 +196,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       ? item.links
           .map(
             (l) =>
-              `<li data-link-id="${l.id}"><a href="${escapeAttr(l.url)}" target="_blank" rel="noopener">${escapeHtml(l.label || l.url)}</a> <button data-action="delete-link" data-id="${l.id}" aria-label="${t("common.remove")}">&times;</button></li>`
+              `<li data-link-id="${l.id}"><a href="${escapeAttr(l.url)}" target="_blank" rel="noopener">${escapeHtml(l.label || l.url)}</a> <button class="icon-remove" data-action="delete-link" data-id="${l.id}" aria-label="${t("common.remove")}">${icon("x")}</button></li>`
           )
           .join("")
       : `<li class="empty">${t("item.detail.linksEmpty")}</li>`;
@@ -224,7 +225,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       ? item.dates
           .map((d) => {
             const range = d.end_date ? `${escapeHtml(d.start_date || "")} – ${escapeHtml(d.end_date)}` : escapeHtml(d.start_date || "");
-            return `<li data-date-id="${d.id}">${range}${d.label ? " — " + escapeHtml(d.label) : ""} <button data-action="delete-date" data-id="${d.id}" aria-label="${t("common.remove")}">&times;</button></li>`;
+            return `<li data-date-id="${d.id}">${range}${d.label ? " — " + escapeHtml(d.label) : ""} <button class="icon-remove" data-action="delete-date" data-id="${d.id}" aria-label="${t("common.remove")}">${icon("x")}</button></li>`;
           })
           .join("")
       : `<li class="empty">${t("item.detail.datesEmpty")}</li>`;

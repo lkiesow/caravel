@@ -1,6 +1,7 @@
 import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
 import { navigate } from "../router.js";
+import { icon } from "../icon.js";
 import "../components/location-card.js";
 
 const CATEGORIES = ["site", "stay", "transport"];
@@ -15,7 +16,7 @@ export async function renderItemsTab(container, tripId) {
           <button data-filter="all" class="active" data-i18n="locations.filter.all"></button>
           ${CATEGORIES.map((c) => `<button data-filter="${c}">${t(`item.category.${c}`)}</button>`).join("")}
         </div>
-        <button data-action="new-item" data-i18n="locations.new"></button>
+        <button class="btn btn-primary" data-action="new-item">${icon("plus")} <span data-i18n="locations.new"></span></button>
       </div>
       <p class="items-empty" data-i18n="locations.empty" hidden></p>
       <div class="item-list"></div>

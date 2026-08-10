@@ -635,6 +635,116 @@ func (s *sqliteStore) DeleteDocument(ctx context.Context, id, tripID string) (bo
 	return n > 0, nil
 }
 
+func (s *sqliteStore) CreateChecklist(ctx context.Context, p CreateChecklistParams) (Checklist, error) {
+	row, err := s.q.CreateChecklist(ctx, sqlitegen.CreateChecklistParams{
+		ID:        p.ID,
+		TripID:    p.TripID,
+		Title:     p.Title,
+		SortOrder: int64(p.SortOrder),
+		CreatedAt: formatTime(p.CreatedAt),
+	})
+	if err != nil {
+		return Checklist{}, err
+	}
+	return sqliteChecklistToDomain(row), nil
+}
+
+func (s *sqliteStore) GetChecklistByID(ctx context.Context, id string) (Checklist, error) {
+	row, err := s.q.GetChecklistByID(ctx, id)
+	if err != nil {
+		return Checklist{}, mapNotFound(err)
+	}
+	return sqliteChecklistToDomain(row), nil
+}
+
+func (s *sqliteStore) ListChecklistsByTrip(ctx context.Context, tripID string) ([]Checklist, error) {
+	rows, err := s.q.ListChecklistsByTrip(ctx, tripID)
+	if err != nil {
+		return nil, err
+	}
+	checklists := make([]Checklist, len(rows))
+	for i, row := range rows {
+		checklists[i] = sqliteChecklistToDomain(row)
+	}
+	return checklists, nil
+}
+
+func (s *sqliteStore) DeleteChecklist(ctx context.Context, id, tripID string) (bool, error) {
+	n, err := s.q.DeleteChecklist(ctx, sqlitegen.DeleteChecklistParams{ID: id, TripID: tripID})
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+func (s *sqliteStore) CreateChecklistItem(ctx context.Context, p CreateChecklistItemParams) (ChecklistItem, error) {
+	row, err := s.q.CreateChecklistItem(ctx, sqlitegen.CreateChecklistItemParams{
+		ID:          p.ID,
+		ChecklistID: p.ChecklistID,
+		Text:        p.Text,
+		Checked:     boolToInt64(p.Checked),
+		SortOrder:   int64(p.SortOrder),
+		CreatedAt:   formatTime(p.CreatedAt),
+	})
+	if err != nil {
+		return ChecklistItem{}, err
+	}
+	return sqliteChecklistItemToDomain(row), nil
+}
+
+func (s *sqliteStore) ListChecklistItemsByChecklist(ctx context.Context, checklistID string) ([]ChecklistItem, error) {
+	rows, err := s.q.ListChecklistItemsByChecklist(ctx, checklistID)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]ChecklistItem, len(rows))
+	for i, row := range rows {
+		items[i] = sqliteChecklistItemToDomain(row)
+	}
+	return items, nil
+}
+
+func (s *sqliteStore) SetChecklistItemChecked(ctx context.Context, id, checklistID string, checked bool) (ChecklistItem, error) {
+	row, err := s.q.SetChecklistItemChecked(ctx, sqlitegen.SetChecklistItemCheckedParams{
+		ID:          id,
+		ChecklistID: checklistID,
+		Checked:     boolToInt64(checked),
+	})
+	if err != nil {
+		return ChecklistItem{}, mapNotFound(err)
+	}
+	return sqliteChecklistItemToDomain(row), nil
+}
+
+func (s *sqliteStore) DeleteChecklistItem(ctx context.Context, id, checklistID string) (bool, error) {
+	n, err := s.q.DeleteChecklistItem(ctx, sqlitegen.DeleteChecklistItemParams{ID: id, ChecklistID: checklistID})
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+func sqliteChecklistToDomain(c sqlitegen.Checklist) Checklist {
+	return Checklist{
+		ID:        c.ID,
+		TripID:    c.TripID,
+		Title:     c.Title,
+		SortOrder: int(c.SortOrder),
+		CreatedAt: parseTime(c.CreatedAt),
+	}
+}
+
+func sqliteChecklistItemToDomain(c sqlitegen.ChecklistItem) ChecklistItem {
+	return ChecklistItem{
+		ID:          c.ID,
+		ChecklistID: c.ChecklistID,
+		Text:        c.Text,
+		Checked:     c.Checked != 0,
+		SortOrder:   int(c.SortOrder),
+		CreatedAt:   parseTime(c.CreatedAt),
+	}
+}
+
 func sqliteDocumentToDomain(d sqlitegen.Document) Document {
 	return Document{
 		ID:          d.ID,

@@ -102,6 +102,9 @@ func (s *Server) buildRouter() chi.Router {
 
 				r.Get("/documents", s.handleListTripDocuments)
 				r.Post("/documents", s.handleUploadTripDocument)
+
+				r.Get("/checklists", s.handleListChecklists)
+				r.Post("/checklists", s.handleCreateChecklist)
 			})
 		})
 
@@ -109,6 +112,14 @@ func (s *Server) buildRouter() chi.Router {
 			r.Use(auth.RequireAuth)
 			r.Delete("/", s.handleDeleteDocument)
 			r.Get("/download", s.handleDownloadDocument)
+		})
+
+		r.Route("/checklists/{checklistId}", func(r chi.Router) {
+			r.Use(auth.RequireAuth)
+			r.Delete("/", s.handleDeleteChecklist)
+			r.Post("/items", s.handleCreateChecklistItem)
+			r.Patch("/items/{itemId}", s.handleSetChecklistItemChecked)
+			r.Delete("/items/{itemId}", s.handleDeleteChecklistItem)
 		})
 
 		r.Route("/media/{mediaId}", func(r chi.Router) {

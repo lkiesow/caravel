@@ -17,7 +17,7 @@ const app = document.getElementById("app");
 // same depth as "/trips/:tripId/edit", so there's no ordering conflict
 // between them; "/trips/:tripId" (no tab segment) is handled last and
 // canonicalizes itself to "/trips/:tripId/locations" on render.
-const TRIP_TABS = ["overview", "locations", "map", "itinerary", "documents"];
+const TRIP_TABS = ["overview", "locations", "map", "itinerary", "documents", "checklists"];
 const tripTabRoutes = TRIP_TABS.map((tab) => ({
   pattern: `/trips/:tripId/${tab}`,
   render: (container, params) => renderTripDetailPage(container, { ...params, tab }),

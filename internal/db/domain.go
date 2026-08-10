@@ -78,6 +78,23 @@ type Document struct {
 	Note        *string
 }
 
+type Checklist struct {
+	ID        string
+	TripID    string
+	Title     string
+	SortOrder int
+	CreatedAt time.Time
+}
+
+type ChecklistItem struct {
+	ID          string
+	ChecklistID string
+	Text        string
+	Checked     bool
+	SortOrder   int
+	CreatedAt   time.Time
+}
+
 // ItineraryDay.Date is a "YYYY-MM-DD" string — see the note on
 // Trip.StartDate/EndDate above; the same reasoning applies here.
 type ItineraryDay struct {

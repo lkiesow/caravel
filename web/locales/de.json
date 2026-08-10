@@ -40,6 +40,7 @@
   "trip.tabs.map": "Karte",
   "trip.tabs.itinerary": "Reiseplan",
   "trip.tabs.documents": "Dokumente",
+  "trip.tabs.checklists": "Checklisten",
   "locations.new": "Neuer Eintrag",
   "locations.empty": "Noch keine Einträge.",
   "locations.filter.all": "Alle",
@@ -99,5 +100,11 @@
   "documents.upload": "Hochladen",
   "documents.empty": "Noch keine Dokumente.",
   "documents.deleteConfirm": "Dieses Dokument löschen? Das kann nicht rückgängig gemacht werden.",
+  "checklists.add": "Neue Checkliste",
+  "checklists.titlePlaceholder": "Titel der Checkliste",
+  "checklists.empty": "Noch keine Checklisten — erstelle eine, um mit der Reisevorbereitung zu beginnen.",
+  "checklists.itemPlaceholder": "Punkt hinzufügen…",
+  "checklists.addItem": "Hinzufügen",
+  "checklists.deleteConfirm": "Diese Checkliste löschen? Das kann nicht rückgängig gemacht werden.",
   "item.detail.documents": "Dokumente"
 }

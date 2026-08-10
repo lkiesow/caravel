@@ -73,6 +73,23 @@ type CreateDocumentParams struct {
 	Note        *string
 }
 
+type CreateChecklistParams struct {
+	ID        string
+	TripID    string
+	Title     string
+	SortOrder int
+	CreatedAt time.Time
+}
+
+type CreateChecklistItemParams struct {
+	ID          string
+	ChecklistID string
+	Text        string
+	Checked     bool
+	SortOrder   int
+	CreatedAt   time.Time
+}
+
 type CreateItineraryEntryParams struct {
 	ID             string
 	ItineraryDayID string
@@ -215,6 +232,16 @@ type Store interface {
 	ListTripDocuments(ctx context.Context, tripID string) ([]Document, error)
 	ListItemDocuments(ctx context.Context, itemID string) ([]Document, error)
 	DeleteDocument(ctx context.Context, id, tripID string) (bool, error)
+
+	CreateChecklist(ctx context.Context, p CreateChecklistParams) (Checklist, error)
+	GetChecklistByID(ctx context.Context, id string) (Checklist, error)
+	ListChecklistsByTrip(ctx context.Context, tripID string) ([]Checklist, error)
+	DeleteChecklist(ctx context.Context, id, tripID string) (bool, error)
+
+	CreateChecklistItem(ctx context.Context, p CreateChecklistItemParams) (ChecklistItem, error)
+	ListChecklistItemsByChecklist(ctx context.Context, checklistID string) ([]ChecklistItem, error)
+	SetChecklistItemChecked(ctx context.Context, id, checklistID string, checked bool) (ChecklistItem, error)
+	DeleteChecklistItem(ctx context.Context, id, checklistID string) (bool, error)
 
 	// WithTx runs fn with a Store bound to a single transaction, committing
 	// on success and rolling back if fn returns an error.

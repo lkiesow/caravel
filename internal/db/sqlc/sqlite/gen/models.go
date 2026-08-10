@@ -17,6 +17,23 @@ type AuthIdentity struct {
 	CreatedAt      string         `json:"created_at"`
 }
 
+type Checklist struct {
+	ID        string `json:"id"`
+	TripID    string `json:"trip_id"`
+	Title     string `json:"title"`
+	SortOrder int64  `json:"sort_order"`
+	CreatedAt string `json:"created_at"`
+}
+
+type ChecklistItem struct {
+	ID          string `json:"id"`
+	ChecklistID string `json:"checklist_id"`
+	Text        string `json:"text"`
+	Checked     int64  `json:"checked"`
+	SortOrder   int64  `json:"sort_order"`
+	CreatedAt   string `json:"created_at"`
+}
+
 type Document struct {
 	ID          string         `json:"id"`
 	TripID      string         `json:"trip_id"`

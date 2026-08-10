@@ -109,7 +109,4 @@ require a redesign later — they're additive, not blocked, but none are built:
 - **LLM-assisted metadata fetching for locations** (e.g. a small local model
   + web search to auto-fill an item's details from its title). Noted as
   "not that important for the MVP" — low priority by the user's own note.
-- **Trip checklists** — a new feature: a checklist (title + checkable list
-  items) attached to a trip, for pre-trip prep. Would need a new
-  `checklists`/`checklist_items` table pair; no existing schema covers this.
 

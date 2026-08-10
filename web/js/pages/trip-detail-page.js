@@ -6,8 +6,9 @@ import "../components/leaflet-map.js";
 import { renderItemsTab } from "./locations-tab.js";
 import { renderItineraryTab } from "./itinerary-tab.js";
 import { renderDocumentList } from "../components/document-list.js";
+import { renderChecklistList } from "../components/checklist-list.js";
 
-const TABS = ["overview", "locations", "map", "itinerary", "documents"];
+const TABS = ["overview", "locations", "map", "itinerary", "documents", "checklists"];
 
 export async function renderTripDetailPage(container, { tripId, tab }) {
   let trip;
@@ -73,6 +74,8 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
       renderItineraryTab(content, trip);
     } else if (tab === "documents") {
       renderDocumentList(content, `/trips/${trip.id}/documents`);
+    } else if (tab === "checklists") {
+      renderChecklistList(content, trip.id);
     }
   }
 

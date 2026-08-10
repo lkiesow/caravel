@@ -1,6 +1,6 @@
 # Stage 03 — Bug fixes, CI foundation, checklists
 
-> **Status: in progress.** Building one milestone at a time per the Workflow
+> **Status: complete.** Built one milestone at a time per the Workflow
 > section below, each with its own commit and a manual-testing checkpoint.
 
 ## Context
@@ -252,23 +252,34 @@ needed, just two nested resource types (checklist + items) instead of one.
   system directly instead of the old closure-state one.
 - **i18n**: new flat `checklists.*` keys in both `en.json`/`de.json`.
 
+**Done.** `sort_order` (named `sort_order` to match the codebase's existing
+column naming, not `position`) is computed server-side as the current
+count of siblings at creation time — a simple append-order default, no
+reordering UI in this stage (matches items/itinerary's own current scope).
+Checking/unchecking an item is a dedicated `PATCH
+/checklists/{id}/items/{itemId}` endpoint rather than a general update, since
+that's the only mutable field items have. Verified end-to-end via
+Playwright: create a checklist, add two items, check one off (persists
+across a reload), delete an item, delete the whole checklist.
+
 ## Build order
 
 1. **CI / testing foundation** (Section 1) — build/vet/JS-syntax/i18n-parity
    checks wired into GitHub Actions, plus a dev seed-data script. Lands
-   first so everything after it is checked automatically.
-2. **Markdown rendering for notes** (Section 2) — vendor renderer +
-   sanitizer, apply to trip and item notes, closing the trip-notes XSS hole.
+   first so everything after it is checked automatically. **Done.**
+2. **Markdown rendering for notes** (Section 2) — server-side rendering +
+   sanitizer, applied to trip and item notes, closing the trip-notes XSS
+   hole. **Done.**
 3. **Documents inline display** (Section 3) — safe-list + `Content-
-   Disposition: inline`, server-side MIME sniffing at upload.
+   Disposition: inline`, server-side MIME sniffing at upload. **Done.**
 4. **Linked images cached locally** (Section 4) — fetch-on-paste, reuse
    `imaging`/`storagefs`, serve via the existing media route regardless of
-   `kind`.
-5. **Tab state in URL + breadcrumbs** (Section 5) — tab sub-routes, drop
-   closure-state tab tracking, shared breadcrumb component.
+   `kind`. **Done.**
+5. **Tab state in URL + Home/Back link labels** (Section 5) — tab
+   sub-routes, drop closure-state tab tracking. **Done.**
 6. **Trip checklists** (Section 6) — new feature, built on the
    `documents`-pattern template, wired into the now-route-backed tab system
-   from Milestone 5.
+   from Milestone 5. **Done.**
 
 ## Workflow: one milestone at a time, with a manual-testing checkpoint
 

@@ -11,6 +11,8 @@ import (
 
 type Querier interface {
 	CreateAuthIdentity(ctx context.Context, arg CreateAuthIdentityParams) (AuthIdentity, error)
+	CreateChecklist(ctx context.Context, arg CreateChecklistParams) (Checklist, error)
+	CreateChecklistItem(ctx context.Context, arg CreateChecklistItemParams) (ChecklistItem, error)
 	CreateDocument(ctx context.Context, arg CreateDocumentParams) (Document, error)
 	CreateItem(ctx context.Context, arg CreateItemParams) (Item, error)
 	CreateItemDate(ctx context.Context, arg CreateItemDateParams) (ItemDate, error)
@@ -20,6 +22,8 @@ type Querier interface {
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateTrip(ctx context.Context, arg CreateTripParams) (Trip, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	DeleteChecklist(ctx context.Context, arg DeleteChecklistParams) (int64, error)
+	DeleteChecklistItem(ctx context.Context, arg DeleteChecklistItemParams) (int64, error)
 	DeleteDocument(ctx context.Context, arg DeleteDocumentParams) (int64, error)
 	DeleteExpiredSessions(ctx context.Context, now string) error
 	DeleteItem(ctx context.Context, arg DeleteItemParams) (int64, error)
@@ -29,6 +33,7 @@ type Querier interface {
 	DeleteSession(ctx context.Context, id string) error
 	DeleteTrip(ctx context.Context, arg DeleteTripParams) (int64, error)
 	GetAuthIdentityByProvider(ctx context.Context, arg GetAuthIdentityByProviderParams) (AuthIdentity, error)
+	GetChecklistByID(ctx context.Context, id string) (Checklist, error)
 	GetDocumentByID(ctx context.Context, id string) (Document, error)
 	GetItemByID(ctx context.Context, id string) (Item, error)
 	GetItemLocationByItemID(ctx context.Context, itemID string) (ItemLocation, error)
@@ -41,6 +46,8 @@ type Querier interface {
 	GetUserByUsername(ctx context.Context, username string) (User, error)
 	InsertItemLocation(ctx context.Context, arg InsertItemLocationParams) (ItemLocation, error)
 	InsertItineraryDay(ctx context.Context, arg InsertItineraryDayParams) (ItineraryDay, error)
+	ListChecklistItemsByChecklist(ctx context.Context, checklistID string) ([]ChecklistItem, error)
+	ListChecklistsByTrip(ctx context.Context, tripID string) ([]Checklist, error)
 	ListItemDatesByItem(ctx context.Context, itemID string) ([]ItemDate, error)
 	ListItemDocuments(ctx context.Context, itemID sql.NullString) ([]Document, error)
 	ListItemLinksByItem(ctx context.Context, itemID string) ([]ItemLink, error)
@@ -52,6 +59,7 @@ type Querier interface {
 	ListMapItemsByTrip(ctx context.Context, tripID string) ([]ListMapItemsByTripRow, error)
 	ListTripDocuments(ctx context.Context, tripID string) ([]Document, error)
 	ListTripsByOwner(ctx context.Context, ownerID string) ([]Trip, error)
+	SetChecklistItemChecked(ctx context.Context, arg SetChecklistItemCheckedParams) (ChecklistItem, error)
 	SetItemImage(ctx context.Context, arg SetItemImageParams) (Item, error)
 	SetTripPreviewImage(ctx context.Context, arg SetTripPreviewImageParams) (Trip, error)
 	TouchSession(ctx context.Context, arg TouchSessionParams) error

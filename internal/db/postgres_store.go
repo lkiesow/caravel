@@ -698,6 +698,116 @@ func (s *postgresStore) DeleteDocument(ctx context.Context, id, tripID string) (
 	return n > 0, nil
 }
 
+func (s *postgresStore) CreateChecklist(ctx context.Context, p CreateChecklistParams) (Checklist, error) {
+	row, err := s.q.CreateChecklist(ctx, postgresgen.CreateChecklistParams{
+		ID:        p.ID,
+		TripID:    p.TripID,
+		Title:     p.Title,
+		SortOrder: int32(p.SortOrder),
+		CreatedAt: p.CreatedAt.UTC(),
+	})
+	if err != nil {
+		return Checklist{}, err
+	}
+	return postgresChecklistToDomain(row), nil
+}
+
+func (s *postgresStore) GetChecklistByID(ctx context.Context, id string) (Checklist, error) {
+	row, err := s.q.GetChecklistByID(ctx, id)
+	if err != nil {
+		return Checklist{}, mapNotFound(err)
+	}
+	return postgresChecklistToDomain(row), nil
+}
+
+func (s *postgresStore) ListChecklistsByTrip(ctx context.Context, tripID string) ([]Checklist, error) {
+	rows, err := s.q.ListChecklistsByTrip(ctx, tripID)
+	if err != nil {
+		return nil, err
+	}
+	checklists := make([]Checklist, len(rows))
+	for i, row := range rows {
+		checklists[i] = postgresChecklistToDomain(row)
+	}
+	return checklists, nil
+}
+
+func (s *postgresStore) DeleteChecklist(ctx context.Context, id, tripID string) (bool, error) {
+	n, err := s.q.DeleteChecklist(ctx, postgresgen.DeleteChecklistParams{ID: id, TripID: tripID})
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+func (s *postgresStore) CreateChecklistItem(ctx context.Context, p CreateChecklistItemParams) (ChecklistItem, error) {
+	row, err := s.q.CreateChecklistItem(ctx, postgresgen.CreateChecklistItemParams{
+		ID:          p.ID,
+		ChecklistID: p.ChecklistID,
+		Text:        p.Text,
+		Checked:     p.Checked,
+		SortOrder:   int32(p.SortOrder),
+		CreatedAt:   p.CreatedAt.UTC(),
+	})
+	if err != nil {
+		return ChecklistItem{}, err
+	}
+	return postgresChecklistItemToDomain(row), nil
+}
+
+func (s *postgresStore) ListChecklistItemsByChecklist(ctx context.Context, checklistID string) ([]ChecklistItem, error) {
+	rows, err := s.q.ListChecklistItemsByChecklist(ctx, checklistID)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]ChecklistItem, len(rows))
+	for i, row := range rows {
+		items[i] = postgresChecklistItemToDomain(row)
+	}
+	return items, nil
+}
+
+func (s *postgresStore) SetChecklistItemChecked(ctx context.Context, id, checklistID string, checked bool) (ChecklistItem, error) {
+	row, err := s.q.SetChecklistItemChecked(ctx, postgresgen.SetChecklistItemCheckedParams{
+		ID:          id,
+		ChecklistID: checklistID,
+		Checked:     checked,
+	})
+	if err != nil {
+		return ChecklistItem{}, mapNotFound(err)
+	}
+	return postgresChecklistItemToDomain(row), nil
+}
+
+func (s *postgresStore) DeleteChecklistItem(ctx context.Context, id, checklistID string) (bool, error) {
+	n, err := s.q.DeleteChecklistItem(ctx, postgresgen.DeleteChecklistItemParams{ID: id, ChecklistID: checklistID})
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+func postgresChecklistToDomain(c postgresgen.Checklist) Checklist {
+	return Checklist{
+		ID:        c.ID,
+		TripID:    c.TripID,
+		Title:     c.Title,
+		SortOrder: int(c.SortOrder),
+		CreatedAt: c.CreatedAt,
+	}
+}
+
+func postgresChecklistItemToDomain(c postgresgen.ChecklistItem) ChecklistItem {
+	return ChecklistItem{
+		ID:          c.ID,
+		ChecklistID: c.ChecklistID,
+		Text:        c.Text,
+		Checked:     c.Checked,
+		SortOrder:   int(c.SortOrder),
+		CreatedAt:   c.CreatedAt,
+	}
+}
+
 func postgresDocumentToDomain(d postgresgen.Document) Document {
 	return Document{
 		ID:          d.ID,

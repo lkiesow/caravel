@@ -40,6 +40,7 @@
   "trip.tabs.map": "Map",
   "trip.tabs.itinerary": "Itinerary",
   "trip.tabs.documents": "Documents",
+  "trip.tabs.checklists": "Checklists",
   "locations.new": "New item",
   "locations.empty": "No items yet.",
   "locations.filter.all": "All",
@@ -99,5 +100,11 @@
   "documents.upload": "Upload",
   "documents.empty": "No documents yet.",
   "documents.deleteConfirm": "Delete this document? This cannot be undone.",
+  "checklists.add": "New checklist",
+  "checklists.titlePlaceholder": "Checklist title",
+  "checklists.empty": "No checklists yet — add one to start prepping for this trip.",
+  "checklists.itemPlaceholder": "Add an item…",
+  "checklists.addItem": "Add",
+  "checklists.deleteConfirm": "Delete this checklist? This cannot be undone.",
   "item.detail.documents": "Documents"
 }

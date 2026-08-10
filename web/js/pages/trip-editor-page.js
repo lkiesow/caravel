@@ -35,7 +35,7 @@ export async function renderTripEditorPage(container, { tripId }) {
   function render() {
     container.innerHTML = `
       <div class="page trip-editor">
-        <a href="${trip ? `/trips/${trip.id}` : "/trips"}" data-link class="back-link">${icon("arrow-left")} <span data-i18n="common.back"></span></a>
+        <a href="${trip ? `/trips/${trip.id}` : "/trips"}" data-link class="back-link">${icon("arrow-left")} <span data-i18n="${trip ? "common.back" : "common.home"}"></span></a>
         <div class="page__header">
           <h1 data-i18n="${trip ? "trip.editor.editTitle" : "trip.editor.newTitle"}"></h1>
         </div>

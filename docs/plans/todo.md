@@ -13,15 +13,6 @@ Each item cites where it came from, so the reasoning behind it isn't lost.
 These aren't just suspicions from `notes.md` — each was checked against the
 actual source before going in this list.
 
-- **Tab state isn't reflected in the URL, so browser back/forward skips
-  over it.** The router itself is clean (single `popstate` listener in
-  `router.js`, no page bypasses it with a direct `pushState`) — but the
-  trip detail page's Overview/Locations/Map/Itinerary/Documents tabs switch
-  via internal JS state, not real routes. So clicking through tabs then
-  hitting Back doesn't step back through tabs — it jumps straight past the
-  trip to whatever page was open before it. This is what
-  prompted the "back/forward seems to not always work" note, even though
-  the pushState/popstate plumbing underneath it is correct (`notes.md`, code-verified as the cause)
 
 ## Deferred from Stage 01 (explicit "future phases," Section 7)
 
@@ -122,9 +113,3 @@ require a redesign later — they're additive, not blocked, but none are built:
   items) attached to a trip, for pre-trip prep. Would need a new
   `checklists`/`checklist_items` table pair; no existing schema covers this.
 
-## Also worth a breadcrumb-navigation pass
-
-`notes.md` calls out wanting breadcrumb navigation. Right now every page
-below the top level has exactly one "← Back" link to its immediate parent
-(trip → trips list, item → trip) — there's no multi-level trail (e.g.
-Trips ▸ Iceland Ring Road ▸ Locations ▸ Kirkjufell) shown anywhere.

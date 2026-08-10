@@ -9,7 +9,7 @@ import { renderDocumentList } from "../components/document-list.js";
 
 const TABS = ["overview", "locations", "map", "itinerary", "documents"];
 
-export async function renderTripDetailPage(container, { tripId }) {
+export async function renderTripDetailPage(container, { tripId, tab }) {
   let trip;
   try {
     trip = await api.get(`/trips/${tripId}`);
@@ -19,19 +19,24 @@ export async function renderTripDetailPage(container, { tripId }) {
   }
 
   // Locations (not Overview) is what users actually want to land on - see
-  // Stage 02 review.
-  let activeTab = "locations";
+  // Stage 02 review. "/trips/:tripId" has no tab segment, so it
+  // canonicalizes itself to the real tab URL rather than leaving a
+  // tab-less URL in the address bar and history.
+  if (!tab || !TABS.includes(tab)) {
+    tab = "locations";
+    window.history.replaceState({}, "", `/trips/${tripId}/locations`);
+  }
 
   function render() {
     container.innerHTML = `
       <div class="page trip-detail">
-        <a href="/trips" data-link class="back-link">${icon("arrow-left")} <span data-i18n="common.back"></span></a>
+        <a href="/trips" data-link class="back-link">${icon("arrow-left")} <span data-i18n="common.home"></span></a>
         <div class="page__header">
           <h1></h1>
           <button class="btn btn-secondary btn-icon" data-action="edit-trip" data-i18n-aria-label="trip.editor.editTitle">${icon("pencil")}</button>
         </div>
         <nav class="trip-tabs">
-          ${TABS.map((tab) => `<button data-tab="${tab}" data-i18n="trip.tabs.${tab}" class="${tab === activeTab ? "active" : ""}"></button>`).join("")}
+          ${TABS.map((tb) => `<button data-tab="${tb}" data-i18n="trip.tabs.${tb}" class="${tb === tab ? "active" : ""}"></button>`).join("")}
         </nav>
         <div class="trip-tab-content"></div>
       </div>
@@ -45,21 +50,28 @@ export async function renderTripDetailPage(container, { tripId }) {
 
     container.querySelectorAll("[data-tab]").forEach((btn) => {
       btn.addEventListener("click", () => {
-        activeTab = btn.getAttribute("data-tab");
+        tab = btn.getAttribute("data-tab");
+        // Pushed directly (not via router.js's navigate) so switching tabs
+        // stays a local re-render instead of re-fetching the trip through a
+        // full route match - this only updates history/the URL bar. Back/
+        // forward still works: browser back dispatches "popstate", which
+        // the app-level router does listen for, and it re-renders this
+        // page fresh from the URL at that point.
+        window.history.pushState({}, "", `/trips/${trip.id}/${tab}`);
         render();
       });
     });
 
     const content = container.querySelector(".trip-tab-content");
-    if (activeTab === "overview") {
+    if (tab === "overview") {
       renderOverview(content);
-    } else if (activeTab === "locations") {
+    } else if (tab === "locations") {
       renderItemsTab(content, trip.id);
-    } else if (activeTab === "map") {
+    } else if (tab === "map") {
       content.innerHTML = `<leaflet-map trip-id="${trip.id}"></leaflet-map>`;
-    } else if (activeTab === "itinerary") {
+    } else if (tab === "itinerary") {
       renderItineraryTab(content, trip);
-    } else if (activeTab === "documents") {
+    } else if (tab === "documents") {
       renderDocumentList(content, `/trips/${trip.id}/documents`);
     }
   }

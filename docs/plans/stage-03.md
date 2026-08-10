@@ -180,15 +180,12 @@ posting a URL now returns a local `/api/media/{id}/file` URL (not the raw
 external one) that serves the actual fetched bytes; a dead link or a
 non-image URL returns a clear 400 instead of silently hotlinking.
 
-## 5. Tab state in the URL + breadcrumb navigation
+## 5. Tab state in the URL + Home/Back link labels
 
 Confirmed: `trip-detail-page.js`'s Overview/Locations/Map/Itinerary/
 Documents tabs are pure local JS state (`let activeTab = "locations"`,
 `trip-detail-page.js:23`) with no URL/history involvement at all — reload,
-back/forward, and deep links all lose the active tab. There is also no
-shared breadcrumb component anywhere; every page hand-rolls a single-hop
-"← Back" link (`trip-detail-page.js:28`, `location-view-page.js:34`,
-`trip-editor-page.js:38`, `location-editor-page.js:40`).
+back/forward, and deep links all lose the active tab.
 
 - Add tab sub-routes to `app.js`'s `routes` array:
   `/trips/:tripId/locations`, `/trips/:tripId/map`,
@@ -203,18 +200,25 @@ shared breadcrumb component anywhere; every page hand-rolls a single-hop
   `app.js:16-19`).
 - In `trip-detail-page.js`: read the tab from the route param instead of
   the closure variable (default to `"locations"` when absent, preserving
-  Stage 02's "land on Locations" decision); replace the tab-click handler
-  (`trip-detail-page.js:46-51`) with a call to the router's `navigate()`
-  helper so tab switches produce real history entries and back/forward work
-  through the router's existing single `popstate` listener — no new
-  listener needed.
-- Add a small shared breadcrumb render function (e.g.
-  `renderBreadcrumb(container, { tripName, tab, itemName })` in a new
-  `web/js/components/breadcrumb.js`), replacing the single-hop back-links in
-  `trip-detail-page.js`, `location-view-page.js`, `trip-editor-page.js`, and
-  `location-editor-page.js` with a real trail: `Trips ▸ TripName ▸ Tab [▸
-  ItemName]`, each segment a working link (the trip-tab segment now has a
-  real URL to link to, thanks to the routing change above).
+  Stage 02's "land on Locations" decision).
+- Keep each page's existing single-hop "← Back" link, except where its
+  destination is always the trips list rather than a parent resource:
+  relabel those "Home" instead.
+
+**Done.** Tab clicks push directly to `window.history` (no `popstate`
+dispatched) and re-run the page's own local `render()`, avoiding a
+network re-fetch of the trip on every click. Browser Back/Forward still
+works correctly since those *do* fire `popstate`, which the app router
+catches and re-renders the page fresh from the URL — verified via
+Playwright (`map` → back → `itinerary` → back → `locations`, each with
+correct tab content, not just a correct URL). A direct deep link to a tab
+URL (e.g. reloading `/trips/:id/documents`) lands on the right tab.
+
+Back-link labels: "Home" on `trip-detail-page.js` (always goes to the
+trips list) and on `trip-editor-page.js` only in create mode (its
+back-link's destination already switches between the trips list and the
+trip depending on mode, so the label switches with it); "Back" everywhere
+else, unchanged. New `common.home` i18n key added to both locales.
 
 ## 6. New feature: trip checklists
 

@@ -73,7 +73,7 @@ export async function renderTripDetailPage(container, { tripId }) {
         <dt data-i18n="trip.form.endDate"></dt>
         <dd>${trip.end_date ?? "—"}</dd>
         <dt data-i18n="trip.form.notes"></dt>
-        <dd class="trip-overview__notes">${trip.notes ?? "—"}</dd>
+        <dd class="trip-overview__notes">${trip.notes ? trip.notes_html : "—"}</dd>
       </dl>
       <div class="trip-overview__actions">
         <button class="btn btn-secondary" data-action="edit">${icon("pencil")} <span data-i18n="common.edit"></span></button>

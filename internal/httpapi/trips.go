@@ -12,6 +12,7 @@ import (
 
 	"caravel/internal/auth"
 	"caravel/internal/db"
+	"caravel/internal/markdown"
 )
 
 type tripResponse struct {
@@ -20,6 +21,7 @@ type tripResponse struct {
 	StartDate       *string `json:"start_date"`
 	EndDate         *string `json:"end_date"`
 	Notes           *string `json:"notes"`
+	NotesHTML       *string `json:"notes_html"`
 	PreviewImageID  *string `json:"preview_image_id"`
 	PreviewImageURL *string `json:"preview_image_url"`
 	CreatedAt       string  `json:"created_at"`
@@ -37,8 +39,25 @@ func (s *Server) tripToResponse(ctx context.Context, t db.Trip) tripResponse {
 		CreatedAt:      t.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:      t.UpdatedAt.UTC().Format(time.RFC3339),
 	}
+	resp.NotesHTML = renderNotesHTML(t.Notes)
 	resp.PreviewImageURL = s.resolveImageURL(ctx, t.PreviewImageID)
 	return resp
+}
+
+// renderNotesHTML renders a notes field's markdown to sanitized HTML,
+// rendered fresh on every response rather than cached in the database —
+// notes are short-form text, so a goldmark+bluemonday pass costs
+// microseconds, and rendering on read avoids a second column that could
+// drift from the source markdown.
+func renderNotesHTML(notes *string) *string {
+	if notes == nil {
+		return nil
+	}
+	html, err := markdown.ToSafeHTML(*notes)
+	if err != nil {
+		return nil
+	}
+	return &html
 }
 
 func (s *Server) handleListTrips(w http.ResponseWriter, r *http.Request) {

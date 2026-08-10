@@ -13,13 +13,6 @@ Each item cites where it came from, so the reasoning behind it isn't lost.
 These aren't just suspicions from `notes.md` — each was checked against the
 actual source before going in this list.
 
-- **Markdown notes are never rendered as markdown.** Every notes field
-  (`trip.form.notesHint`, item notes) is labeled "Markdown supported," but
-  trip notes are inserted as plain interpolated text
-  (`web/js/pages/trip-detail-page.js`) and item notes via `.textContent`
-  (`web/js/pages/location-view-page.js`) — no markdown parser is vendored
-  anywhere in `web/js/`. The label is actively misleading right now. We should support Mardown here, but also in a few other places where entering longer texts is allowed.
-  (`notes.md`, verified)
 - **Documents always force a download, never display inline.**
   `handleDownloadDocument` (`internal/httpapi/documents.go`) unconditionally
   sets `Content-Disposition: attachment`, so a PDF or image document always

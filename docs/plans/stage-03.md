@@ -85,8 +85,7 @@ today — safe, but plain text, no markdown rendering.
 
 **Decision: render server-side in Go, not client-side JS.** Rather than
 vendoring a JS markdown library + a JS sanitizer (the Leaflet/Lucide
-vendoring pattern), use a Go markdown pipeline and store the rendered,
-sanitized HTML alongside the raw markdown. This avoids adding any new
+vendoring pattern), use a Go markdown pipeline. This avoids adding any new
 frontend vendor dependency, keeps the sanitization boundary in one trusted
 place (server) instead of relying on client-side JS to sanitize before every
 render, and means the frontend does zero markdown work — it just inserts
@@ -98,14 +97,18 @@ through [`bluemonday`](https://github.com/microcosm-cc/bluemonday)'s
 this "untrusted markdown → safe HTML" use case) — sanitize *after*
 rendering, not before, so nothing unsafe can be reintroduced downstream.
 
-- Add `go get github.com/yuin/goldmark github.com/microcosm-cc/bluemonday`.
-- Add a small nullable `notes_html TEXT` column via migration to `trips`
-  and `items` (whichever tables hold the `notes` field today — confirm
-  during implementation). Compute it server-side (`goldmark.Convert` →
-  `bluemonday.UGCPolicy().SanitizeBytes()`) whenever `notes` is created or
-  updated, store both the raw markdown (unchanged, still editable) and the
-  rendered/sanitized HTML.
-- Include `notes_html` in the trip/item response DTOs.
+**Implementation deviation from the original text below:** rather than a
+`notes_html` DB column computed at write time, `notes_html` is computed
+*on read*, in `renderNotesHTML()` (`internal/httpapi/trips.go`), and reused
+from `itemToResponse` (`internal/httpapi/items.go`). Notes are short-form
+text, so a goldmark+bluemonday pass costs microseconds — not worth a
+migration, a second column that must stay in sync with the source markdown,
+and touching every write path, for no measurable benefit at this data size.
+`internal/markdown/markdown.go` (with `markdown_test.go` — the repo's first
+Go tests) holds the shared `ToSafeHTML` function.
+
+- Added `go get github.com/yuin/goldmark github.com/microcosm-cc/bluemonday`.
+- Include `notes_html` in the trip/item response DTOs (done).
 - Frontend: replace the raw interpolation at `trip-detail-page.js:76` and
   the `textContent` assignment at `location-view-page.js:106` with
   `innerHTML = notesHtml` — safe now because sanitization already happened

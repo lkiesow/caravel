@@ -42,7 +42,7 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
         ${item.type ? `<span class="type-label"></span>` : ""}
       </div>
       ${item.image_url ? `<img class="location-view__image" src="${escapeAttr(item.image_url)}" alt="" />` : ""}
-      ${item.notes ? `<p class="location-view__notes"></p>` : ""}
+      ${item.notes ? `<div class="location-view__notes"></div>` : ""}
 
       <div class="editor-card">
         <h4 data-i18n="item.detail.location"></h4>
@@ -103,7 +103,7 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
   container.querySelector("h1").textContent = item.title;
   container.querySelector(".category-label").textContent = t(`item.category.${item.category}`);
   if (item.type) container.querySelector(".type-label").textContent = item.type;
-  if (item.notes) container.querySelector(".location-view__notes").textContent = item.notes;
+  if (item.notes) container.querySelector(".location-view__notes").innerHTML = item.notes_html;
   if (item.location?.address) container.querySelector(".location-view__address").textContent = item.location.address;
 
   container.querySelector('[data-action="edit"]').addEventListener("click", () => {

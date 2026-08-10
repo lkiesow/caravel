@@ -23,6 +23,7 @@ type itemResponse struct {
 	Type      string  `json:"type"`
 	Title     string  `json:"title"`
 	Notes     *string `json:"notes"`
+	NotesHTML *string `json:"notes_html"`
 	ImageID   *string `json:"image_id"`
 	ImageURL  *string `json:"image_url"`
 	ShowOnMap bool    `json:"show_on_map"`
@@ -39,6 +40,7 @@ func (s *Server) itemToResponse(ctx context.Context, i db.Item) itemResponse {
 		Type:      i.Type,
 		Title:     i.Title,
 		Notes:     i.Notes,
+		NotesHTML: renderNotesHTML(i.Notes),
 		ImageID:   i.ImageID,
 		ShowOnMap: i.ShowOnMap,
 		SortOrder: i.SortOrder,

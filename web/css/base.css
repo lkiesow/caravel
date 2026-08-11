@@ -1027,4 +1027,27 @@ button {
     min-height: var(--tap-min);
     margin-block: -0.5rem;
   }
+
+  /* Buttons that live in a space-constrained row (an add-form next to an
+     input, a filter row, a page header) drop their text label and become
+     icon-only. The label stays in the DOM as .sr-only rather than
+     display:none, so the button's accessible name is unchanged for screen
+     readers — this is the same visually-hidden mechanism as .sr-only above,
+     inlined here since it must apply conditionally (only under this
+     breakpoint) rather than unconditionally. */
+  .btn-collapse {
+    padding: 0.5rem;
+    gap: 0;
+  }
+
+  .btn-collapse span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }

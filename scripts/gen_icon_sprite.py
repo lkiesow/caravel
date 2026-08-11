@@ -28,6 +28,10 @@ ICONS = [
     "chevron-down",
     "map",
     "list",
+    "check",
+    "log-in",
+    "info",
+    "list-checks",
 ]
 
 

@@ -21,7 +21,7 @@ export async function renderItineraryTab(container, trip) {
         <div class="itinerary-days"></div>
         <form class="itinerary-add-day">
           <input type="date" name="date" required />
-          <button type="submit" class="btn btn-primary">${icon("plus")} <span data-i18n="itinerary.addDay"></span></button>
+          <button type="submit" class="btn btn-primary btn-collapse">${icon("plus")} <span data-i18n="itinerary.addDay"></span></button>
         </form>
       </div>
     `;
@@ -54,7 +54,7 @@ export async function renderItineraryTab(container, trip) {
           <option value="" data-i18n="itinerary.selectItem"></option>
           ${items.map((i) => `<option value="${i.id}">${escapeHtml(i.title)}</option>`).join("")}
         </select>
-        <button type="submit" class="btn btn-primary">${icon("plus")} <span data-i18n="itinerary.addItem"></span></button>
+        <button type="submit" class="btn btn-primary btn-collapse">${icon("plus")} <span data-i18n="itinerary.addItem"></span></button>
       </form>
     `;
     translatePage(el);

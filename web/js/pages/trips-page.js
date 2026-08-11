@@ -9,7 +9,7 @@ export async function renderTripsPage(container) {
     <div class="page trips-page">
       <div class="page__header">
         <h1 data-i18n="trips.title"></h1>
-        <button class="btn btn-primary" data-action="new-trip">${icon("plus")} <span data-i18n="trips.new"></span></button>
+        <button class="btn btn-primary btn-collapse" data-action="new-trip">${icon("plus")} <span data-i18n="trips.new"></span></button>
       </div>
       <p class="trips-empty" data-i18n="trips.empty" hidden></p>
       <div class="trip-grid"></div>

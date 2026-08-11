@@ -1,5 +1,6 @@
 import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
+import { icon } from "../icon.js";
 
 // Renders a create/edit form for a trip into `container`. Pass an existing
 // trip object to edit it in place, or null to create a new one.
@@ -27,8 +28,8 @@ export function renderTripForm(container, trip, { onSaved, onCancel }) {
         <small data-i18n="trip.form.notesHint"></small>
       </label>
       <div class="trip-form__actions">
-        <button type="submit" class="btn btn-primary" data-i18n="${trip ? "common.save" : "trip.editor.createButton"}"></button>
-        <button type="button" class="btn btn-secondary" data-action="cancel" data-i18n="common.cancel"></button>
+        <button type="submit" class="btn btn-primary">${icon("check")} <span data-i18n="${trip ? "common.save" : "trip.editor.createButton"}"></span></button>
+        <button type="button" class="btn btn-secondary" data-action="cancel">${icon("x")} <span data-i18n="common.cancel"></span></button>
       </div>
     </form>
   `;

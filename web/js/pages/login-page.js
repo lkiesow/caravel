@@ -1,5 +1,6 @@
 import { api, ApiError } from "../api.js";
 import { t, translatePage } from "../i18n.js";
+import { icon } from "../icon.js";
 
 // Renders the combined login/register screen into `container` and resolves
 // with the authenticated user once login/registration succeeds.
@@ -33,7 +34,7 @@ export function renderLoginPage(container) {
               <input type="password" name="password" autocomplete="${mode === "login" ? "current-password" : "new-password"}" required minlength="8" />
             </label>
 
-            <button type="submit" class="btn btn-primary" data-i18n="${mode === "login" ? "auth.login.submit" : "auth.register.submit"}"></button>
+            <button type="submit" class="btn btn-primary">${icon(mode === "login" ? "log-in" : "check")} <span data-i18n="${mode === "login" ? "auth.login.submit" : "auth.register.submit"}"></span></button>
 
             <p class="auth-form__switch">
               <span data-i18n="${mode === "login" ? "auth.login.noAccount" : "auth.register.haveAccount"}"></span>

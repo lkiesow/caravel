@@ -34,7 +34,7 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
         <a href="/trips" data-link class="back-link">${icon("arrow-left")} <span data-i18n="common.home"></span></a>
         <div class="page__header">
           <h1></h1>
-          <button class="btn btn-secondary btn-icon" data-action="edit-trip" data-i18n-aria-label="trip.editor.editTitle">${icon("pencil")}</button>
+          <button class="btn btn-secondary btn-collapse" data-action="edit-trip">${icon("pencil")} <span data-i18n="common.edit"></span></button>
         </div>
         <nav class="trip-tabs">
           ${TABS.map((tb) => `<button data-tab="${tb}" data-i18n="trip.tabs.${tb}" class="${tb === tab ? "active" : ""}"></button>`).join("")}

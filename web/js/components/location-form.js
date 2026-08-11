@@ -1,5 +1,6 @@
 import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
+import { icon } from "../icon.js";
 
 const CATEGORIES = ["site", "stay", "transport"];
 
@@ -32,8 +33,8 @@ export function renderItemForm(container, item, { tripId, onSaved, onCancel }) {
         <span data-i18n="location.form.showOnMap"></span>
       </label>
       <div class="item-form__actions">
-        <button type="submit" class="btn btn-primary" data-i18n="${item ? "common.save" : "location.editor.createButton"}"></button>
-        <button type="button" class="btn btn-secondary" data-action="cancel" data-i18n="common.cancel"></button>
+        <button type="submit" class="btn btn-primary">${icon("check")} <span data-i18n="${item ? "common.save" : "location.editor.createButton"}"></span></button>
+        <button type="button" class="btn btn-secondary" data-action="cancel">${icon("x")} <span data-i18n="common.cancel"></span></button>
       </div>
     </form>
   `;

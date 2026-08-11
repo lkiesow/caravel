@@ -177,10 +177,22 @@ Groundwork everything else leans on. All in `web/css/base.css`, no JS.
 | `pages/location-view-page.js:37` | Edit → matches trip-detail's pencil | `pencil` |
 | `pages/trip-detail-page.js:37` | Edit trip — *reverse* direction: drop `.btn-icon`, add a label span so it **expands** to "Edit" on desktop | `pencil` |
 
-- **Never collapse**: Save, Cancel, Delete, "Save location", the login submit.
-  These have room in their own rows and must stay unambiguous.
-- Every new label span needs keys in **both** `web/locales/en.json` and
-  `de.json` — `scripts/check_i18n.py` enforces parity and will fail CI.
+- **Never collapse**: Save, Cancel, Delete, "Save location", the login/
+  register submit, the document-dialog Upload/Cancel pair. These have room in
+  their own rows and must stay unambiguous.
+- Every new label span reuses an **existing** i18n key, so no locale file
+  edits were needed this milestone — `scripts/check_i18n.py` still gates CI
+  for any future addition.
+
+**Done.** One correction found during implementation: the plan's line
+references for `location-editor-page.js` (70/79) actually named three
+different buttons once re-checked against the file — "Save location" (70,
+alone in its own row, not collapsed), "Add link" (79) and "Add date" (89,
+collapsed). "Save location" also needed the icon-normalization pass (rule 1)
+even though it wasn't in the plan's explicit six-button list — same treatment
+as the other bare Save buttons. The document-dialog's Cancel button was
+likewise text-only and got the same `x` icon as its `.trip-form`/
+`.location-form` counterparts, for the same consistency reason.
 
 ## 3. Tab bar
 

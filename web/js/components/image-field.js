@@ -29,7 +29,7 @@ export function renderImageField(container, { tripId, imageUrl, attachPath, onCh
           </label>
           <form class="image-field__url-form">
             <input type="url" name="url" data-i18n-placeholder="image.urlPlaceholder" />
-            <button type="submit" class="btn btn-primary" data-i18n="image.setUrl"></button>
+            <button type="submit" class="btn btn-primary">${icon("check")} <span data-i18n="image.setUrl"></span></button>
           </form>
           ${currentUrl ? `<button type="button" class="btn btn-secondary" data-action="remove">${icon("x")} <span data-i18n="image.remove"></span></button>` : ""}
         </div>

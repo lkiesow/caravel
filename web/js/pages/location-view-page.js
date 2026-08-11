@@ -34,7 +34,7 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
       <a href="/trips/${tripId}" data-link class="back-link">${icon("arrow-left")} <span data-i18n="common.back"></span></a>
       <div class="page__header">
         <h1></h1>
-        <button class="btn btn-secondary" data-action="edit">${icon("pencil")} <span data-i18n="common.edit"></span></button>
+        <button class="btn btn-secondary btn-collapse" data-action="edit">${icon("pencil")} <span data-i18n="common.edit"></span></button>
       </div>
       <div class="location-view__meta">
         <span class="dot" style="background:${color}"></span>

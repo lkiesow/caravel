@@ -16,7 +16,7 @@ export async function renderChecklistList(container, tripId) {
       <p class="checklists-empty" data-i18n="checklists.empty" hidden></p>
       <form class="checklist-new-form">
         <input type="text" name="title" data-i18n-placeholder="checklists.titlePlaceholder" required />
-        <button type="submit" class="btn btn-primary">${icon("plus")} <span data-i18n="checklists.add"></span></button>
+        <button type="submit" class="btn btn-primary btn-collapse">${icon("plus")} <span data-i18n="checklists.add"></span></button>
       </form>
     `;
     translatePage(container);
@@ -36,7 +36,7 @@ export async function renderChecklistList(container, tripId) {
         <ul class="checklist-items"></ul>
         <form class="checklist-item-form">
           <input type="text" name="text" data-i18n-placeholder="checklists.itemPlaceholder" required />
-          <button type="submit" class="btn btn-secondary">${icon("plus")} <span data-i18n="checklists.addItem"></span></button>
+          <button type="submit" class="btn btn-secondary btn-collapse">${icon("plus")} <span data-i18n="checklists.addItem"></span></button>
         </form>
       `;
       translatePage(card);

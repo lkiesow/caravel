@@ -67,7 +67,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
                 <span data-i18n="item.detail.address"></span>
                 <input type="text" name="address" />
               </label>
-              <button type="submit" class="btn btn-primary" data-i18n="item.detail.saveLocation"></button>
+              <button type="submit" class="btn btn-primary">${icon("check")} <span data-i18n="item.detail.saveLocation"></span></button>
             </form>
           </div>
           <div class="editor-card">
@@ -76,7 +76,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
             <form class="link-form">
               <input type="url" name="url" data-i18n-placeholder="item.detail.linkUrl" required />
               <input type="text" name="label" data-i18n-placeholder="item.detail.linkLabel" />
-              <button type="submit" class="btn btn-primary">${icon("plus")} <span data-i18n="item.detail.addLink"></span></button>
+              <button type="submit" class="btn btn-primary btn-collapse">${icon("plus")} <span data-i18n="item.detail.addLink"></span></button>
             </form>
           </div>
           <div class="editor-card">
@@ -86,7 +86,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
               <input type="date" name="startDate" required />
               <input type="date" name="endDate" data-i18n-placeholder="item.detail.endDate" />
               <input type="text" name="label" data-i18n-placeholder="item.detail.dateLabel" />
-              <button type="submit" class="btn btn-primary">${icon("plus")} <span data-i18n="item.detail.addDate"></span></button>
+              <button type="submit" class="btn btn-primary btn-collapse">${icon("plus")} <span data-i18n="item.detail.addDate"></span></button>
             </form>
           </div>
           <div class="editor-card">

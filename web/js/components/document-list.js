@@ -16,7 +16,7 @@ export async function renderDocumentList(container, path) {
   function render() {
     container.innerHTML = `
       <div class="document-list">
-        <button type="button" class="btn btn-primary document-list__add">${icon("plus")} <span data-i18n="documents.add"></span></button>
+        <button type="button" class="btn btn-primary btn-collapse document-list__add">${icon("plus")} <span data-i18n="documents.add"></span></button>
         <p class="documents-empty" data-i18n="documents.empty" hidden></p>
         <ul class="documents"></ul>
         <dialog class="document-dialog">
@@ -30,7 +30,7 @@ export async function renderDocumentList(container, path) {
             <p class="document-dialog__error" hidden></p>
             <div class="document-dialog__actions">
               <button type="submit" class="btn btn-primary">${icon("upload")} <span data-i18n="documents.upload"></span></button>
-              <button type="button" class="btn btn-secondary" data-action="cancel" data-i18n="common.cancel"></button>
+              <button type="button" class="btn btn-secondary" data-action="cancel">${icon("x")} <span data-i18n="common.cancel"></span></button>
             </div>
           </form>
         </dialog>

@@ -1082,4 +1082,23 @@ button {
     clip-path: inset(50%);
     white-space: nowrap;
   }
+
+  /* The 4 category pills, as a rigid wrapped block, were just wide enough
+     to force "New item" onto its own row below rather than sharing this
+     one — even collapsed to icon-only by .btn-collapse. Letting the pill
+     row shrink and scroll internally (rather than wrap) keeps everything on
+     one row; "All", the most-used filter, stays the leftmost and always
+     visible. */
+  .items-filter {
+    flex: 1 1 0%;
+    min-width: 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+  }
+
+  .items-filter button {
+    flex-shrink: 0;
+    scroll-snap-align: start;
+  }
 }

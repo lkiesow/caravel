@@ -1,6 +1,6 @@
 # Stage 04 — Mobile responsiveness & a consistent button system
 
-> **Status: in progress.** Built one milestone at a time per the Workflow
+> **Status: complete.** Built one milestone at a time per the Workflow
 > section below, each with its own commit and a manual-testing checkpoint.
 
 ## Context
@@ -291,6 +291,32 @@ CSS.
 - Add to `todo.md`: the deferred overflow-regression harness (folded into the
   existing "No real Playwright UI test suite" bullet) and the itinerary
   day-collapsing idea.
+
+**Done.** The itinerary `<select>` was already fixed by Milestone 1's
+`min-width: 0` — confirmed via screenshot, no further change needed. The
+filter row did *not* fit on one row (measured 14px short at 324px even with
+the collapsed button), so applied the plan's documented fallback: `.items-
+filter` shrinks (`flex: 1 1 0%; min-width: 0`) and scrolls horizontally
+(`overflow-x: auto`, `scroll-snap-type: x proximity`) instead of wrapping,
+letting the pills and the button share one row with "All" always the
+leftmost, always-visible pill. Verified the filter still functions (clicked
+"Site", list narrowed correctly; confirmed the desktop `flex-wrap: wrap`
+behavior is untouched at 1200px). `mobile-test-report.md` rewritten as a
+Stage 04 follow-up documenting resolved/still-open findings in prose (no
+screenshots — see Context, they're gitignored, not a durable record).
+`todo.md` updated with the deferred regression-harness note, a new note about
+asserting the landed-on URL in any future scripted sweep (see below), and the
+itinerary day-collapsing idea.
+
+Also caught here: the plan's own verification method had a footgun worth
+recording — earlier milestones' route sweeps used `/items/:id` for the two
+location pages, a pattern matching no real route (it's `/trips/:tripId/
+locations/:itemId`); the router silently redirects any unmatched path to
+`/trips`, so those two pages had never actually been exercised by the
+automated checks in Milestones 1–3, only by the one manual screenshot in the
+original report. Re-ran the corrected sweep (now asserting
+`window.location.pathname` too) across all 12 real routes: zero overflow, no
+sub-44px targets anywhere, including both previously-untested pages.
 
 ## Build order
 

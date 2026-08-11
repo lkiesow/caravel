@@ -92,7 +92,22 @@ require a redesign later — they're additive, not blocked, but none are built:
   (`scripts/check_i18n.py`, generalized to any number of locale files) —
   but everything UI-facing is still verified manually or via one-off
   Playwright runs during development, not a checked-in, repeatable suite
-  (using Firefox specifically, per the original note). Still wanted.
+  (using Firefox specifically, per the original note). Still wanted. When
+  it's built, fold in a 324×756 mobile-regression pass — Stage 04's fixes
+  (see `stage-04.md`) were verified by hand each milestone; a scripted
+  version checking `document.documentElement.scrollWidth <=
+  window.innerWidth` and a ~44px minimum control height across every route
+  would catch future regressions cheaply, and was explicitly deferred out of
+  that stage rather than built ad hoc.
+- **Mobile route sweeps should assert the landed-on URL, not just the
+  absence of overflow.** Stage 04 discovered mid-implementation that an
+  earlier version of its own manual verification script used a URL pattern
+  matching no real route; the app's router silently redirects any unmatched
+  path to `/trips`, so the check had been passing trivially against the
+  wrong page for several milestones. Worth remembering as a general
+  footgun once a scripted suite exists: always assert
+  `window.location.pathname` equals the intended route before asserting
+  anything about that page's layout.
 - **Migrations should be collapsed/squashed before the first real
   release.** There are three migration files per dialect now
   (0001/0002/0003); since nobody has actually deployed this yet, squashing
@@ -109,4 +124,13 @@ require a redesign later — they're additive, not blocked, but none are built:
 - **LLM-assisted metadata fetching for locations** (e.g. a small local model
   + web search to auto-fill an item's details from its title). Noted as
   "not that important for the MVP" — low priority by the user's own note.
+- **Collapse empty/past itinerary days behind a `<details>` disclosure.**
+  Stage 04's mobile pass fixed the itinerary tab's per-day add-item row
+  overflowing (`itinerary-tab.js`), but flagged as out of scope for that
+  stage a separate, feature-level issue the original mobile test report
+  raised: a 10-day trip renders all 10 day cards open and expanded, an
+  unbroken vertical scroll with no way to jump to "today" or collapse days
+  that are already past or still empty. Collapsing days by default (open
+  only the current/next upcoming one) would shorten that scroll
+  significantly on longer trips, on any screen size.
 

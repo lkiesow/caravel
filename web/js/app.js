@@ -12,11 +12,11 @@ import { TRIP_TABS } from "./trip-tabs.js";
 
 const app = document.getElementById("app");
 
-// Trip detail tabs (Overview/Locations/Map/Itinerary/Documents) are each a
-// real 3-segment route so the URL reflects the active tab and back/forward
-// works - see trip-detail-page.js. They're all distinct literals at the
-// same depth as "/trips/:tripId/edit", so there's no ordering conflict
-// between them; "/trips/:tripId" (no tab segment) is handled last and
+// Trip detail tabs (Locations/Map/Itinerary/Documents/Checklists/Settings)
+// are each a real 3-segment route so the URL reflects the active tab and
+// back/forward works - see trip-detail-page.js. They're all distinct
+// literals at the same depth, so there's no ordering conflict between
+// them; "/trips/:tripId" (no tab segment) is handled last and
 // canonicalizes itself to "/trips/:tripId/locations" on render.
 const tripTabRoutes = TRIP_TABS.map(({ key }) => ({
   pattern: `/trips/:tripId/${key}`,
@@ -30,7 +30,6 @@ const routes = [
   // the router's match() takes the first pattern that fits, so the literal
   // route would otherwise never be reached (":param" swallows "new"/"edit").
   { pattern: "/trips/new", render: renderTripEditorPage },
-  { pattern: "/trips/:tripId/edit", render: renderTripEditorPage },
   { pattern: "/trips/:tripId/locations/new", render: renderLocationEditorPage },
   { pattern: "/trips/:tripId/locations/:itemId/edit", render: renderLocationEditorPage },
   { pattern: "/trips/:tripId/locations/:itemId", render: renderLocationViewPage },

@@ -32,6 +32,7 @@ ICONS = [
     "log-in",
     "info",
     "list-checks",
+    "settings",
 ]
 
 

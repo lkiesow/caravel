@@ -157,6 +157,28 @@ navigates to `/trips/${saved.id}/edit` as a retry landing spot — repoint to
 precedence over `/trips/:tripId`-shaped patterns is unaffected (unrelated
 route, no ordering dependency on the one being removed).
 
+**Done.** Also removed the now-dead `trip.editor.editTitle` i18n key (its
+only call site was the edit-mode `<h1>` just deleted) and `trip.tabs.overview`
+— both cleaned from both locale files. Added the `settings` Lucide icon to
+the sprite (existing 19 symbols confirmed byte-identical after regeneration).
+
+Verified end-to-end via Playwright at 324×756 and 1200px: the header no
+longer has an Edit button at all (the original overflow complaint is gone
+by construction, not just re-wrapped); the subtitle+dates block renders
+under the title and *stays visible* across every tab (confirmed by
+switching to Checklists and taking a fresh accessibility snapshot); the
+Settings tab's Basic Info form is correctly prefilled including the new
+Subtitle field; saving it updates the persistent header in place with
+**no navigation** (URL stays on `/settings`) — confirmed via snapshot
+before/after; the six-tab mobile grid still renders one row, evenly sized.
+Re-ran the full route sweep (12 real routes incl. the two location pages)
+asserting the landed-on URL: zero overflow, no sub-44px targets anywhere.
+Confirmed the removed `/trips/:tripId/edit` route now falls through to the
+router's unmatched-path fallback (`/trips`), as expected. Exercised
+`/trips/new` end-to-end through the actual UI (fill title, Create trip,
+lands on the new trip's Locations tab) — create-mode is fully intact.
+Zero console errors throughout. `make ci` green.
+
 ## 3. Location editor: fix the link/date duplicate-listener bug
 
 **The bug** (confirmed root cause): `renderLinks()`/`renderDates()` in

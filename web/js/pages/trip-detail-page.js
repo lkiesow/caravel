@@ -1,12 +1,12 @@
 import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
-import { navigate } from "../router.js";
 import { icon } from "../icon.js";
 import "../components/leaflet-map.js";
 import { renderItemsTab } from "./locations-tab.js";
 import { renderItineraryTab } from "./itinerary-tab.js";
 import { renderDocumentList } from "../components/document-list.js";
 import { renderChecklistList } from "../components/checklist-list.js";
+import { renderSettingsTab } from "./settings-tab.js";
 import { TRIP_TABS } from "../trip-tabs.js";
 
 const TABS = TRIP_TABS.map(({ key }) => key);
@@ -35,7 +35,15 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
         <a href="/trips" data-link class="back-link">${icon("arrow-left")} <span data-i18n="common.home"></span></a>
         <div class="page__header">
           <h1></h1>
-          <button class="btn btn-secondary btn-collapse" data-action="edit-trip">${icon("pencil")} <span data-i18n="common.edit"></span></button>
+        </div>
+        <div class="trip-summary">
+          ${trip.subtitle ? `<p class="trip-summary__subtitle"></p>` : ""}
+          <dl class="trip-overview">
+            <dt data-i18n="trip.form.startDate"></dt>
+            <dd>${trip.start_date ?? "—"}</dd>
+            <dt data-i18n="trip.form.endDate"></dt>
+            <dd>${trip.end_date ?? "—"}</dd>
+          </dl>
         </div>
         <nav class="trip-tabs">
           ${TRIP_TABS.map(
@@ -48,10 +56,7 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
     `;
     translatePage(container);
     container.querySelector(".page__header h1").textContent = trip.title;
-
-    container.querySelector('[data-action="edit-trip"]').addEventListener("click", () => {
-      navigate(`/trips/${trip.id}/edit`);
-    });
+    if (trip.subtitle) container.querySelector(".trip-summary__subtitle").textContent = trip.subtitle;
 
     container.querySelectorAll("[data-tab]").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -68,9 +73,7 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
     });
 
     const content = container.querySelector(".trip-tab-content");
-    if (tab === "overview") {
-      renderOverview(content);
-    } else if (tab === "locations") {
+    if (tab === "locations") {
       renderItemsTab(content, trip.id);
     } else if (tab === "map") {
       content.innerHTML = `<leaflet-map trip-id="${trip.id}"></leaflet-map>`;
@@ -80,34 +83,15 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
       renderDocumentList(content, `/trips/${trip.id}/documents`);
     } else if (tab === "checklists") {
       renderChecklistList(content, trip.id);
+    } else if (tab === "settings") {
+      renderSettingsTab(content, trip, {
+        onTripUpdated: (updated) => {
+          Object.assign(trip, updated);
+          render();
+        },
+      });
     }
   }
 
-  function renderOverview(content) {
-    content.innerHTML = `
-      ${trip.preview_image_url ? `<img class="trip-overview__image" src="${escapeAttr(trip.preview_image_url)}" alt="" />` : ""}
-      <dl class="trip-overview">
-        <dt data-i18n="trip.form.startDate"></dt>
-        <dd>${trip.start_date ?? "—"}</dd>
-        <dt data-i18n="trip.form.endDate"></dt>
-        <dd>${trip.end_date ?? "—"}</dd>
-        <dt data-i18n="trip.form.notes"></dt>
-        <dd class="trip-overview__notes">${trip.notes ? trip.notes_html : "—"}</dd>
-      </dl>
-      <div class="trip-overview__actions">
-        <button class="btn btn-secondary" data-action="edit">${icon("pencil")} <span data-i18n="common.edit"></span></button>
-      </div>
-    `;
-    translatePage(content);
-
-    content.querySelector('[data-action="edit"]').addEventListener("click", () => {
-      navigate(`/trips/${trip.id}/edit`);
-    });
-  }
-
   render();
-}
-
-function escapeAttr(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }

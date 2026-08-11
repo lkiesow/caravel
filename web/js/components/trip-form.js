@@ -23,9 +23,8 @@ export function renderTripForm(container, trip, { onSaved, onCancel }) {
         </label>
       </div>
       <label>
-        <span data-i18n="trip.form.notes"></span>
-        <textarea name="notes" rows="4"></textarea>
-        <small data-i18n="trip.form.notesHint"></small>
+        <span data-i18n="trip.form.subtitle"></span>
+        <input type="text" name="subtitle" />
       </label>
       <div class="trip-form__actions">
         <button type="submit" class="btn btn-primary">${icon("check")} <span data-i18n="${trip ? "common.save" : "trip.editor.createButton"}"></span></button>
@@ -42,7 +41,7 @@ export function renderTripForm(container, trip, { onSaved, onCancel }) {
     form.title.value = trip.title;
     form.startDate.value = trip.start_date ?? "";
     form.endDate.value = trip.end_date ?? "";
-    form.notes.value = trip.notes ?? "";
+    form.subtitle.value = trip.subtitle ?? "";
   }
 
   container.querySelector('[data-action="cancel"]').addEventListener("click", () => onCancel?.());
@@ -55,7 +54,7 @@ export function renderTripForm(container, trip, { onSaved, onCancel }) {
       title: form.title.value,
       start_date: form.startDate.value || null,
       end_date: form.endDate.value || null,
-      notes: form.notes.value || null,
+      subtitle: form.subtitle.value || null,
     };
 
     try {

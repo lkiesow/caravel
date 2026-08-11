@@ -322,11 +322,15 @@ button {
 }
 
 /* Headings here hold user-supplied trip/item titles of arbitrary length; without
-   these two the flex item refuses to shrink and pushes the action button off
-   screen instead of wrapping. */
+   min-width/overflow-wrap the flex item refuses to shrink and pushes the
+   action button off screen instead of wrapping. margin:0 because
+   .page__header's own margin-bottom already provides deliberate spacing
+   below the title - the browser's default h1 margin would otherwise stack
+   on top of that. */
 .page__header h1 {
   min-width: 0;
   overflow-wrap: anywhere;
+  margin: 0;
 }
 
 .trip-grid {
@@ -478,29 +482,26 @@ button {
   }
 }
 
-/* Persistent block under the trip title, shown above the tab bar on every
-   tab (not tab content itself) - see trip-detail-page.js. */
+/* Tighter than .page__header's default 1rem: this page follows the title
+   with .trip-summary immediately below, so the bulk of the visual gap
+   should come from .trip-summary's own margin-bottom, not two stacked
+   margins. */
+.trip-detail .page__header {
+  margin-bottom: 0.25rem;
+}
+
+/* Persistent line under the trip title, shown above the tab bar on every
+   tab (not tab content itself) - see trip-detail-page.js. Subtitle and
+   date range share one flex-wrap row with a "·" between them, wrapping to
+   two lines only when they don't both fit - no hard breakpoint needed for
+   the wrap itself. */
 .trip-summary {
-  margin-bottom: 1rem;
-}
-
-.trip-summary__subtitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem;
   color: var(--color-text-muted);
-  margin: 0 0 0.75rem;
-}
-
-.trip-overview {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 0.5rem 1rem;
-}
-
-.trip-overview dt {
-  color: var(--color-text-muted);
-}
-
-.trip-overview dd {
-  margin: 0;
+  margin-bottom: 2rem;
 }
 
 .location-view__image {
@@ -1097,5 +1098,12 @@ button {
   .items-filter button {
     flex-shrink: 0;
     scroll-snap-align: start;
+  }
+
+  /* Hidden rather than relying on flex-wrap alone, so it never dangles at
+     the start of a wrapped second line - subtitle and date range stack
+     cleanly with no floating "·" between them. */
+  .trip-summary__dot {
+    display: none;
   }
 }

@@ -30,21 +30,25 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
   }
 
   function render() {
+    // Subtitle and date range share one line, joined by a "·" that only
+    // appears between two pieces that both actually exist - see
+    // formatDateRange below for why the range itself is plain text, not a
+    // labeled dt/dd pair (that reads fine as prose but not as a table row).
+    const dateRange = formatDateRange(trip.start_date, trip.end_date);
+    const summaryParts = [];
+    if (trip.subtitle) summaryParts.push(`<span class="trip-summary__subtitle"></span>`);
+    if (dateRange) {
+      if (summaryParts.length) summaryParts.push(`<span class="trip-summary__dot" aria-hidden="true">·</span>`);
+      summaryParts.push(`<span class="trip-summary__dates">${dateRange}</span>`);
+    }
+
     container.innerHTML = `
       <div class="page trip-detail">
         <a href="/trips" data-link class="back-link">${icon("arrow-left")} <span data-i18n="common.home"></span></a>
         <div class="page__header">
           <h1></h1>
         </div>
-        <div class="trip-summary">
-          ${trip.subtitle ? `<p class="trip-summary__subtitle"></p>` : ""}
-          <dl class="trip-overview">
-            <dt data-i18n="trip.form.startDate"></dt>
-            <dd>${trip.start_date ?? "—"}</dd>
-            <dt data-i18n="trip.form.endDate"></dt>
-            <dd>${trip.end_date ?? "—"}</dd>
-          </dl>
-        </div>
+        ${summaryParts.length ? `<div class="trip-summary">${summaryParts.join("")}</div>` : ""}
         <nav class="trip-tabs">
           ${TRIP_TABS.map(
             ({ key, icon: tabIcon }) =>
@@ -56,7 +60,8 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
     `;
     translatePage(container);
     container.querySelector(".page__header h1").textContent = trip.title;
-    if (trip.subtitle) container.querySelector(".trip-summary__subtitle").textContent = trip.subtitle;
+    const subtitleEl = container.querySelector(".trip-summary__subtitle");
+    if (subtitleEl) subtitleEl.textContent = trip.subtitle;
 
     container.querySelectorAll("[data-tab]").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -94,4 +99,23 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
   }
 
   render();
+}
+
+// Compact human-readable date range for the under-title summary line, e.g.
+// "Aug 18 – Aug 21, 2026" (year shown once when both dates fall in it) or
+// "Aug 18, 2026 – Jan 2, 2027" across a year boundary. Returns null when
+// neither date is set, so the caller can omit the summary line entirely
+// rather than showing bare punctuation.
+function formatDateRange(start, end) {
+  if (!start && !end) return null;
+
+  const parse = (d) => new Date(`${d}T00:00:00`);
+  const short = (d) => new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(parse(d));
+  const full = (d) => new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(parse(d));
+
+  if (start && end) {
+    const sameYear = parse(start).getFullYear() === parse(end).getFullYear();
+    return sameYear ? `${short(start)} – ${full(end)}` : `${full(start)} – ${full(end)}`;
+  }
+  return full(start || end);
 }

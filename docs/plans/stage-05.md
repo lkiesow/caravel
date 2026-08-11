@@ -179,6 +179,31 @@ router's unmatched-path fallback (`/trips`), as expected. Exercised
 lands on the new trip's Locations tab) — create-mode is fully intact.
 Zero console errors throughout. `make ci` green.
 
+**Follow-up refinement** (same milestone, after initial manual testing):
+the subtitle+dates block, as first built, stacked three separate margins
+(the header's, the subtitle paragraph's, and the dt/dd date grid's),
+reading as noticeably too much dead space between the title and the tab
+bar. Reworked into a single flex-wrap line — subtitle and a compact
+human-readable date range (`Aug 18 – Aug 21, 2026`, year shown once,
+replacing the raw ISO strings and the "Start date"/"End date" labels)
+joined by a `·` that only appears between two pieces that both exist. The
+`·` is hidden below the app's one mobile breakpoint (640px) rather than
+left to flex-wrap alone, so it can't dangle at the start of a wrapped
+second line — matching the two explicit mockups (desktop: one line with
+`·`; mobile: subtitle then dates, no `·`) given during review. The whole
+block is omitted entirely when neither subtitle nor dates are set (no more
+bare "—, —" placeholders). `.trip-overview`'s old dt/dd grid CSS is now
+fully dead and removed along with it.
+
+Verified via Playwright at 324×756 and 1200px against three cases: both
+subtitle and dates set (desktop renders "Subtitle · Aug 18 – Aug 21, 2026"
+on one line; mobile stacks subtitle then dates with no dot, confirmed via
+a computed-style check that the dot is `display:none` on all six tabs),
+subtitle-only (no dangling dot or empty date span), and neither set (no
+`.trip-summary` element in the DOM at all — confirmed via a fresh
+accessibility snapshot). Zero overflow across all six tabs at mobile
+width. `make ci` green throughout.
+
 ## 3. Location editor: fix the link/date duplicate-listener bug
 
 **The bug** (confirmed root cause): `renderLinks()`/`renderDates()` in

@@ -2,3 +2,10 @@
 /data/
 /uploads/
 .claude/
+
+# Playwright/vim scratch from local UI testing. The mobile screenshots are
+# throwaway dev artifacts — findings get written up in the stage plan instead of
+# committing ~400K of PNGs per test round.
+/docs/plans/mobile-fresh-*.png
+*.swp
+.cache/

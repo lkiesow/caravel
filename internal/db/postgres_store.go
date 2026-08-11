@@ -379,7 +379,7 @@ func (s *postgresStore) CreateTrip(ctx context.Context, p CreateTripParams) (Tri
 		Title:     p.Title,
 		StartDate: nullDate(p.StartDate),
 		EndDate:   nullDate(p.EndDate),
-		Notes:     nullString(p.Notes),
+		Subtitle:  nullString(p.Subtitle),
 		CreatedAt: p.CreatedAt.UTC(),
 		UpdatedAt: p.UpdatedAt.UTC(),
 	})
@@ -416,7 +416,7 @@ func (s *postgresStore) UpdateTrip(ctx context.Context, p UpdateTripParams) (Tri
 		Title:     p.Title,
 		StartDate: nullDate(p.StartDate),
 		EndDate:   nullDate(p.EndDate),
-		Notes:     nullString(p.Notes),
+		Subtitle:  nullString(p.Subtitle),
 		UpdatedAt: p.UpdatedAt.UTC(),
 	})
 	if err != nil {
@@ -494,7 +494,7 @@ func postgresTripToDomain(t postgresgen.Trip) Trip {
 		StartDate:      datePtr(t.StartDate),
 		EndDate:        datePtr(t.EndDate),
 		PreviewImageID: strPtr(t.PreviewImageID),
-		Notes:          strPtr(t.Notes),
+		Subtitle:       strPtr(t.Subtitle),
 		CreatedAt:      t.CreatedAt,
 		UpdatedAt:      t.UpdatedAt,
 	}

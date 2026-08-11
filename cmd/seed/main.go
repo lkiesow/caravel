@@ -65,7 +65,7 @@ func seedTrip(ctx context.Context, store db.Store, ownerID string) error {
 	now := time.Now().UTC()
 	start := now.AddDate(0, 0, 7).Format("2006-01-02")
 	end := now.AddDate(0, 0, 10).Format("2006-01-02")
-	notes := "A short **demo trip** seeded for local testing.\n\n- Nothing here is real.\n- Feel free to edit or delete it."
+	subtitle := "A short demo trip seeded for local testing — nothing here is real."
 
 	trip, err := store.CreateTrip(ctx, db.CreateTripParams{
 		ID:        uuid.NewString(),
@@ -73,7 +73,7 @@ func seedTrip(ctx context.Context, store db.Store, ownerID string) error {
 		Title:     "Demo Trip: Iceland Ring Road",
 		StartDate: &start,
 		EndDate:   &end,
-		Notes:     &notes,
+		Subtitle:  &subtitle,
 		CreatedAt: now,
 		UpdatedAt: now,
 	})

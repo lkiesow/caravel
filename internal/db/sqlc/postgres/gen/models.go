@@ -132,9 +132,9 @@ type Trip struct {
 	StartDate      sql.NullTime   `json:"start_date"`
 	EndDate        sql.NullTime   `json:"end_date"`
 	PreviewImageID sql.NullString `json:"preview_image_id"`
-	Notes          sql.NullString `json:"notes"`
 	CreatedAt      time.Time      `json:"created_at"`
 	UpdatedAt      time.Time      `json:"updated_at"`
+	Subtitle       sql.NullString `json:"subtitle"`
 }
 
 type User struct {

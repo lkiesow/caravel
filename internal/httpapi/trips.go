@@ -20,8 +20,7 @@ type tripResponse struct {
 	Title           string  `json:"title"`
 	StartDate       *string `json:"start_date"`
 	EndDate         *string `json:"end_date"`
-	Notes           *string `json:"notes"`
-	NotesHTML       *string `json:"notes_html"`
+	Subtitle        *string `json:"subtitle"`
 	PreviewImageID  *string `json:"preview_image_id"`
 	PreviewImageURL *string `json:"preview_image_url"`
 	CreatedAt       string  `json:"created_at"`
@@ -34,17 +33,16 @@ func (s *Server) tripToResponse(ctx context.Context, t db.Trip) tripResponse {
 		Title:          t.Title,
 		StartDate:      t.StartDate,
 		EndDate:        t.EndDate,
-		Notes:          t.Notes,
+		Subtitle:       t.Subtitle,
 		PreviewImageID: t.PreviewImageID,
 		CreatedAt:      t.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:      t.UpdatedAt.UTC().Format(time.RFC3339),
 	}
-	resp.NotesHTML = renderNotesHTML(t.Notes)
 	resp.PreviewImageURL = s.resolveImageURL(ctx, t.PreviewImageID)
 	return resp
 }
 
-// renderNotesHTML renders a notes field's markdown to sanitized HTML,
+// renderNotesHTML renders an item's notes markdown to sanitized HTML,
 // rendered fresh on every response rather than cached in the database —
 // notes are short-form text, so a goldmark+bluemonday pass costs
 // microseconds, and rendering on read avoids a second column that could
@@ -80,7 +78,7 @@ type tripRequest struct {
 	Title     string  `json:"title"`
 	StartDate *string `json:"start_date"`
 	EndDate   *string `json:"end_date"`
-	Notes     *string `json:"notes"`
+	Subtitle  *string `json:"subtitle"`
 }
 
 func (req tripRequest) validate() error {
@@ -126,7 +124,7 @@ func (s *Server) handleCreateTrip(w http.ResponseWriter, r *http.Request) {
 		Title:     req.Title,
 		StartDate: req.StartDate,
 		EndDate:   req.EndDate,
-		Notes:     req.Notes,
+		Subtitle:  req.Subtitle,
 		CreatedAt: now,
 		UpdatedAt: now,
 	})
@@ -191,7 +189,7 @@ func (s *Server) handleUpdateTrip(w http.ResponseWriter, r *http.Request) {
 		Title:     req.Title,
 		StartDate: req.StartDate,
 		EndDate:   req.EndDate,
-		Notes:     req.Notes,
+		Subtitle:  req.Subtitle,
 		UpdatedAt: time.Now().UTC(),
 	})
 	if err != nil {

@@ -1,5 +1,5 @@
-// Package markdown renders user-supplied notes (trip/item notes) to safe
-// HTML. Rendering happens server-side so the sanitization boundary lives in
+// Package markdown renders user-supplied item notes to safe HTML.
+// Rendering happens server-side so the sanitization boundary lives in
 // one trusted place — the frontend never needs to parse or sanitize
 // markdown itself, it just inserts the HTML this package returns.
 package markdown

@@ -48,7 +48,7 @@ type Trip struct {
 	StartDate      *string
 	EndDate        *string
 	PreviewImageID *string
-	Notes          *string
+	Subtitle       *string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }

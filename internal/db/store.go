@@ -46,7 +46,7 @@ type CreateTripParams struct {
 	Title     string
 	StartDate *string
 	EndDate   *string
-	Notes     *string
+	Subtitle  *string
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -57,7 +57,7 @@ type UpdateTripParams struct {
 	Title     string
 	StartDate *string
 	EndDate   *string
-	Notes     *string
+	Subtitle  *string
 	UpdatedAt time.Time
 }
 

@@ -141,7 +141,7 @@ func (s *sqliteStore) CreateTrip(ctx context.Context, p CreateTripParams) (Trip,
 		Title:     p.Title,
 		StartDate: nullString(p.StartDate),
 		EndDate:   nullString(p.EndDate),
-		Notes:     nullString(p.Notes),
+		Subtitle:  nullString(p.Subtitle),
 		CreatedAt: formatTime(p.CreatedAt),
 		UpdatedAt: formatTime(p.UpdatedAt),
 	})
@@ -178,7 +178,7 @@ func (s *sqliteStore) UpdateTrip(ctx context.Context, p UpdateTripParams) (Trip,
 		Title:     p.Title,
 		StartDate: nullString(p.StartDate),
 		EndDate:   nullString(p.EndDate),
-		Notes:     nullString(p.Notes),
+		Subtitle:  nullString(p.Subtitle),
 		UpdatedAt: formatTime(p.UpdatedAt),
 	})
 	if err != nil {
@@ -862,7 +862,7 @@ func sqliteTripToDomain(t sqlitegen.Trip) Trip {
 		StartDate:      strPtr(t.StartDate),
 		EndDate:        strPtr(t.EndDate),
 		PreviewImageID: strPtr(t.PreviewImageID),
-		Notes:          strPtr(t.Notes),
+		Subtitle:       strPtr(t.Subtitle),
 		CreatedAt:      parseTime(t.CreatedAt),
 		UpdatedAt:      parseTime(t.UpdatedAt),
 	}

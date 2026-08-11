@@ -1,0 +1,2 @@
+ALTER TABLE trips DROP COLUMN notes;
+ALTER TABLE trips ADD COLUMN subtitle TEXT;

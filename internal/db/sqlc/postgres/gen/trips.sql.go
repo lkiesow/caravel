@@ -12,9 +12,9 @@ import (
 )
 
 const createTrip = `-- name: CreateTrip :one
-INSERT INTO trips (id, owner_id, title, start_date, end_date, notes, created_at, updated_at)
+INSERT INTO trips (id, owner_id, title, start_date, end_date, subtitle, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, owner_id, title, start_date, end_date, preview_image_id, notes, created_at, updated_at
+RETURNING id, owner_id, title, start_date, end_date, preview_image_id, created_at, updated_at, subtitle
 `
 
 type CreateTripParams struct {
@@ -23,7 +23,7 @@ type CreateTripParams struct {
 	Title     string         `json:"title"`
 	StartDate sql.NullTime   `json:"start_date"`
 	EndDate   sql.NullTime   `json:"end_date"`
-	Notes     sql.NullString `json:"notes"`
+	Subtitle  sql.NullString `json:"subtitle"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 }
@@ -35,7 +35,7 @@ func (q *Queries) CreateTrip(ctx context.Context, arg CreateTripParams) (Trip, e
 		arg.Title,
 		arg.StartDate,
 		arg.EndDate,
-		arg.Notes,
+		arg.Subtitle,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -47,9 +47,9 @@ func (q *Queries) CreateTrip(ctx context.Context, arg CreateTripParams) (Trip, e
 		&i.StartDate,
 		&i.EndDate,
 		&i.PreviewImageID,
-		&i.Notes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Subtitle,
 	)
 	return i, err
 }
@@ -72,7 +72,7 @@ func (q *Queries) DeleteTrip(ctx context.Context, arg DeleteTripParams) (int64, 
 }
 
 const getTripByID = `-- name: GetTripByID :one
-SELECT id, owner_id, title, start_date, end_date, preview_image_id, notes, created_at, updated_at FROM trips WHERE id = $1
+SELECT id, owner_id, title, start_date, end_date, preview_image_id, created_at, updated_at, subtitle FROM trips WHERE id = $1
 `
 
 func (q *Queries) GetTripByID(ctx context.Context, id string) (Trip, error) {
@@ -85,15 +85,15 @@ func (q *Queries) GetTripByID(ctx context.Context, id string) (Trip, error) {
 		&i.StartDate,
 		&i.EndDate,
 		&i.PreviewImageID,
-		&i.Notes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Subtitle,
 	)
 	return i, err
 }
 
 const listTripsByOwner = `-- name: ListTripsByOwner :many
-SELECT id, owner_id, title, start_date, end_date, preview_image_id, notes, created_at, updated_at FROM trips WHERE owner_id = $1 ORDER BY created_at DESC
+SELECT id, owner_id, title, start_date, end_date, preview_image_id, created_at, updated_at, subtitle FROM trips WHERE owner_id = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListTripsByOwner(ctx context.Context, ownerID string) ([]Trip, error) {
@@ -112,9 +112,9 @@ func (q *Queries) ListTripsByOwner(ctx context.Context, ownerID string) ([]Trip,
 			&i.StartDate,
 			&i.EndDate,
 			&i.PreviewImageID,
-			&i.Notes,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Subtitle,
 		); err != nil {
 			return nil, err
 		}
@@ -133,7 +133,7 @@ const setTripPreviewImage = `-- name: SetTripPreviewImage :one
 UPDATE trips
 SET preview_image_id = $1, updated_at = $2
 WHERE id = $3 AND owner_id = $4
-RETURNING id, owner_id, title, start_date, end_date, preview_image_id, notes, created_at, updated_at
+RETURNING id, owner_id, title, start_date, end_date, preview_image_id, created_at, updated_at, subtitle
 `
 
 type SetTripPreviewImageParams struct {
@@ -158,9 +158,9 @@ func (q *Queries) SetTripPreviewImage(ctx context.Context, arg SetTripPreviewIma
 		&i.StartDate,
 		&i.EndDate,
 		&i.PreviewImageID,
-		&i.Notes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Subtitle,
 	)
 	return i, err
 }
@@ -170,17 +170,17 @@ UPDATE trips
 SET title = $1,
     start_date = $2,
     end_date = $3,
-    notes = $4,
+    subtitle = $4,
     updated_at = $5
 WHERE id = $6 AND owner_id = $7
-RETURNING id, owner_id, title, start_date, end_date, preview_image_id, notes, created_at, updated_at
+RETURNING id, owner_id, title, start_date, end_date, preview_image_id, created_at, updated_at, subtitle
 `
 
 type UpdateTripParams struct {
 	Title     string         `json:"title"`
 	StartDate sql.NullTime   `json:"start_date"`
 	EndDate   sql.NullTime   `json:"end_date"`
-	Notes     sql.NullString `json:"notes"`
+	Subtitle  sql.NullString `json:"subtitle"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	ID        string         `json:"id"`
 	OwnerID   string         `json:"owner_id"`
@@ -191,7 +191,7 @@ func (q *Queries) UpdateTrip(ctx context.Context, arg UpdateTripParams) (Trip, e
 		arg.Title,
 		arg.StartDate,
 		arg.EndDate,
-		arg.Notes,
+		arg.Subtitle,
 		arg.UpdatedAt,
 		arg.ID,
 		arg.OwnerID,
@@ -204,9 +204,9 @@ func (q *Queries) UpdateTrip(ctx context.Context, arg UpdateTripParams) (Trip, e
 		&i.StartDate,
 		&i.EndDate,
 		&i.PreviewImageID,
-		&i.Notes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Subtitle,
 	)
 	return i, err
 }

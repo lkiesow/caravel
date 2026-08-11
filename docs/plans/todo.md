@@ -77,9 +77,6 @@ require a redesign later — they're additive, not blocked, but none are built:
   links, dates, or attachments until after its first save, when the editor
   switches to edit mode. (Matches `notes.md`'s "new location editor should
   allow setting all the things the edit location allows" almost exactly.)
-- **No drag-and-drop file selection in the documents "Add document"
-  dialog** — explicitly scoped as "nice-to-have, not required" when built;
-  file selection is click-to-browse only.
 - **User menu dropdown only has "Log out."** Built "structured so more
   items can be added later" (per the Stage 02 plan) — admin/settings items
   were explicitly deferred, not forgotten.
@@ -133,4 +130,39 @@ require a redesign later — they're additive, not blocked, but none are built:
   that are already past or still empty. Collapsing days by default (open
   only the current/next upcoming one) would shorten that scroll
   significantly on longer trips, on any screen size.
+
+## Deferred from Stage 05
+
+- **Checklist editing/duplication, and a ⋮-menu to hold them.**
+  `checklist-list.js` currently only supports creating and deleting a
+  checklist/item — there's no way to rename a checklist's title or edit an
+  item's text after creation, and no way to duplicate a checklist (useful
+  for reusing a packing list across trips). Suggested UI: replace the
+  bare delete icon on each checklist with a vertical-ellipsis button that
+  opens a small dropdown (Edit / Duplicate / Delete), mirroring how other
+  contextual actions might grow later. Needs a bit more concept work
+  before building — how in-place title/item editing should look, whether
+  duplication copies checked-state or resets it — not picked up this
+  stage.
+- **Cover photo isn't shown anywhere on the trip's default view.** Stage
+  05 removed the Overview tab and, with it, the only place a trip's cover
+  photo was visible without opening Settings (see `stage-05.md` Section
+  2's cover-photo decision). It's still settable/previewable inside
+  Settings, just no longer visible by default. Worth revisiting whether
+  the photo should reappear near the title/subtitle/dates block once that
+  layout has settled from more real use.
+- **Broader "item" → "location" terminology sweep.** Stage 05 fixed the
+  most user-visible instances (`locations.new`/`location.editor.newTitle`
+  copy, the dynamic "Edit {title}" heading), but a real inconsistency
+  remains underneath: `location.editor.createButton` still reads "Create
+  item"/"Eintrag erstellen", and the whole `item.detail.*`/
+  `item.category.*`/`item.deleteConfirm` i18n namespace is still
+  item-flavored despite `location.form.*`/`location.editor.*` already
+  having migrated. On the JS side, `location-form.js` exports
+  `renderItemForm`, `locations-tab.js` exports `renderItemsTab` and still
+  uses `data-action="new-item"` internally. None of this is user-visible
+  beyond the one leftover button label, so it's cosmetic/consistency
+  cleanup rather than a bug — but worth doing as one deliberate pass
+  (rename every key and identifier together) rather than piecemeal, to
+  avoid leaving the codebase in a half-migrated state indefinitely.
 

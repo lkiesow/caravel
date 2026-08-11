@@ -1,6 +1,6 @@
 # Stage 05 — Trip navigation restructure, location-editor fixes, documents inline
 
-> **Status: in progress.** Built one milestone at a time per the Workflow
+> **Status: complete.** Built one milestone at a time per the Workflow
 > section below, each with its own commit and a manual-testing checkpoint.
 
 ## Context
@@ -377,6 +377,25 @@ styles: `:host { height: 100%; ... }`, `.card { height: 100%; display:
 flex; flex-direction: column; ... }`, and `flex: 1` on `.body` so the text
 area (not empty space) absorbs the difference when `.dates` is absent. No
 `.trip-grid` container change needed.
+
+**Done.** Also removed the `todo.md` bullet about the old documents dialog
+lacking drag-and-drop file selection — moot now that the dialog itself is
+gone (Section 5) — and added three deferred items surfaced this stage:
+checklist editing/duplication behind a ⋮-menu, revisiting whether the
+cover photo should reappear near the title now that Overview is gone, and
+the broader item→location terminology sweep (`location.editor.createButton`,
+the `item.detail.*`/`item.category.*` i18n namespace, and the
+`renderItemForm`/`renderItemsTab` JS identifiers) that this stage's fixes
+only partially addressed.
+
+Verified via Playwright at 1200px with three trips side-by-side in the
+3-column grid (mixed: dates+short title, no-dates+short title, dates+
+two-line title) — all three cards measured exactly the same height
+(`getBoundingClientRect()`, not just visual inspection), confirming the
+fix holds across both variables the original bug conflated (title length
+and dates presence), not just the one case a screenshot happens to show.
+Confirmed the single-column mobile layout is unaffected: zero overflow at
+324×756. Zero console errors. `make ci` green.
 
 ## Build order
 

@@ -1,6 +1,7 @@
 const styles = `
   :host {
     display: block;
+    height: 100%;
     cursor: pointer;
   }
   :host(:focus-visible) {
@@ -8,7 +9,17 @@ const styles = `
     outline-offset: 2px;
     border-radius: 0.5rem;
   }
+  /* .trip-grid's grid items stretch to the row height by default (grid's
+     align-items: stretch), but that stretch only reaches :host - nothing
+     here propagated it into the shadow tree, so two cards in the same row
+     ended up different heights whenever one had a .dates line and the
+     other didn't. height:100% + this flex column carries the stretched
+     height all the way to .body, which is the piece that actually needs
+     to absorb the difference. */
   .card {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
     border: 1px solid var(--color-border);
     border-radius: 0.5rem;
     overflow: hidden;
@@ -24,6 +35,7 @@ const styles = `
     object-fit: cover;
   }
   .body {
+    flex: 1;
     padding: 1rem;
   }
   h3 {

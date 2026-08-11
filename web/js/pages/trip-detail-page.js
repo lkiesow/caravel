@@ -7,8 +7,9 @@ import { renderItemsTab } from "./locations-tab.js";
 import { renderItineraryTab } from "./itinerary-tab.js";
 import { renderDocumentList } from "../components/document-list.js";
 import { renderChecklistList } from "../components/checklist-list.js";
+import { TRIP_TABS } from "../trip-tabs.js";
 
-const TABS = ["overview", "locations", "map", "itinerary", "documents", "checklists"];
+const TABS = TRIP_TABS.map(({ key }) => key);
 
 export async function renderTripDetailPage(container, { tripId, tab }) {
   let trip;
@@ -37,7 +38,10 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
           <button class="btn btn-secondary btn-collapse" data-action="edit-trip">${icon("pencil")} <span data-i18n="common.edit"></span></button>
         </div>
         <nav class="trip-tabs">
-          ${TABS.map((tb) => `<button data-tab="${tb}" data-i18n="trip.tabs.${tb}" class="${tb === tab ? "active" : ""}"></button>`).join("")}
+          ${TRIP_TABS.map(
+            ({ key, icon: tabIcon }) =>
+              `<button data-tab="${key}" class="${key === tab ? "active" : ""}">${icon(tabIcon)} <span data-i18n="trip.tabs.${key}"></span></button>`
+          ).join("")}
         </nav>
         <div class="trip-tab-content"></div>
       </div>

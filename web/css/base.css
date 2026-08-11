@@ -430,6 +430,9 @@ button {
 }
 
 .trip-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
   background: none;
   border: none;
   padding: 0.5rem 0.75rem;
@@ -1017,6 +1020,35 @@ button {
   .items-filter button,
   .trip-tabs button {
     min-height: var(--tap-min);
+  }
+
+  /* All 6 tabs fit as a non-scrolling grid instead of the horizontal
+     scroller used at wider widths (see the min-width: 768px sidebar override
+     and the default flex row in between) — a scroller with no affordance
+     hid "Itinerary" mid-word with no indication there was more to scroll to. */
+  .trip-tabs {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    overflow-x: visible;
+    gap: 0;
+  }
+
+  .trip-tabs button {
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.15rem;
+    padding: 0.375rem 0.125rem;
+    font-size: 0.625rem;
+    line-height: 1.15;
+    white-space: normal;
+    text-align: center;
+  }
+
+  /* Icons use em-sizing (see .icon in the button system above) so they'd
+     otherwise shrink along with the 0.625rem label text. */
+  .trip-tabs button .icon {
+    width: 1.1rem;
+    height: 1.1rem;
   }
 
   /* Was padding: 0 around a 1rem icon — a ~16px target, the smallest in the

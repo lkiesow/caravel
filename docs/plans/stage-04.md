@@ -215,6 +215,17 @@ likewise text-only and got the same `x` icon as its `.trip-form`/
   Adding icon metadata is a good moment to collapse that into one exported
   constant, so the two lists can't drift.
 
+**Done.** Extracted to `web/js/trip-tabs.js` (`TRIP_TABS`, an array of
+`{key, icon}`), imported by both `app.js` and `trip-detail-page.js`. Verified
+at 324×756: all six tabs fit one row, 46px tall, zero overflow, in both
+English and German (German's longest label, "Checklisten", stays on one line
+at the 0.625rem size rather than wrapping or clipping). At 700px and 1200px
+the icons carry over into the existing horizontal-scroller and vertical
+sidebar layouts without any further CSS — confirmed the sidebar's active-tab
+left-border indicator still renders correctly. Tab click → URL push → browser
+back/forward all still work with the new icon+span markup, since the click
+handler keys off `data-tab`, not text content.
+
 ## 4. Map tab
 
 All inside the shadow style block, `components/leaflet-map.js:9-56`. `@media`

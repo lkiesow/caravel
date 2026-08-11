@@ -277,6 +277,26 @@ broader sweep of `item.*`-namespaced i18n keys and JS identifiers like
 `renderItemForm`/`renderItemsTab` surfaced during exploration as a real
 but separate inconsistency — out of scope here, → `todo.md`.)
 
+**Done.** `location.editor.editTitle`'s value now interpolates `{title}`
+in both locales (en: "Edit {title}", de: "{title} bearbeiten" — title-
+first reads more naturally in German). `location.editor.newTitle` and
+`locations.new` reworded to "New location" (de: "Neuer Ort"). Left
+`location.editor.createButton` ("Create item"/"Eintrag erstellen")
+untouched, same as the broader sweep above — it's the same class of
+leftover "item" wording, deliberately deferred together rather than fixed
+piecemeal.
+
+Verified via Playwright: editing an existing item now shows "Edit
+Kirkjufell" in the heading (English) and "Kirkjufell bearbeiten" (German,
+confirmed by switching locale and reloading) — not the static "Edit item"
+from before. Saving Basic Info with a changed title updates the heading
+immediately, with no navigation, confirmed by reading `h1.textContent`
+before and after a real save through the UI. Title now renders as the
+first field in Basic Info in both create and edit mode (same shared
+component). The trips-page/locations-tab "New location" button and the
+create-mode page heading both read correctly. Zero console errors, zero
+overflow at 324×756, `make ci` green.
+
 ## 5. Documents: inline single-file form, everywhere
 
 Per the decision above, `web/js/components/document-list.js` drops its

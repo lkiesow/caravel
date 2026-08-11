@@ -11,6 +11,10 @@ export function renderItemForm(container, item, { tripId, onSaved, onCancel }) {
     <form class="item-form" novalidate>
       <p class="item-form__error" hidden></p>
       <label>
+        <span data-i18n="location.form.title"></span>
+        <input type="text" name="title" required />
+      </label>
+      <label>
         <span data-i18n="location.form.category"></span>
         <select name="category">
           ${CATEGORIES.map((c) => `<option value="${c}">${t(`item.category.${c}`)}</option>`).join("")}
@@ -19,10 +23,6 @@ export function renderItemForm(container, item, { tripId, onSaved, onCancel }) {
       <label>
         <span data-i18n="location.form.type"></span>
         <input type="text" name="type" data-i18n-placeholder="location.form.typePlaceholder" />
-      </label>
-      <label>
-        <span data-i18n="location.form.title"></span>
-        <input type="text" name="title" required />
       </label>
       <label>
         <span data-i18n="location.form.notes"></span>
@@ -44,9 +44,9 @@ export function renderItemForm(container, item, { tripId, onSaved, onCancel }) {
   const errorEl = container.querySelector(".item-form__error");
 
   if (item) {
+    form.title.value = item.title;
     form.category.value = item.category;
     form.type.value = item.type ?? "";
-    form.title.value = item.title;
     form.notes.value = item.notes ?? "";
     form.showOnMap.checked = item.show_on_map;
   }

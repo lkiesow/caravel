@@ -39,7 +39,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       <div class="page location-editor">
         <a href="${item ? `/trips/${tripId}/locations/${item.id}` : `/trips/${tripId}`}" data-link class="back-link">${icon("arrow-left")} <span data-i18n="common.back"></span></a>
         <div class="page__header">
-          <h1 data-i18n="${item ? "location.editor.editTitle" : "location.editor.newTitle"}"></h1>
+          <h1></h1>
         </div>
         ${
           item
@@ -107,12 +107,14 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       </div>
     `;
     translatePage(container);
+    setHeading();
 
     renderItemForm(container.querySelector(".item-form-slot"), item, {
       tripId,
       onSaved: async (saved) => {
         if (item) {
           Object.assign(item, saved);
+          setHeading();
           return;
         }
 
@@ -172,6 +174,18 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       await api.delete(`/items/${item.id}`);
       navigate(`/trips/${tripId}`);
     });
+  }
+
+  // "Edit {title}" needs the item's title interpolated into the string,
+  // but translatePage() only ever calls t(key) with no params (see
+  // i18n.js) - so this bypasses data-i18n on the <h1> entirely and sets
+  // its text directly. Called once after the initial render, and again
+  // after Basic Info is saved so the heading picks up a changed title
+  // without needing a full page reload.
+  function setHeading() {
+    container.querySelector(".page__header h1").textContent = item
+      ? t("location.editor.editTitle", { title: item.title })
+      : t("location.editor.newTitle");
   }
 
   function renderLocationForm() {

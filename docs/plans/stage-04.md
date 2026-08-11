@@ -241,6 +241,41 @@ resize plumbing is needed.
 - The legend's `var(--color-surface, #fff)` fallbacks are dead code — custom
   properties inherit through the shadow boundary. Harmless; leave them.
 
+**Done.** Two issues surfaced during implementation, both fixed:
+
+1. `.legend`'s new `width: 100%` (mobile only) combined with its existing
+   padding/border pushed 10px past the viewport, because `base.css`'s global
+   `* { box-sizing: border-box }` reset doesn't pierce the shadow root —
+   inside it, the browser default is `content-box`, so `width: 100% + padding
+   + border` exceeds the container. Fixed by adding `box-sizing: border-box`
+   directly to `.legend`.
+2. While writing the fix's explanatory comment, an unescaped backtick inside
+   a JS template literal (quoting a CSS snippet the way Markdown would)
+   silently closed the string early and reopened another one further down —
+   the file remained *technically* valid JS by coincidence (so `node --check`
+   passed) but `styles` no longer held the intended CSS, and Firefox's CSS
+   parser then logged `SyntaxError: missing : after property id` for the
+   garbled result. Fixed by rewording the comment without a backtick. Worth
+   remembering for any future shadow-DOM `styles` template: never use a
+   backtick inside it, even inside a comment.
+
+Also caught mid-milestone: every route sweep run in Milestones 1–3 used
+`/items/:id` for the location view/edit pages, which doesn't match any actual
+route (the real pattern is `/trips/:tripId/locations/:itemId`) — the router
+silently redirects unmatched paths to `/trips`, so those two pages were never
+actually exercised by the automated checks, only by the one manual
+`mobile-fresh-location-editor.png` screenshot back in the original report.
+Re-ran the sweep with the corrected paths (now also asserting
+`window.location.pathname` lands where expected, to catch silent redirects in
+the future): zero overflow, no sub-44px targets on both.
+
+Verified at 324×756: legend renders as a full-width row below the map with
+`position: static`, zero overflow, zero console errors. Confirmed
+`:host([lat])` (the location-view page's single-marker map, no legend) is
+untouched by the mobile rule at any width — stays exactly 256px tall via a
+live location-set/unset round trip through the API, not just by reading the
+CSS.
+
 ## 5. Remaining density fixes and report update
 
 - `.items-tab__header` / `.items-filter` (`base.css:466-495`): with "New item"

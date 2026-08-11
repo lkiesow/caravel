@@ -26,6 +26,11 @@ const styles = `
     border-radius: 0.5rem;
   }
   .legend {
+    /* base.css's global box-sizing reset doesn't pierce this shadow root,
+       and the mobile override below adds width: 100% - left at the browser
+       default (content-box), that width plus this padding and border would
+       push past the container's right edge. */
+    box-sizing: border-box;
     position: absolute;
     top: 0.5rem;
     right: 0.5rem;
@@ -54,6 +59,33 @@ const styles = `
   .empty {
     padding: 1rem;
     color: var(--color-text-muted, #666);
+  }
+
+  /* On narrow viewports the legend, absolutely positioned over the map's
+     top-right corner at wider widths, covered over half the map's width. It
+     moves below the map instead, and the map itself shrinks a little so the
+     pair doesn't push the rest of the page too far down. :host([lat]) (the
+     single-marker mode used on the location view page, no legend there) is
+     more specific than a plain :host, so it's unaffected by this at any
+     width. */
+  @media (max-width: 640px) {
+    :host {
+      height: auto;
+    }
+    .map-wrap {
+      height: auto;
+    }
+    #map {
+      height: 50vh;
+      min-height: 16rem;
+    }
+    .legend {
+      position: static;
+      flex-direction: row;
+      flex-wrap: wrap;
+      width: 100%;
+      margin-top: 0.5rem;
+    }
   }
 `;
 

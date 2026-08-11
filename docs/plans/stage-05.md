@@ -343,6 +343,27 @@ there's no more separate "open the dialog" trigger button, both call sites
 (`trip-detail-page.js`'s Documents tab, `location-editor-page.js`'s
 Documents card) keep invoking it exactly as they do today.
 
+**Done.** Also added a small filename-echo (the "Choose a file" label text
+swaps to the picked filename once one's selected, mirroring `image-field.js`'s
+preview) for feedback before hitting Upload — not explicitly asked for, a
+small addition in the same spirit as the rest of the form. Retired
+`documents.add`/`documents.dialogTitle`/`documents.chooseFiles` (all three
+fully dead once the dialog and its trigger button are gone) and added
+`documents.chooseFile` (singular) in both locales.
+
+Verified via Playwright on both surfaces (trip-level Documents tab and the
+location editor's Documents card): uploaded a real file with a note through
+the actual file chooser (not a mocked input) — the document appears in the
+list with its note, and the form resets to "Choose a file" with no dialog
+involved anywhere. Uploaded a second file immediately after: exactly 2
+documents, not more — confirms the full-rebuild `render()` avoids the
+Section 3 bug class as designed, not just by inspection. Confirmed the new
+inline row is `.btn-collapse`d correctly on the trip-level tab at 324px
+(accessible name stays "Upload" even collapsed, checked via a snapshot) and
+renders with ample room on the location editor's card at desktop width.
+Zero overflow at 324px on the location editor page. Zero console errors.
+`make ci` green (104 keys, both locales in sync).
+
 ## 6. Trip card equal-height fix
 
 `.trip-grid` (`base.css`) is already `display: grid` — grid's default

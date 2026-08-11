@@ -3,37 +3,39 @@ import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
 
 // Renders a read-only document list (filename, size, note, download link,
-// delete) plus an "Add document" trigger that opens a native <dialog> for
-// uploading - `<dialog>` covers showModal()/backdrop/focus-trapping/Escape
-// natively, so no custom modal component is needed. The dialog supports
-// picking multiple files at once and renders one note input per selected
-// file, uploading each with its own note. `path` is either
-// `/trips/{id}/documents` or `/items/{id}/documents` - both share the same
-// list/upload/delete shape.
+// delete) plus an inline single-file add row (file picker + optional
+// note + Upload button) - the same file+note+button shape as the Links/
+// Dates forms in the location editor, rather than the multi-file dialog
+// this used to be. Selecting several files is still possible, just one
+// upload at a time. `path` is either `/trips/{id}/documents` or
+// `/items/{id}/documents` - both share the same list/upload/delete shape.
 export async function renderDocumentList(container, path) {
   let docs = await api.get(path);
 
+  // Full rebuild on every call, list and add-form together - not a
+  // partial re-render that reuses a persistent form across calls. The
+  // latter is exactly what caused a real duplicate-submit bug elsewhere
+  // in this app (see location-editor-page.js's renderLinksList()/
+  // bindLinkForm() split): a form.addEventListener() call inside a
+  // function that's itself re-invoked by its own submit handler stacks
+  // one more listener on the same node every time. A full rebuild
+  // sidesteps that class of bug entirely, since the form node is never
+  // reused across calls - every render() gets a fresh one with exactly
+  // one listener.
   function render() {
     container.innerHTML = `
       <div class="document-list">
-        <button type="button" class="btn btn-primary btn-collapse document-list__add">${icon("plus")} <span data-i18n="documents.add"></span></button>
-        <p class="documents-empty" data-i18n="documents.empty" hidden></p>
         <ul class="documents"></ul>
-        <dialog class="document-dialog">
-          <form class="document-dialog__form" novalidate>
-            <h3 data-i18n="documents.dialogTitle"></h3>
-            <label class="image-field__upload">
-              <span data-i18n="documents.chooseFiles"></span>
-              <input type="file" name="files" multiple hidden data-i18n-aria-label="common.uploadFile" />
-            </label>
-            <div class="document-dialog__files"></div>
-            <p class="document-dialog__error" hidden></p>
-            <div class="document-dialog__actions">
-              <button type="submit" class="btn btn-primary">${icon("upload")} <span data-i18n="documents.upload"></span></button>
-              <button type="button" class="btn btn-secondary" data-action="cancel">${icon("x")} <span data-i18n="common.cancel"></span></button>
-            </div>
-          </form>
-        </dialog>
+        <p class="documents-empty" data-i18n="documents.empty" hidden></p>
+        <p class="document-form__error" hidden></p>
+        <form class="document-form">
+          <label class="image-field__upload">
+            <span data-i18n="documents.chooseFile"></span>
+            <input type="file" name="file" hidden required data-i18n-aria-label="common.uploadFile" />
+          </label>
+          <input type="text" name="note" data-i18n-placeholder="documents.notePlaceholder" />
+          <button type="submit" class="btn btn-primary btn-collapse">${icon("upload")} <span data-i18n="documents.upload"></span></button>
+        </form>
       </div>
     `;
     translatePage(container);
@@ -59,54 +61,33 @@ export async function renderDocumentList(container, path) {
       list.appendChild(li);
     }
 
-    const dialog = container.querySelector(".document-dialog");
-    const form = container.querySelector(".document-dialog__form");
-    const fileInput = form.files;
-    const filesContainer = container.querySelector(".document-dialog__files");
-    const errorEl = container.querySelector(".document-dialog__error");
+    const form = container.querySelector(".document-form");
+    const fileInput = form.file;
+    const fileLabelText = form.querySelector(".image-field__upload span");
+    const defaultFileLabel = fileLabelText.textContent;
+    const errorEl = container.querySelector(".document-form__error");
 
-    container.querySelector(".document-list__add").addEventListener("click", () => {
-      form.reset();
-      filesContainer.innerHTML = "";
-      errorEl.hidden = true;
-      dialog.showModal();
-    });
-
-    container.querySelector('[data-action="cancel"]').addEventListener("click", () => dialog.close());
-
+    // Echoes the picked filename in place of the generic "Choose a file"
+    // label, so there's feedback before hitting Upload - same idea as
+    // image-field.js's preview, just text instead of an image.
     fileInput.addEventListener("change", () => {
-      filesContainer.innerHTML = Array.from(fileInput.files)
-        .map(
-          (file, i) => `
-        <div class="document-dialog__file-row">
-          <span class="document-dialog__filename">${escapeHtml(file.name)}</span>
-          <input type="text" data-note-index="${i}" data-i18n-placeholder="documents.notePlaceholder" />
-        </div>
-      `
-        )
-        .join("");
-      translatePage(filesContainer);
+      fileLabelText.textContent = fileInput.files[0]?.name || defaultFileLabel;
     });
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const files = Array.from(fileInput.files);
-      if (!files.length) return;
+      const file = fileInput.files[0];
+      if (!file) return;
       errorEl.hidden = true;
 
-      const notes = files.map((_, i) => filesContainer.querySelector(`[data-note-index="${i}"]`).value || "");
-
       try {
-        for (let i = 0; i < files.length; i++) {
-          const formData = new FormData();
-          formData.append("file", files[i]);
-          if (notes[i]) formData.append("note", notes[i]);
-          const res = await fetch(`/api${path}`, { method: "POST", body: formData, credentials: "same-origin" });
-          const doc = await res.json();
-          if (!res.ok) throw new Error(doc.error || t("common.error"));
-          docs.push(doc);
-        }
-        dialog.close();
+        const formData = new FormData();
+        formData.append("file", file);
+        if (form.note.value) formData.append("note", form.note.value);
+        const res = await fetch(`/api${path}`, { method: "POST", body: formData, credentials: "same-origin" });
+        const doc = await res.json();
+        if (!res.ok) throw new Error(doc.error || t("common.error"));
+        docs.push(doc);
         render();
       } catch (err) {
         errorEl.textContent = err.message || t("common.error");

@@ -234,6 +234,21 @@ This is a self-contained, easily-isolated fix — land and verify it on its
 own before touching anything else in this file, so the UX changes in
 Section 4 build on a page that's already known-good.
 
+**Done.** Split `renderLinks()`/`renderDates()` into `renderLinksList()`/
+`renderDatesList()` (list-only, safe to call repeatedly) plus
+`bindLinkForm()`/`bindDateForm()` (attach the submit listener exactly once,
+called from `render()` alongside the initial list render). Delete handlers
+now call the list-only render instead of the old combined function.
+
+Verified via Playwright by reproducing the exact user-reported sequence
+through the real UI (not the API directly): submit 1 → exactly 1 link
+(not more); submit a 2nd → exactly 2 total (not 3, the old bug's result);
+submit a 3rd → exactly 3 total (not 7). Also exercised delete-then-add
+(delete calls the same render function and was part of the accumulation
+path) — count stayed correct throughout. Repeated the identical 1/2/3
+sequence for Dates with the same result. Zero console errors. Confirmed
+no overflow at 324×756. `make ci` green.
+
 ## 4. Location editor: heading, field order, and copy fixes
 
 **Heading + title-field reordering**: `location-editor-page.js`'s `<h1

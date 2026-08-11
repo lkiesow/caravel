@@ -161,8 +161,10 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     if (!item) return;
 
     renderLocationForm();
-    renderLinks();
-    renderDates();
+    renderLinksList();
+    bindLinkForm();
+    renderDatesList();
+    bindDateForm();
     renderDocumentList(container.querySelector(".document-list-slot"), `/items/${item.id}/documents`);
 
     container.querySelector('[data-action="delete"]').addEventListener("click", async () => {
@@ -190,7 +192,16 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     });
   }
 
-  function renderLinks() {
+  // renderLinksList()/bindLinkForm() are split (rather than one combined
+  // function) so the submit listener can be attached exactly once, from
+  // render() below, instead of being re-attached on every add/delete - a
+  // form.addEventListener() call inside a function that both handles
+  // submit *and* gets re-invoked by its own handler stacks one more
+  // listener on the same persistent <form> node every time, doubling on
+  // each submit (1 -> 2 -> 4 -> ...). renderLinksList() itself stays safe
+  // to call repeatedly: it only touches the <ul>, and the per-item delete
+  // buttons it wires are freshly created nodes every time.
+  function renderLinksList() {
     const list = container.querySelector(".link-list");
     list.innerHTML = item.links.length
       ? item.links
@@ -205,21 +216,24 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       btn.addEventListener("click", async () => {
         await api.delete(`/items/${item.id}/links/${btn.getAttribute("data-id")}`);
         item.links = item.links.filter((l) => l.id !== btn.getAttribute("data-id"));
-        renderLinks();
+        renderLinksList();
       });
     });
+  }
 
+  function bindLinkForm() {
     const form = container.querySelector(".link-form");
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const link = await api.post(`/items/${item.id}/links`, { url: form.url.value, label: form.label.value || null });
       item.links.push(link);
       form.reset();
-      renderLinks();
+      renderLinksList();
     });
   }
 
-  function renderDates() {
+  // Same split as renderLinksList()/bindLinkForm() above, same reason.
+  function renderDatesList() {
     const list = container.querySelector(".date-list");
     list.innerHTML = item.dates.length
       ? item.dates
@@ -234,10 +248,12 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       btn.addEventListener("click", async () => {
         await api.delete(`/items/${item.id}/dates/${btn.getAttribute("data-id")}`);
         item.dates = item.dates.filter((d) => d.id !== btn.getAttribute("data-id"));
-        renderDates();
+        renderDatesList();
       });
     });
+  }
 
+  function bindDateForm() {
     const form = container.querySelector(".date-form");
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -248,7 +264,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       });
       item.dates.push(date);
       form.reset();
-      renderDates();
+      renderDatesList();
     });
   }
 

@@ -33,6 +33,8 @@ ICONS = [
     "info",
     "list-checks",
     "settings",
+    "search",
+    "funnel",
 ]
 
 

@@ -189,3 +189,17 @@ require a redesign later — they're additive, not blocked, but none are built:
   (rename every key and identifier together) rather than piecemeal, to
   avoid leaving the codebase in a half-migrated state indefinitely.
 
+
+## Deferred from Stage 06
+
+- **Refactor `user-menu.js` onto `components/menu.js`.** Stage 06
+  Milestone 1 extracted the popup pattern (hidden-attribute visibility,
+  `aria-expanded` sync, outside-click + Escape listeners attached on open
+  and removed on close) into a generic single-select `renderMenu`, but
+  wired only the locations filter to it — `user-menu.js` still carries its
+  own copy of the same behavior plus `.user-menu__dropdown` CSS that
+  `.menu__dropdown` now duplicates. Two popup implementations in the tree
+  is exactly the half-migrated state worth avoiding. Folding user-menu
+  onto the component needs `renderMenu` to grow a non-select "action item"
+  mode first (Log out isn't a selection), which is also what the ⋮
+  contextual menu in the checklist entry above wants.

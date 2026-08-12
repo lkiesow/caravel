@@ -302,6 +302,84 @@ a:visited {
   background: var(--color-surface);
 }
 
+/* Generic single-select dropdown (components/menu.js) - the same popup
+   shape as .user-menu__dropdown above, but reusable and with a checkmark
+   column for the selected option. The trigger is a plain .btn, so it lines
+   up with the other buttons in whatever row it sits in. */
+.menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.menu__trigger {
+  white-space: nowrap;
+}
+
+.menu__chevron {
+  color: var(--color-text-muted);
+}
+
+/* A non-neutral selection (see menu.js's neutralValue) tints the whole
+   trigger - label, leading icon and chevron, since icons stroke with
+   currentColor - in the same accent used for the checked row in the open
+   dropdown. Under 640px the label is visually hidden, so this tint is the
+   only remaining cue that a filter is narrowing the list. */
+.menu__trigger--active,
+.menu__trigger--active .menu__chevron {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.menu__dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 0.25rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 0.375rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  list-style: none;
+  padding: 0.25rem;
+  margin-block: 0;
+  min-width: 9rem;
+  z-index: 1000;
+}
+
+.menu__dropdown[hidden] {
+  display: none;
+}
+
+.menu__dropdown button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background: none;
+  border: none;
+  text-align: left;
+  color: var(--color-text);
+  font: inherit;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.menu__dropdown button:hover {
+  background: var(--color-surface);
+}
+
+/* The checkmark stays laid out (just invisible) on unselected options, so
+   selecting a different one doesn't shift every label sideways. */
+.menu__dropdown button[aria-checked="false"] .menu__check {
+  visibility: hidden;
+}
+
+.menu__dropdown button[aria-checked="true"] {
+  color: var(--color-accent);
+}
+
 button {
   font-family: inherit;
 }
@@ -545,35 +623,48 @@ button {
   color: var(--color-text-muted);
 }
 
-.items-tab__header {
+/* Search + filter menu + "New location", one non-wrapping row. Replaces the
+   old .items-tab__header/.items-filter pill row, which needed an internal
+   horizontal scroller to survive 324px (stage-04.md Section 5). Only the
+   search box flexes; both buttons keep their intrinsic width and collapse to
+   icon-only under 640px via .btn-collapse. */
+.locations-toolbar {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
+  gap: 0.5rem;
   margin-bottom: 1rem;
 }
 
-.items-filter {
+.locations-search {
+  position: relative;
   display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+  flex: 1 1 0%;
+  min-width: 0;
 }
 
-.items-filter button {
-  padding: 0.375rem 0.75rem;
-  border-radius: 999px;
-  border: 1px solid var(--color-border);
-  background: none;
+.locations-search__icon {
+  position: absolute;
+  left: 0.625rem;
+  top: 50%;
+  transform: translateY(-50%);
   color: var(--color-text-muted);
-  cursor: pointer;
-  font-size: 0.875rem;
+  pointer-events: none;
 }
 
-.items-filter button.active {
-  background: var(--color-accent);
-  color: white;
-  border-color: var(--color-accent);
+.locations-search input {
+  width: 100%;
+  min-width: 0;
+  padding: 0.5rem 0.5rem 0.5rem 2.125rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.locations-search input:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -1px;
 }
 
 .item-list {
@@ -951,7 +1042,6 @@ button {
     min-height: var(--tap-min);
   }
 
-  .items-filter button,
   .trip-tabs button {
     min-height: var(--tap-min);
   }
@@ -1004,6 +1094,19 @@ button {
   .btn-collapse {
     padding: 0.5rem;
     gap: 0;
+    /* Matches .btn's min-height above: without it a collapsed button is a
+       ~32x44 rectangle around a 1em icon, not a square. */
+    min-width: var(--tap-min);
+  }
+
+  /* Collapsed to icon-only, the chevron doubles the button's width for no
+     information - the funnel icon plus the open dropdown already say it. */
+  .btn-collapse .menu__chevron {
+    display: none;
+  }
+
+  .menu__dropdown button {
+    min-height: var(--tap-min);
   }
 
   .btn-collapse span {
@@ -1015,25 +1118,6 @@ button {
     overflow: hidden;
     clip-path: inset(50%);
     white-space: nowrap;
-  }
-
-  /* The 4 category pills, as a rigid wrapped block, were just wide enough
-     to force "New item" onto its own row below rather than sharing this
-     one — even collapsed to icon-only by .btn-collapse. Letting the pill
-     row shrink and scroll internally (rather than wrap) keeps everything on
-     one row; "All", the most-used filter, stays the leftmost and always
-     visible. */
-  .items-filter {
-    flex: 1 1 0%;
-    min-width: 0;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scroll-snap-type: x proximity;
-  }
-
-  .items-filter button {
-    flex-shrink: 0;
-    scroll-snap-align: start;
   }
 
   /* Hidden rather than relying on flex-wrap alone, so it never dangles at

@@ -130,6 +130,29 @@ require a redesign later — they're additive, not blocked, but none are built:
   that are already past or still empty. Collapsing days by default (open
   only the current/next upcoming one) would shorten that scroll
   significantly on longer trips, on any screen size.
+- **Search, filter, and sort on the trips list.** Confirmed absent:
+  `trips-page.js` has no search input, filter control, or sort control at
+  all, and the backend (`ListTripsByOwner`,
+  `internal/db/sqlc/queries/trips.sql`) has a fixed `ORDER BY created_at
+  DESC` with no parameters for sort field/direction or a title search
+  predicate. Would need both a frontend control and backend query
+  changes — not just a client-side reorder, since the API returns every
+  trip unconditionally today.
+- **Trip-level Documents tab doesn't show item-level documents.** Confirmed:
+  `GET /trips/{id}/documents` explicitly filters `AND item_id IS NULL`
+  (`ListTripDocuments`, `internal/db/sqlc/queries/documents.sql`), so a
+  trip's Documents tab only ever shows documents attached directly to the
+  trip, never ones attached to its locations/items — even though every
+  document row already carries the trip's `trip_id` regardless (set in
+  `uploadDocument`, `internal/httpapi/documents.go`), so the fix doesn't
+  need a join through `items`, just dropping that one filter (or a new
+  query) plus joining in each document's item title for display.
+  Decided display shape: one flat list (as today), sorted by upload date,
+  with a small inline label on item-attached documents showing which
+  location they belong to (e.g. "Hotel booking.pdf — Foss Hotel
+  Reykjavik"); trip-level documents show no label. `document-list.js`
+  would need a new labeled-list mode, since today it only ever renders
+  one homogeneous list for exactly one `path` at a time.
 
 ## Deferred from Stage 05
 

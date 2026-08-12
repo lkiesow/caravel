@@ -268,6 +268,45 @@ after typing several newlines; on `/trips/new` assert the title input's
 `getBoundingClientRect().top` is less than the image field's, at both
 324px and 1280px.
 
+**Done.** Both halves landed, with one deviation from the plan's sketch of
+the trip form. The plan said to split the create page into two cards "so
+the actions still sit at the bottom of the last thing above them" — but
+`renderTripForm` renders its own action row, so with fields first and photo
+second, Save would have landed mid-page above the photo card. Instead
+`renderTripForm` gained `showActions: false` (returning
+`{ submit: () => form.requestSubmit() }`) and the page owns a `.editor-actions`
+row below both cards. That's exactly the seam Milestone 4 needs for
+`renderItemForm`, so it's built once here and reused there.
+`settings-tab.js` passes nothing new and keeps its in-form Save/Cancel.
+Cards are labelled Basic info / Cover photo, matching the Settings tab's
+edit order.
+
+Notes textarea: `rows="6"`, and `.item-form textarea` gets
+`width: 100%; min-height: 7rem; resize: vertical` (the
+`.itinerary-day__notes` pattern). Auto-grow is an `input` listener plus one
+call after prefill. It adds `offsetHeight - clientHeight` to `scrollHeight`
+because everything is `box-sizing: border-box` — without the borders the box
+is 2px short, which is enough to leave a scrollbar.
+
+Verified with `make ci` green and Playwright at 324×756 and 1280×900.
+Textarea: computed `resize === "vertical"` (was the UA default `both`,
+draggable wider than its card); 258px wide inside a 260px card content box;
+132px tall at rest (was ~76px at `rows="3"`); grows to 246px on 12 typed
+lines with no scrollbar and shrinks back to the 132px floor when cleared; a
+15-line note loaded from the server opens at 303px fully expanded. Same on
+the create form, which shares the component. Trip create: cards read
+`["Basic info", "Cover photo"]`, the title input's `top` is above the image
+field's, `.editor-actions` is the page's last child, and **zero**
+`.trip-form__actions` rows remain inside the form. Most importantly the new
+page-level button really creates: clicking Create with a title POSTs and
+lands on the new trip (repeated from a fresh load to rule out a flake after
+one inconclusive first attempt), an empty title still surfaces "title is
+required" inside the form rather than navigating, and Cancel returns to
+`/trips`. The Settings tab still shows exactly one in-form Save/Cancel, no
+page-level row, and saving from it still persists (subtitle round-tripped
+through the API). 0 console errors; all test trips created during
+verification were deleted afterwards.
+
 ## Milestone 4 — New-location form: every field, at creation time
 
 Restructure create mode in `web/js/pages/location-editor-page.js` to the

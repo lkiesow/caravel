@@ -6,10 +6,14 @@ import { renderImageField } from "../components/image-field.js";
 import { icon } from "../icon.js";
 
 // Trip creation only ("/trips/new" - editing an existing trip now happens
-// inline in its Settings tab, see settings-tab.js). One merged card (cover
-// photo above the fields, so Save sits at the very bottom of the whole
-// form, not mid-page above unrelated content) - there's only one action
-// here, so it should read as one form. The cover-photo picker runs in
+// inline in its Settings tab, see settings-tab.js). Two cards, Basic info
+// then Cover photo, in the same order the Settings tab edits them: naming
+// the thing comes before decorating it, and it's the field you'd fill even
+// if you skipped everything else. "Create trip"/Cancel live on the page
+// below both cards rather than inside the form (renderTripForm's
+// showActions: false), since there's only one action here and it belongs at
+// the bottom of everything it commits, not mid-page. The cover-photo picker
+// runs in
 // image-field.js's staging mode (no trip exists yet): a pick is held in
 // memory and previewed locally, then uploaded and attached as part of the
 // same save that creates the trip. On success, this navigates straight to
@@ -29,14 +33,23 @@ export async function renderTripEditorPage(container) {
           <h1 data-i18n="trip.editor.newTitle"></h1>
         </div>
         <div class="editor-card">
-          <div class="image-field-slot"></div>
+          <h4 data-i18n="trip.editor.basicInfo"></h4>
           <div class="trip-form-slot"></div>
+        </div>
+        <div class="editor-card">
+          <h4 data-i18n="trip.overview.image"></h4>
+          <div class="image-field-slot"></div>
+        </div>
+        <div class="editor-actions">
+          <button class="btn btn-primary" data-action="create">${icon("check")} <span data-i18n="trip.editor.createButton"></span></button>
+          <button class="btn btn-secondary" data-action="cancel">${icon("x")} <span data-i18n="common.cancel"></span></button>
         </div>
       </div>
     `;
     translatePage(container);
 
-    renderTripForm(container.querySelector(".trip-form-slot"), null, {
+    const form = renderTripForm(container.querySelector(".trip-form-slot"), null, {
+      showActions: false,
       onSaved: async (saved) => {
         let imageFailed = false;
         if (stagedImage) {
@@ -63,16 +76,19 @@ export async function renderTripEditorPage(container) {
         }
         navigate(imageFailed ? `/trips/${saved.id}/settings` : `/trips/${saved.id}`);
       },
-      onCancel: () => {
-        if (stagedImage?.kind === "file" && stagedImage.previewUrl) URL.revokeObjectURL(stagedImage.previewUrl);
-        navigate("/trips");
-      },
     });
 
     renderImageField(container.querySelector(".image-field-slot"), {
       onStaged: (staged) => {
         stagedImage = staged;
       },
+    });
+
+    container.querySelector('[data-action="create"]').addEventListener("click", () => form.submit());
+
+    container.querySelector('[data-action="cancel"]').addEventListener("click", () => {
+      if (stagedImage?.kind === "file" && stagedImage.previewUrl) URL.revokeObjectURL(stagedImage.previewUrl);
+      navigate("/trips");
     });
   }
 

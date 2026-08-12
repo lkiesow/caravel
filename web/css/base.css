@@ -485,6 +485,16 @@ button {
   gap: 0.5rem;
 }
 
+/* A page-level action row, for pages whose single action commits several
+   cards at once (the create editors) - the same shape as the in-form
+   *__actions rows above, just not inside a card. */
+.editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
 .trip-form input,
 .trip-form textarea {
   border-radius: 0.375rem;
@@ -711,6 +721,16 @@ button {
   font: inherit;
   background: var(--color-bg);
   color: var(--color-text);
+}
+
+/* Same treatment as .itinerary-day__notes: without an explicit width and
+   resize the UA default (resize: both) lets the drag handle pull the
+   textarea wider than the card containing it. Vertical-only dragging still
+   works, on top of the auto-grow in location-form.js. */
+.item-form textarea {
+  width: 100%;
+  min-height: 7rem;
+  resize: vertical;
 }
 
 .item-form__actions {

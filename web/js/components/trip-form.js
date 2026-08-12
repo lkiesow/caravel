@@ -4,7 +4,14 @@ import { icon } from "../icon.js";
 
 // Renders a create/edit form for a trip into `container`. Pass an existing
 // trip object to edit it in place, or null to create a new one.
-export function renderTripForm(container, trip, { onSaved, onCancel }) {
+//
+// With showActions: false the form renders no Save/Cancel row and the
+// caller is expected to place its own submit control, driving it through
+// the returned `submit()`. That's what the create page does: its fields
+// come first and the cover-photo card after them, so a row of buttons
+// inside the fields card would sit mid-page above content that's still
+// part of the same single "create this trip" action.
+export function renderTripForm(container, trip, { onSaved, onCancel, showActions = true }) {
   container.innerHTML = `
     <form class="trip-form" novalidate>
       <p class="trip-form__error" hidden></p>
@@ -26,10 +33,16 @@ export function renderTripForm(container, trip, { onSaved, onCancel }) {
         <span data-i18n="trip.form.subtitle"></span>
         <input type="text" name="subtitle" />
       </label>
-      <div class="trip-form__actions">
-        <button type="submit" class="btn btn-primary">${icon("check")} <span data-i18n="${trip ? "common.save" : "trip.editor.createButton"}"></span></button>
-        <button type="button" class="btn btn-secondary" data-action="cancel">${icon("x")} <span data-i18n="common.cancel"></span></button>
-      </div>
+      ${
+        showActions
+          ? `
+        <div class="trip-form__actions">
+          <button type="submit" class="btn btn-primary">${icon("check")} <span data-i18n="${trip ? "common.save" : "trip.editor.createButton"}"></span></button>
+          <button type="button" class="btn btn-secondary" data-action="cancel">${icon("x")} <span data-i18n="common.cancel"></span></button>
+        </div>
+      `
+          : ""
+      }
     </form>
   `;
   translatePage(container);
@@ -44,7 +57,7 @@ export function renderTripForm(container, trip, { onSaved, onCancel }) {
     form.subtitle.value = trip.subtitle ?? "";
   }
 
-  container.querySelector('[data-action="cancel"]').addEventListener("click", () => onCancel?.());
+  container.querySelector('[data-action="cancel"]')?.addEventListener("click", () => onCancel?.());
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -65,4 +78,8 @@ export function renderTripForm(container, trip, { onSaved, onCancel }) {
       errorEl.hidden = false;
     }
   });
+
+  // requestSubmit() (not submit()) so the form's own submit handler above
+  // still runs, which is where saving and error display live.
+  return { submit: () => form.requestSubmit() };
 }

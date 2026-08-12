@@ -26,7 +26,7 @@ export function renderItemForm(container, item, { tripId, onSaved, onCancel }) {
       </label>
       <label>
         <span data-i18n="location.form.notes"></span>
-        <textarea name="notes" rows="3"></textarea>
+        <textarea name="notes" rows="6"></textarea>
       </label>
       <label class="item-form__checkbox">
         <input type="checkbox" name="showOnMap" checked />
@@ -50,6 +50,22 @@ export function renderItemForm(container, item, { tripId, onSaved, onCancel }) {
     form.notes.value = item.notes ?? "";
     form.showOnMap.checked = item.show_on_map;
   }
+
+  // Notes grow with their content rather than making the user scroll a
+  // 6-row box or drag it bigger every time. min-height in the CSS sets the
+  // floor; clearing the height first lets it shrink again on delete. Run
+  // once after prefill so an existing long note opens fully expanded.
+  function autoGrowNotes() {
+    const notes = form.notes;
+    notes.style.height = "auto";
+    // Everything is border-box (see base.css), so the borders have to be
+    // added back: scrollHeight covers content + padding only, and leaving
+    // them out shorts the box by 2px, which is enough to keep a scrollbar.
+    const borders = notes.offsetHeight - notes.clientHeight;
+    notes.style.height = `${notes.scrollHeight + borders}px`;
+  }
+  form.notes.addEventListener("input", autoGrowNotes);
+  autoGrowNotes();
 
   container.querySelector('[data-action="cancel"]').addEventListener("click", () => onCancel?.());
 

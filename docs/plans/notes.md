@@ -1,0 +1,2 @@
+- A preview for the notes (markdown) for locations would be nice.
+- H2 is rendered with too much vertical margin/padding in the location details

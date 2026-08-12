@@ -202,6 +202,39 @@ populated one (assert each expected card present); assert no `scrollWidth`
 overflow with a deliberately long title, and that the trailing edit button
 navigates to `…/edit`.
 
+**Done.** Landed as planned, with one refinement the plan only parenthesized:
+the Location card has two independent conditions rather than one, so an
+address with no coordinates still gets a card (address text, no map, no
+Google Maps link) instead of being hidden along with the map — `hasCoords`
+and `hasAddress` are computed once and used separately. Links, Dates and
+Documents cards render only when non-empty; all four `<li class="empty">`
+branches are gone. The header is now `<h1>` alone and the Edit button moved
+to the page's last element as a full-width, always-labelled
+`.location-view__edit` ("Edit this location" / "Diesen Ort bearbeiten").
+`item.detail.locationEmpty` retired from both locales;
+`linksEmpty`/`datesEmpty`/`documents.empty` kept, since the editor still
+uses them.
+
+Verified with `make ci` green (i18n parity covers the retired key) and
+Playwright assertions at 324×756 against three states of the seeded trip's
+locations, driven through the real API so the page was re-read from the
+server each time: a bare location renders **0 `.editor-card`s, 0
+`leaflet-map`s, 0 `li.empty`** and reads only "Back / title / Site
+landmark / Edit this location"; a fully populated one renders exactly
+`["Location", "Links", "Dates", "Documents"]` with the address, one map,
+the Google Maps link, both links (a labelled one and a bare URL), both
+dates (a range with a label and a single date) and the uploaded document
+with its size, and still 0 `li.empty`; an address-only location renders
+just the Location card with the address and **no** map or maps link.
+`.page__header` contains only `H1` in every case, and a 59-character title
+wrapping to five lines produced no horizontal overflow (`scrollWidth ===
+innerWidth === 324`) — the failure mode this milestone removes. The edit
+button is 44px tall, is the page's last child, and navigating by it lands
+on `…/edit`, where the editor's own "No links yet."/"No dates yet." rows
+are confirmed still present. 0 console errors. Re-verified at 1280×900:
+the button spans the content column exactly and keeps its label. Injected
+test data was removed afterwards, leaving the seeded trip as it was.
+
 ## Milestone 3 — Form polish: notes textarea, and title before photo on new trip
 
 Two small, independent fixes.

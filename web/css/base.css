@@ -618,6 +618,14 @@ button {
   margin-top: 0.5rem;
 }
 
+/* Full-width and always labelled (no .btn-collapse): it's the page's last
+   element, with the whole content column to itself, so there's no row to
+   share and nothing to collapse for. */
+.location-view__edit {
+  width: 100%;
+  margin-top: 1rem;
+}
+
 .trips-empty,
 .items-empty {
   color: var(--color-text-muted);

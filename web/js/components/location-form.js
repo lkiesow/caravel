@@ -6,7 +6,14 @@ const CATEGORIES = ["site", "stay", "transport"];
 
 // Renders a create/edit form for an item's core fields into `container`.
 // Pass an existing item to edit it, or null (with a tripId) to create one.
-export function renderItemForm(container, item, { tripId, onSaved, onCancel }) {
+//
+// With showActions: false the form renders no Save/Cancel row and the
+// caller places its own submit control, driving it through the returned
+// `submit()` - same arrangement as renderTripForm. That's what the create
+// page does: creating a location commits several cards at once (photo,
+// location, dates, links, documents), so the button belongs at the bottom
+// of all of them rather than inside the first one.
+export function renderItemForm(container, item, { tripId, onSaved, onCancel, showActions = true }) {
   container.innerHTML = `
     <form class="item-form" novalidate>
       <p class="item-form__error" hidden></p>
@@ -32,10 +39,16 @@ export function renderItemForm(container, item, { tripId, onSaved, onCancel }) {
         <input type="checkbox" name="showOnMap" checked />
         <span data-i18n="location.form.showOnMap"></span>
       </label>
-      <div class="item-form__actions">
-        <button type="submit" class="btn btn-primary">${icon("check")} <span data-i18n="${item ? "common.save" : "location.editor.createButton"}"></span></button>
-        <button type="button" class="btn btn-secondary" data-action="cancel">${icon("x")} <span data-i18n="common.cancel"></span></button>
-      </div>
+      ${
+        showActions
+          ? `
+        <div class="item-form__actions">
+          <button type="submit" class="btn btn-primary">${icon("check")} <span data-i18n="${item ? "common.save" : "location.editor.createButton"}"></span></button>
+          <button type="button" class="btn btn-secondary" data-action="cancel">${icon("x")} <span data-i18n="common.cancel"></span></button>
+        </div>
+      `
+          : ""
+      }
     </form>
   `;
   translatePage(container);
@@ -67,7 +80,7 @@ export function renderItemForm(container, item, { tripId, onSaved, onCancel }) {
   form.notes.addEventListener("input", autoGrowNotes);
   autoGrowNotes();
 
-  container.querySelector('[data-action="cancel"]').addEventListener("click", () => onCancel?.());
+  container.querySelector('[data-action="cancel"]')?.addEventListener("click", () => onCancel?.());
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -91,4 +104,8 @@ export function renderItemForm(container, item, { tripId, onSaved, onCancel }) {
       errorEl.hidden = false;
     }
   });
+
+  // requestSubmit() (not submit()) so the handler above still runs - that's
+  // where saving and error display live.
+  return { submit: () => form.requestSubmit() };
 }

@@ -71,12 +71,6 @@ require a redesign later — they're additive, not blocked, but none are built:
 
 ## Deferred / scope-limited from Stage 02
 
-- **Location (item) editor's create mode doesn't offer location, links,
-  dates, or documents** — only the staged cover photo got the same
-  create-mode treatment trips got. A brand-new item can't have a pin,
-  links, dates, or attachments until after its first save, when the editor
-  switches to edit mode. (Matches `notes.md`'s "new location editor should
-  allow setting all the things the edit location allows" almost exactly.)
 - **User menu dropdown only has "Log out."** Built "structured so more
   items can be added later" (per the Stage 02 plan) — admin/settings items
   were explicitly deferred, not forgotten.
@@ -189,7 +183,6 @@ require a redesign later — they're additive, not blocked, but none are built:
   (rename every key and identifier together) rather than piecemeal, to
   avoid leaving the codebase in a half-migrated state indefinitely.
 
-
 ## Deferred from Stage 06
 
 - **Refactor `user-menu.js` onto `components/menu.js`.** Stage 06
@@ -203,3 +196,23 @@ require a redesign later — they're additive, not blocked, but none are built:
   onto the component needs `renderMenu` to grow a non-select "action item"
   mode first (Log out isn't a selection), which is also what the ⋮
   contextual menu in the checklist entry above wants.
+- **Create-mode writes aren't atomic.** Stage 06 Milestone 4 lets a new
+  location carry coordinates, links, dates and documents, but it commits
+  them as a sequence of requests after the item POST returns an ID (every
+  sub-resource endpoint requires an existing item). If one fails, the
+  location is left half-populated: the failures are reported in one alert
+  and the user lands on the edit page to finish by hand — the same policy
+  the staged cover photo has always used, so not a new gap, but a gap. The
+  proper fix is a transactional create: optional nested
+  `location`/`links`/`dates` on `itemRequest`, with `handleCreateItem`
+  inserting them in one transaction. Documents can't ride along either
+  way, being multipart, so they'd stay a post-create upload regardless.
+- **Click-to-pick coordinates on a map.** Both create and edit still take
+  latitude/longitude as raw number inputs — fine for pasting from
+  elsewhere, unpleasant on a phone. `leaflet-map.js` is read-only today
+  (attribute-driven, no click handler), so a picker means teaching it a
+  pick mode (click or drag a marker, feed the coordinates back to the
+  form), ideally with an address search via a geocoder. Deliberately kept
+  out of Stage 06, whose Milestone 4 was scoped to plumbing endpoints that
+  already exist — but it's the obvious next step for making the Location
+  card pleasant to fill in.

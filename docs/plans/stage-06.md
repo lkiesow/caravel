@@ -376,6 +376,50 @@ removed before submit, and that submitting with title only still works
 (no empty sub-resource requests fired — check `browser_network_requests`).
 Re-run the happy path at 1280px.
 
+**Done.** Landed, with the two modes converged further than the plan
+described. Rather than create mode growing a second set of cards, both modes
+now render the *same* six cards from one template — Basic info, Cover photo,
+Location, Links, Dates, Documents — and only the write timing differs. Two
+deviations worth noting: the plan's card order put Dates before Links, but
+Links-then-Dates was kept so create, edit and the read view all match; and
+`renderItemForm` did not need a `readBody()`, just `showActions` plus the
+same `{ submit }` return Milestone 3 added to `renderTripForm`. Small
+supporting changes: `renderDocumentList` gained a staging mode
+(`path: null` + a `staged` array; renders from `File` objects, no fetch, no
+confirm on remove, "Add file" instead of "Upload"), the link/date list
+renderers switched from server ids to array indices so one code path serves
+both modes, and `location.editor.createButton` is finally "Create
+location"/"Ort erstellen".
+
+Verified with `make ci` green and Playwright at 324×756 plus 1280×900,
+always asserting against a server re-read rather than form state. Create
+with everything filled (title, category, type, a two-line note,
+coordinates + address, two links — one labelled, one bare URL — two dates —
+a range with a label and a single date — and a document with a note): a
+single click lands on `/trips/:id/locations/:newId`, **not** `/edit`, and a
+fresh load of that URL shows the map, the address, both links, both dates
+and the document, with the API confirming every field including
+`show_on_map`. Nothing is written before that click — the network log showed
+zero `/items` requests while staging. Title-only create fires **exactly
+one** POST and no empty sub-resource calls. Staged rows can be removed
+before submit, and removing the *first* of two links/dates/documents removes
+the right one (index handling). The partial-failure branch was exercised by
+stubbing only the links POST to 500: one alert with the server's message,
+landing on `…/edit`, and the date queued *after* the failed link still
+written — failures are collected, not thrown, so one bad row doesn't drop
+what follows. Empty title still shows "title is required" without
+navigating; Cancel returns to the trip.
+
+Edit mode re-verified as unchanged behavior on the shared code: its own
+in-form Save/Cancel, the per-card "Save location" button, a Delete card, no
+page-level action row, "Upload" (not "Add file"), and adds/removes hitting
+the API immediately with the empty rows returning afterwards. Including the
+Stage 05 duplicate-listener regression test, since these handlers were
+rewritten: three sequential link adds gave 1 → 2 → 3 server-side and
+rendered (not 1 → 2 → 4), same for dates. 0 console errors; all six
+locations created during verification were deleted, leaving the seeded trip
+with its original three.
+
 ---
 
 ## Build order

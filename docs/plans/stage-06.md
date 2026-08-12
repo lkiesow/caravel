@@ -420,6 +420,78 @@ rendered (not 1 → 2 → 4), same for dates. 0 console errors; all six
 locations created during verification were deleted, leaving the seeded trip
 with its original three.
 
+## Milestone 5 (bonus) — Editor rows: aligned on desktop, full width on mobile
+
+Added mid-stage after reviewing Milestone 4 on a real phone and on desktop.
+Two complaints, both about the editor's sub-resource rows (Location, Links,
+Dates, Documents, and the Image card), and both applying to create *and*
+edit mode since they share one template now:
+
+- **Desktop: the blue buttons don't line up.** Each row's inputs sat at
+  their intrinsic widths, so its submit button stopped wherever those
+  happened to end — four different horizontal positions down one page, which
+  reads as clutter. Fix: every control in these rows grows (`flex: 1 1 8rem;
+  min-width: 0`), which pushes each button flush against its card's right
+  edge; the cards share a width, so the buttons line up with each other. The
+  page-level "Create location" stays left, as the page's own action rather
+  than a row's. The Location card's fields also move from label-beside-input
+  to the stacked label-above-input shape `.item-form` uses in the card
+  directly above it.
+- **Mobile: rows wrapped badly and the add button became a stray "+".** At
+  324px the controls wrapped at intrinsic widths, leaving half-width date
+  inputs beside dead space, and the submit button wrapped onto a line of its
+  own — where, collapsed to icon-only by `.btn-collapse`, it read as a stray
+  button rather than that row's action. Fix: under 640px each control goes
+  `flex-basis: 100%`, one per line, and the submit button goes full width
+  *with* its label — a new `.btn-row` class replacing `.btn-collapse` on
+  these four buttons (Add link / Add date / Add file-or-Upload / Set), since
+  a full-width bare "+" would be worse than either option.
+
+**Done.** Landed as described. `.btn-row` is the shared class for an
+add-row's submit button: intrinsic width and flush right on desktop, full
+width on mobile, labelled at both. One thing the plan above didn't
+anticipate: `.image-field__controls` and `.image-field__url-form` needed
+`flex-direction: column` on mobile, not just `align-items: stretch` — they're
+row-direction flex containers, so stretch only equalizes heights, and with
+the Set button going full width inside a row the URL input was squeezed to
+an unusable 18px sliver. Caught by measuring, not by looking.
+
+Verified with `make ci` green and Playwright at 1280×900 and 324×756, in
+both create and edit mode. Desktop: all four row buttons in create mode
+(Set / Add link / Add date / Add file) report an identical `right` of 1087px,
+equal to the card's content edge; in edit mode all five (plus Save location)
+match at 1087. Delete stays left. The Location card's three labels compute
+`flex-direction: column`. Mobile: every control in all five forms measures
+exactly the card's content width (borders included in the maths — the first
+run's 258-vs-260 "failure" was my measurement forgetting the card's 1px
+borders, not a layout bug), each form puts one control per row (3, 3, 3, 4, 3
+controls in as many rows), every `.btn-row` is ≥44px tall and keeps a visible
+label, and there's no horizontal overflow. The two other places these
+components appear were re-checked at 324px for regressions: the trip
+Documents tab and Settings' image field both stack into three full-width
+controls. 0 console errors.
+
+Two follow-ups from testing at the checkpoint, both folded into this
+milestone's commit. **Copy:** the image button read just "Set" while its
+neighbours read "Add link"/"Add date"/"Add file", so it became "Set image"
+("Bild setzen") — verb-plus-noun like the rest, and long enough not to look
+like a different kind of control. **Colour:** with five accent-blue buttons
+stacked down one page the blue stopped meaning anything, so every row button
+moved to `.btn-secondary` — the neutral outlined style the checklist's own
+"Add" button already uses — including "Save location", which sits in a field
+row and so reads as one of them. That leaves "Create location" as the only
+blue button in create mode, and Basic info's "Save" as the only one in edit
+mode (deliberately kept: it's that page's nearest equivalent to a primary
+action, and an editor with no accent at all reads flat). Delete stays red.
+Verified by enumerating every button on the edit page by computed
+`backgroundColor` rather than by eye, and re-checking that all five row
+buttons still share the 1087px right edge.
+
+Noticed while verifying, not changed: `cmd/seed/main.go` never sets
+`ShowOnMap`, so every seeded demo item is `show_on_map: false` (confirmed on
+both demo trips, including one this session never touched) and the seeded
+trip's Map tab is therefore empty. Logged to `todo.md`.
+
 ---
 
 ## Build order

@@ -113,6 +113,15 @@ a:visited {
   padding: 0.5rem;
 }
 
+/* The submit button of an add-row (Add link / Add date / Add file / Set).
+   Intrinsic width here, flush against the right edge of its card because the
+   inputs before it grow; full width under 640px, where the row stacks. It
+   keeps its label at every width - deliberately *not* .btn-collapse, which
+   would leave a bare "+" spanning the whole row. */
+.btn-row {
+  white-space: nowrap;
+}
+
 .btn-primary {
   background: var(--color-accent);
   border-color: var(--color-accent);
@@ -754,9 +763,38 @@ button {
   align-items: end;
 }
 
+/* Every control in these rows grows, so the submit button after them is
+   pushed flush against the card's right edge. Since the cards are all the
+   same width, that lines the buttons up with each other down the page -
+   previously each row's button stopped wherever its inputs happened to end,
+   at four different positions.
+   min-width: 0 is load-bearing for input[type=date], which carries a
+   browser-imposed intrinsic minimum that otherwise wins over flex-shrink
+   (same reason .trip-form__dates needs it). */
+.location-form label,
+.link-form input,
+.date-form input,
+.document-form input[type="text"],
+.document-form .image-field__upload {
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+
+/* Stacked label-above-input, matching .item-form's fields in the card above
+   rather than the label-beside-input row this used to be. */
 .location-form label {
-  flex: 1;
-  min-width: 8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+/* The lone Save button (edit mode) wraps onto its own row once the three
+   fields fill the first one; keep it at the same right edge as the add-row
+   buttons rather than stranded on the left. */
+.location-form button {
+  margin-left: auto;
 }
 
 .location-form input,
@@ -769,6 +807,13 @@ button {
   font: inherit;
   background: var(--color-bg);
   color: var(--color-text);
+}
+
+/* The image card's URL form stretches for the same reason, putting its Set
+   button on the same right edge as everything below it. */
+.image-field__url-form {
+  flex: 1 1 12rem;
+  min-width: 0;
 }
 
 .link-list,
@@ -1068,6 +1113,38 @@ button {
 
   .image-field__upload {
     min-height: var(--tap-min);
+  }
+
+  /* The editor's sub-resource rows stack into one control per line, each
+     full width. At 324px they used to wrap at their intrinsic widths, which
+     left half-width date inputs beside dead space and - worse - pushed the
+     submit button onto a line of its own, where an icon-only "+" read as a
+     stray button rather than that row's action. Full-width and labelled
+     (see .btn-row, which opts out of .btn-collapse) says what it does. */
+  .location-form label,
+  .location-form button,
+  .link-form input,
+  .date-form input,
+  .document-form input[type="text"],
+  .document-form .image-field__upload,
+  .image-field__url-form,
+  .btn-row {
+    flex-basis: 100%;
+    width: 100%;
+  }
+
+  /* Column, not just stretched: these are row-direction flex containers, so
+     align-items: stretch would only equalize heights. The URL form has to
+     stack too - with its Set button going full width, a row would have left
+     the input an unusable ~18px sliver next to it. */
+  .image-field__controls,
+  .image-field__url-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .image-field__upload {
+    justify-content: center;
   }
 
   .trip-tabs button {

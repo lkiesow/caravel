@@ -43,7 +43,7 @@ export async function renderDocumentList(container, path, { staged } = {}) {
             <input type="file" name="file" hidden required data-i18n-aria-label="common.uploadFile" />
           </label>
           <input type="text" name="note" data-i18n-placeholder="documents.notePlaceholder" />
-          <button type="submit" class="btn btn-primary btn-collapse">${isStaging ? `${icon("plus")} <span data-i18n="documents.stage"></span>` : `${icon("upload")} <span data-i18n="documents.upload"></span>`}</button>
+          <button type="submit" class="btn btn-secondary btn-row">${isStaging ? `${icon("plus")} <span data-i18n="documents.stage"></span>` : `${icon("upload")} <span data-i18n="documents.upload"></span>`}</button>
         </form>
       </div>
     `;

@@ -216,3 +216,11 @@ require a redesign later — they're additive, not blocked, but none are built:
   out of Stage 06, whose Milestone 4 was scoped to plumbing endpoints that
   already exist — but it's the obvious next step for making the Location
   card pleasant to fill in.
+- **`make dev-seed` leaves every demo item off the map.** `cmd/seed/main.go`
+  never sets `ShowOnMap` when inserting its three items, so they're all
+  `show_on_map: false` (the Go zero value) and the seeded trip's Map tab is
+  empty until you edit each location by hand — confirmed on two
+  independently seeded demo trips while verifying Stage 06 Milestone 5. A
+  one-line seed fix, but worth deciding deliberately: the map is easier to
+  demo with pins, and the seeded items have no coordinates either, so
+  showing anything means seeding lat/lng too.

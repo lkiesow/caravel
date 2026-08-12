@@ -87,6 +87,18 @@ check, i18n key parity, `go test`. Don't rely on CI to catch it first.
   `internal/db/sqlc/queries/*.sql`, run `sqlc generate` by hand from
   `internal/db/sqlc/` to regenerate the dialect packages — there's no
   automation for that step, and it's easy to forget one dialect.
+- **Adding a new icon.** Icons come from a committed sprite
+  (`web/icons/lucide-sprite.svg`), not a runtime dependency. Add the
+  name to the `ICONS` list in `scripts/gen_icon_sprite.py`, then:
+
+  ```
+  npm install lucide-static --prefix /tmp/lucide-scratch
+  python3 scripts/gen_icon_sprite.py /tmp/lucide-scratch/node_modules/lucide-static/icons
+  ```
+
+  Diff the result before committing — the existing symbols should come
+  out byte-identical; if they don't, an upstream Lucide icon revision
+  would silently restyle icons already in use.
 
 ## Dev environment
 

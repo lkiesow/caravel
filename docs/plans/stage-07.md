@@ -70,6 +70,20 @@ single-location branch already uses on line 217.
 `.leaflet-tile-loaded` count > 0, the map's zoom ≤ 14, and no 404 among the
 tile requests. Re-check a multi-marker trip still frames all its markers.
 
+**Done.** `fitBounds` now takes `maxZoom: SINGLE_MARKER_ZOOM`. The literal
+`14` the single-marker branch already used became that named constant at the
+top of the file, so both paths state the same intent in one place rather than
+repeating a bare number — the deviation from the plan is only that the
+constant is new; the value is unchanged.
+
+Verified against a purpose-made trip with exactly one mappable location
+(created via the API so the demo trip's data stayed untouched): the map now
+loads at zoom 14 with 12 tiles requested and **all 12 returning 200**, where
+before the same shape produced 12 requests at zoom 19 all returning 404 and a
+blank grey rectangle. Re-checked the two-marker demo trip: still 2 markers,
+12 tiles loaded, and every marker inside the map's viewport rect — the
+`maxZoom` cap doesn't interfere with genuine bounds-fitting. `make ci` green.
+
 ## Milestone 2 — Map: real marker on the single-location map
 
 `web/js/components/leaflet-map.js:212`. The `_singleMarker` branch uses a bare

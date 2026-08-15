@@ -9,3 +9,4 @@
 /docs/plans/mobile-fresh-*.png
 *.swp
 .cache/
+.playwright-mcp/

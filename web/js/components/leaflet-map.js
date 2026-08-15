@@ -7,6 +7,12 @@ const CATEGORY_COLORS = {
   transport: "#2563eb",
 };
 
+// Zoom used when the view can't be derived from spread-out markers - a
+// single marker, or a set of markers that all sit in the same place. Close
+// enough to read street names, far enough that OSM definitely has tiles
+// (the layer's maxZoom of 19 is well past what OSM renders in most places).
+const SINGLE_MARKER_ZOOM = 14;
+
 const styles = `
   :host {
     display: block;
@@ -214,7 +220,7 @@ class LeafletMap extends HTMLElement {
         `<strong>${escapeHtml(title)}</strong><br/><a href="${escapeAttr(mapsUrl)}" target="_blank" rel="noopener">${t("map.viewOnGoogleMaps")}</a>`
       );
       this._markers.push(marker);
-      this._map.setView([lat, lng], 14);
+      this._map.setView([lat, lng], SINGLE_MARKER_ZOOM);
       return;
     }
 
@@ -235,7 +241,12 @@ class LeafletMap extends HTMLElement {
 
     if (visible.length) {
       const bounds = L.latLngBounds(visible.map((i) => [i.lat, i.lng]));
-      this._map.fitBounds(bounds, { padding: [32, 32] });
+      // maxZoom matters for a single marker (or several at the same spot):
+      // the bounds are then zero-size and fitBounds would zoom all the way
+      // to the tile layer's maxZoom of 19, where OSM serves no tiles at all
+      // - a grey rectangle with one dot on it. 14 is the same zoom the
+      // single-marker branch above picks deliberately.
+      this._map.fitBounds(bounds, { padding: [32, 32], maxZoom: SINGLE_MARKER_ZOOM });
     } else {
       this._map.setView([20, 0], 2);
     }

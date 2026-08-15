@@ -1,0 +1,299 @@
+# Stage 07 — UI/UX fixes from the automated test round
+
+> **Status: in progress.** Built one milestone at a time per the Workflow
+> section below, each with its own commit and a manual-testing checkpoint.
+
+## Context
+
+An automated Playwright pass over both viewports — desktop 1280×800 and
+324×756 (the phone's native resolution, per `CLAUDE.md`'s mobile testing
+convention), plus dark mode via `prefers-color-scheme` emulation — walked
+every route of the app: login/register, trips list, all six trip tabs,
+location view/edit/create, and the error states around them. It surfaced 19
+issues, each triaged with the user into "fix in this stage", "record in
+`todo.md`", or "drop". Nothing was dropped.
+
+This stage fixes the 11 items marked for immediate work. They fall into four
+groups:
+
+1. **Visible breakage.** A trip with exactly one mappable location renders a
+   blank grey map (zero-size bounds → zoom 19 → every OSM tile 404s), and the
+   per-location map draws a broken-image box instead of a pin (Leaflet's
+   default icon URL resolves against the SPA route).
+2. **Silent failures.** An end date before the start date is accepted without
+   complaint, producing a "20 Aug – 1 Aug 2026" header and silently emptying
+   the itinerary; an itinerary day added by typo can never be removed;
+   clicking Upload with no file selected does nothing at all; an image URL
+   the browser can't load leaves an invisible `alt=""` preview.
+3. **Accessibility.** Dark-mode primary buttons measure 2.54:1 against AA's
+   4.5:1; checklist items are a 22px touch target on a phone; three form
+   controls have no accessible name; error paragraphs are never announced;
+   heading levels skip from h1 to h3/h4.
+4. **Clarity.** Trip cards print raw ISO dates while every other view formats
+   them, and both Delete buttons sit in unlabelled cards that never say what
+   gets deleted.
+
+The remaining 8 findings are recorded in `todo.md` (see Milestone 0), each
+citing this test round.
+
+Two decisions taken with the user up front:
+
+- **Itinerary day deletion applies only to days outside the trip's date
+  range.** Days inside the range are generated placeholders that would simply
+  reappear; a day added outside it is the one a typo can strand.
+- **The dark-mode contrast fix gives buttons their own darker background
+  token** rather than dark text on the existing light blue. `--color-accent`
+  is also the link colour, where `#60a5fa` is fine at 6.97:1, so the token
+  cannot simply be darkened globally.
+
+Milestones are deliberately small — one behavioural change each, so every
+commit is independently reviewable and revertible.
+
+**Milestone 0 (lands with this document, one commit):** write this file and
+add the eight deferred findings to `docs/plans/todo.md`, before touching any
+code.
+
+---
+
+## Milestone 1 — Map: clamp zoom when fitting bounds
+
+`web/js/components/leaflet-map.js:238`. With one mappable item the bounds
+passed to `fitBounds` are zero-size, so Leaflet zooms to the tile layer's
+`maxZoom` (19) and every tile 404s — verified in the network log: 12 requests
+to `https://{a,b,c}.tile.openstreetmap.org/19/228200/136690.png` and its
+neighbours, all 404, leaving a grey rectangle with a single dot on it.
+
+Pass `maxZoom: 14` to `fitBounds`, matching the `setView([lat, lng], 14)` the
+single-location branch already uses on line 217.
+
+**Verify:** trip with exactly one mappable location — assert
+`.leaflet-tile-loaded` count > 0, the map's zoom ≤ 14, and no 404 among the
+tile requests. Re-check a multi-marker trip still frames all its markers.
+
+## Milestone 2 — Map: real marker on the single-location map
+
+`web/js/components/leaflet-map.js:212`. The `_singleMarker` branch uses a bare
+`L.marker`, so Leaflet's default icon resolves relative to the current route
+— `…/locations/marker-icon.png`, which the SPA answers with HTML — and the
+browser draws a broken-image box labelled "Marker" (`naturalWidth: 0`,
+confirmed through the component's shadow root).
+
+Build the marker with the same `L.divIcon` the multi-marker branch uses
+(lines 224–228), factored into one local helper both branches call, coloured
+by category with the existing `#71717a` fallback.
+
+**Verify:** on a location detail page, assert the marker element is the
+`divIcon` span — or that no marker `<img>` has `naturalWidth === 0`.
+
+## Milestone 3 — Reject an end date before the start date
+
+`internal/httpapi/trips.go` — extend `tripRequest.validate()`, already called
+by both `handleCreateTrip` and `handleUpdateTrip`, to return an error when
+both dates are set and the end precedes the start. Today the API accepts it;
+the trip header then reads "20 Aug – 1 Aug 2026" and `datesInRange`
+(`itinerary.go:107`) returns nil for the inverted range, so the itinerary
+silently shows only days that happen to have content.
+
+**Verify:** `PATCH /api/trips/{id}` with an inverted range returns 400 and
+leaves the trip unchanged; `go test ./...` covers both create and update.
+
+## Milestone 4 — Show that rejection inline in the trip form
+
+`web/js/components/trip-form.js` — check the range before the POST/PATCH and
+render the message into the existing `.trip-form__error` paragraph, so the
+user sees it inline instead of as a round-trip API error. New i18n key in
+`web/locales/en.json` + `de.json`.
+
+**Verify:** submitting an inverted range in trip settings shows the inline
+error and issues no request (assert via the network log).
+
+## Milestone 5 — Format dates on trip cards
+
+`web/js/components/trip-card.js` interpolates its date attributes verbatim,
+so the trips list reads `2026-08-20 – 2026-08-23` while the trip header two
+clicks later reads `20 Aug – 23 Aug 2026`.
+
+Extract `formatDateRange()` from `web/js/pages/trip-detail-page.js:109` into a
+shared module (`web/js/format.js`) and import it in both places, rather than
+duplicating the formatting logic.
+
+**Verify:** assert a card's date text equals the same trip's header range.
+
+## Milestone 6 — Delete-day endpoint (backend)
+
+- `internal/db/sqlc/queries/itinerary_days.sql` — add `DeleteItineraryDay
+  :execrows` keyed on id + trip_id, then run `sqlc generate` by hand from
+  `internal/db/sqlc/` for **both** dialects (`CLAUDE.md` gotcha) and add the
+  store method alongside `GetItineraryDayByID`/`UpsertItineraryDayNotes`.
+- `internal/httpapi/router.go` — `r.Delete("/", …)` on the existing
+  `/itinerary/days/{dayId}` group; the handler goes in
+  `internal/httpapi/itinerary.go`, reusing `loadOwnedItineraryDay` for the
+  ownership check and mirroring `handleDeleteItineraryEntry`. Entries cascade
+  via the FK (`itinerary_entries.itinerary_day_id … ON DELETE CASCADE`).
+
+**Verify:** `go test ./...` with a new test covering deletion and the
+cross-user ownership check (mirroring `documents_test.go`); curl the endpoint
+and confirm both the day and its entries are gone.
+
+## Milestone 7 — Delete control on out-of-range itinerary days
+
+`web/js/pages/itinerary-tab.js` — `renderDay()` gains an `.icon-remove`
+button (the same shape as the entry remove button on line 116), rendered only
+when the day has a persisted `id` **and** its date falls outside
+`trip.start_date`–`trip.end_date`. Confirm before deleting a day that carries
+notes or entries. New i18n keys in both locales.
+
+Today "Add a day" accepts any date — 15 Jan 2027 on an August trip was
+accepted, persisted, and left with no way to remove it.
+
+**Verify:** add a day outside the range — an X appears on it and on no
+in-range day; clicking it removes the day, and `GET /api/trips/{id}/itinerary`
+no longer lists that date.
+
+## Milestone 8 — Upload with no file reports itself
+
+`web/js/components/document-list.js:43` marks the `hidden` file input
+`required` on a form with no `novalidate`, so the browser blocks submission
+and cannot focus the hidden control to show its validation bubble: the click
+is swallowed, leaving only a console error (`The invalid form control with
+name='file' is not focusable`).
+
+Drop `required` and report the empty pick through the existing
+`.document-form__error` paragraph — the submit handler on line 104 already
+returns early when no file is picked.
+
+**Verify:** click Upload with no file — visible error text, no console error.
+Uploading a real file still works.
+
+## Milestone 9 — A failed image preview becomes visible
+
+`web/js/components/image-field.js` does render a preview (line 24), but an
+image the browser can't load renders as an `alt=""` element that collapses to
+nothing — which is why a hotlink-blocked Wikimedia URL looked like "no
+preview at all" during testing.
+
+Add an `onerror` handler that surfaces the failure through the existing
+`.image-field__error` paragraph, so a bad URL is visible at pick time.
+(Moving the server-side *fetch* earlier than "Create trip" is the separate
+backlog item, not this milestone.)
+
+**Verify:** set an unreachable image URL — visible error in the image field;
+a working URL still previews.
+
+## Milestone 10 — Dark-mode button contrast
+
+`web/css/base.css`. `.btn-primary` (line 125) is white on `--color-accent`,
+which is `#60a5fa` under `prefers-color-scheme: dark` — **2.54:1**, against
+AA's 4.5:1 for normal text. The token cannot simply be darkened: links use
+the same variable and are fine at 6.97:1 on the dark background.
+
+Add a separate `--color-accent-strong` (`#2563eb` by default, ≈`#1d4ed8` in
+the dark block) for button backgrounds, keeping white text, and audit the
+other white-on-accent surfaces (`::selection` line 46, and the accent
+backgrounds at lines 260 and 548).
+
+**Verify:** compute `.btn-primary`'s contrast ratio under emulated dark mode
+and assert ≥ 4.5; confirm the link ratio is unchanged and light mode still
+measures 5.17:1.
+
+## Milestone 11 — Checklist items get a real touch target
+
+`web/css/base.css`, inside the existing `max-width: 640px` block (from line
+1108). A checklist item's label row measures 110×22 with a 14×14 checkbox,
+while the delete button beside it is a correct 44×44 — so on a phone the
+easiest thing to hit is "remove", not "done".
+
+Give `.checklist-item label` `min-height: var(--tap-min)` and scale the
+checkbox up (≈1.25rem), following the pattern the `.icon-remove` rule already
+uses.
+
+**Verify:** at 324×756, assert `.checklist-item label` height ≥ 44 and that
+the row still lines up with its delete button.
+
+## Milestone 12 — Accessible names for unlabelled controls
+
+Three controls have no accessible name today:
+
+- the per-day item `<select>`, `itinerary-tab.js:53`
+- the add-a-day date input, `itinerary-tab.js:23`
+- the "Dates" start-date input in `location-editor-page.js` — its sibling
+  carries an "End date (optional)" placeholder, the first has neither
+
+Use `data-i18n-aria-label`, which `translatePage` already supports (see
+`document-list.js:43` for the existing usage), with keys in both locales.
+
+**Verify:** assert each control has a non-empty accessible name.
+
+## Milestone 13 — Announce form errors
+
+`.auth-form__error` (`login-page.js:16`) and the sibling `.trip-form__error`,
+`.document-form__error` and `.image-field__error` paragraphs are plain `<p>`
+elements toggled via `hidden`, so a screen reader never hears "Invalid
+username or password." Add `role="alert"`.
+
+**Verify:** assert `role="alert"` on each; re-check that a failed login still
+displays the message normally.
+
+## Milestone 14 — Fix heading hierarchy
+
+Heading levels skip h1 → h3/h4: trip cards use h3, location cards and card
+titles use h4, with no h2 in between. Normalise per page — trips list,
+locations tab, trip detail, and the editor cards.
+
+**Verify:** assert no gap in heading levels on the trips, locations and
+trip-detail pages.
+
+## Milestone 15 — Label the delete cards
+
+Both trip settings (`settings-tab.js:29`) and location edit
+(`location-editor-page.js:120`) end in a bare red Delete button inside an
+unlabelled grey card — no heading, no statement of what gets deleted or that
+it's permanent (the scope only appears afterwards, inside a native
+`confirm()`).
+
+Give each card a heading and a line of explanatory copy, in both locales,
+consistent with the existing card headings ("Basic info", "Cover photo").
+Lands after Milestone 14 so the new headings slot into a hierarchy that is
+already correct.
+
+**Verify:** headings render in both locales; `scripts/check_i18n.py` parity
+check passes.
+
+---
+
+## Build order
+
+Milestones 1 → 15 as numbered.
+
+The two map fixes come first: they are the most visible breakage and touch a
+single file. The date pair goes server-first, so Milestone 4's inline message
+layers onto a rule the API already enforces. The itinerary pair likewise goes
+backend-first — Milestone 6 is independently testable via `go test` and curl,
+without any UI. The pickers and styling follow. The accessibility and copy
+work lands last: Milestones 14 and 15 touch the most files but carry the
+least risk, and 15 depends on 14's corrected hierarchy.
+
+## Workflow
+
+Per `CLAUDE.md`, for each milestone: implement, verify (`make ci` green plus
+a Playwright or `go test` pass proving the behaviour actually changed), add a
+"**Done.**" paragraph to that milestone's section here, update
+`docs/plans/todo.md` in both directions, commit (one commit per milestone,
+message stating what changed, why, and how it was verified), make sure
+`make dev` is running, then stop and wait for the go-ahead before starting
+the next milestone.
+
+## Verification
+
+`make ci` before every commit — build, vet, JS syntax, i18n key parity,
+`go test`. Per-milestone assertions are listed inline above; prefer
+assertions (computed styles, DOM counts, accessible names, network status
+codes, `go test`) over screenshots.
+
+At the end of the stage, re-run both viewports — 1280×800 and 324×756, light
+and dark — across every route touched, asserting
+`document.documentElement.scrollWidth <= window.innerWidth` and that
+`window.location.pathname` is the intended route *before* asserting anything
+about that page (the footgun already recorded in `todo.md`: the router
+silently redirects unmatched paths to `/trips`, so a typo'd URL makes layout
+checks pass trivially against the wrong page).

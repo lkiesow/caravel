@@ -63,7 +63,13 @@ require a redesign later — they're additive, not blocked, but none are built:
 - **No in-app language switcher.** `i18n.js` has a working `setLocale()`
   function and a `localStorage` cache for it, but nothing in the UI calls
   it — locale is autodetected from the browser/OS only, with no way to
-  override it from inside the app.
+  override it from inside the app. Re-confirmed by Stage 07's test round:
+  `setLocale` still has no caller anywhere outside `i18n.js`, and the
+  German UI is only reachable by changing the browser's language (it
+  renders cleanly when you do — no overflow, no untranslated strings).
+  Needs a decision on where the control lives (user menu vs. a settings
+  screen) and whether the choice should persist per account rather than
+  per browser.
 - **No frontend build step / bundler** — deliberate for v1 ("revisit only
   if it becomes a real pain point"), not a bug, just worth remembering this
   was a conscious deferral, not an oversight, if load-time ever becomes a
@@ -216,6 +222,8 @@ require a redesign later — they're additive, not blocked, but none are built:
   out of Stage 06, whose Milestone 4 was scoped to plumbing endpoints that
   already exist — but it's the obvious next step for making the Location
   card pleasant to fill in.
+  *Stage 07's test round reinforces this: entering coordinates by hand is
+  also where the split-save trap below bites hardest.*
 - **`make dev-seed` leaves every demo item off the map.** `cmd/seed/main.go`
   never sets `ShowOnMap` when inserting its three items, so they're all
   `show_on_map: false` (the Go zero value) and the seeded trip's Map tab is
@@ -223,4 +231,76 @@ require a redesign later — they're additive, not blocked, but none are built:
   independently seeded demo trips while verifying Stage 06 Milestone 5. A
   one-line seed fix, but worth deciding deliberately: the map is easier to
   demo with pins, and the seeded items have no coordinates either, so
-  showing anything means seeding lat/lng too.
+  showing anything means seeding lat/lng too. See also "Coordinates alone
+  don't put a location on the map" below — the same `show_on_map` gate,
+  hit from the user's side rather than the seed's.
+
+## Deferred from Stage 07 (automated UI/UX test round)
+
+Stage 07's Playwright pass over desktop (1280×800), mobile (324×756) and
+dark mode found 19 issues; 11 are being fixed in that stage
+(`stage-07.md`), and these are the ones deliberately deferred. Each was
+triaged with the user rather than dropped silently.
+
+- **The "Not found" state renders unstyled.** Hitting a nonexistent trip or
+  location ID (`/trips/<bad-uuid>/locations`) renders bare "Not found."
+  text and a raw underlined link flush against x=0 — no page container, no
+  padding, nothing else on the page. It's the state a stale bookmark or a
+  deleted-trip link lands on, so it's worth looking deliberate; the fix is
+  wrapping it in the same page layout every other route uses.
+- **Location edit's split saves discard typed coordinates.** Latitude and
+  longitude live in their own card with a "Save location" button, while the
+  visually primary "Save" in the Basic info card above them submits only
+  title/category/type/notes. Verified: typing coordinates and pressing
+  Save leaves `location` null on the item with no warning, and there's no
+  unsaved-changes guard when navigating away, so the input is simply lost.
+  The new-location form has the opposite shape — one Create button commits
+  everything — so the two forms teach contradictory habits. Fixing it means
+  either unifying the edit form onto one submit (which wants the
+  transactional-create work in the Stage 06 entry above) or warning about
+  unsaved section changes.
+- **Coordinates alone don't put a location on the map.** `show_on_map` is a
+  checkbox in the *Basic info* card, several cards above the coordinate
+  fields, so setting coordinates and expecting a pin gets an empty map:
+  verified that `GET /api/trips/{id}/map` returns `[]` while the item's
+  coordinates are saved, with nothing in the UI explaining why. Options:
+  default `show_on_map` on once coordinates exist, or move the checkbox
+  next to the coordinates it actually gates.
+- **Image-URL errors surface too late, as a raw alert.** A cover photo set
+  by URL on the *new trip* form is staged locally and only fetched
+  server-side when Create is pressed, where a failure becomes a native
+  `alert()` carrying developer text ("could not fetch image from url:
+  server returned status 403"). Worse, the trip is created anyway, so the
+  alert reads like a total failure that wasn't one. Should validate/fetch
+  at "Set image" time and report inline. (Stage 07 Milestone 9 makes the
+  *broken preview* visible, which is the other half of the same confusion.)
+- **Trip settings' date inputs clip at 324px.** The start/end date fields
+  sit side by side in `.trip-form__dates`; at the phone's width each is
+  ~123px and the browser truncates the year under the calendar icon —
+  "20 / 08 / 202". The location editor's rows already stack under the
+  640px breakpoint (Stage 06 Milestone 5); this row was missed.
+- **The mobile map page swallows vertical scrolling.** On the Map tab at
+  324×756 the map is 424px tall starting at y=383, with only ~67px of page
+  below it — so a touch drag starting anywhere in the lower half of the
+  screen pans the map instead of scrolling the page. The category legend
+  (Site/Stay/Transport) ends up at y=769, just below the fold, with no
+  affordance suggesting it exists. Wants a deliberate decision about map
+  height, gesture handling (e.g. Leaflet's one-finger-pan opt-in) and
+  legend placement rather than a quick tweak.
+- **Polish batch, all confirmed in the same round:**
+    - Destructive confirmations and error reporting still go through native
+      `window.confirm()`/`alert()` (documents, checklists, trips, locations),
+      which on mobile renders as a "localhost:8080 says" system dialog —
+      visually disconnected from the app.
+    - Mobile trip-tab labels are 0.625rem (10px), below the ~11-12px floor a
+      tab bar usually holds to; the tap targets themselves are fine (≥44px).
+    - Category is a fixed `<select>` (Site/Stay/Transport) while Type is
+      free text, so a location detail page reads "Site landmark" with
+      mismatched capitalisation. Either derive Type from a per-category list
+      or at least normalise its display.
+    - Unmatched URLs silently redirect to `/trips` with no "that page
+      doesn't exist" feedback. (Already recorded above as a *testing*
+      footgun; this is the user-facing side of the same behaviour.)
+    - The Documents tab's "Upload" is styled `btn-secondary` though it is
+      that row's primary action, while "New checklist" next to an identical
+      input row is `btn-primary` — the two rows should agree.

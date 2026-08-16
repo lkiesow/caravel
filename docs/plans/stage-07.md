@@ -169,6 +169,60 @@ user sees it inline instead of as a round-trip API error. New i18n key in
 **Verify:** submitting an inverted range in trip settings shows the inline
 error and issues no request (assert via the network log).
 
+**Done.** Two additions to the planned scope, both agreed at the Milestone 3
+checkpoint or forced by what the fix exposed:
+
+1. **`min` on the end-date input**, synced whenever the start date changes
+   (the user's suggestion). The invalid day is then greyed out in the native
+   picker, so the mistake mostly can't be made rather than being reported
+   after the fact. Deliberately one-directional — capping the start date at
+   the end date too would block the ordinary move of shifting a whole trip
+   later, where the new start is picked first. An end date already set and
+   now out of range is left exactly as typed; the submit check explains it
+   instead of silently rewriting a date the user entered.
+2. **Every form error became a callout box.** `.trip-form__error` turned out
+   to have no error styling at all (only `padding`), so the message rendered
+   as ordinary body text. Matching it to its three siblings' red text was the
+   obvious fix — but at the checkpoint the user pointed out that red text is
+   unreadable in dark mode, which measurement confirmed: `#dc2626` on the
+   dark card is **3.08:1**, under AA's 4.5:1, and this affected all four
+   error paragraphs, not just the new one. Lightening `--color-danger` wasn't
+   available either: the same variable is the Delete button's background,
+   with white text on it.
+
+   Following the user's suggestion, errors now use GitHub's caution-block
+   shape (chosen from three variants: no icon, so no sprite regeneration and
+   no new i18n keys): a red left border and faint red tint, with the message
+   itself in `--color-text`. Legibility no longer depends on the red passing
+   a text-contrast bar anywhere — the red is decoration, held only to the
+   3:1 non-text bar.
+
+   This also introduced the token split M10 will need for accent:
+   `--color-danger` stays the *background* red, `--color-danger-fg` is the
+   *foreground* red (border, and `.icon-remove:hover`), lightened to
+   `#f87171` in dark mode. All four error paragraphs now share one rule
+   instead of three near-identical copies plus one gap.
+
+The submit check stays necessary alongside `min`: the form is `novalidate`,
+so a date typed directly into the field still submits.
+
+Verified in the browser. `min` tracks the start date (`2026-09-05` after
+changing it), clears when the start is cleared, and leaves an existing
+`2026-08-23` end value untouched when it falls out of range. Submitting an
+inverted range shows "The end date can't be before the start date." and
+issues **0 fetch calls** (counted by wrapping `window.fetch`); a valid range
+saves normally and the API confirms `2026-08-20 → 2026-08-23`. Re-checked on
+the *create* form in German: same `min` behaviour, message reads "Das
+Enddatum darf nicht vor dem Startdatum liegen.", and no trip is created.
+
+Contrast measured in both themes with the translucent tint flattened over
+the card behind it — message text **11.6:1 dark / 14.34:1 light** (was 3.08
+dark), border **5.38:1 dark / 4.39:1 light** against the card, both well past
+the 3:1 non-text bar. The Delete button is untouched at 4.83:1, confirming
+the token split did its job. Spot-checked the login form's error too: same
+callout, `#fafafa` text on the dark tint. i18n parity 109 keys in sync,
+`make ci` green.
+
 ## Milestone 5 — Format dates on trip cards
 
 `web/js/components/trip-card.js` interpolates its date attributes verbatim,

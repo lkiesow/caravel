@@ -33,6 +33,7 @@
   "trip.form.startDate": "Start date",
   "trip.form.endDate": "End date",
   "trip.form.subtitle": "Subtitle",
+  "trip.form.endBeforeStart": "The end date can't be before the start date.",
   "trip.deleteConfirm": "Delete this trip? This cannot be undone.",
   "trip.tabs.locations": "Locations",
   "trip.tabs.map": "Map",

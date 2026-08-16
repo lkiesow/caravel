@@ -33,6 +33,7 @@
   "trip.form.startDate": "Startdatum",
   "trip.form.endDate": "Enddatum",
   "trip.form.subtitle": "Untertitel",
+  "trip.form.endBeforeStart": "Das Enddatum darf nicht vor dem Startdatum liegen.",
   "trip.deleteConfirm": "Diese Reise löschen? Das kann nicht rückgängig gemacht werden.",
   "trip.tabs.locations": "Orte",
   "trip.tabs.map": "Karte",

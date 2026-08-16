@@ -57,11 +57,38 @@ export function renderTripForm(container, trip, { onSaved, onCancel, showActions
     form.subtitle.value = trip.subtitle ?? "";
   }
 
+  // Keep the end-date picker from offering days before the start date at
+  // all - prevention beats the error message below, which only fires once
+  // the user has already committed to a choice. Deliberately one-directional:
+  // capping the start date at the end date too would block the ordinary move
+  // of shifting a whole trip later, where you pick the new start first.
+  //
+  // An end date that's already set and now precedes a newly picked start is
+  // left exactly as the user typed it - the submit check reports it rather
+  // than silently rewriting or clearing a date they entered. The form is
+  // novalidate, so min never blocks submission on its own either.
+  const syncEndDateMin = () => {
+    if (form.startDate.value) form.endDate.min = form.startDate.value;
+    else form.endDate.removeAttribute("min");
+  };
+  syncEndDateMin();
+  form.startDate.addEventListener("change", syncEndDateMin);
+
   container.querySelector('[data-action="cancel"]')?.addEventListener("click", () => onCancel?.());
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     errorEl.hidden = true;
+
+    // The API rejects this too (tripRequest.validate), but catching it here
+    // keeps the message inline and next to the fields instead of arriving as
+    // a round-trip error. Still needed alongside the end-date min above: a
+    // date typed directly into the field bypasses the picker's constraint.
+    if (form.startDate.value && form.endDate.value && form.endDate.value < form.startDate.value) {
+      errorEl.textContent = t("trip.form.endBeforeStart");
+      errorEl.hidden = false;
+      return;
+    }
 
     const body = {
       title: form.title.value,

@@ -5,7 +5,16 @@
   --color-text-muted: #52525b;
   --color-accent: #2563eb;
   --color-border: #e4e4e7;
+  /* --color-danger is a *background* (the Delete button, with white text on
+     it); --color-danger-fg is the same red used as a foreground - a border,
+     rule or icon - where the dark theme needs a lighter shade to stay
+     visible against a dark surface. Keeping them apart is what lets dark
+     mode brighten one without breaking the contrast of the other. */
   --color-danger: #dc2626;
+  --color-danger-fg: #dc2626;
+  /* Backdrop for danger callouts. Kept faint enough that --color-text stays
+     comfortably readable on it, so the tint signals without carrying meaning. */
+  --color-danger-tint: rgba(220, 38, 38, 0.08);
 
   --radius: 0.375rem;
   --radius-lg: 0.5rem;
@@ -23,6 +32,10 @@
     --color-text-muted: #a1a1aa;
     --color-accent: #60a5fa;
     --color-border: #3f3f46;
+    --color-danger-fg: #f87171;
+    /* Slightly stronger than the light-mode tint: the same alpha over a dark
+       surface reads as almost nothing. */
+    --color-danger-tint: rgba(248, 113, 113, 0.14);
   }
 }
 
@@ -152,7 +165,7 @@ a:visited {
 }
 
 .icon-remove:hover {
-  color: var(--color-danger);
+  color: var(--color-danger-fg);
 }
 
 .icon-remove:focus-visible {
@@ -211,9 +224,30 @@ a:visited {
   color: var(--color-text);
 }
 
-.auth-form__error {
-  color: var(--color-danger);
+/* Form errors read as a bordered callout rather than a line of red text.
+   Red as *text* can't carry the message on both themes: #dc2626 on the dark
+   card measures 3.08:1, under AA's 4.5:1 for body copy, and lightening the
+   token isn't available either - the same variable is the Delete button's
+   background, where white sits on top of it. So the red moves to the border
+   and a background tint (decoration, held to the 3:1 non-text bar) and the
+   message itself uses --color-text, which is legible on both themes by
+   construction.
+
+   One rule for all four error paragraphs in the app - auth, trip form,
+   documents, image field - which previously carried three near-identical
+   copies of the same declarations plus one (.trip-form__error) that had no
+   error styling at all. */
+.auth-form__error,
+.trip-form__error,
+.document-form__error,
+.image-field__error {
+  color: var(--color-text);
   font-size: 0.875rem;
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--color-danger-fg);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: var(--color-danger-tint);
 }
 
 .link-button {
@@ -507,10 +541,6 @@ button {
 .trip-form input,
 .trip-form textarea {
   border-radius: 0.375rem;
-}
-
-.trip-form__error {
-  padding: 0.5rem 1rem;
 }
 
 .back-link {
@@ -885,12 +915,6 @@ button {
   min-width: 0;
 }
 
-.image-field__error {
-  color: var(--color-danger);
-  font-size: 0.875rem;
-  margin: 0.5rem 0 0;
-}
-
 .itinerary__hint {
   color: var(--color-text-muted);
   font-size: 0.875rem;
@@ -1002,12 +1026,6 @@ button {
   color: var(--color-text);
   flex: 1;
   min-width: 0;
-}
-
-.document-form__error {
-  color: var(--color-danger);
-  font-size: 0.875rem;
-  margin: 0 0 0.5rem;
 }
 
 .document-note {

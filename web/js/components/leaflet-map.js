@@ -13,6 +13,25 @@ const CATEGORY_COLORS = {
 // (the layer's maxZoom of 19 is well past what OSM renders in most places).
 const SINGLE_MARKER_ZOOM = 14;
 
+// Category colour for a marker, for items whose category is unknown or not
+// one of the three the app defines (the single-marker mode gets it from an
+// attribute, so it can legitimately be absent).
+const FALLBACK_MARKER_COLOR = "#71717a";
+
+// Every marker in this component is drawn as a CSS dot rather than an image.
+// Leaflet's default marker is an <img> whose src is resolved relative to the
+// *page* URL, which in an SPA means /trips/<id>/locations/marker-icon.png -
+// answered with the app's HTML and rendered as a broken image. Sidestepping
+// the icon assets entirely also keeps the vendored Leaflet copy image-free.
+function markerIcon(L, category) {
+  const color = CATEGORY_COLORS[category] || FALLBACK_MARKER_COLOR;
+  return L.divIcon({
+    className: "",
+    html: `<span style="display:block;width:1rem;height:1rem;border-radius:50%;background:${color};border:2px solid white;box-shadow:0 0 2px rgba(0,0,0,.5)"></span>`,
+    iconSize: [16, 16],
+  });
+}
+
 const styles = `
   :host {
     display: block;
@@ -97,7 +116,7 @@ const styles = `
 
 class LeafletMap extends HTMLElement {
   static get observedAttributes() {
-    return ["trip-id", "lat", "lng", "marker-title"];
+    return ["trip-id", "lat", "lng", "marker-title", "marker-category"];
   }
 
   connectedCallback() {
@@ -129,7 +148,12 @@ class LeafletMap extends HTMLElement {
     if (lat != null && lng != null) {
       // Single-marker mode: an item's own location page embeds one point,
       // driven directly by attributes - no trip-wide fetch, no legend.
-      this._singleMarker = { lat: Number(lat), lng: Number(lng), title: this.getAttribute("marker-title") || "" };
+      this._singleMarker = {
+        lat: Number(lat),
+        lng: Number(lng),
+        title: this.getAttribute("marker-title") || "",
+        category: this.getAttribute("marker-category") || "",
+      };
       this._items = [];
       await this.render(generation);
       return;
@@ -213,9 +237,9 @@ class LeafletMap extends HTMLElement {
     this._markers = [];
 
     if (this._singleMarker) {
-      const { lat, lng, title } = this._singleMarker;
+      const { lat, lng, title, category } = this._singleMarker;
       const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
-      const marker = L.marker([lat, lng]).addTo(this._map);
+      const marker = L.marker([lat, lng], { icon: markerIcon(L, category) }).addTo(this._map);
       marker.bindPopup(
         `<strong>${escapeHtml(title)}</strong><br/><a href="${escapeAttr(mapsUrl)}" target="_blank" rel="noopener">${t("map.viewOnGoogleMaps")}</a>`
       );
@@ -227,12 +251,7 @@ class LeafletMap extends HTMLElement {
     const visible = this._items.filter((item) => this._activeCategories.has(item.category));
 
     for (const item of visible) {
-      const icon = L.divIcon({
-        className: "",
-        html: `<span style="display:block;width:1rem;height:1rem;border-radius:50%;background:${CATEGORY_COLORS[item.category]};border:2px solid white;box-shadow:0 0 2px rgba(0,0,0,.5)"></span>`,
-        iconSize: [16, 16],
-      });
-      const marker = L.marker([item.lat, item.lng], { icon }).addTo(this._map);
+      const marker = L.marker([item.lat, item.lng], { icon: markerIcon(L, item.category) }).addTo(this._map);
       marker.bindPopup(
         `<strong>${escapeHtml(item.title)}</strong><br/><a href="${escapeAttr(item.google_maps_url)}" target="_blank" rel="noopener">${t("map.viewOnGoogleMaps")}</a>`
       );

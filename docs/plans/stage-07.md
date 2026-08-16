@@ -99,6 +99,26 @@ by category with the existing `#71717a` fallback.
 **Verify:** on a location detail page, assert the marker element is the
 `divIcon` span — or that no marker `<img>` has `naturalWidth === 0`.
 
+**Done.** Both branches now call one `markerIcon(L, category)` helper, so
+neither map builds an icon of its own. Beyond the plan: the single-marker
+mode had no category to colour by (its attributes were only `lat`/`lng`/
+`marker-title`), so it gained a `marker-category` observed attribute, passed
+from `location-view-page.js`. The dot on a location's own map therefore
+matches both the trip map's colour coding and the category dot printed
+directly above it on the same page — greyed via a named
+`FALLBACK_MARKER_COLOR` when the attribute is absent.
+
+Verified on a `site` location: exactly 1 marker, `tagName` `DIV` (the
+divIcon), 0 broken images, dot `rgb(22, 163, 74)` = the site green, and
+**no `marker-icon.png` request in the network log at all** — previously that
+request 404'd into the SPA's HTML and drew a broken-image box. Trip map
+re-checked: both markers still site-green, popup still opens on click with
+"Kirkjufell / View on Google Maps". Fallback re-checked by mounting a
+`<leaflet-map>` with no `marker-category`: grey `rgb(113, 113, 122)`. The two
+console warnings seen during the click test are pre-existing Leaflet
+`mozPressure`/`mozInputSource` deprecations from the synthetic event, not
+from this change. `make ci` green.
+
 ## Milestone 3 — Reject an end date before the start date
 
 `internal/httpapi/trips.go` — extend `tripRequest.validate()`, already called

@@ -221,6 +221,10 @@ type Store interface {
 	UpsertItineraryDayNotes(ctx context.Context, newID, tripID, date string, notes *string) (ItineraryDay, error)
 	ListItineraryDaysByTrip(ctx context.Context, tripID string) ([]ItineraryDay, error)
 	GetItineraryDayByID(ctx context.Context, id string) (ItineraryDay, error)
+	// DeleteItineraryDay removes the day and, through the entries table's
+	// ON DELETE CASCADE, everything planned on it. Reports false if no row
+	// matched both id and tripID.
+	DeleteItineraryDay(ctx context.Context, id, tripID string) (bool, error)
 
 	CreateItineraryEntry(ctx context.Context, p CreateItineraryEntryParams) (ItineraryEntry, error)
 	ListItineraryEntriesByTrip(ctx context.Context, tripID string) ([]ItineraryEntryDetail, error)

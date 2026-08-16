@@ -512,6 +512,14 @@ func (s *sqliteStore) GetItineraryDayByID(ctx context.Context, id string) (Itine
 	return sqliteItineraryDayToDomain(row), nil
 }
 
+func (s *sqliteStore) DeleteItineraryDay(ctx context.Context, id, tripID string) (bool, error) {
+	n, err := s.q.DeleteItineraryDay(ctx, sqlitegen.DeleteItineraryDayParams{ID: id, TripID: tripID})
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
 func (s *sqliteStore) CreateItineraryEntry(ctx context.Context, p CreateItineraryEntryParams) (ItineraryEntry, error) {
 	row, err := s.q.CreateItineraryEntry(ctx, sqlitegen.CreateItineraryEntryParams{
 		ID:             p.ID,

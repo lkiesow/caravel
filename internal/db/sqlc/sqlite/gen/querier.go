@@ -29,6 +29,11 @@ type Querier interface {
 	DeleteItem(ctx context.Context, arg DeleteItemParams) (int64, error)
 	DeleteItemDate(ctx context.Context, arg DeleteItemDateParams) (int64, error)
 	DeleteItemLink(ctx context.Context, arg DeleteItemLinkParams) (int64, error)
+	// Scoped by trip_id as well as id, mirroring DeleteItineraryEntry: the
+	// handler has already checked ownership, and this keeps a day from being
+	// deleted through the wrong trip even if that check is ever bypassed.
+	// Entries on the day go with it via itinerary_entries' ON DELETE CASCADE.
+	DeleteItineraryDay(ctx context.Context, arg DeleteItineraryDayParams) (int64, error)
 	DeleteItineraryEntry(ctx context.Context, arg DeleteItineraryEntryParams) (int64, error)
 	DeleteSession(ctx context.Context, id string) error
 	DeleteTrip(ctx context.Context, arg DeleteTripParams) (int64, error)

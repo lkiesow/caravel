@@ -575,6 +575,14 @@ func (s *postgresStore) GetItineraryDayByID(ctx context.Context, id string) (Iti
 	return postgresItineraryDayToDomain(row), nil
 }
 
+func (s *postgresStore) DeleteItineraryDay(ctx context.Context, id, tripID string) (bool, error) {
+	n, err := s.q.DeleteItineraryDay(ctx, postgresgen.DeleteItineraryDayParams{ID: id, TripID: tripID})
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
 func (s *postgresStore) CreateItineraryEntry(ctx context.Context, p CreateItineraryEntryParams) (ItineraryEntry, error) {
 	row, err := s.q.CreateItineraryEntry(ctx, postgresgen.CreateItineraryEntryParams{
 		ID:             p.ID,

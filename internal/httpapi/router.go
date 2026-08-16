@@ -127,10 +127,11 @@ func (s *Server) buildRouter() chi.Router {
 			r.Get("/file", s.handleServeMedia)
 		})
 
-		r.Route("/itinerary/days/{dayId}/entries", func(r chi.Router) {
+		r.Route("/itinerary/days/{dayId}", func(r chi.Router) {
 			r.Use(auth.RequireAuth)
-			r.Post("/", s.handleCreateItineraryEntry)
-			r.Delete("/{entryId}", s.handleDeleteItineraryEntry)
+			r.Delete("/", s.handleDeleteItineraryDay)
+			r.Post("/entries", s.handleCreateItineraryEntry)
+			r.Delete("/entries/{entryId}", s.handleDeleteItineraryEntry)
 		})
 
 		r.Route("/items/{itemId}", func(r chi.Router) {

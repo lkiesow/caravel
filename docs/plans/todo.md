@@ -105,6 +105,16 @@ require a redesign later — they're additive, not blocked, but none are built:
   footgun once a scripted suite exists: always assert
   `window.location.pathname` equals the intended route before asserting
   anything about that page's layout.
+- **An HTTP-level Go test harness now exists — reuse it.** Stage 07
+  Milestone 6 needed a cross-user ownership check, which no unit test can
+  express, so `internal/httpapi/itinerary_test.go` brings up a real `Server`
+  over a real migrated SQLite database in a temp dir (`newTestServer`,
+  `login`, `do`, `decode`) and drives requests through the full router and
+  auth middleware. It's currently private to that one file. Handlers with
+  no coverage at all — trips, items, checklists, documents, media — could be
+  covered cheaply by lifting those helpers into a shared `testing_test.go`,
+  which is worth doing before the next stage that touches ownership or
+  auth-sensitive routes.
 - **Verifying a backend change needs proof the *running* binary has it.**
   Stage 07 Milestone 3 nearly recorded a false pass: the API returned
   200/201 for input the new validation rejects, because a stale server from

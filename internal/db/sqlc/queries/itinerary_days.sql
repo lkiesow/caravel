@@ -16,3 +16,10 @@ SELECT * FROM itinerary_days WHERE id = sqlc.arg(id);
 
 -- name: ListItineraryDaysByTrip :many
 SELECT * FROM itinerary_days WHERE trip_id = sqlc.arg(trip_id) ORDER BY date;
+
+-- name: DeleteItineraryDay :execrows
+-- Scoped by trip_id as well as id, mirroring DeleteItineraryEntry: the
+-- handler has already checked ownership, and this keeps a day from being
+-- deleted through the wrong trip even if that check is ever bypassed.
+-- Entries on the day go with it via itinerary_entries' ON DELETE CASCADE.
+DELETE FROM itinerary_days WHERE id = sqlc.arg(id) AND trip_id = sqlc.arg(trip_id);

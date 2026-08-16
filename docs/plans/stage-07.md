@@ -273,6 +273,39 @@ switcher in `todo.md` is picked up.
 cross-user ownership check (mirroring `documents_test.go`); curl the endpoint
 and confirm both the day and its entries are gone.
 
+**Done.** `DeleteItineraryDay` added to the queries file and regenerated for
+both dialects (`sqlc generate`, additive diffs only: 21 lines per dialect
+plus the querier interface), with the store method mirroring
+`DeleteItineraryEntry`. The query is scoped by `trip_id` as well as `id`, so
+the SQL enforces the same ownership the handler checks.
+
+Deviation from the plan: the route group had to be restructured rather than
+extended. It was `/itinerary/days/{dayId}/entries`, which gives no path for
+an operation on the *day* itself, so it became `/itinerary/days/{dayId}`
+with `DELETE /` and the entry routes nested beneath as `/entries` and
+`/entries/{entryId}`. The public entry URLs are unchanged.
+
+Verification went further than planned, because the ownership check can't be
+covered by a unit test in the style of `documents_test.go`. New
+`internal/httpapi/itinerary_test.go` brings up a **real Server over a real
+migrated SQLite database** in a temp dir, driving requests through the full
+router including the auth middleware (only the static-asset FS and blob
+store are stand-ins). Six tests: deleting an out-of-range day removes it and
+cascades to its entries; deleting an in-range day reverts it to a synthesized
+placeholder rather than making it vanish; another user gets 404, not 403, and
+the owner's day survives; an anonymous request gets 401; an unknown id gets
+404; and the relocated entry routes still work. Confirmed non-vacuous by
+stashing `router.go`+`itinerary.go` — all five delete tests fail without them.
+
+The cascade assertion is deliberate rather than assumed: SQLite only honours
+`ON DELETE CASCADE` when `foreign_keys` is enabled per connection, which
+`db.Open` does — so the test would catch that pragma being lost.
+
+Finally, exercised against the live dev database: the 15 Jan 2027 day
+stranded on the demo trip during the original test round — the one the report
+called impossible to remove — deleted with 204, and the itinerary went back
+to the four days of the trip's own range. `make ci` green.
+
 ## Milestone 7 — Delete control on out-of-range itinerary days
 
 `web/js/pages/itinerary-tab.js` — `renderDay()` gains an `.icon-remove`

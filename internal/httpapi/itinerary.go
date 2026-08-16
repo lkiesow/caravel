@@ -175,6 +175,27 @@ func (s *Server) loadOwnedItineraryDay(w http.ResponseWriter, r *http.Request) (
 	return day, true
 }
 
+// handleDeleteItineraryDay removes a day and everything planned on it.
+// Only days the user added explicitly can reach this: days inside the
+// trip's date range are placeholders synthesized by handleGetItinerary and
+// have no row to delete (nor an id the frontend could send).
+func (s *Server) handleDeleteItineraryDay(w http.ResponseWriter, r *http.Request) {
+	day, ok := s.loadOwnedItineraryDay(w, r)
+	if !ok {
+		return
+	}
+	deleted, err := s.Store.DeleteItineraryDay(r.Context(), day.ID, day.TripID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not delete day")
+		return
+	}
+	if !deleted {
+		writeError(w, http.StatusNotFound, "day not found")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 type createItineraryEntryRequest struct {
 	ItemID string  `json:"item_id"`
 	Note   *string `json:"note"`

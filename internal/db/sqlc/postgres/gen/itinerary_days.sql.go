@@ -11,6 +11,27 @@ import (
 	"time"
 )
 
+const deleteItineraryDay = `-- name: DeleteItineraryDay :execrows
+DELETE FROM itinerary_days WHERE id = $1 AND trip_id = $2
+`
+
+type DeleteItineraryDayParams struct {
+	ID     string `json:"id"`
+	TripID string `json:"trip_id"`
+}
+
+// Scoped by trip_id as well as id, mirroring DeleteItineraryEntry: the
+// handler has already checked ownership, and this keeps a day from being
+// deleted through the wrong trip even if that check is ever bypassed.
+// Entries on the day go with it via itinerary_entries' ON DELETE CASCADE.
+func (q *Queries) DeleteItineraryDay(ctx context.Context, arg DeleteItineraryDayParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteItineraryDay, arg.ID, arg.TripID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const getItineraryDayByID = `-- name: GetItineraryDayByID :one
 SELECT id, trip_id, date, notes FROM itinerary_days WHERE id = $1
 `

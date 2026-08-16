@@ -235,6 +235,28 @@ duplicating the formatting logic.
 
 **Verify:** assert a card's date text equals the same trip's header range.
 
+**Done.** `formatDateRange()` moved verbatim to a new `web/js/format.js`
+(documented as the home for presentation-only formatting) and is imported by
+both `trip-detail-page.js` and `trip-card.js`. No behaviour change on the
+trip header; the card previously interpolated its raw attributes.
+
+Verified in the browser: the card for the demo trip renders "20 Aug – 23 Aug
+2026" and clicking through gives a header reading the identical string
+(compared with `===`, not by eye). Two edge cases the old inline
+interpolation got wrong, checked with throwaway trips since none of the
+existing data covers them: a **start-only** trip rendered "2026-08-20 –"
+with a dangling separator and now renders "20 Aug 2026"; a **cross-year**
+range now renders "28 Dec 2026 – 2 Jan 2027" with both years rather than two
+bare ISO strings. A trip with no dates still renders no date line at all.
+Both throwaway trips were deleted afterwards. `make ci` green.
+
+Note for later: `Intl` is called with an undefined locale, so dates follow
+the *browser's* locale rather than the app's — a German UI in an en-GB
+browser still shows English month names. That was already true of the trip
+header, so this milestone makes the card consistent with it rather than
+introducing anything new; the mismatch is worth a look whenever the language
+switcher in `todo.md` is picked up.
+
 ## Milestone 6 — Delete-day endpoint (backend)
 
 - `internal/db/sqlc/queries/itinerary_days.sql` — add `DeleteItineraryDay

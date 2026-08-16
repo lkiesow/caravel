@@ -8,6 +8,7 @@ import { renderDocumentList } from "../components/document-list.js";
 import { renderChecklistList } from "../components/checklist-list.js";
 import { renderSettingsTab } from "./settings-tab.js";
 import { TRIP_TABS } from "../trip-tabs.js";
+import { formatDateRange } from "../format.js";
 
 const TABS = TRIP_TABS.map(({ key }) => key);
 
@@ -31,9 +32,9 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
 
   function render() {
     // Subtitle and date range share one line, joined by a "·" that only
-    // appears between two pieces that both actually exist - see
-    // formatDateRange below for why the range itself is plain text, not a
-    // labeled dt/dd pair (that reads fine as prose but not as a table row).
+    // appears between two pieces that both actually exist. The range is
+    // plain text rather than a labeled dt/dd pair - it reads fine as prose
+    // but not as a table row.
     const dateRange = formatDateRange(trip.start_date, trip.end_date);
     const summaryParts = [];
     if (trip.subtitle) summaryParts.push(`<span class="trip-summary__subtitle"></span>`);
@@ -99,23 +100,4 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
   }
 
   render();
-}
-
-// Compact human-readable date range for the under-title summary line, e.g.
-// "Aug 18 – Aug 21, 2026" (year shown once when both dates fall in it) or
-// "Aug 18, 2026 – Jan 2, 2027" across a year boundary. Returns null when
-// neither date is set, so the caller can omit the summary line entirely
-// rather than showing bare punctuation.
-function formatDateRange(start, end) {
-  if (!start && !end) return null;
-
-  const parse = (d) => new Date(`${d}T00:00:00`);
-  const short = (d) => new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(parse(d));
-  const full = (d) => new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(parse(d));
-
-  if (start && end) {
-    const sameYear = parse(start).getFullYear() === parse(end).getFullYear();
-    return sameYear ? `${short(start)} – ${full(end)}` : `${full(start)} – ${full(end)}`;
-  }
-  return full(start || end);
 }

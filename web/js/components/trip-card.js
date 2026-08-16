@@ -1,3 +1,5 @@
+import { formatDateRange } from "../format.js";
+
 const styles = `
   :host {
     display: block;
@@ -82,9 +84,12 @@ class TripCard extends HTMLElement {
 
   render() {
     const title = this.getAttribute("title") || "";
-    const start = this.getAttribute("start-date");
-    const end = this.getAttribute("end-date");
     const imageUrl = this.getAttribute("image-url");
+    // Same formatter as the trip header the card links to, so the list and
+    // the page it opens don't disagree about how a date looks. It also
+    // handles a trip with only one bound set, which the previous inline
+    // interpolation rendered as a dangling "2026-08-20 – ".
+    const dateRange = formatDateRange(this.getAttribute("start-date"), this.getAttribute("end-date"));
 
     this.shadowRoot.innerHTML = `
       <style>${styles}</style>
@@ -92,7 +97,7 @@ class TripCard extends HTMLElement {
         ${imageUrl ? `<img class="thumb" src="${escapeAttr(imageUrl)}" alt="" />` : ""}
         <div class="body">
           <h3>${escapeHtml(title)}</h3>
-          ${start || end ? `<div class="dates">${escapeHtml(start ?? "")} – ${escapeHtml(end ?? "")}</div>` : ""}
+          ${dateRange ? `<div class="dates">${escapeHtml(dateRange)}</div>` : ""}
         </div>
       </div>
     `;

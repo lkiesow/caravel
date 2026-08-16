@@ -321,6 +321,32 @@ accepted, persisted, and left with no way to remove it.
 in-range day; clicking it removes the day, and `GET /api/trips/{id}/itinerary`
 no longer lists that date.
 
+**Done.** `renderDay()` gained an `.icon-remove` in a new
+`.itinerary-day__header` flex row, so the control sits on the date line and
+reads as acting on the day rather than on the last entry in it. An
+`isRemovable(day)` helper carries the rule, including one case the plan
+didn't call out: a trip with **no dates set** has no range to be inside, so
+every day on it was added deliberately and all are removable.
+
+Confirmation only appears when the day has notes or entries — demanding a
+dialog to undo a date the user just mistyped would be noise.
+
+Verified in the browser end to end: the four in-range days show no control
+(including the two that *do* have persisted rows, from an entry and a note);
+adding 15 Jan 2027 gives exactly one X, labelled "Remove this day"; clicking
+it on an empty day deletes with no dialog and the date disappears from both
+the DOM and the API. With notes added, the dialog appears — **cancelling
+leaves the day present in both DOM and API**, accepting removes it. On the
+dateless "UI Test Trip", a manually added day is removable as intended and
+the list empties cleanly. German UI: label reads "Diesen Tag entfernen" and
+deletion works. At 324×756 the button measures 44×44, stays on the heading's
+row, and the page doesn't overflow. i18n parity 111 keys, `make ci` green.
+
+Found while testing, deliberately *not* folded in: `itinerary.noDates` still
+tells the user to set dates "on the Overview tab", a tab Stage 05 removed —
+it's Settings now. Recorded in `todo.md` rather than fixed here, since it has
+nothing to do with day deletion.
+
 ## Milestone 8 — Upload with no file reports itself
 
 `web/js/components/document-list.js:43` marks the `hidden` file input

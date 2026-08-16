@@ -41,11 +41,26 @@ export async function renderItineraryTab(container, trip) {
     });
   }
 
+  // A day is removable only if it exists as a row (in-range days with no
+  // content are placeholders the API synthesizes, with no id and nothing to
+  // delete) and falls outside the trip's range. Deleting an in-range day
+  // would just bring the placeholder straight back, so the control would
+  // read as broken. A trip with no dates set has no range to be inside, so
+  // every day on it was added deliberately and can be removed.
+  function isRemovable(day) {
+    if (!day.id) return false;
+    if (!trip.start_date || !trip.end_date) return true;
+    return day.date < trip.start_date || day.date > trip.end_date;
+  }
+
   function renderDay(day) {
     const el = document.createElement("div");
     el.className = "itinerary-day";
     el.innerHTML = `
-      <h3>${formatDate(day.date)}</h3>
+      <div class="itinerary-day__header">
+        <h3>${formatDate(day.date)}</h3>
+        ${isRemovable(day) ? `<button class="icon-remove" data-action="remove-day" aria-label="${t("itinerary.removeDay")}">${icon("x")}</button>` : ""}
+      </div>
       <textarea class="itinerary-day__notes" data-i18n-placeholder="itinerary.notesPlaceholder"></textarea>
       <ul class="itinerary-day__entries"></ul>
       <p class="itinerary-day__empty" data-i18n="itinerary.empty" hidden></p>
@@ -70,6 +85,16 @@ export async function renderItineraryTab(container, trip) {
     });
 
     renderEntries(el, day);
+
+    el.querySelector('[data-action="remove-day"]')?.addEventListener("click", async () => {
+      // Only confirm when there's something to lose. Removing an empty day
+      // the user just mistyped shouldn't demand a dialog.
+      const hasContent = day.entries.length > 0 || (day.notes ?? "").trim() !== "";
+      if (hasContent && !window.confirm(t("itinerary.removeDayConfirm"))) return;
+      await api.delete(`/itinerary/days/${day.id}`);
+      days = days.filter((d) => d.date !== day.date);
+      render();
+    });
 
     el.querySelector(".itinerary-day__add-item").addEventListener("submit", async (e) => {
       e.preventDefault();

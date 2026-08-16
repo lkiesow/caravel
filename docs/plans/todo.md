@@ -105,6 +105,14 @@ require a redesign later — they're additive, not blocked, but none are built:
   footgun once a scripted suite exists: always assert
   `window.location.pathname` equals the intended route before asserting
   anything about that page's layout.
+- **`itinerary.noDates` points at a tab that no longer exists.** A trip with
+  no start/end date shows "Set a start and end date on the **Overview tab**
+  to build a day-by-day itinerary, or add days manually below" — but Stage
+  05 removed the Overview tab; those fields live under **Settings** now.
+  Spotted while verifying Stage 07 Milestone 7 on a dateless trip. A
+  two-locale copy fix, deliberately not folded into that milestone since it
+  isn't part of day deletion; worth grepping the rest of `locales/` for
+  other references to removed UI while doing it.
 - **An HTTP-level Go test harness now exists — reuse it.** Stage 07
   Milestone 6 needed a cross-user ownership check, which no unit test can
   express, so `internal/httpapi/itinerary_test.go` brings up a real `Server`

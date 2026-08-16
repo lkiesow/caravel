@@ -91,6 +91,8 @@
   "map.viewOnGoogleMaps": "In Google Maps ansehen",
   "itinerary.noDates": "Lege im Tab \"Übersicht\" ein Start- und Enddatum fest, um einen Tag-für-Tag-Reiseplan zu erstellen, oder füge unten manuell Tage hinzu.",
   "itinerary.addDay": "Tag hinzufügen",
+  "itinerary.removeDay": "Diesen Tag entfernen",
+  "itinerary.removeDayConfirm": "Diesen Tag und alles, was für ihn geplant ist, entfernen? Das kann nicht rückgängig gemacht werden.",
   "itinerary.notesPlaceholder": "Notizen für diesen Tag…",
   "itinerary.addItem": "Eintrag hinzufügen",
   "itinerary.selectItem": "Eintrag auswählen…",

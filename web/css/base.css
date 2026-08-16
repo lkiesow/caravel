@@ -935,8 +935,18 @@ button {
   background: var(--color-surface);
 }
 
+/* The remove control sits on the date line rather than at the end of the
+   card, so it reads as acting on the day itself and not on the last entry
+   in it. .icon-remove's margin-left:auto pushes it to the right edge. */
+.itinerary-day__header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
 .itinerary-day h3 {
-  margin: 0 0 0.5rem;
+  margin: 0;
   font-size: 1rem;
 }
 

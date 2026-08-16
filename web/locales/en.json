@@ -91,6 +91,8 @@
   "map.viewOnGoogleMaps": "View on Google Maps",
   "itinerary.noDates": "Set a start and end date on the Overview tab to build a day-by-day itinerary, or add days manually below.",
   "itinerary.addDay": "Add a day",
+  "itinerary.removeDay": "Remove this day",
+  "itinerary.removeDayConfirm": "Remove this day and everything planned on it? This cannot be undone.",
   "itinerary.notesPlaceholder": "Notes for this day…",
   "itinerary.addItem": "Add item",
   "itinerary.selectItem": "Choose an item…",

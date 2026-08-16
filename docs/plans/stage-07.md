@@ -131,6 +131,34 @@ silently shows only days that happen to have content.
 **Verify:** `PATCH /api/trips/{id}` with an inverted range returns 400 and
 leaves the trip unchanged; `go test ./...` covers both create and update.
 
+**Done.** `tripRequest.validate()` now compares the two bounds once both
+parse, returning "end date must not be before start date". Since that method
+is the single gate both `handleCreateTrip` and `handleUpdateTrip` run their
+body through, one check covers both.
+
+New `internal/httpapi/trips_test.go` table-tests it: an inverted range (same
+year and across a year boundary) is rejected; a well-formed range, a same-day
+range, and a one-bound-only trip are accepted; a malformed date still reports
+the format error rather than the new one; and the pre-existing blank-title
+rule is asserted so the added check can't quietly displace it. The suite was
+confirmed non-vacuous by stashing `trips.go` and re-running — only the two
+inverted-range cases fail without the fix.
+
+End-to-end against a **freshly restarted** server: create and update both
+return 400 with that message, the demo trip's dates are unchanged after the
+rejected PATCH, and a same-day range still returns 200.
+
+Worth recording, because it nearly produced a false pass: the first
+end-to-end run reported 200/201 — the API happily accepting inverted ranges.
+The cause was a stale server still holding :8080 whose binary predated the
+edit, while `make dev` had failed with "address already in use". `pkill`
+missed it because a `go run` child's command line is its go-build cache path,
+not `go run ./cmd/caravel`. The reliable check is to find the listener via
+`ss -lptn 'sport = :8080'` and grep `/proc/<pid>/exe` for a string the fix
+introduces — done here before re-running, confirming the serving binary
+carried the change. A junk trip created during that stale run was deleted.
+`make ci` green.
+
 ## Milestone 4 — Show that rejection inline in the trip form
 
 `web/js/components/trip-form.js` — check the range before the POST/PATCH and

@@ -105,6 +105,20 @@ require a redesign later — they're additive, not blocked, but none are built:
   footgun once a scripted suite exists: always assert
   `window.location.pathname` equals the intended route before asserting
   anything about that page's layout.
+- **Verifying a backend change needs proof the *running* binary has it.**
+  Stage 07 Milestone 3 nearly recorded a false pass: the API returned
+  200/201 for input the new validation rejects, because a stale server from
+  an earlier session still held :8080 and `make dev` had failed behind it
+  with "address already in use" (a background start whose failure is easy
+  to miss). `pkill -f "go run ./cmd/caravel"` doesn't catch it either — the
+  compiled child's command line is its `~/.cache/go-build/...` path, not
+  the `go run` invocation. What worked: find the listener with
+  `ss -lptn 'sport = :8080'`, then grep `/proc/<pid>/exe` for a string the
+  change introduces. Frontend edits are immune (served from disk under
+  `CARAVEL_WEB_DIR`), which is exactly why this is easy to forget for Go
+  changes. Worth folding into the scripted suite when it exists — e.g. a
+  `make dev` that fails loudly on a busy port, or a startup banner carrying
+  the build's git SHA that a test can assert against.
 - **Migrations should be collapsed/squashed before the first real
   release.** There are three migration files per dialect now
   (0001/0002/0003); since nobody has actually deployed this yet, squashing

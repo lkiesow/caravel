@@ -91,6 +91,17 @@ func (req tripRequest) validate() error {
 	if err := validateDate(req.EndDate); err != nil {
 		return err
 	}
+	// An inverted range isn't just cosmetic: the trip header renders it
+	// verbatim ("20 Aug – 1 Aug 2026"), and handleGetItinerary's
+	// datesInRange returns nil for it, so the itinerary silently drops every
+	// day that has no content of its own.
+	if req.StartDate != nil && req.EndDate != nil {
+		start, err1 := time.Parse("2006-01-02", *req.StartDate)
+		end, err2 := time.Parse("2006-01-02", *req.EndDate)
+		if err1 == nil && err2 == nil && end.Before(start) {
+			return errors.New("end date must not be before start date")
+		}
+	}
 	return nil
 }
 

@@ -208,9 +208,10 @@ cmd_check_marker() {
 case "${1:-}" in
 	check-port)   shift; cmd_check_port "$@" ;;
 	restart)      shift; cmd_restart "$@" ;;
+	stop)         shift; stop_port "$@" ;;
 	check-marker) shift; cmd_check_marker "$@" ;;
 	*)
-		echo "usage: $0 {check-port|restart [MARKER=string]|check-marker <string>}" >&2
+		echo "usage: $0 {check-port|restart [MARKER=string]|stop|check-marker <string>}" >&2
 		exit 2
 		;;
 esac

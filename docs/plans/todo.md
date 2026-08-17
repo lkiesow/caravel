@@ -155,6 +155,9 @@ require a redesign later — they're additive, not blocked, but none are built:
   two-locale copy fix, deliberately not folded into that milestone since it
   isn't part of day deletion; worth grepping the rest of `locales/` for
   other references to removed UI while doing it.
+  *Repro since Stage 08 Milestone 4:* `make dev-reset FORCE=1`, then the
+  `no-dates` scenario's Itinerary tab shows it directly — no hand-built
+  dateless trip needed.
 - **An HTTP-level Go test harness now exists — reuse it.** Stage 07
   Milestone 6 needed a cross-user ownership check, which no unit test can
   express, so `internal/httpapi/itinerary_test.go` brings up a real `Server`
@@ -222,6 +225,10 @@ require a redesign later — they're additive, not blocked, but none are built:
   Reykjavik"); trip-level documents show no label. `document-list.js`
   would need a new labeled-list mode, since today it only ever renders
   one homogeneous list for exactly one `path` at a time.
+  *Repro since Stage 08 Milestone 4:* the `full` seed scenario has one
+  trip-level document (`trip-notes.txt`) and one attached to the Foss Hotel
+  location (`hotel-booking.txt`); the Documents tab shows only the former,
+  while the latter is reachable on the location's own page.
 
 ## Deferred from Stage 05
 
@@ -293,17 +300,6 @@ require a redesign later — they're additive, not blocked, but none are built:
   card pleasant to fill in.
   *Stage 07's test round reinforces this: entering coordinates by hand is
   also where the split-save trap below bites hardest.*
-- **`make dev-seed` leaves every demo item off the map.** `cmd/seed/main.go`
-  never sets `ShowOnMap` when inserting its three items, so they're all
-  `show_on_map: false` (the Go zero value) and the seeded trip's Map tab is
-  empty until you edit each location by hand — confirmed on two
-  independently seeded demo trips while verifying Stage 06 Milestone 5. A
-  one-line seed fix, but worth deciding deliberately: the map is easier to
-  demo with pins, and the seeded items have no coordinates either, so
-  showing anything means seeding lat/lng too. See also "Coordinates alone
-  don't put a location on the map" below — the same `show_on_map` gate,
-  hit from the user's side rather than the seed's.
-
 ## Deferred from Stage 07 (automated UI/UX test round)
 
 Stage 07's Playwright pass over desktop (1280×800), mobile (324×756) and
@@ -440,12 +436,3 @@ inconvenient.
   the accessible-name sweep, the heading audit.)* It's the step that turns
   "the test passes" into "the test would have caught this", and it's the
   easiest one to skip — which is when a vacuous test slips through.
-- **Seed scenarios in `cmd/seed`, plus `make dev-reset`.** Every Stage 07
-  milestone needed a *specific* data shape and built it through ad-hoc
-  `fetch` calls, then hand-deleted the leftovers (imperfectly — stray test
-  trips are in the dev database now). Scenarios worth naming: a trip with
-  **exactly one** mappable location (the zero-size-bounds map case), a trip
-  with **only a start date**, one **crossing a year boundary**, one with
-  **no dates at all**, days **outside the trip's range**, and a trip with
-  children for **cascade** checks. `make dev-reset` to wipe and reseed
-  removes the cleanup half of the problem entirely.

@@ -343,6 +343,65 @@ Run `make dev-reset FORCE=1` twice in a row and confirm it's idempotent.
 Then confirm the guard: with `CARAVEL_DB_DSN=/tmp/elsewhere.db`,
 `make dev-reset FORCE=1` must refuse and exit non-zero.
 
+**Done.** `cmd/seed/main.go` rewritten around a scenario registry (all
+seven from the plan), selected with `make dev-seed SCENARIO=one-pin`;
+`make dev-reset` landed as `scripts/dev_reset.sh`.
+
+Determinism went further than the plan asked. Beyond fixed dates, seeded
+rows get deterministic **v5 UUIDs** derived from a fixed namespace plus
+the scenario name, so every ID is byte-identical across reseeds. That
+means Milestone 5's suite can hard-code `/trips/<uuid>/locations` instead
+of looking a trip up by title first, and it makes the seed **idempotent**
+for free: `newTrip` deletes the previous incarnation by its known ID
+before recreating it (relying on the existing delete cascade), so
+`make dev-seed` can be run repeatedly without piling up duplicates —
+verified by running it twice and confirming the trip count stays at 7.
+
+Deviations. Only `full` keeps `time.Now()`-relative dates, as the plan's
+"upcoming" carve-out allows; the other six are anchored to a fixed
+`baseDate` (2026-06-15). Added beyond the plan: a second user account
+(`other` / `other1234`), so Milestone 7's cross-user ownership tests have
+someone to be "another user" without building one by hand; real blob
+writes for seeded documents, so the Documents tab has something that
+actually downloads; and `scripts/dev_server.sh` gained a `stop`
+subcommand, which `dev_reset.sh` needs — deleting a SQLite file out from
+under a live server leaves it holding the deleted inode, which looks
+exactly like the reset having silently done nothing. `dev_reset.sh`
+therefore stops the server, wipes, seeds, and restarts it only if it was
+running to begin with. It also removes the `-wal`/`-shm` siblings, not
+just the main database file, since committed rows can otherwise be
+resurrected from the write-ahead log. No server needs to be up to seed:
+`db.Open()` already runs pending migrations before returning, so the seed
+binary builds the schema itself. A third guard was added alongside the
+two the plan required: `dev-reset` refuses outright when the driver is
+postgres, where there is no file to delete.
+
+Verified: (a) all three guards refuse and delete nothing — a DSN outside
+the repo, `CARAVEL_DB_DRIVER=postgres`, and a non-tty run without
+`FORCE=1`; (b) the reset replaced 9 stray trips (including the `Test
+Trip` / `UI Test Trip` leftovers `todo.md` complained about) with the 7
+scenarios; (c) IDs are byte-identical across both a plain re-seed and a
+full wipe-and-reseed; (d) **the bug this fixes**: the seeded demo trip's
+`/map` endpoint returns 3 pins and the Map tab renders 3 Leaflet markers,
+where it previously returned `[]`; (e) `one-pin` renders exactly 1 marker
+at zoom 14 with all 12 tiles loaded — no degenerate zoom — despite the
+trip having a second location deliberately left off the map; (f) a
+scripted 1280×800 walk of 7 trips × 6 tabs = **42 combinations**, all
+landing on the intended `window.location.pathname`, none overflowing
+horizontally, all rendering content; (g) scenario-specific shapes check
+out — `out-of-range-days` has days on 11 Aug (before), 15 Aug (inside)
+and 20 Aug (after) a 14–16 Aug trip, `year-boundary` renders "29 Dec 2026
+– 3 Jan 2027" with days in both years, and seeded documents download
+their real content.
+
+Two things the scenarios now reproduce on demand, both already in
+`todo.md` and neither fixed here: `no-dates` shows the `itinerary.noDates`
+copy still pointing at the Overview tab that Stage 05 removed, and
+`full`'s trip-level Documents tab shows only `trip-notes.txt` while
+`hotel-booking.txt` (attached to a location) is filtered out by
+`ListTripDocuments`. Both entries in `todo.md` gained the exact route that
+reproduces them.
+
 ## 5. Playwright UI suite (`tests/ui/`)
 
 The centerpiece. New root `package.json` (devDependencies only:

@@ -1,4 +1,4 @@
-.PHONY: run build test dev dev-restart dev-marker dev-seed vet check-js check-i18n ci
+.PHONY: run build test dev dev-restart dev-marker dev-seed dev-reset vet check-js check-i18n ci
 
 run:
 	go run ./cmd/caravel
@@ -21,8 +21,14 @@ dev-marker:
 	@test -n "$(MARKER)" || { echo "usage: make dev-marker MARKER=somestring" >&2; exit 2; }
 	@scripts/dev_server.sh check-marker $(MARKER)
 
+# Seed every scenario, or one: make dev-seed SCENARIO=one-pin
 dev-seed:
-	CARAVEL_WEB_DIR=web go run ./cmd/seed
+	go run ./cmd/seed $(if $(SCENARIO),-scenario=$(SCENARIO),)
+
+# Wipe the dev database and uploads, then reseed. Guarded: refuses a DSN outside
+# the repo, and prompts unless FORCE=1.
+dev-reset:
+	@scripts/dev_reset.sh $(if $(SCENARIO),-scenario=$(SCENARIO),)
 
 build:
 	go build -o bin/caravel ./cmd/caravel

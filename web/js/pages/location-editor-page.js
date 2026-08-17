@@ -116,7 +116,9 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
         ${
           item
             ? `
-          <div class="editor-card trip-editor__actions">
+          <div class="editor-card">
+            <h2 data-i18n="item.deleteHeading"></h2>
+            <p class="editor-card__hint" data-i18n="item.deleteDescription"></p>
             <button class="btn btn-danger" data-action="delete">${icon("trash-2")} <span data-i18n="common.delete"></span></button>
           </div>
         `

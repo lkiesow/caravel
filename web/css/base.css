@@ -494,6 +494,14 @@ button {
    title). They keep the size an h4 rendered at - these are section labels
    inside a card, not page-level headings, and the visual hierarchy was
    already right; only the markup was lying about it. */
+/* Explanatory line under a card heading - what an action will do, before
+   the button that does it. */
+.editor-card__hint {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  margin: 0 0 0.75rem;
+}
+
 .editor-card h2,
 .checklist-card__header h2 {
   /* 1.33rem bottom margin is the UA's h4 margin, kept so promoting the tag

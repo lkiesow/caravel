@@ -1,7 +1,9 @@
 # Stage 07 — UI/UX fixes from the automated test round
 
-> **Status: in progress.** Built one milestone at a time per the Workflow
-> section below, each with its own commit and a manual-testing checkpoint.
+> **Status: complete.** All 15 milestones landed, plus one follow-up commit
+> (itinerary day ordering, raised at the Milestone 8 checkpoint). Built one
+> milestone at a time per the Workflow section below, each with its own
+> commit and a manual-testing checkpoint.
 
 ## Context
 
@@ -641,6 +643,24 @@ already correct.
 **Verify:** headings render in both locales; `scripts/check_i18n.py` parity
 check passes.
 
+**Done.** Each card gains an `h2` and an `.editor-card__hint` line naming
+what else goes with the delete, above the button rather than only in the
+`confirm()` afterwards. Both cards also shed `trip-editor__actions`, a class
+with no rule anywhere in the stylesheet.
+
+The copy makes a specific promise, so it was checked against the schema
+rather than written from memory: `ON DELETE CASCADE` on `trips(id)` reaches
+items, documents, itinerary days, checklists and media assets, and on
+`items(id)` reaches locations, links, dates, documents and itinerary
+entries. Then confirmed at runtime on a throwaway trip carrying a location,
+a checklist and an itinerary day — after deleting via the button, all four
+API lookups return 404.
+
+Headings re-checked after adding two more (settings `h1 h2 h2 h2`, location
+editor `h1 h2 h2 h2 h2 h2 h2 h2`, no skips), German rendered, and at 324×756
+the card fits with a 44px button and no overflow. i18n parity 120 keys,
+`make ci` green.
+
 ---
 
 ## Build order
@@ -679,3 +699,19 @@ and dark — across every route touched, asserting
 about that page (the footgun already recorded in `todo.md`: the router
 silently redirects unmatched paths to `/trips`, so a typo'd URL makes layout
 checks pass trivially against the wrong page).
+
+**Final sweep (after Milestone 15): 44 checks — 11 routes × 2 viewports × 2
+colour schemes — with zero problems.** Each check asserted the landed-on
+pathname matched the intended route, no horizontal overflow, and no skipped
+heading level. `make ci` green: build, vet, JS syntax, i18n parity at 120
+keys in sync, `go test`.
+
+## What this stage did not cover
+
+The other 8 findings from the test round are in `todo.md`, each citing this
+stage. Three more were added while working: the `make check-js` module/script
+parse gap, the stale "Overview tab" copy in `itinerary.noDates`, and the
+stale-binary verification trap. Two facets of the image-URL entry were merged
+into it (late timing, and raw Go errors reaching the UI), and the HTTP test
+harness built in Milestone 6 is flagged there as worth lifting into a shared
+file — no other handler package has HTTP-level coverage.

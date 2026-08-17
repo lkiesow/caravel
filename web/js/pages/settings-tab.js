@@ -25,7 +25,9 @@ export function renderSettingsTab(content, trip, { onTripUpdated }) {
         <h2 data-i18n="trip.overview.image"></h2>
         <div class="image-field-slot"></div>
       </div>
-      <div class="editor-card trip-editor__actions">
+      <div class="editor-card">
+        <h2 data-i18n="trip.deleteHeading"></h2>
+        <p class="editor-card__hint" data-i18n="trip.deleteDescription"></p>
         <button class="btn btn-danger" data-action="delete">${icon("trash-2")} <span data-i18n="common.delete"></span></button>
       </div>
     `;

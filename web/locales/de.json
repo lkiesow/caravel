@@ -98,6 +98,7 @@
   "itinerary.selectItem": "Eintrag auswählen…",
   "itinerary.empty": "Für diesen Tag ist noch nichts geplant.",
   "documents.chooseFile": "Datei auswählen",
+  "documents.noFile": "Bitte zuerst eine Datei auswählen.",
   "documents.notePlaceholder": "Notiz (optional)",
   "documents.upload": "Hochladen",
   "documents.stage": "Datei hinzufügen",

@@ -362,6 +362,33 @@ returns early when no file is picked.
 **Verify:** click Upload with no file — visible error text, no console error.
 Uploading a real file still works.
 
+**Done.** `required` dropped from the hidden file input, and the submit
+handler reports the empty pick through the existing `.document-form__error`
+paragraph (which the Milestone 4 callout styling now renders as a box). New
+`documents.noFile` key in both locales.
+
+Verified on the trip Documents tab: clicking Upload with nothing picked
+shows "Choose a file first." with **0 console errors**, where the same click
+previously did nothing at all and logged "The invalid form control with
+name='file' is not focusable". Picking a real file and uploading still works
+and clears the message. Re-checked the same component in its staging mode on
+the new-location page (its "Add file" button) and in German ("Bitte zuerst
+eine Datei auswählen."). Test document deleted afterwards.
+
+**A CI gap surfaced, and it bit first.** My initial version put the
+explanation in an HTML comment inside the template literal, and that comment
+contained a backtick — which closed the template early and broke the
+Documents tab with "SyntaxError: unexpected token: identifier" in the
+browser. `make ci` stayed **green**. Root cause, pinned by reconstructing the
+broken file: `check-js` runs `node --check <file>.js`, which parses as a
+CommonJS *script*, where `<!--` legally begins an HTML-like comment (Annex B)
+that swallowed the stray backtick. The app loads these files as ES *modules*,
+where HTML-like comments are illegal — copying the same bytes to `.mjs`
+reproduces the browser's error exactly. The comment moved to a JS comment
+above `render()` (it shouldn't have been shipped to the DOM anyway), and the
+gap plus a verified one-line fix (`node --input-type=module --check < "$f"`)
+is recorded in `todo.md`. i18n parity 112 keys, `make ci` green.
+
 ## Milestone 9 — A failed image preview becomes visible
 
 `web/js/components/image-field.js` does render a preview (line 24), but an

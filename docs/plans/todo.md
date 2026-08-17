@@ -105,6 +105,20 @@ require a redesign later — they're additive, not blocked, but none are built:
   footgun once a scripted suite exists: always assert
   `window.location.pathname` equals the intended route before asserting
   anything about that page's layout.
+- **`make check-js` parses modules as scripts, so it can pass on a file the
+  browser refuses to load.** `node --check web/js/**.js` treats each file as
+  a CommonJS *script*, where `<!--` legally starts an HTML-like comment
+  (Annex B). The app loads every one of those files as an ES *module*, where
+  HTML-like comments are a syntax error. Hit for real in Stage 07 Milestone
+  8: a comment accidentally containing a backtick broke the Documents tab
+  with "SyntaxError: unexpected token: identifier" in the browser while
+  `make ci` stayed green — the `<!--` swallowed the stray backtick in script
+  mode. Verified fix: pipe the file in on stdin instead, which makes the
+  parse mode explicit —
+  `node --input-type=module --check < "$f"`. Confirmed it rejects the broken
+  file and accepts all current `web/js` files including the vendored
+  Leaflet build. Worth changing in the Makefile (and mirroring in
+  `.github/workflows/ci.yml` if it duplicates the command).
 - **`itinerary.noDates` points at a tab that no longer exists.** A trip with
   no start/end date shows "Set a start and end date on the **Overview tab**
   to build a day-by-day itinerary, or add days manually below" — but Stage

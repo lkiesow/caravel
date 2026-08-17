@@ -31,6 +31,12 @@ export async function renderDocumentList(container, path, { staged } = {}) {
   // sidesteps that class of bug entirely, since the form node is never
   // reused across calls - every render() gets a fresh one with exactly
   // one listener.
+  // The file input is deliberately not `required`. It's hidden (the visible
+  // control is the label around it), and a hidden invalid control can't be
+  // focused to show a validation bubble - so the browser blocked the submit
+  // event outright and the click did nothing at all, leaving only "The
+  // invalid form control with name='file' is not focusable" in the console.
+  // The submit handler below reports an empty pick instead.
   function render() {
     container.innerHTML = `
       <div class="document-list">
@@ -40,7 +46,7 @@ export async function renderDocumentList(container, path, { staged } = {}) {
         <form class="document-form">
           <label class="image-field__upload">
             <span data-i18n="documents.chooseFile"></span>
-            <input type="file" name="file" hidden required data-i18n-aria-label="common.uploadFile" />
+            <input type="file" name="file" hidden data-i18n-aria-label="common.uploadFile" />
           </label>
           <input type="text" name="note" data-i18n-placeholder="documents.notePlaceholder" />
           <button type="submit" class="btn btn-secondary btn-row">${isStaging ? `${icon("plus")} <span data-i18n="documents.stage"></span>` : `${icon("upload")} <span data-i18n="documents.upload"></span>`}</button>
@@ -101,9 +107,14 @@ export async function renderDocumentList(container, path, { staged } = {}) {
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const file = fileInput.files[0];
-      if (!file) return;
       errorEl.hidden = true;
+
+      const file = fileInput.files[0];
+      if (!file) {
+        errorEl.textContent = t("documents.noFile");
+        errorEl.hidden = false;
+        return;
+      }
 
       if (isStaging) {
         staged.push({ file, note: form.note.value || null });

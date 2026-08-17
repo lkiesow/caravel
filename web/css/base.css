@@ -3,7 +3,15 @@
   --color-surface: #f4f4f5;
   --color-text: #18181b;
   --color-text-muted: #52525b;
+  /* --color-accent is the accent as *text or outline*, on the page or a card
+     background. --color-accent-strong is the accent as a *fill* with white
+     on top of it (primary buttons, the avatar, the selection highlight).
+     They only differ in dark mode, where the accent has to lighten to stay
+     readable as text but must stay dark enough to carry white text as a
+     fill - one variable can't do both. Same split as --color-danger /
+     --color-danger-fg above, in the other direction. */
   --color-accent: #2563eb;
+  --color-accent-strong: #2563eb;
   --color-border: #e4e4e7;
   /* --color-danger is a *background* (the Delete button, with white text on
      it); --color-danger-fg is the same red used as a foreground - a border,
@@ -31,6 +39,7 @@
     --color-text: #fafafa;
     --color-text-muted: #a1a1aa;
     --color-accent: #60a5fa;
+    --color-accent-strong: #1d4ed8;
     --color-border: #3f3f46;
     --color-danger-fg: #f87171;
     /* Slightly stronger than the light-mode tint: the same alpha over a dark
@@ -56,7 +65,7 @@ a:visited {
 }
 
 ::selection {
-  background: var(--color-accent);
+  background: var(--color-accent-strong);
   color: white;
 }
 
@@ -136,8 +145,8 @@ a:visited {
 }
 
 .btn-primary {
-  background: var(--color-accent);
-  border-color: var(--color-accent);
+  background: var(--color-accent-strong);
+  border-color: var(--color-accent-strong);
   color: white;
 }
 
@@ -291,7 +300,7 @@ a:visited {
   width: 2rem;
   height: 2rem;
   border-radius: 50%;
-  background: var(--color-accent);
+  background: var(--color-accent-strong);
   color: white;
   display: flex;
   align-items: center;

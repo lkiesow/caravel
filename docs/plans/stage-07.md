@@ -464,6 +464,38 @@ backgrounds at lines 260 and 548).
 and assert ≥ 4.5; confirm the link ratio is unchanged and light mode still
 measures 5.17:1.
 
+**Done.** `--color-accent-strong` added, `#2563eb` in both themes — the point
+of the token is that this one *doesn't* lighten in dark mode, where
+`--color-accent` must lighten to `#60a5fa` to stay readable as text. Dark
+mode overrides it to `#1d4ed8` per the user's choice at planning time.
+
+All 17 `--color-accent` usages were classified before changing any: five are
+accent-as-text (links, `.back-link`, `.link-button`, the active menu trigger
+and checked row) and stay on `--color-accent`; the rest are focus outlines
+and active-tab borders, which are non-text and fine either way. Exactly
+three are fills carrying white text — `.btn-primary`, `::selection` and
+`.user-menu__avatar` — and those moved to the new token. Grepping every
+`color: white` in the stylesheet confirmed those three plus `.btn-danger`
+(already handled by Milestone 4's split) are the only such surfaces, so
+nothing was missed.
+
+Measured in both themes: primary-button text **6.7:1 dark** (was 2.54) and
+5.17:1 light; avatar identical; links unchanged at 6.97:1 dark; the Delete
+button untouched at 4.83:1. Light mode is byte-for-byte unchanged — both
+fills still compute to `rgb(37, 99, 235)`. Swept the trips, locations and
+itinerary pages in dark mode (7 primary buttons in total): minimum text
+contrast 6.7:1 everywhere.
+
+One trade-off worth recording: the darker fill contrasts less with the card
+*behind* it — 2.22:1 in dark, against 2.90:1 had the fill stayed `#2563eb`.
+Both are under the 3:1 non-text bar, though that bar applies to components
+identified by their boundary alone, which a filled button with a white label
+isn't. Compared side by side, both read fine; the chosen colour is also the
+better of the two on the ratio that governs the label. If the button ever
+feels muddy against dark cards, dropping the dark override (leaving
+`#2563eb` in both themes) trades 6.7:1 down to 5.17:1 on the text — still
+past AA — and buys back the fill contrast.
+
 ## Milestone 11 — Checklist items get a real touch target
 
 `web/css/base.css`, inside the existing `max-width: 640px` block (from line

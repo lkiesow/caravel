@@ -148,6 +148,76 @@ passes, then `rm` it and confirm the tree is clean again. Run `--unused`
 against the real tree and report what it finds (findings themselves go
 to `todo.md`, not fixed here).
 
+**Done.** Landed as `scripts/i18n.py` with `set` / `rm` / `unused`
+subcommands. Deviation: `--unused` is a subcommand (`i18n.py unused`)
+rather than a flag, which argparse wants once `set` and `rm` are also
+subcommands; `--strict` on it exits non-zero for eventual CI use, left
+opt-in deliberately (see below). Formatting held up empirically — the
+current files round-trip through `json.dumps(indent=2,
+ensure_ascii=False) + "\n"` byte-identically, so no text splicing was
+needed, and a `check_roundtrip()` guard now re-asserts that before every
+write so a hand-reformatted file can't be silently rewritten wholesale.
+
+Two bugs were found *by* verification rather than by review, both worth
+recording because both were invisible until exercised:
+
+*Partial writes.* The `--after` anchor check originally ran inside the
+per-locale write loop, so an anchor present in `en` but not `de` would
+write `en`, then abort on `de` — leaving exactly the parity break this
+script exists to prevent. Anchors are now validated across every target
+locale before anything is written; verified by deleting the anchor from
+`de.json` only and confirming `en.json`'s checksum is untouched after the
+refusal.
+
+*The parity rule was too strict.* It demanded a value for every locale
+whenever a key was new *anywhere*, so backfilling a half-landed key into
+just the locale missing it was rejected — with a confusing message naming
+a locale that already had the key. The rule is now "every locale that
+lacks the key needs a value", which permits both backfilling one locale
+and updating one language's copy alone.
+
+The `unused` scanner needed three fixes, and this is the part worth
+remembering: its first draft reported **16 live keys as orphans and
+invented a phantom key**. Keys reach `t()` by five routes, not one —
+direct `t("k")` calls; `data-i18n[-placeholder|-aria-label]` attributes;
+runtime composition in a call (`` t(`item.category.${c}`) ``); runtime
+composition in an *attribute* (`data-i18n="trip.tabs.${key}"` in
+`trip-detail-page.js`, which made all six tab keys look unused); and bare
+strings resolved elsewhere entirely — a ternary inside an attribute
+(`data-i18n="${mode === "login" ? "auth.login.title" : ...}"`) or a key
+passed as component data (`ariaLabel: "locations.filter.label"`, which
+`menu.js` later renders into the attribute). The last route needs a real
+JS parser to chase properly, so instead any quoted string exactly
+matching a known key counts as a reference — erring toward "used", which
+is the safe direction for a tool that suggests deletions. The phantom
+`trip.tabs.` came from the literal-attribute pattern matching up to the
+`$` in `trip.tabs.${key}`; requiring a closing quote fixed it. Keys
+matched only by a dynamic prefix are reported in their own section marked
+*not safe to delete*, never as unused. `unused` also reports the inverse
+that `check_i18n.py` structurally cannot — keys referenced in `web/js`
+but defined in **no** locale, where `t()` renders the raw key.
+
+`unused` is deliberately **not** in `make ci`: the 9 dynamically-composed
+keys are unprovable either way by static scan, so making it a gate would
+mean either false failures or teaching it to ignore the very cases it
+should flag for a human.
+
+Verified: (a) forcing a real write of a changed-then-restored value
+leaves both files byte-identical by checksum, with a one-line diff in
+between; (b) a new key via `--after` lands directly after its anchor in
+*both* locales (diff confirms position, not end-of-file) and
+`make check-i18n` passes at 121 keys; (c) `rm` removes it from every
+locale and returns the tree clean; (d) all five guard paths — unknown
+locale, missing locale for a new key, bad anchor, absent key on `rm`,
+non-canonical formatting — exit 1 and write nothing; (e) non-vacuity of
+`unused` both ways: a freshly added unreferenced key is detected (and
+`--strict` exits 1), while the same key with a `t()` reference added is
+correctly not flagged; (f) `make ci` green and tree clean afterwards.
+
+Real finding, recorded in `todo.md` rather than fixed here per the plan:
+`common.edit` and `item.detail.close` are genuine orphans — no reference
+by any of the five routes.
+
 ## 3. `make dev-restart` — restart by port, prove the binary is new
 
 Kill whatever holds the port **by port**, not by process name:

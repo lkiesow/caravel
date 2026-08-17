@@ -131,6 +131,22 @@ require a redesign later — they're additive, not blocked, but none are built:
   it — confirmed it currently parses clean that way. So this isn't a
   one-line widening of the find; it wants a second check with the other
   parse mode, which is why it wasn't folded into that milestone.
+- **Two orphaned i18n keys: `common.edit` and `item.detail.close`.** Found by
+  `scripts/i18n.py unused` (Stage 08 Milestone 2) — neither is referenced by
+  any of the five routes a key can reach `t()` through, so both are dead
+  copy in `en.json` and `de.json`. Not deleted there because that milestone
+  built the tool rather than acting on its output, and because `common.edit`
+  in particular looks like a key some future ⋮-menu (see the checklist entry
+  under Stage 05) would want to re-add rather than re-invent. Decide per key:
+  delete, or keep with a note.
+- **`scripts/i18n.py unused` is not wired into `make ci`.** It has a
+  `--strict` flag that exits non-zero, but 9 keys (the `trip.tabs.*` and
+  `item.category.*` families) are only reachable via runtime-composed keys
+  and so are unprovable either way by static scan. Gating CI on it would
+  mean either false failures or teaching it to ignore exactly the cases a
+  human should eyeball. Worth revisiting if an allowlist of known-dynamic
+  prefixes turns out to be maintainable — that would make the check a real
+  gate instead of a report.
 - **`itinerary.noDates` points at a tab that no longer exists.** A trip with
   no start/end date shows "Set a start and end date on the **Overview tab**
   to build a day-by-day itinerary, or add days manually below" — but Stage
@@ -413,18 +429,6 @@ are hard; the cost is that they get rebuilt (and re-debugged) every time, and
 the fiddly parts are exactly the parts that get skipped when they're
 inconvenient.
 
-- **A helper script to set i18n values for keys in all languages.** This
-  would make it a lot easier to set or update translations during
-  development. *(Hand-rolled 7 times in Stage 07 as a throwaway `python3 -`
-  heredoc.)* Wanted beyond plain insertion: place a new key **next to an
-  anchor key** rather than at the end, so related copy stays together;
-  **update** an existing key across every locale in one call; **delete** a
-  key from every locale; and a **`--unused`** mode listing keys no longer
-  referenced anywhere in `web/js` (Stage 07 added 11 keys and never checked
-  for orphans). It must preserve file order and the existing 2-space,
-  `ensure_ascii=False` formatting, so diffs stay one line per key —
-  `check_i18n.py` already covers parity, so this is the write side of the
-  same job.
 - **A contrast-measurement script (`scripts/contrast.js` or similar).**
   Takes a route, one or more selectors and a colour scheme; reports the
   computed text-vs-background and fill-vs-surround ratios against the WCAG

@@ -1,17 +1,18 @@
 # Caravel — TODO / Backlog
 
-Everything below is **not yet built**. Compiled from three sources: Stage 01's
+Everything below is **not yet built**. Originally compiled from Stage 01's
 plan (`stage-01.md`) and Stage 02's plan (`stage-02.md`) — both marked
-"complete" for their own scope, but each explicitly deferred things — plus
-`notes.md` (hands-on notes jotted down separately). Nothing here is
+"complete" for their own scope, but each explicitly deferred things — plus a
+separate `notes.md` of hands-on observations, which has since been folded in
+here and removed, so this file is now the single backlog. Nothing here is
 prioritized or scheduled; this is raw input for planning the next stage.
 
 Each item cites where it came from, so the reasoning behind it isn't lost.
 
 ## Confirmed bugs / gaps (verified by reading the current code)
 
-These aren't just suspicions from `notes.md` — each was checked against the
-actual source before going in this list.
+These aren't just suspicions — each was checked against the actual source
+before going in this list.
 
 
 ## Deferred from Stage 01 (explicit "future phases," Section 7)
@@ -81,7 +82,7 @@ require a redesign later — they're additive, not blocked, but none are built:
   items can be added later" (per the Stage 02 plan) — admin/settings items
   were explicitly deferred, not forgotten.
 
-## Testing / CI / dev-workflow gaps (`notes.md`)
+## Testing / CI / dev-workflow gaps
 
 - **No real Playwright UI test suite.** Stage 03 added GitHub Actions CI
   (`.github/workflows/ci.yml`) running a build check, `go vet`, a JS syntax
@@ -96,6 +97,20 @@ require a redesign later — they're additive, not blocked, but none are built:
   window.innerWidth` and a ~44px minimum control height across every route
   would catch future regressions cheaply, and was explicitly deferred out of
   that stage rather than built ad hoc.
+  Stage 07 added three more checks worth building into that suite, each
+  hand-rolled repeatedly there and each cheap to assert once written:
+  **(a) heading outline** — walk the light DOM *and every shadow root* in
+  document order, assert one `h1` first and no skipped level; the shadow
+  walk is the part that matters, since the trip/location card headings that
+  were wrong live in shadow DOM and a plain `document.querySelectorAll`
+  sweep misses them entirely. **(b) accessible names** — every input,
+  select, textarea and button resolves a non-empty name from aria-label,
+  aria-labelledby, wrapping/associated label, placeholder, text or title
+  (157 controls across 10 routes when Stage 07 ran it). **(c) the sweep
+  matrix** — routes × {1280×800, 324×756} × {light, dark}, which is 44
+  checks at Stage 07's route count and took seconds; dark mode needs
+  `page.emulateMedia({colorScheme})`, which also removes any need to change
+  the OS or browser theme by hand.
 - **Mobile route sweeps should assert the landed-on URL, not just the
   absence of overflow.** Stage 04 discovered mid-implementation that an
   earlier version of its own manual verification script used a URL pattern
@@ -157,7 +172,7 @@ require a redesign later — they're additive, not blocked, but none are built:
   them into a single `0001_init` is safe and worth doing before that
   changes.
 
-## New feature ideas (not previously in either plan, from `notes.md`)
+## New feature ideas (not previously in either plan)
 
 - **Re-evaluate Leaflet+OSM vs. Google Maps.** Stage 01 already weighed this
   and chose Leaflet+OSM (no API key/billing, low-regret since the tile URL
@@ -358,4 +373,91 @@ triaged with the user rather than dropped silently.
     - The Documents tab's "Upload" is styled `btn-secondary` though it is
       that row's primary action, while "New checklist" next to an identical
       input row is `btn-primary` — the two rows should agree.
-- We could think about adding a a helper script to easily set i18n values for keys in all languages. This would make it a lot easier to set or update translations during development.
+
+## Migrated from `notes.md` (that file is now gone; add new notes here)
+
+- **Rendered notes are spaced far too loosely — `white-space: pre-wrap` is
+  the cause, not the heading margins.** `.location-view__notes`
+  (`base.css`) sets `white-space: pre-wrap`, which made sense when notes
+  were plain text but is wrong now they're rendered to HTML: the newlines
+  *between* block elements in `notes_html` survive as literal blank lines,
+  stacking on top of each element's own margins. Measured on a real note:
+  the gap between a paragraph and the following `<h2>` is **58px with
+  pre-wrap, 20px without** — 38px of it pure preserved newline, and the same
+  penalty applies before every list, list item and paragraph. A page of
+  notes that needed scrolling fits on one screen without it.
+  The h2 itself is fine (24px, 19.92px margins, unaffected by Stage 07
+  Milestone 14, whose `.editor-card h2` rule doesn't reach the notes block).
+  Fix is to drop `pre-wrap` — but note the trade-off it was presumably
+  hiding: goldmark collapses a *single* newline into a space, so a note
+  relying on single line breaks would reflow. If those should stay,
+  enable goldmark's hard-wrap option (`html.WithHardWraps()` in
+  `internal/markdown`) at the same time, so line breaks come from `<br>`
+  rather than from CSS preserving source whitespace.
+- **A markdown preview for location notes would be nice.** Notes are
+  authored in a plain `<textarea>` (`location-form.js`) and only rendered
+  after saving, on the view page — so formatting is written blind. Wants a
+  preview (side-by-side, or a toggle) using the same server-rendered
+  `notes_html` the view page uses, or a client-side render if a round trip
+  per keystroke is too much.
+- **Per-visibility checklists: personal / trip-visible / shared.** Personal
+  (only the author sees them), public (everyone on the trip can see them)
+  and shared (everyone can see *and* tick them). Explicitly for after real
+  multi-user support exists — it depends on the
+  "Sharing/collaboration/permissions" entry near the top of this file, and
+  the visibility column would want designing alongside those roles rather
+  than bolted onto `checklists` first.
+
+## Developer tooling (repeated hand-rolling during Stage 07)
+
+Each of these was written ad hoc several times while implementing Stage 07 —
+the counts are actual occurrences in that stage, not estimates. None of them
+are hard; the cost is that they get rebuilt (and re-debugged) every time, and
+the fiddly parts are exactly the parts that get skipped when they're
+inconvenient.
+
+- **A helper script to set i18n values for keys in all languages.** This
+  would make it a lot easier to set or update translations during
+  development. *(Hand-rolled 7 times in Stage 07 as a throwaway `python3 -`
+  heredoc.)* Wanted beyond plain insertion: place a new key **next to an
+  anchor key** rather than at the end, so related copy stays together;
+  **update** an existing key across every locale in one call; **delete** a
+  key from every locale; and a **`--unused`** mode listing keys no longer
+  referenced anywhere in `web/js` (Stage 07 added 11 keys and never checked
+  for orphans). It must preserve file order and the existing 2-space,
+  `ensure_ascii=False` formatting, so diffs stay one line per key —
+  `check_i18n.py` already covers parity, so this is the write side of the
+  same job.
+- **A contrast-measurement script (`scripts/contrast.js` or similar).**
+  Takes a route, one or more selectors and a colour scheme; reports the
+  computed text-vs-background and fill-vs-surround ratios against the WCAG
+  thresholds. *(Hand-rolled ~6 times.)* The two parts worth having written
+  down once: **flattening translucent backgrounds** over whatever is behind
+  them (the danger tint is `rgba(...)`, so a naive reading measures against
+  transparency and reports nonsense), and **reaching into shadow roots**.
+  This is what found the 2.54:1 primary buttons and the 3.08:1 error text,
+  and what proved light mode was untouched afterwards.
+- **A non-vacuity helper (`scripts/without.sh <files> -- <command>`).**
+  Reverts the named files (`git stash push`), runs the command, restores
+  them, and exits non-zero if the command *passed* without the change.
+  *(Hand-rolled 5 times: date validation, delete-day tests, day ordering,
+  the accessible-name sweep, the heading audit.)* It's the step that turns
+  "the test passes" into "the test would have caught this", and it's the
+  easiest one to skip — which is when a vacuous test slips through.
+- **`make dev-restart`.** Kill whatever holds :8080 **by port**, restart
+  `make dev`, wait for the health check, and optionally assert the running
+  binary contains a marker string (`strings /proc/<pid>/exe | grep ...`).
+  *(Needed 4 times; twice it went wrong.)* `pkill -f "go run ./cmd/caravel"`
+  does **not** find the compiled child — its command line is a
+  `~/.cache/go-build/...` path — which is exactly how Stage 07 Milestone 3
+  first recorded a false pass against a stale server. See the separate entry
+  above for the full trap.
+- **Seed scenarios in `cmd/seed`, plus `make dev-reset`.** Every Stage 07
+  milestone needed a *specific* data shape and built it through ad-hoc
+  `fetch` calls, then hand-deleted the leftovers (imperfectly — stray test
+  trips are in the dev database now). Scenarios worth naming: a trip with
+  **exactly one** mappable location (the zero-size-bounds map case), a trip
+  with **only a start date**, one **crossing a year boundary**, one with
+  **no dates at all**, days **outside the trip's range**, and a trip with
+  children for **cascade** checks. `make dev-reset` to wipe and reseed
+  removes the cleanup half of the problem entirely.

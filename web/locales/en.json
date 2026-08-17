@@ -81,6 +81,7 @@
   "item.detail.image": "Image",
   "image.upload": "Upload a photo",
   "image.urlPlaceholder": "Or paste an image URL",
+  "image.loadFailed": "That image couldn't be loaded. Try a different file or link.",
   "image.setUrl": "Set image",
   "image.remove": "Remove",
   "trip.overview.image": "Cover photo",

@@ -873,6 +873,12 @@ button {
   margin-bottom: 1rem;
 }
 
+/* display:block would win over the UA's [hidden] rule, so an image hidden
+   after failing to load would still occupy its border box. */
+.image-field__preview[hidden] {
+  display: none;
+}
+
 .image-field__preview {
   display: block;
   max-width: 100%;

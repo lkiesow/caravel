@@ -422,6 +422,32 @@ backlog item, not this milestone.)
 **Verify:** set an unreachable image URL — visible error in the image field;
 a working URL still previews.
 
+**Done.** An `error` listener on the preview hides the empty box and shows
+`image.loadFailed` through the existing `.image-field__error` paragraph. The
+CSS needed a companion rule: `.image-field__preview` sets `display: block`,
+which outranks the UA's `[hidden]` rule, so hiding it in JS alone would have
+left the border box sitting there.
+
+Verified on the new-trip form: an unreachable URL now shows "That image
+couldn't be loaded. Try a different file or link." with the preview hidden
+(`display: none`, height 0) — where the same input previously left an
+`alt=""` element collapsed to nothing and no message at all, which read as
+"the URL wasn't accepted" even though it had been. A working URL still
+previews with no error (`naturalWidth: 32`). The same handler covers the
+*file* path too: a non-image file renamed `.png` (which `accept="image/*"`
+happily lets through) reports instead of silently showing nothing. Copy
+reworded mid-milestone from "Check the link…" to "Try a different file or
+link" once that second path was confirmed to share the message. German
+checked.
+
+Also found, recorded in `todo.md` rather than fixed: on an **existing** trip
+the field is in attached mode, where "Set image" does fetch server-side at
+the right moment — but reports the Go error verbatim (`dial tcp: lookup
+example.invalid: no such host`), untranslated even with the German UI. So
+the two modes fail at different *times* and with different *copy*; that
+belongs with the existing image-timing backlog item, not here. i18n parity
+113 keys, `make ci` green.
+
 ## Milestone 10 — Dark-mode button contrast
 
 `web/css/base.css`. `.btn-primary` (line 125) is white on `--color-accent`,

@@ -44,6 +44,17 @@ export function renderImageField(container, { tripId, imageUrl, attachPath, onCh
       errorEl.hidden = false;
     };
 
+    // A picture the browser can't fetch (dead link, hotlink-blocked host, a
+    // file that isn't really an image) renders as an alt="" element, which
+    // collapses to nothing - so the field looked exactly like "no preview
+    // was set" while the URL had in fact been accepted. Say so instead, and
+    // drop the empty box.
+    const previewEl = container.querySelector(".image-field__preview");
+    previewEl?.addEventListener("error", () => {
+      previewEl.hidden = true;
+      showError(t("image.loadFailed"));
+    });
+
     container.querySelector('input[type="file"]').addEventListener("change", async (e) => {
       const file = e.target.files[0];
       if (!file) return;

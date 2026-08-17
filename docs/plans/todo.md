@@ -320,6 +320,14 @@ triaged with the user rather than dropped silently.
   alert reads like a total failure that wasn't one. Should validate/fetch
   at "Set image" time and report inline. (Stage 07 Milestone 9 makes the
   *broken preview* visible, which is the other half of the same confusion.)
+  Second facet, found while verifying that milestone: on an **existing**
+  trip the same field does fetch server-side at "Set image" time — the right
+  moment — but renders the Go error verbatim, e.g. `could not fetch image
+  from url: Get "https://example.invalid/x.jpg": dial tcp: lookup
+  example.invalid: no such host`, untranslated even with the German UI
+  active. So the two modes fail at different times *and* with different
+  copy. Whatever fixes the timing should also map these to a translated
+  message, keeping the detail for the console rather than the card.
 - **Trip settings' date inputs clip at 324px.** The start/end date fields
   sit side by side in `.trip-form__dates`; at the phone's width each is
   ~123px and the browser truncates the year under the calendar icon —
@@ -350,3 +358,4 @@ triaged with the user rather than dropped silently.
     - The Documents tab's "Upload" is styled `btn-secondary` though it is
       that row's primary action, while "New checklist" next to an identical
       input row is `btn-primary` — the two rows should agree.
+- We could think about adding a a helper script to easily set i18n values for keys in all languages. This would make it a lot easier to set or update translations during development.

@@ -246,6 +246,63 @@ trap deliberately: leave a server running, confirm plain `make dev` now
 Go file, `make dev-restart MARKER=<that string>`, confirm it passes —
 then check it *fails* against a server started before the edit.
 
+**Done.** Landed as `scripts/dev_server.sh` with three subcommands, wired
+to `make dev` (guard), `make dev-restart` and a new `make dev-marker`.
+No health endpoint had to be invented: `/api/health` already exists
+(`router.go:73`) and pings the database, so it's a real readiness check
+rather than a static 200. Server logs go to `.dev/server.log`
+(gitignored), and the server is started with `setsid nohup` so it
+outlives make.
+
+Deviations. `grep -aq` on `/proc/<pid>/exe` replaces the plan's
+`strings | grep`, dropping the binutils dependency (`strings` happens to
+be installed here, but `grep -a` works anywhere and is one process
+instead of two). Added beyond the plan: a `check-marker` subcommand
+(`make dev-marker MARKER=...`) that asserts against the *already running*
+server without restarting it — the plan's own negative test ("check it
+fails against a server started before the edit") is impossible with a
+restart-only tool, and asking "am I testing my change or a stale binary?"
+without disturbing the server is the more useful daily form anyway.
+
+The `pkill` trap is worse than `todo.md` records. That entry says
+`pkill -f "go run ./cmd/caravel"` "doesn't catch it" — but measured here,
+it *does* match a process: the `go run` **wrapper** (pid 330286), while
+the listener was a **different pid** (330379) whose cmdline is the
+build-cache path. So `pkill -f` doesn't fail visibly; it kills the parent,
+reports success, and leaves the port held by the orphan. That's why every
+lookup here goes through `ss -lptn "sport = :$PORT"`.
+
+Two bugs found by testing, both invisible on read:
+
+*The script died silently on a free port.* `listening_pids()` ends in a
+`grep`, which exits 1 when nothing matches; under `set -euo pipefail`
+that propagates out of the command substitution and aborts the script
+with no output and a bare exit 1. So it broke in precisely the case it
+most needs to work — a fresh machine with nothing running. Every earlier
+test had passed only because the port happened to be busy. Fixed with a
+trailing `|| true` and a comment explaining why it's load-bearing.
+
+*A marker must be a string the code actually uses.* The plan says "add a
+unique string constant to a Go file"; doing exactly that fails. An
+unused `const devMarkerProbe = "..."` never reaches the binary — Go folds
+constants at compile time and the linker drops unreferenced data — so the
+check reports "not found" against a server that genuinely does have the
+change. Verified both halves: the unused const failed immediately after a
+clean rebuild, while the same string added to the `/api/health` response
+body was found straight away. Documented at the assert function.
+
+Verified: (a) with the stale server from the previous session holding
+:8080, `make dev` now *reports* it — naming the pid and its build-cache
+exe path — instead of dying quietly; (b) `make dev-restart` replaced it,
+pid 330379 → 404451, health OK, ~1.4s; (c) the decisive false-pass
+reproduction — with a real change to the health payload on disk but not
+restarted, `make dev-marker MARKER=...` **fails** and says the process
+isn't running your code, then `make dev-restart MARKER=...` **passes**
+and `curl /api/health` shows the change live; (d) cold start from a fully
+free port works (the bug above); (e) a build error fails in ~1.2s
+printing the actual compiler message, rather than hanging out the 45s
+timeout; (f) `CARAVEL_PORT` is honoured; (g) all misuse paths exit 2.
+
 ## 4. Seed scenarios in `cmd/seed` + `make dev-reset`
 
 `cmd/seed/main.go` currently seeds exactly one shape (a demo user and one

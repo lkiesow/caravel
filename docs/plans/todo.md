@@ -165,20 +165,15 @@ require a redesign later — they're additive, not blocked, but none are built:
   covered cheaply by lifting those helpers into a shared `testing_test.go`,
   which is worth doing before the next stage that touches ownership or
   auth-sensitive routes.
-- **Verifying a backend change needs proof the *running* binary has it.**
-  Stage 07 Milestone 3 nearly recorded a false pass: the API returned
-  200/201 for input the new validation rejects, because a stale server from
-  an earlier session still held :8080 and `make dev` had failed behind it
-  with "address already in use" (a background start whose failure is easy
-  to miss). `pkill -f "go run ./cmd/caravel"` doesn't catch it either — the
-  compiled child's command line is its `~/.cache/go-build/...` path, not
-  the `go run` invocation. What worked: find the listener with
-  `ss -lptn 'sport = :8080'`, then grep `/proc/<pid>/exe` for a string the
-  change introduces. Frontend edits are immune (served from disk under
-  `CARAVEL_WEB_DIR`), which is exactly why this is easy to forget for Go
-  changes. Worth folding into the scripted suite when it exists — e.g. a
-  `make dev` that fails loudly on a busy port, or a startup banner carrying
-  the build's git SHA that a test can assert against.
+- **A startup banner carrying the build's git SHA.** The other half of the
+  stale-binary problem, left over after Stage 08 Milestone 3 built
+  `make dev-marker`: that check needs you to *supply* a marker string, and
+  the string has to be one the code actually uses (an unused Go const is
+  folded away and never reaches the binary). A SHA stamped in at build time
+  via `-ldflags -X` and logged at startup — ideally also returned by
+  `/api/health` — would let any test assert which build it is talking to
+  without the caller inventing a marker each time. Cheap, and it would make
+  the Playwright suite's "is this the right server?" check trivial.
 - **Migrations should be collapsed/squashed before the first real
   release.** There are three migration files per dialect now
   (0001/0002/0003); since nobody has actually deployed this yet, squashing
@@ -445,14 +440,6 @@ inconvenient.
   the accessible-name sweep, the heading audit.)* It's the step that turns
   "the test passes" into "the test would have caught this", and it's the
   easiest one to skip — which is when a vacuous test slips through.
-- **`make dev-restart`.** Kill whatever holds :8080 **by port**, restart
-  `make dev`, wait for the health check, and optionally assert the running
-  binary contains a marker string (`strings /proc/<pid>/exe | grep ...`).
-  *(Needed 4 times; twice it went wrong.)* `pkill -f "go run ./cmd/caravel"`
-  does **not** find the compiled child — its command line is a
-  `~/.cache/go-build/...` path — which is exactly how Stage 07 Milestone 3
-  first recorded a false pass against a stale server. See the separate entry
-  above for the full trap.
 - **Seed scenarios in `cmd/seed`, plus `make dev-reset`.** Every Stage 07
   milestone needed a *specific* data shape and built it through ad-hoc
   `fetch` calls, then hand-deleted the leftovers (imperfectly — stray test

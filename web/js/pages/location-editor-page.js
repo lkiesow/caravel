@@ -101,8 +101,8 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
           <h4 data-i18n="item.detail.dates"></h4>
           <ul class="date-list"></ul>
           <form class="date-form">
-            <input type="date" name="startDate" required />
-            <input type="date" name="endDate" data-i18n-placeholder="item.detail.endDate" />
+            <input type="date" name="startDate" required data-i18n-aria-label="item.detail.startDate" />
+            <input type="date" name="endDate" data-i18n-placeholder="item.detail.endDate" data-i18n-aria-label="item.detail.endDate" />
             <input type="text" name="label" data-i18n-placeholder="item.detail.dateLabel" />
             <button type="submit" class="btn btn-secondary btn-row">${icon("plus")} <span data-i18n="item.detail.addDate"></span></button>
           </form>

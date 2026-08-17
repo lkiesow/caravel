@@ -538,6 +538,30 @@ Use `data-i18n-aria-label`, which `translatePage` already supports (see
 
 **Verify:** assert each control has a non-empty accessible name.
 
+**Done.** The add-a-day input and the location editor's start date use
+`data-i18n-aria-label` with new keys. The per-day `<select>` went further
+than a static label: since one exists per day and they'd otherwise be N
+identical "Choose an item" comboboxes, it names its own day via `t()`'s
+`{date}` interpolation — "Add an item to Thu, 20 Aug 2026". The end-date
+input also gained an explicit `aria-label` (same string as its placeholder)
+so its name no longer depends on placeholder-as-fallback, which is the
+weakest source in the accname spec.
+
+Rather than checking only the three controls the plan named, a sweep over
+**10 routes** computed the accessible name of every input, select, textarea
+and button — 157 controls — from aria-label, aria-labelledby, wrapping or
+associated label, placeholder, text content and title. Result: **zero
+unnamed controls**. The sweep was proven non-vacuous by stashing the two JS
+files and re-running: it flags exactly `select#itemId` ×4, `input#date` and
+`input#startDate`, the three cases the plan identified. German checked on
+all four labels.
+
+Noted, not fixed: the German select label reads "Einen Eintrag zum Thu, 20
+Aug 2026 hinzufügen" — German copy around a browser-locale date. That's the
+`Intl`-locale mismatch already recorded under Milestone 5 and in `todo.md`'s
+language-switcher entry, now visible mid-sentence rather than just in a date
+column. i18n parity 116 keys, `make ci` green.
+
 ## Milestone 13 — Announce form errors
 
 `.auth-form__error` (`login-page.js:16`) and the sibling `.trip-form__error`,

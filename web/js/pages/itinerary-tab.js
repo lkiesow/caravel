@@ -20,7 +20,7 @@ export async function renderItineraryTab(container, trip) {
         ${!trip.start_date || !trip.end_date ? `<p class="itinerary__hint">${t("itinerary.noDates")}</p>` : ""}
         <div class="itinerary-days"></div>
         <form class="itinerary-add-day">
-          <input type="date" name="date" required />
+          <input type="date" name="date" required data-i18n-aria-label="itinerary.addDayDate" />
           <button type="submit" class="btn btn-primary btn-collapse">${icon("plus")} <span data-i18n="itinerary.addDay"></span></button>
         </form>
       </div>
@@ -65,7 +65,7 @@ export async function renderItineraryTab(container, trip) {
       <ul class="itinerary-day__entries"></ul>
       <p class="itinerary-day__empty" data-i18n="itinerary.empty" hidden></p>
       <form class="itinerary-day__add-item">
-        <select name="itemId">
+        <select name="itemId" aria-label="${escapeAttr(t("itinerary.addItemTo", { date: formatDate(day.date) }))}">
           <option value="" data-i18n="itinerary.selectItem"></option>
           ${items.map((i) => `<option value="${i.id}">${escapeHtml(i.title)}</option>`).join("")}
         </select>

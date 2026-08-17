@@ -19,7 +19,7 @@ vet:
 	go vet ./...
 
 check-js:
-	find web/js -name '*.js' -print0 | xargs -0 -n1 node --check
+	scripts/check_js.sh
 
 check-i18n:
 	python3 scripts/check_i18n.py

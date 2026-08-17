@@ -22,7 +22,7 @@ jobs:
         run: go vet ./...
 
       - name: JS syntax check
-        run: find web/js -name '*.js' -print0 | xargs -0 -n1 node --check
+        run: scripts/check_js.sh
 
       - name: i18n key parity
         run: python3 scripts/check_i18n.py

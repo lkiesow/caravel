@@ -83,6 +83,37 @@ containing `<!--` and a stray backtick to a scratch copy of a `web/js`
 file, confirm the old command accepts it and the new one rejects it,
 revert.
 
+**Done.** Landed as `scripts/check_js.sh`, with `make check-js` and
+ci.yml's *JS syntax check* step both reduced to calling it — a deviation
+from the plan's inline `xargs` one-liner, taken because the duplication
+between those two places is exactly why this bug needed fixing twice, and
+because `check-i18n` already delegates to `scripts/check_i18n.py`, so a
+script is the established shape. Two further deviations, both forced by
+testing rather than preference: the shebang is `#!/usr/bin/env bash`, not
+`sh`, because the NUL-safe `read -r -d ''` and process substitution are
+bash-only and GitHub Actions' `/bin/sh` is dash — the plan's form would
+have broken CI; and each failure echoes its own path, because
+`--input-type=module` reads from stdin and so Node reports errors against
+`[stdin]:155` with no filename, which would have made a CI failure
+near-undebuggable. The `exit 255` trick the plan called for is moot in a
+`while` loop: the script counts failures and exits 1 if any, so it
+reports *every* bad file rather than aborting at the first. Added beyond
+the plan: a guard that exits non-zero if the find turns up zero files, so
+the target can't pass vacuously if the tree ever moves.
+
+Verified: (a) passes on the current tree — 28 files including the
+vendored `leaflet.esm.js`. (b) Non-vacuity, reconstructing the original
+Stage 07 Milestone 8 failure in the very file it broke: appending
+``<!-- a note mentioning a `template literal` -->`` to
+`web/js/components/document-list.js` is **accepted** by the old
+`node --check` command and **rejected** by the new one
+("SyntaxError: HTML comments are not allowed in modules", naming the
+file), and `make ci` as a whole goes red, confirming the check actually
+gates CI. (c) The empty-tree guard exits 1 from a directory with no
+`web/js` files. (d) The premise is real: `web/index.html:17` loads the
+app via `<script type="module">`, so module parsing is the mode that
+matters. Tree restored clean afterwards; `make ci` green.
+
 ## 2. `scripts/i18n.py` — write side of the locale files
 
 `check_i18n.py` covers parity (the read side); this is the write side.

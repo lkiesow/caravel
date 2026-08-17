@@ -120,20 +120,17 @@ require a redesign later — they're additive, not blocked, but none are built:
   footgun once a scripted suite exists: always assert
   `window.location.pathname` equals the intended route before asserting
   anything about that page's layout.
-- **`make check-js` parses modules as scripts, so it can pass on a file the
-  browser refuses to load.** `node --check web/js/**.js` treats each file as
-  a CommonJS *script*, where `<!--` legally starts an HTML-like comment
-  (Annex B). The app loads every one of those files as an ES *module*, where
-  HTML-like comments are a syntax error. Hit for real in Stage 07 Milestone
-  8: a comment accidentally containing a backtick broke the Documents tab
-  with "SyntaxError: unexpected token: identifier" in the browser while
-  `make ci` stayed green — the `<!--` swallowed the stray backtick in script
-  mode. Verified fix: pipe the file in on stdin instead, which makes the
-  parse mode explicit —
-  `node --input-type=module --check < "$f"`. Confirmed it rejects the broken
-  file and accepts all current `web/js` files including the vendored
-  Leaflet build. Worth changing in the Makefile (and mirroring in
-  `.github/workflows/ci.yml` if it duplicates the command).
+- **`web/sw.js` is never syntax-checked.** Surfaced by Stage 08 Milestone 1
+  while fixing the parse mode: both the old and new checks only walk
+  `web/js`, and the service worker lives one level up at `web/sw.js`, so a
+  syntax error in it reaches the browser with `make ci` green — the same
+  class of hole the milestone just closed, one directory over. Note it
+  needs the *opposite* mode: `app.js:76` registers it via
+  `navigator.serviceWorker.register("/sw.js")` with no `{type: "module"}`,
+  so it is a classic script and `node --check` (script mode) is correct for
+  it — confirmed it currently parses clean that way. So this isn't a
+  one-line widening of the find; it wants a second check with the other
+  parse mode, which is why it wasn't folded into that milestone.
 - **`itinerary.noDates` points at a tab that no longer exists.** A trip with
   no start/end date shows "Set a start and end date on the **Overview tab**
   to build a day-by-day itinerary, or add days manually below" — but Stage

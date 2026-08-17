@@ -16,7 +16,7 @@ const CATEGORIES = ["site", "stay", "transport"];
 export function renderItemForm(container, item, { tripId, onSaved, onCancel, showActions = true }) {
   container.innerHTML = `
     <form class="item-form" novalidate>
-      <p class="item-form__error" hidden></p>
+      <p class="item-form__error" role="alert" hidden></p>
       <label>
         <span data-i18n="location.form.title"></span>
         <input type="text" name="title" required />

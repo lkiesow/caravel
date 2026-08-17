@@ -33,7 +33,7 @@ export function renderImageField(container, { tripId, imageUrl, attachPath, onCh
           </form>
           ${currentUrl ? `<button type="button" class="btn btn-secondary" data-action="remove">${icon("x")} <span data-i18n="image.remove"></span></button>` : ""}
         </div>
-        <p class="image-field__error" hidden></p>
+        <p class="image-field__error" role="alert" hidden></p>
       </div>
     `;
     translatePage(container);

@@ -13,7 +13,7 @@ export function renderLoginPage(container) {
         <div class="auth-screen">
           <form class="auth-form" novalidate>
             <h1 data-i18n="${mode === "login" ? "auth.login.title" : "auth.register.title"}"></h1>
-            <p class="auth-form__error" hidden></p>
+            <p class="auth-form__error" role="alert" hidden></p>
 
             <label>
               <span data-i18n="auth.login.username"></span>

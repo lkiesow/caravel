@@ -14,7 +14,7 @@ import { icon } from "../icon.js";
 export function renderTripForm(container, trip, { onSaved, onCancel, showActions = true }) {
   container.innerHTML = `
     <form class="trip-form" novalidate>
-      <p class="trip-form__error" hidden></p>
+      <p class="trip-form__error" role="alert" hidden></p>
       <label>
         <span data-i18n="trip.form.title"></span>
         <input type="text" name="title" required />

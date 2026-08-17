@@ -242,12 +242,13 @@ a:visited {
    message itself uses --color-text, which is legible on both themes by
    construction.
 
-   One rule for all four error paragraphs in the app - auth, trip form,
-   documents, image field - which previously carried three near-identical
-   copies of the same declarations plus one (.trip-form__error) that had no
-   error styling at all. */
+   One rule for all five error paragraphs in the app - auth, trip form,
+   location form, documents, image field - which previously carried three
+   near-identical copies of the same declarations plus two
+   (.trip-form__error, .item-form__error) that had no error styling at all. */
 .auth-form__error,
 .trip-form__error,
+.item-form__error,
 .document-form__error,
 .image-field__error {
   color: var(--color-text);
@@ -785,11 +786,6 @@ button {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-}
-
-.item-form__error {
-  padding: 0.5rem 1rem;
-  border-radius: 0.375rem;
 }
 
 .location-form,

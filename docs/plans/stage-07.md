@@ -572,6 +572,26 @@ username or password." Add `role="alert"`.
 **Verify:** assert `role="alert"` on each; re-check that a failed login still
 displays the message normally.
 
+**Done.** There turned out to be **five**, not four: `.item-form__error` in
+`location-form.js` (a failed save on a location's Basic info card) wasn't in
+the plan's list. All five now carry `role="alert"`.
+
+That fifth one also exposed a miss in Milestone 4, whose stated intent was
+one rule for every error paragraph in the app: it had been left on its own
+`padding` + `border-radius`, so a failed location save rendered as plain
+body text, exactly the state `.trip-form__error` was in before. It's now in
+the shared callout rule, and the milestone-4 comment corrected from "four"
+to "five".
+
+Verified through the accessibility tree rather than by reading attributes:
+each error that previously appeared as `paragraph` now appears as `alert`
+with its message — a failed login ("Invalid username or password."), an
+inverted date range, an empty upload, and an unreachable image URL, all
+triggered for real. `.item-form__error` only fires on a failed save, so it
+was forced visible to confirm the role sits on the element errors are
+written to, and screenshotted to confirm it now renders as a callout.
+`make ci` green.
+
 ## Milestone 14 — Fix heading hierarchy
 
 Heading levels skip h1 → h3/h4: trip cards use h3, location cards and card

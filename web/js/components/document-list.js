@@ -31,6 +31,7 @@ export async function renderDocumentList(container, path, { staged } = {}) {
   // sidesteps that class of bug entirely, since the form node is never
   // reused across calls - every render() gets a fresh one with exactly
   // one listener.
+  //
   // The file input is deliberately not `required`. It's hidden (the visible
   // control is the label around it), and a hidden invalid control can't be
   // focused to show a validation bubble - so the browser blocked the submit
@@ -42,7 +43,7 @@ export async function renderDocumentList(container, path, { staged } = {}) {
       <div class="document-list">
         <ul class="documents"></ul>
         <p class="documents-empty" data-i18n="documents.empty" hidden></p>
-        <p class="document-form__error" hidden></p>
+        <p class="document-form__error" role="alert" hidden></p>
         <form class="document-form">
           <label class="image-field__upload">
             <span data-i18n="documents.chooseFile"></span>

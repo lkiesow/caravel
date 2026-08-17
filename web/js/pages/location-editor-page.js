@@ -59,17 +59,17 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
         </div>
 
         <div class="editor-card">
-          <h4 data-i18n="location.editor.basicInfo"></h4>
+          <h2 data-i18n="location.editor.basicInfo"></h2>
           <div class="item-form-slot"></div>
         </div>
 
         <div class="editor-card">
-          <h4 data-i18n="item.detail.image"></h4>
+          <h2 data-i18n="item.detail.image"></h2>
           <div class="image-field-slot"></div>
         </div>
 
         <div class="editor-card">
-          <h4 data-i18n="item.detail.location"></h4>
+          <h2 data-i18n="item.detail.location"></h2>
           <form class="location-form">
             <label>
               <span data-i18n="item.detail.lat"></span>
@@ -88,7 +88,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
         </div>
 
         <div class="editor-card">
-          <h4 data-i18n="item.detail.links"></h4>
+          <h2 data-i18n="item.detail.links"></h2>
           <ul class="link-list"></ul>
           <form class="link-form">
             <input type="url" name="url" data-i18n-placeholder="item.detail.linkUrl" required />
@@ -98,7 +98,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
         </div>
 
         <div class="editor-card">
-          <h4 data-i18n="item.detail.dates"></h4>
+          <h2 data-i18n="item.detail.dates"></h2>
           <ul class="date-list"></ul>
           <form class="date-form">
             <input type="date" name="startDate" required data-i18n-aria-label="item.detail.startDate" />
@@ -109,7 +109,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
         </div>
 
         <div class="editor-card">
-          <h4 data-i18n="item.detail.documents"></h4>
+          <h2 data-i18n="item.detail.documents"></h2>
           <div class="document-list-slot"></div>
         </div>
 

@@ -601,6 +601,30 @@ locations tab, trip detail, and the editor cards.
 **Verify:** assert no gap in heading levels on the trips, locations and
 trip-detail pages.
 
+**Done.** One uniform rule replaced the ad-hoc mix: the page title stays
+`h1`, and everything that was `h3` or `h4` becomes `h2` — card titles
+(settings, trip editor, location editor, location view, checklists), trip
+cards, location cards and itinerary day headings. 16 headings across 8
+files, including two inside shadow roots.
+
+The trap here is that promoting the tag changes how it *renders*: a UA
+styles `h2` at 1.5em against `h4`'s 1em. So the computed font-size, weight
+and margin of all five heading kinds were recorded **before** the change and
+re-measured after; two regressions showed up and were pinned back — trip
+cards had jumped 18.72px → 24px (their shadow CSS set no size), and card
+titles had lost 8px of bottom margin (`h4`'s UA margin is 1.33em, `h2`'s is
+0.83em). Final measurement: **all five identical to before**, confirmed
+field by field, and the trips and checklists pages screenshot unchanged.
+
+Structure verified across **11 routes** by walking the light DOM *and* every
+shadow root in document order — the card headings live in shadow DOM, so a
+`document.querySelectorAll` sweep would have missed exactly the ones that
+were wrong. Every route now starts at `h1` and continues in `h2`s with no
+skipped level. Proven non-vacuous by stashing `web/js` and `web/css`: the
+same check reports `h1 -> h3 at "M1 single marker"`, `h1 -> h4 at
+"Kirkjufell"`, `h1 -> h3 at "Thu, 20 Aug 2026"` and `h1 -> h4 at "Basic
+info"`. `make ci` green.
+
 ## Milestone 15 — Label the delete cards
 
 Both trip settings (`settings-tab.js:29`) and location edit

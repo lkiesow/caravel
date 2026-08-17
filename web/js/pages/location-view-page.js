@@ -62,7 +62,7 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
         hasCoords || hasAddress
           ? `
         <div class="editor-card">
-          <h4 data-i18n="item.detail.location"></h4>
+          <h2 data-i18n="item.detail.location"></h2>
           ${hasAddress ? `<p class="location-view__address"></p>` : ""}
           ${
             hasCoords
@@ -81,7 +81,7 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
         item.links.length
           ? `
         <div class="editor-card">
-          <h4 data-i18n="item.detail.links"></h4>
+          <h2 data-i18n="item.detail.links"></h2>
           <ul class="link-list">
             ${item.links.map((l) => `<li><a href="${escapeAttr(l.url)}" target="_blank" rel="noopener">${escapeHtml(l.label || l.url)}</a></li>`).join("")}
           </ul>
@@ -94,7 +94,7 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
         item.dates.length
           ? `
         <div class="editor-card">
-          <h4 data-i18n="item.detail.dates"></h4>
+          <h2 data-i18n="item.detail.dates"></h2>
           <ul class="date-list">
             ${item.dates
               .map((d) => {
@@ -112,7 +112,7 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
         docs.length
           ? `
         <div class="editor-card">
-          <h4 data-i18n="item.detail.documents"></h4>
+          <h2 data-i18n="item.detail.documents"></h2>
           <ul class="documents">
             ${docs
               .map((d) => `<li><a href="${d.download_url}" target="_blank" rel="noopener">${escapeHtml(d.filename)}</a> <span class="document-size">${formatSize(d.size_bytes)}</span></li>`)

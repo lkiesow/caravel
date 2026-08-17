@@ -40,8 +40,13 @@ const styles = `
     flex: 1;
     padding: 1rem;
   }
-  h3 {
+  /* Explicit size because this is an h2 for document-structure reasons (the
+     page's h1 is "Your trips"), not because a card title should be rendered
+     at h2 scale. 1.17rem is what the UA gave the h3 this used to be, so the
+     card looks exactly as before. */
+  h2 {
     margin: 0 0 0.25rem;
+    font-size: 1.17rem;
   }
   .dates {
     color: var(--color-text-muted);
@@ -96,7 +101,7 @@ class TripCard extends HTMLElement {
       <div class="card">
         ${imageUrl ? `<img class="thumb" src="${escapeAttr(imageUrl)}" alt="" />` : ""}
         <div class="body">
-          <h3>${escapeHtml(title)}</h3>
+          <h2>${escapeHtml(title)}</h2>
           ${dateRange ? `<div class="dates">${escapeHtml(dateRange)}</div>` : ""}
         </div>
       </div>

@@ -490,8 +490,16 @@ button {
   margin-bottom: 1rem;
 }
 
-.editor-card h4 {
-  margin-top: 0;
+/* Card titles are h2 so no page skips a heading level (h1 is the page
+   title). They keep the size an h4 rendered at - these are section labels
+   inside a card, not page-level headings, and the visual hierarchy was
+   already right; only the markup was lying about it. */
+.editor-card h2,
+.checklist-card__header h2 {
+  /* 1.33rem bottom margin is the UA's h4 margin, kept so promoting the tag
+     doesn't reflow the cards. */
+  margin: 0 0 1.33rem;
+  font-size: 1rem;
 }
 
 .trip-form {
@@ -956,7 +964,7 @@ button {
   margin-bottom: 0.5rem;
 }
 
-.itinerary-day h3 {
+.itinerary-day h2 {
   margin: 0;
   font-size: 1rem;
 }

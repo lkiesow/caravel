@@ -43,7 +43,7 @@ const styles = `
     flex: 1;
     min-width: 0;
   }
-  h4 {
+  h2 {
     margin: 0;
     font-size: 1rem;
   }
@@ -99,7 +99,7 @@ class ItemCard extends HTMLElement {
         ${imageUrl ? `<img class="thumb" src="${escapeAttr(imageUrl)}" alt="" />` : ""}
         <span class="dot" style="background:${color}"></span>
         <div class="text">
-          <h4>${escapeHtml(title)}</h4>
+          <h2>${escapeHtml(title)}</h2>
           ${type ? `<div class="type">${escapeHtml(type)}</div>` : ""}
         </div>
       </div>

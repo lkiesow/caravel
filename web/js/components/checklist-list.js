@@ -30,7 +30,7 @@ export async function renderChecklistList(container, tripId) {
       card.dataset.checklistId = checklist.id;
       card.innerHTML = `
         <div class="checklist-card__header">
-          <h4>${escapeHtml(checklist.title)}</h4>
+          <h2>${escapeHtml(checklist.title)}</h2>
           <button class="icon-remove" data-action="delete-checklist" aria-label="${t("common.delete")}">${icon("trash-2")}</button>
         </div>
         <ul class="checklist-items"></ul>

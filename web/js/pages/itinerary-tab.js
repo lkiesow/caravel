@@ -58,7 +58,7 @@ export async function renderItineraryTab(container, trip) {
     el.className = "itinerary-day";
     el.innerHTML = `
       <div class="itinerary-day__header">
-        <h3>${formatDate(day.date)}</h3>
+        <h2>${formatDate(day.date)}</h2>
         ${isRemovable(day) ? `<button class="icon-remove" data-action="remove-day" aria-label="${t("itinerary.removeDay")}">${icon("x")}</button>` : ""}
       </div>
       <textarea class="itinerary-day__notes" data-i18n-placeholder="itinerary.notesPlaceholder"></textarea>

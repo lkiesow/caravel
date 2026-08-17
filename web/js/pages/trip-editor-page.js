@@ -33,11 +33,11 @@ export async function renderTripEditorPage(container) {
           <h1 data-i18n="trip.editor.newTitle"></h1>
         </div>
         <div class="editor-card">
-          <h4 data-i18n="trip.editor.basicInfo"></h4>
+          <h2 data-i18n="trip.editor.basicInfo"></h2>
           <div class="trip-form-slot"></div>
         </div>
         <div class="editor-card">
-          <h4 data-i18n="trip.overview.image"></h4>
+          <h2 data-i18n="trip.overview.image"></h2>
           <div class="image-field-slot"></div>
         </div>
         <div class="editor-actions">

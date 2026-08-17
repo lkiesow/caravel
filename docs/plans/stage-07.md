@@ -510,6 +510,20 @@ uses.
 **Verify:** at 324×756, assert `.checklist-item label` height ≥ 44 and that
 the row still lines up with its delete button.
 
+**Done.** Inside the existing `max-width: 640px` block: `min-height:
+var(--tap-min)` on `.checklist-item label` (the label wraps both the box and
+the text, so it's what carries the tap area) and the checkbox itself grown to
+`1.25rem` so it stays proportionate.
+
+Verified at 324×756: the label measures **116×44** (was 110×22) with a 20×20
+checkbox (was 14×14), beside the delete button's unchanged 44×44 — so
+"done" is no longer the harder of the two to hit. Geometry alone doesn't
+prove the target works, so also tested behaviourally: a click **3px above
+the label's bottom edge** — dead space under the old 22px row — toggles the
+item, and toggling back restores the original state. Desktop is untouched
+(22px label, 14px box), confirming the rule stays inside the breakpoint. No
+horizontal overflow at either width. `make ci` green.
+
 ## Milestone 12 — Accessible names for unlabelled controls
 
 Three controls have no accessible name today:

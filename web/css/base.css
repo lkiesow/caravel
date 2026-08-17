@@ -1232,6 +1232,22 @@ button {
     margin-block: -0.5rem;
   }
 
+  /* Ticking an item off is the whole point of a checklist on a phone, and it
+     was the app's smallest remaining target: a 110x22 label around a 14px
+     checkbox, sitting right next to a 44x44 delete button - so the easiest
+     thing to hit was "remove", not "done". The label is what carries the
+     tap area (it wraps both the box and the text), so the min-height goes
+     there; the box itself grows to stay proportionate. */
+  .checklist-item label {
+    min-height: var(--tap-min);
+  }
+
+  .checklist-item input[type="checkbox"] {
+    width: 1.25rem;
+    height: 1.25rem;
+    flex-shrink: 0;
+  }
+
   /* Buttons that live in a space-constrained row (an add-form next to an
      input, a filter row, a page header) drop their text label and become
      icon-only. The label stays in the DOM as .sr-only rather than

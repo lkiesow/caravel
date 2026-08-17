@@ -347,6 +347,24 @@ tells the user to set dates "on the Overview tab", a tab Stage 05 removed —
 it's Settings now. Recorded in `todo.md` rather than fixed here, since it has
 nothing to do with day deletion.
 
+**Follow-up: itinerary days come back out of order.** Raised by the user in
+`notes.md` ("If you reload the Itinerary page, the dates are not ordered")
+and confirmed against the API: a day added *before* the trip's start came
+back last — `20, 21, 22, 23 Aug, 5 Aug`. `handleGetItinerary` builds the
+response in two passes, the trip's own range first and everything outside it
+appended after, so out-of-range days land at the bottom regardless of date.
+It only showed up on reload because `itinerary-tab.js` re-sorts locally after
+adding a day.
+
+Fixed by sorting the assembled response by date (ISO dates are zero-padded,
+so lexical order is chronological). Covered by
+`TestGetItineraryIsOrderedByDate`, which seeds days on both sides of the
+range in a deliberately unhelpful order; confirmed non-vacuous by stashing
+the handler, where it fails with exactly the misordering the user described.
+Verified live too: after a reload the tab lists 5 Aug 2026 first and 15 Jan
+2027 last, with Milestone 7's remove control on exactly those two
+out-of-range days. Test days deleted; the note removed from `notes.md`.
+
 ## Milestone 8 — Upload with no file reports itself
 
 `web/js/components/document-list.js:43` marks the `hidden` file input

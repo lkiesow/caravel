@@ -3,6 +3,7 @@ package httpapi
 import (
 	"errors"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -98,6 +99,13 @@ func (s *Server) handleGetItinerary(w http.ResponseWriter, r *http.Request) {
 			resp = append(resp, byDate[d.Date])
 		}
 	}
+
+	// The two loops above emit the trip's own range first and everything
+	// outside it afterwards, which put a day *before* the trip's start at
+	// the bottom of the list. The frontend re-sorts after adding a day, so
+	// this only showed up on reload. Dates are zero-padded YYYY-MM-DD, so
+	// lexical order is chronological order.
+	sort.Slice(resp, func(i, j int) bool { return resp[i].Date < resp[j].Date })
 
 	writeJSON(w, http.StatusOK, resp)
 }

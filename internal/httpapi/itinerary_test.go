@@ -258,6 +258,38 @@ func TestItineraryEntryRoutesStillWork(t *testing.T) {
 	}
 }
 
+// The itinerary is a merge of the trip's own date range with whatever days
+// exist outside it, and those two groups used to be emitted one after the
+// other - so a day before the trip's start landed at the bottom of the list.
+func TestGetItineraryIsOrderedByDate(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login("owner")
+
+	w := ts.do(http.MethodPost, "/api/trips", cookie, `{"title":"Trip","start_date":"2026-08-20","end_date":"2026-08-23"}`)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create trip: got %d, body %s", w.Code, w.Body.String())
+	}
+	tripID := decode[map[string]any](t, w)["id"].(string)
+
+	// Added in a deliberately unhelpful order, and on both sides of the range.
+	for _, date := range []string{"2027-01-15", "2026-08-05", "2026-08-21"} {
+		if w := ts.do(http.MethodPut, "/api/trips/"+tripID+"/itinerary/days/"+date, cookie, `{"notes":"x"}`); w.Code != http.StatusOK {
+			t.Fatalf("create day %s: got %d, body %s", date, w.Code, w.Body.String())
+		}
+	}
+
+	got := ts.itineraryDates(cookie, tripID)
+	want := []string{"2026-08-05", "2026-08-20", "2026-08-21", "2026-08-22", "2026-08-23", "2027-01-15"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
+}
+
 func contains(haystack []string, needle string) bool {
 	for _, s := range haystack {
 		if s == needle {

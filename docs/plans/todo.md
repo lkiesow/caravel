@@ -168,6 +168,14 @@ require a redesign later — they're additive, not blocked, but none are built:
   *Repro since Stage 08 Milestone 4:* `make dev-reset FORCE=1`, then the
   `no-dates` scenario's Itinerary tab shows it directly — no hand-built
   dateless trip needed.
+- **`scripts/without.sh` only handles *uncommitted* changes.** By design (it
+  works via `git stash push`), but it means the common case of "does this
+  test actually cover the fix I landed last week?" needs the change staged as
+  uncommitted first — Stage 08 Milestone 6 did that on a scratch branch to
+  check a real Stage 07 change. A `--commit <sha>` mode that reverse-applies
+  a commit into the working tree, runs the command, then restores, would
+  remove the manual step. Not built because the uncommitted case is the one
+  that comes up mid-work, which is when non-vacuity actually gets checked.
 - **An HTTP-level Go test harness now exists — reuse it.** Stage 07
   Milestone 6 needed a cross-user ownership check, which no unit test can
   express, so `internal/httpapi/itinerary_test.go` brings up a real `Server`
@@ -439,10 +447,3 @@ inconvenient.
   transparency and reports nonsense), and **reaching into shadow roots**.
   This is what found the 2.54:1 primary buttons and the 3.08:1 error text,
   and what proved light mode was untouched afterwards.
-- **A non-vacuity helper (`scripts/without.sh <files> -- <command>`).**
-  Reverts the named files (`git stash push`), runs the command, restores
-  them, and exits non-zero if the command *passed* without the change.
-  *(Hand-rolled 5 times: date validation, delete-day tests, day ordering,
-  the accessible-name sweep, the heading audit.)* It's the step that turns
-  "the test passes" into "the test would have caught this", and it's the
-  easiest one to skip — which is when a vacuous test slips through.

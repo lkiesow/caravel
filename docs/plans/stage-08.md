@@ -574,6 +574,64 @@ test *did* catch it). Then run it naming an unrelated file and confirm it
 exits non-zero (vacuous). Confirm the trap restores the tree after
 `Ctrl-C` mid-run.
 
+**Done.** Landed as `scripts/without.sh`, with all the planned guards plus
+three additions that each prevent a *confident wrong answer* — the failure
+mode that matters here, since a wrong verdict from this tool is worse than
+an error from it.
+
+*A `--restart` flag, and a warning when it's missing.* Reverting Go files
+and then asking a **running** server about them tests the old binary: `web/`
+is served live from disk, but Go code lives in the compiled build. Verified
+both ways on the same command — `scripts/dev_server.sh check-marker` against
+an uncommitted change to the health payload reports **VACUOUS** without
+`--restart` and **OK** with it. Since that's a silent wrong answer rather
+than a failure, the script now also warns when Go files are named, a server
+is up, and `--restart` wasn't passed.
+
+*No verdict for a run that didn't finish.* The first interrupt test printed
+"VACUOUS — the command PASSED" for a command that had been killed mid-flight
+— exactly the kind of confident-but-wrong output this tool exists to
+eliminate. Now `INT`/`TERM` restore and exit 130 with "INTERRUPTED — no
+verdict", and separately a command killed by a signal (exit > 128) is
+reported INCONCLUSIVE rather than counted as a pass.
+
+*Restore is verified, not assumed.* The stash entry is located by SHA rather
+than assumed to be `stash@{0}` (the command just ran arbitrary code, which
+may have stashed something itself), and after popping, every file's
+`git hash-object` is compared against its pre-run value. Any mismatch prints
+the recovery command with the stash SHA instead of failing quietly.
+
+An honest limit found while testing: **terminal Ctrl-C cannot be faithfully
+simulated from a non-interactive shell.** A backgrounded child inherits
+SIGINT as ignored (POSIX), and an ignored signal can't be trapped — so
+`kill -INT` on the script ran the full `sleep 30` and never fired the trap,
+which is a property of the harness, not the script. Verified in isolation
+with a minimal reproduction, then exercised the same code path with SIGTERM,
+which isn't ignored that way: "INTERRUPTED — no verdict", exit 130, tree
+byte-identical, no stash left behind.
+
+Verified, in order: (a) every guard exits 2 and changes nothing — missing
+`--`, no files, no command, an untracked file, a file with no uncommitted
+changes, and a dirty index; (b) **non-vacuous** detection, with an
+uncommitted source change and a test that depends on it — the command fails
+without it, exit 0; (c) **vacuous** detection, naming an unrelated changed
+file — the command passes, exit 1; (d) multi-file runs revert and restore
+both files, hash-checked; (e) interrupt handling and `--restart` as above;
+(f) then the plan's own example, on **real Stage 07 code**: the date-format
+validation in `handleSetItineraryDayNotes` reconstructed as an uncommitted
+change on a scratch branch (this tool only reverts uncommitted work, so a
+committed change has to be staged that way first — a documented limit).
+
+That last run produced a real finding rather than a green tick, and the
+opposite of what the plan predicted: it reports **VACUOUS**. The entire
+`internal/httpapi` suite passes without that validation, because *nothing
+covers it* — with the check removed the API happily accepts a day dated
+`13-99-2026`. Writing a test for it (`PUT
+/api/trips/{id}/itinerary/days/13-99-2026` expecting 400) and re-running
+reports **OK**, confirming both the finding and the tool. That test is
+Milestone 7's to land — it needs the shared harness — and is noted in its
+section below.
+
 ## 7. Shared Go HTTP test harness
 
 `internal/httpapi/itinerary_test.go` already brings up a real `Server`
@@ -594,6 +652,16 @@ first, in its own commit if it helps review). For each new ownership
 test, run it through `scripts/without.sh` against the handler it covers
 to prove it isn't vacuous. Report the before/after picture — which
 handlers went from zero coverage to covered.
+
+Added to this milestone's scope by Milestone 6: **a test for the
+date-format validation in `handleSetItineraryDayNotes`**. Milestone 6
+proved by measurement that nothing currently covers it — the whole
+`internal/httpapi` suite passes with the check removed, and the API then
+accepts a day dated `13-99-2026`. The test is one request,
+`PUT /api/trips/{id}/itinerary/days/13-99-2026` expecting 400, and it
+belongs here rather than in Milestone 6 because it wants the shared
+harness. Worth checking the sibling date-parsing at `itinerary.go:119-120`
+for the same gap while in there.
 
 ---
 

@@ -2,93 +2,11 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
-	"net/http/httptest"
-	"path/filepath"
-	"strings"
 	"testing"
-	"testing/fstest"
 
 	"github.com/google/uuid"
-
-	"caravel/internal/auth"
-	"caravel/internal/db"
 )
-
-// testServer is a real Server over a real (temporary, per-test) SQLite
-// database - db.Open runs the migrations - so handlers, routing, the auth
-// middleware and the schema's ON DELETE CASCADE are all exercised as they
-// are in production. The only stand-ins are the static asset FS (empty; no
-// test here requests one) and the blob store (nil; only the media and
-// document upload paths touch it).
-type testServer struct {
-	*Server
-	t *testing.T
-}
-
-func newTestServer(t *testing.T) *testServer {
-	t.Helper()
-
-	conn, err := db.Open("sqlite", filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatalf("open test db: %v", err)
-	}
-	t.Cleanup(func() { conn.Close() })
-
-	store, err := db.NewStore("sqlite", conn)
-	if err != nil {
-		t.Fatalf("new store: %v", err)
-	}
-
-	srv := NewServer(conn, store, auth.NewService(store), nil, fstest.MapFS{}, false, true)
-	return &testServer{Server: srv, t: t}
-}
-
-// login registers a user and returns the session cookie for them.
-func (ts *testServer) login(username string) *http.Cookie {
-	ts.t.Helper()
-
-	user, err := ts.Auth.Register(context.Background(), username, "password123", username)
-	if err != nil {
-		ts.t.Fatalf("register %s: %v", username, err)
-	}
-	token, _, err := ts.Auth.StartSession(context.Background(), user.ID, "test", "127.0.0.1")
-	if err != nil {
-		ts.t.Fatalf("start session for %s: %v", username, err)
-	}
-	return &http.Cookie{Name: auth.SessionCookieName, Value: token}
-}
-
-// do issues a request through the full router and returns the recorder.
-// body may be empty for methods that carry none.
-func (ts *testServer) do(method, path string, cookie *http.Cookie, body string) *httptest.ResponseRecorder {
-	ts.t.Helper()
-
-	var r *http.Request
-	if body == "" {
-		r = httptest.NewRequest(method, path, nil)
-	} else {
-		r = httptest.NewRequest(method, path, strings.NewReader(body))
-		r.Header.Set("Content-Type", "application/json")
-	}
-	if cookie != nil {
-		r.AddCookie(cookie)
-	}
-	w := httptest.NewRecorder()
-	ts.ServeHTTP(w, r)
-	return w
-}
-
-// decode unmarshals a JSON response body, failing the test if it doesn't parse.
-func decode[T any](t *testing.T, w *httptest.ResponseRecorder) T {
-	t.Helper()
-	var v T
-	if err := json.Unmarshal(w.Body.Bytes(), &v); err != nil {
-		t.Fatalf("decode %q: %v", w.Body.String(), err)
-	}
-	return v
-}
 
 // seedDayWithEntry creates a trip, an item, an itinerary day and an entry on
 // that day, returning the trip and day IDs.

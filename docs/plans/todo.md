@@ -293,17 +293,17 @@ require a redesign later — they're additive, not blocked, but none are built:
   onto the component needs `renderMenu` to grow a non-select "action item"
   mode first (Log out isn't a selection), which is also what the ⋮
   contextual menu in the checklist entry above wants.
-- **Create-mode writes aren't atomic.** Stage 06 Milestone 4 lets a new
-  location carry coordinates, links, dates and documents, but it commits
-  them as a sequence of requests after the item POST returns an ID (every
-  sub-resource endpoint requires an existing item). If one fails, the
-  location is left half-populated: the failures are reported in one alert
-  and the user lands on the edit page to finish by hand — the same policy
-  the staged cover photo has always used, so not a new gap, but a gap. The
-  proper fix is a transactional create: optional nested
-  `location`/`links`/`dates` on `itemRequest`, with `handleCreateItem`
-  inserting them in one transaction. Documents can't ride along either
-  way, being multipart, so they'd stay a post-create upload regardless.
+- **Create-mode writes aren't atomic — *backend half fixed, frontend half
+  outstanding*.** Stage 06 Milestone 4 lets a new location carry coordinates,
+  links, dates and documents, but it commits them as a sequence of requests
+  after the item POST returns an ID; if one fails the location is left
+  half-populated. Stage 09 Milestone 1 built the fix on the API side:
+  `itemRequest` now takes optional nested `location`/`links`/`dates` and
+  `handleCreateItem`/`handleUpdateItem` write them inside `Store.WithTx`.
+  What remains is `location-editor-page.js` actually *using* it instead of
+  `flushStaged`'s request sequence — that's Stage 09 Milestone 2. Documents
+  can't ride along either way, being multipart, so they stay a post-create
+  upload regardless.
 - **Click-to-pick coordinates on a map.** Both create and edit still take
   latitude/longitude as raw number inputs — fine for pasting from
   elsewhere, unpleasant on a phone. `leaflet-map.js` is read-only today

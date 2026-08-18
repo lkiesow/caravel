@@ -116,6 +116,22 @@ type itemRequest struct {
 	Notes     *string `json:"notes"`
 	ShowOnMap *bool   `json:"show_on_map"`
 	SortOrder *int    `json:"sort_order"`
+
+	// Optional nested sub-resources, so one request can commit an item and
+	// everything hanging off it in a single transaction. Each is a pointer
+	// so "absent" and "present but empty" stay distinguishable: absent
+	// leaves that sub-resource untouched, present replaces it (an empty
+	// list clears it). The standalone /location, /links and /dates
+	// endpoints still exist and still work; these are additive.
+	//
+	// Location is an upsert (item_locations.item_id is UNIQUE). Links and
+	// dates are replace-the-set rather than merge, because there is no
+	// per-row update endpoint anywhere — editing a link has always meant
+	// delete plus re-add — so the client edits them as a list and sends the
+	// list it wants. Array order becomes sort_order for links.
+	Location *itemLocationRequest `json:"location"`
+	Links    *[]itemLinkRequest   `json:"links"`
+	Dates    *[]itemDateRequest   `json:"dates"`
 }
 
 func (req itemRequest) validate() error {
@@ -125,6 +141,98 @@ func (req itemRequest) validate() error {
 	if !validCategories[req.Category] {
 		return errors.New("category must be one of: site, stay, transport")
 	}
+	// Validate the nested blocks up front so a bad link or date is a 400
+	// before anything is written, rather than a rolled-back 500.
+	if req.Links != nil {
+		for _, l := range *req.Links {
+			if strings.TrimSpace(l.URL) == "" {
+				return errors.New("every link needs a url")
+			}
+		}
+	}
+	if req.Dates != nil {
+		for _, d := range *req.Dates {
+			if err := validateDate(d.StartDate); err != nil {
+				return err
+			}
+			if err := validateDate(d.EndDate); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// writeItemNested applies a request's optional nested location/links/dates to
+// an existing item. It takes the Store to use rather than reading s.Store, so
+// the callers can hand it a transaction-bound one and have the whole item
+// commit or not at all.
+func writeItemNested(ctx context.Context, store db.Store, itemID string, req itemRequest) error {
+	if req.Location != nil {
+		if _, err := store.UpsertItemLocation(ctx, db.UpsertItemLocationParams{
+			ID:      uuid.NewString(),
+			ItemID:  itemID,
+			Lat:     req.Location.Lat,
+			Lng:     req.Location.Lng,
+			Address: req.Location.Address,
+		}); err != nil {
+			return err
+		}
+	}
+
+	if req.Links != nil {
+		existing, err := store.ListItemLinksByItem(ctx, itemID)
+		if err != nil {
+			return err
+		}
+		for _, l := range existing {
+			if _, err := store.DeleteItemLink(ctx, l.ID, itemID); err != nil {
+				return err
+			}
+		}
+		for i, l := range *req.Links {
+			if _, err := store.CreateItemLink(ctx, db.CreateItemLinkParams{
+				ID:        uuid.NewString(),
+				ItemID:    itemID,
+				URL:       l.URL,
+				Label:     l.Label,
+				SortOrder: i,
+			}); err != nil {
+				return err
+			}
+		}
+	}
+
+	if req.Dates != nil {
+		existing, err := store.ListItemDatesByItem(ctx, itemID)
+		if err != nil {
+			return err
+		}
+		for _, d := range existing {
+			if _, err := store.DeleteItemDate(ctx, d.ID, itemID); err != nil {
+				return err
+			}
+		}
+		for _, d := range *req.Dates {
+			allDay := true
+			if d.AllDay != nil {
+				allDay = *d.AllDay
+			}
+			if _, err := store.CreateItemDate(ctx, db.CreateItemDateParams{
+				ID:        uuid.NewString(),
+				ItemID:    itemID,
+				StartDate: d.StartDate,
+				EndDate:   d.EndDate,
+				Label:     d.Label,
+				AllDay:    allDay,
+				StartTime: d.StartTime,
+				EndTime:   d.EndTime,
+			}); err != nil {
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -154,23 +262,37 @@ func (s *Server) handleCreateItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now().UTC()
-	item, err := s.Store.CreateItem(r.Context(), db.CreateItemParams{
-		ID:        uuid.NewString(),
-		TripID:    trip.ID,
-		Category:  req.Category,
-		Type:      req.Type,
-		Title:     req.Title,
-		Notes:     req.Notes,
-		ShowOnMap: showOnMap,
-		SortOrder: sortOrder,
-		CreatedAt: now,
-		UpdatedAt: now,
+	var item db.Item
+	err := s.Store.WithTx(r.Context(), func(store db.Store) error {
+		created, err := store.CreateItem(r.Context(), db.CreateItemParams{
+			ID:        uuid.NewString(),
+			TripID:    trip.ID,
+			Category:  req.Category,
+			Type:      req.Type,
+			Title:     req.Title,
+			Notes:     req.Notes,
+			ShowOnMap: showOnMap,
+			SortOrder: sortOrder,
+			CreatedAt: now,
+			UpdatedAt: now,
+		})
+		if err != nil {
+			return err
+		}
+		if err := writeItemNested(r.Context(), store, created.ID, req); err != nil {
+			return err
+		}
+		item = created
+		return nil
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not create item")
 		return
 	}
-	writeJSON(w, http.StatusCreated, s.itemToResponse(r.Context(), item))
+	// The detail shape, not the bare item: a create can now carry nested
+	// location/links/dates, and the client needs them (with their generated
+	// IDs) back without a second GET.
+	writeJSON(w, http.StatusCreated, s.buildItemDetail(r, item))
 }
 
 // loadOwnedItem fetches the item named by {itemId} and confirms the current
@@ -259,22 +381,33 @@ func (s *Server) handleUpdateItem(w http.ResponseWriter, r *http.Request) {
 		sortOrder = *req.SortOrder
 	}
 
-	updated, err := s.Store.UpdateItem(r.Context(), db.UpdateItemParams{
-		ID:        item.ID,
-		TripID:    item.TripID,
-		Category:  req.Category,
-		Type:      req.Type,
-		Title:     req.Title,
-		Notes:     req.Notes,
-		ShowOnMap: showOnMap,
-		SortOrder: sortOrder,
-		UpdatedAt: time.Now().UTC(),
+	var updated db.Item
+	err := s.Store.WithTx(r.Context(), func(store db.Store) error {
+		saved, err := store.UpdateItem(r.Context(), db.UpdateItemParams{
+			ID:        item.ID,
+			TripID:    item.TripID,
+			Category:  req.Category,
+			Type:      req.Type,
+			Title:     req.Title,
+			Notes:     req.Notes,
+			ShowOnMap: showOnMap,
+			SortOrder: sortOrder,
+			UpdatedAt: time.Now().UTC(),
+		})
+		if err != nil {
+			return err
+		}
+		if err := writeItemNested(r.Context(), store, saved.ID, req); err != nil {
+			return err
+		}
+		updated = saved
+		return nil
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not update item")
 		return
 	}
-	writeJSON(w, http.StatusOK, s.itemToResponse(r.Context(), updated))
+	writeJSON(w, http.StatusOK, s.buildItemDetail(r, updated))
 }
 
 func (s *Server) handleDeleteItem(w http.ResponseWriter, r *http.Request) {

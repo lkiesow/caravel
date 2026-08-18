@@ -91,6 +91,41 @@ the *whole* create back (no orphan item row — the point of the transaction),
 asserted against both dialects the way the existing store tests do. Prove
 non-vacuity of the rollback test with `scripts/without.sh`.
 
+**Done.** `itemRequest` gained `Location *itemLocationRequest`,
+`Links *[]itemLinkRequest`, `Dates *[]itemDateRequest`, reusing the existing
+sub-resource request structs; `validate()` now also checks the nested blocks
+(blank link URL, unparseable start/end date) so bad nested input is a 400 before
+any write rather than a rolled-back 500. A new `writeItemNested` helper takes the
+`db.Store` to use — that's what lets it run inside a transaction — and applies
+location as an upsert, links and dates as replace-the-set. Both
+`handleCreateItem` and `handleUpdateItem` now wrap their writes in
+`s.Store.WithTx` (the interface's first `httpapi` caller) and return
+`buildItemDetail`, so one round trip returns the item with its generated
+sub-resource IDs.
+
+Deviation from the plan: replace-the-set is implemented as list-then-delete-each
+inside the transaction rather than a new "delete all by item" query, which kept
+the promise of no `sqlc` regeneration and no migration. No dialect-specific code
+was touched, so both dialects get this for free.
+
+Verified: new `internal/httpapi/items_test.go` (5 tests, 3 subtests) covers the
+one-request create, PATCH-without-nested-keys leaving them intact,
+PATCH-with-empty-list clearing them, array order becoming `sort_order`, an
+explicit `"address": null` clearing, the three 400 cases, and the rollback. The
+rollback test uses a new `failingStore` decorator (`db.Store` embed whose
+`WithTx` re-wraps the transaction-bound store, so the injected failure is visible
+inside the transaction) and a new `newTestServerWithStore` hook in
+`testing_test.go`; the sub-resource tables have no constraints to violate, so
+injection was the only way to make a real failure happen mid-transaction.
+Non-vacuity: `scripts/without.sh internal/httpapi/items.go -- go test ...` fails
+without the change, but for the wrong reason (the old handler rejects the nested
+body outright, 400), so the rollback was proved separately by replacing just the
+`WithTx` call with a direct call against `s.Store` — the test then fails on its
+own assertion, "got 1 items after the failed create". Also smoke-tested through
+the real `make dev` server with curl: nested create returns everything with IDs,
+a basic-fields-only PATCH leaves location/links/dates untouched, and
+`"links":[],"dates":[]` clears them while the location survives.
+
 ## 2. One Save in the location editor (frontend)
 
 Collapse the five save paths into one, in **both** modes.

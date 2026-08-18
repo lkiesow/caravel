@@ -36,6 +36,15 @@ type testServer struct {
 
 func newTestServer(t *testing.T) *testServer {
 	t.Helper()
+	return newTestServerWithStore(t, nil)
+}
+
+// newTestServerWithStore is newTestServer with a hook to decorate the Store
+// before the Server gets it — for tests that need a failure the real store
+// won't produce on demand, such as proving a transaction rolls back (see
+// failingStore in items_test.go). Pass nil for the plain store.
+func newTestServerWithStore(t *testing.T, wrap func(db.Store) db.Store) *testServer {
+	t.Helper()
 
 	dir := t.TempDir()
 
@@ -48,6 +57,9 @@ func newTestServer(t *testing.T) *testServer {
 	store, err := db.NewStore("sqlite", conn)
 	if err != nil {
 		t.Fatalf("new store: %v", err)
+	}
+	if wrap != nil {
+		store = wrap(store)
 	}
 
 	// A real blob store rather than nil: uploads are among the handlers with no

@@ -45,10 +45,23 @@ check-js:
 check-i18n:
 	python3 scripts/check_i18n.py
 
-# Playwright UI suite (Firefox). Drives a *running* server — start one with
-# `make dev-restart` and seed it with `make dev-reset FORCE=1` first. Not part of
-# `make ci`: it needs a browser and a live server, so CI runs it as its own job.
+# Playwright UI suite (Firefox), headless by default. Drives a *running* server —
+# start one with `make dev-restart` and seed it with `make dev-reset FORCE=1`
+# first. Not part of `make ci`: it needs a browser and a live server, so CI runs
+# it as its own job.
+#
+#   make test-ui                        headless, all specs
+#   make test-ui GREP="heading outline"  one spec (a regex — mind the parens)
+#   make test-ui HEADED=1               watch it in a real browser window
+#   make test-ui HEADED=1 SLOWMO=300    ...slowed to 300ms/step so it's followable
+#   make test-ui UI=1                   Playwright's interactive UI mode
+#
+# Headed runs force a single worker: four browser windows fighting for focus is
+# unwatchable, which defeats the point of asking to see it.
+PW_ENV = $(if $(HEADED),CARAVEL_TEST_HEADED=1)$(if $(SLOWMO), CARAVEL_TEST_SLOWMO=$(SLOWMO))
+PW_ARGS = $(if $(GREP),--grep "$(GREP)")$(if $(UI), --ui)$(if $(HEADED), --headed --workers=1)
+
 test-ui:
-	npx playwright test $(if $(GREP),--grep "$(GREP)",)
+	$(PW_ENV) npx playwright test $(PW_ARGS)
 
 ci: build vet check-js check-i18n test

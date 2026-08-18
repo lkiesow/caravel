@@ -33,6 +33,15 @@ export default defineConfig({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "off",
+    // Headless is Playwright's default, but stated explicitly so it can't change
+    // underneath us and so the headed escape hatch is discoverable:
+    //   make test-ui HEADED=1            watch the run in a real window
+    //   make test-ui HEADED=1 SLOWMO=300 ...slowly enough to follow
+    //   make test-ui UI=1                Playwright's interactive UI mode
+    headless: !process.env.CARAVEL_TEST_HEADED,
+    launchOptions: {
+      slowMo: Number(process.env.CARAVEL_TEST_SLOWMO || 0),
+    },
   },
   projects: [
     {

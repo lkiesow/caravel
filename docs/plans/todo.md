@@ -93,6 +93,17 @@ require a redesign later — they're additive, not blocked, but none are built:
   in via the API, so those routes are never rendered), and German copy (the
   suite runs in the default locale only, so `de.json` is still only
   eyeballed by hand).
+- **Routes render an empty shell before their data arrives, with no loading
+  state.** Surfaced by Stage 08 Milestone 5: `common.loading` is used exactly
+  once, at app boot (`app.js:62`), and none of the per-route renderers show
+  anything while their `fetch` is in flight — they paint a shell into `#app`
+  and fill it in when the response lands. The UI suite hit this as a race (the
+  heading check briefly saw a location page with no headings at all, on a page
+  whose outline is fine) and works around it by waiting on an injected
+  in-flight-fetch counter. The user-facing version is a flash of empty or
+  partial page on every navigation, which on a slow connection stops looking
+  like a flash. Cheap fix: reuse the existing `common.loading` key per route,
+  or a skeleton block.
 - **Contrast is measured but not asserted.** `tests/ui/contrast.js` reports
   ratios and has a `--min` flag, but nothing runs it in CI, so a regression
   like Stage 07's 2.54:1 primary button would not be caught automatically —

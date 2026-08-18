@@ -365,11 +365,16 @@ async function main() {
 
   if (opts.selfTest) {
     const browser = await firefox.launch();
+    // Close before exiting rather than inside a finally: process.exit() does not
+    // run finally blocks, so this would otherwise rely on Playwright's own
+    // exit handler to reap the browser.
+    let code;
     try {
-      process.exit(await selfTest(browser));
+      code = await selfTest(browser);
     } finally {
       await browser.close();
     }
+    process.exit(code);
   }
 
   const browser = await firefox.launch();

@@ -463,6 +463,89 @@ fails. Also confirm the URL assertion catches the original footgun: point
 one route at a deliberately nonexistent path and confirm it fails rather
 than silently testing `/trips`. Confirm the CI job passes on a branch push.
 
+**Done.** `package.json` (devDependencies only, `type: module`),
+`playwright.config.js` (one Firefox project), `tests/ui/` with three specs
+plus `contrast.js`, `make test-ui`, and a separate `ui` job in CI. Nine
+tests, ~30s, 17 routes swept. The app still ships zero-build: nothing in
+`package.json` is a runtime or bundling dependency.
+
+Three things went differently from the plan, each found by running it:
+
+*"networkidle" is the wrong readiness signal, and so is the obvious
+replacement.* Every test initially timed out. Standalone, `networkidle`
+resolves in under a second — the real cause was the Map route pulling a
+dozen tiles from `tile.openstreetmap.org`, which is slow, flaky,
+third-party, and would have been the top source of random CI failures. All
+non-app requests are now blocked, with map tiles fulfilled from an inline
+1×1 PNG so Leaflet still lays out and still creates markers. Replacing
+`networkidle` with "`#app` has children" then produced a *worse* failure:
+the heading spec reported "no headings at all" on the location view page,
+which in fact has a correct `h1`/`h2`/`h2` outline — routes render a shell
+immediately and fill it in when their fetches resolve, so the DOM check
+passed too early. Readiness is now an injected `fetch` counter: `#app`
+populated, at least one fetch completed, none in flight, plus one frame.
+Also raised the per-test timeout to 180s, since each test sweeps ~17
+routes rather than one.
+
+*The 44px tap-target threshold in the plan does not describe this app.*
+Measured across seven routes at 324px: **nothing** reaches 44px. Buttons
+bottom out at 40px, block links at 30px, the icon+text "Back"/"Home" links
+at 22px, checkbox inputs at 14px (20px counting their label). Stage 04's
+note that "the tap targets themselves are fine (≥44px)" was about the trip
+tab bar specifically, not the app. Asserting 44px would have been red on
+every route — a finding to record, not a test to run. So the check is a
+regression guard at the app's measured floor (40px) scoped to controls
+*styled as* buttons, and the gap is recorded in `todo.md`. The style filter
+is load-bearing rather than convenient: `.itinerary-entry__link` is a
+`<button>` with no background, border or padding and `font: inherit` — a
+text link in disguise, sized by its text at 22px — so judging it by a
+button's standard would be measuring the wrong thing. That 22px control is
+the primary way to open a location from the itinerary, and it is recorded
+as a real finding rather than quietly excluded.
+
+*The contrast script's headline feature had no data to prove itself on.*
+Flattening translucent backgrounds only matters where a translucent
+background exists, and Caravel's only one (`--color-danger-tint`, rgba at
+0.08/0.14) appears exclusively in error states — so a normal run never
+exercises it, and a flattener that just returned the raw tint would look
+entirely plausible in the output. Added `--self-test`, which composites
+known layers and checks against hand-computed values: the tint over white
+must be `rgb(252 238 238)`, and doubled must be `rgb(250 222 222)`. It
+immediately earned its keep by failing — the colours were exactly right but
+the layer *count* was one higher than expected, because the terminating
+opaque `body` background is itself a layer. Expectation corrected, not the
+code.
+
+Verified. `make test-ui`: 9 passed in ~30s, sweeping 17 routes × 4
+viewport/scheme combinations, with 294 accessible names checked. Every
+check proven non-vacuous by breaking the thing it guards and confirming a
+red run, then restoring and confirming green:
+
+- **headings** — demoting the trip-card `<h2>` to `<h4>` fails with
+  `h1 -> h4 skips a level ... in shadow DOM`, i.e. it catches a defect
+  that is invisible to a light-DOM-only sweep, which is the entire point;
+- **accessible names** — the first attempt here *passed*, correctly:
+  stripping the user-menu's `aria-label` changes nothing because that
+  button also has text content. Removing it from the itinerary
+  add-day date input, where the label is the only name source, fails on
+  every itinerary route;
+- **overflow** — a forced 900px element fails both mobile checks while
+  both desktop checks correctly stay green (900 < 1280), and the failure
+  names the offender (`<nav class="trip-tabs"> right=916`);
+- **the URL assertion** — pointing one route at `/trps` fails with
+  "landed on /trips — the router redirects unmatched paths", catching
+  exactly the footgun that made a Stage 04 sweep pass against the wrong
+  page for several milestones;
+- **contrast** — `--self-test` green, and a real run reports the primary
+  button at 5.17:1 light / 6.70:1 dark, confirming Stage 07's fix for the
+  2.54:1 finding is still in place, with shadow-DOM elements measured
+  (`[shadow] h2` at 16.12:1).
+
+The CI job could not be verified by pushing, so its exact sequence was
+replicated locally — seed, `go build`, background start, health-poll,
+`make test-ui` — against a throwaway DSN: healthy in 2s, 9 passed. The one
+CI-only risk left is the Playwright browser download.
+
 ## 6. `scripts/without.sh` — the non-vacuity helper
 
 ```

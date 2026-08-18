@@ -1,4 +1,4 @@
-.PHONY: run build test dev dev-restart dev-marker dev-seed dev-reset vet check-js check-i18n ci
+.PHONY: run build test dev dev-restart dev-marker dev-seed dev-reset vet check-js check-i18n test-ui ci
 
 run:
 	go run ./cmd/caravel
@@ -44,5 +44,11 @@ check-js:
 
 check-i18n:
 	python3 scripts/check_i18n.py
+
+# Playwright UI suite (Firefox). Drives a *running* server — start one with
+# `make dev-restart` and seed it with `make dev-reset FORCE=1` first. Not part of
+# `make ci`: it needs a browser and a live server, so CI runs it as its own job.
+test-ui:
+	npx playwright test $(if $(GREP),--grep "$(GREP)",)
 
 ci: build vet check-js check-i18n test

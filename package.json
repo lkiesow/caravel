@@ -1,0 +1,14 @@
+{
+  "name": "caravel-ui-tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Dev-only tooling for Caravel's UI test suite. NOT a build step: the app still ships hand-written ES modules served straight from web/, with no bundler and no runtime npm dependencies. Everything here is devDependencies.",
+  "scripts": {
+    "test:ui": "playwright test",
+    "contrast": "node tests/ui/contrast.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1"
+  }
+}

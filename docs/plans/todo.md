@@ -84,42 +84,41 @@ require a redesign later — they're additive, not blocked, but none are built:
 
 ## Testing / CI / dev-workflow gaps
 
-- **No real Playwright UI test suite.** Stage 03 added GitHub Actions CI
-  (`.github/workflows/ci.yml`) running a build check, `go vet`, a JS syntax
-  check across `web/js/`, and an i18n-key-parity check
-  (`scripts/check_i18n.py`, generalized to any number of locale files) —
-  but everything UI-facing is still verified manually or via one-off
-  Playwright runs during development, not a checked-in, repeatable suite
-  (using Firefox specifically, per the original note). Still wanted. When
-  it's built, fold in a 324×756 mobile-regression pass — Stage 04's fixes
-  (see `stage-04.md`) were verified by hand each milestone; a scripted
-  version checking `document.documentElement.scrollWidth <=
-  window.innerWidth` and a ~44px minimum control height across every route
-  would catch future regressions cheaply, and was explicitly deferred out of
-  that stage rather than built ad hoc.
-  Stage 07 added three more checks worth building into that suite, each
-  hand-rolled repeatedly there and each cheap to assert once written:
-  **(a) heading outline** — walk the light DOM *and every shadow root* in
-  document order, assert one `h1` first and no skipped level; the shadow
-  walk is the part that matters, since the trip/location card headings that
-  were wrong live in shadow DOM and a plain `document.querySelectorAll`
-  sweep misses them entirely. **(b) accessible names** — every input,
-  select, textarea and button resolves a non-empty name from aria-label,
-  aria-labelledby, wrapping/associated label, placeholder, text or title
-  (157 controls across 10 routes when Stage 07 ran it). **(c) the sweep
-  matrix** — routes × {1280×800, 324×756} × {light, dark}, which is 44
-  checks at Stage 07's route count and took seconds; dark mode needs
-  `page.emulateMedia({colorScheme})`, which also removes any need to change
-  the OS or browser theme by hand.
-- **Mobile route sweeps should assert the landed-on URL, not just the
-  absence of overflow.** Stage 04 discovered mid-implementation that an
-  earlier version of its own manual verification script used a URL pattern
-  matching no real route; the app's router silently redirects any unmatched
-  path to `/trips`, so the check had been passing trivially against the
-  wrong page for several milestones. Worth remembering as a general
-  footgun once a scripted suite exists: always assert
-  `window.location.pathname` equals the intended route before asserting
-  anything about that page's layout.
+- **The UI suite covers three checks; more were listed than built.** Stage 08
+  Milestone 5 landed the sweep matrix (overflow + tap targets), the
+  shadow-DOM-aware heading outline and the accessible-name sweep in
+  `tests/ui/`, run by `make test-ui` and a `ui` job in CI. Not covered, and
+  worth adding as the app grows: anything behind an interaction (menus
+  opened, forms submitted, dialogs), the login/register pages (the suite logs
+  in via the API, so those routes are never rendered), and German copy (the
+  suite runs in the default locale only, so `de.json` is still only
+  eyeballed by hand).
+- **Contrast is measured but not asserted.** `tests/ui/contrast.js` reports
+  ratios and has a `--min` flag, but nothing runs it in CI, so a regression
+  like Stage 07's 2.54:1 primary button would not be caught automatically —
+  only found by someone running it. Turning it into a spec needs a decision
+  about which elements have a defensible threshold (decorative fills and
+  large text differ), which is why it stayed a measurement tool.
+- **Nothing in the app meets the 44px tap-target guideline.** Measured by
+  Stage 08 Milestone 5 across seven routes at 324×756: buttons bottom out at
+  **40px**, block links at **30px**, the icon+text "Back"/"Home" links at
+  **22px**, and checkbox inputs at **14px** (20px counting their wrapping
+  label). Stage 04's note that "the tap targets themselves are fine (≥44px)"
+  turns out to have been about the trip tab bar specifically, not the app as
+  a whole. `tests/ui/routes.spec.js` therefore guards the *current* floor
+  (40px, buttons only) rather than the guideline, so this is a real gap and
+  not a regression risk — raising the floor is a deliberate CSS change, and
+  the suite's constant should move with it.
+- **`.itinerary-entry__link` is a 22px tap target, and it's a `<button>`
+  pretending to be a link.** Found by the same sweep. It's the primary way to
+  open a location from the itinerary, and on a phone it's 22px tall because
+  it has no padding, no background, no border and `font: inherit` — styled
+  purely as text. Two separate questions: the size, and whether in-app
+  navigation should be an `<a href>` (which would also give it middle-click,
+  copy-link and focus semantics) rather than a button with a click handler.
+  The UI suite deliberately excludes button-styled-as-text from its tap
+  target check, so fixing this will not make a test go green — it needs doing
+  on its own merits.
 - **`web/sw.js` is never syntax-checked.** Surfaced by Stage 08 Milestone 1
   while fixing the parse mode: both the old and new checks only walk
   `web/js`, and the service worker lives one level up at `web/sw.js`, so a

@@ -11,3 +11,9 @@
 .cache/
 .playwright-mcp/
 .dev/
+
+# Node tooling for the Playwright UI suite (dev-only; the app ships no npm deps).
+/node_modules/
+/test-results/
+/playwright-report/
+/blob-report/

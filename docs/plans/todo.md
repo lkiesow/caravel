@@ -176,16 +176,13 @@ require a redesign later — they're additive, not blocked, but none are built:
   a commit into the working tree, runs the command, then restores, would
   remove the manual step. Not built because the uncommitted case is the one
   that comes up mid-work, which is when non-vacuity actually gets checked.
-- **An HTTP-level Go test harness now exists — reuse it.** Stage 07
-  Milestone 6 needed a cross-user ownership check, which no unit test can
-  express, so `internal/httpapi/itinerary_test.go` brings up a real `Server`
-  over a real migrated SQLite database in a temp dir (`newTestServer`,
-  `login`, `do`, `decode`) and drives requests through the full router and
-  auth middleware. It's currently private to that one file. Handlers with
-  no coverage at all — trips, items, checklists, documents, media — could be
-  covered cheaply by lifting those helpers into a shared `testing_test.go`,
-  which is worth doing before the next stage that touches ownership or
-  auth-sensitive routes.
+  Second limitation, found in Stage 08 Milestone 7: it asks "does this
+  command depend on my uncommitted **fix**?", which is the wrong question for
+  "does this test catch this **break**?" — reverting a break restores the
+  guard and the tests pass, so it correctly answers VACUOUS while telling you
+  nothing. Proving a new test catches a regression still means disabling the
+  code under test by hand. A `--break` mode (apply an edit, expect failure,
+  restore) would be the mirror image and would cover that case.
 - **A startup banner carrying the build's git SHA.** The other half of the
   stale-binary problem, left over after Stage 08 Milestone 3 built
   `make dev-marker`: that check needs you to *supply* a marker string, and

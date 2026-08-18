@@ -123,7 +123,7 @@ third language needs no edit here.
 Subcommands:
 
 | Command | Behavior |
-|---|---|
+| --- | --- |
 | `set <key> <locale>=<value> ...` | Create or update a key across **all** locales in one call. Fails if a locale is left unspecified and the key is new. |
 | `set --after <anchor-key> ...` | Insert a new key immediately after `anchor-key` rather than at end-of-file, so related copy stays together. |
 | `rm <key>` | Delete from every locale. |
@@ -662,6 +662,58 @@ accepts a day dated `13-99-2026`. The test is one request,
 belongs here rather than in Milestone 6 because it wants the shared
 harness. Worth checking the sibling date-parsing at `itinerary.go:119-120`
 for the same gap while in there.
+
+**Done.** Two commits: the lift as a pure refactor, then the tests.
+`internal/httpapi/testing_test.go` now holds `newTestServer`, `login`,
+`do` and `decode`, and `internal/httpapi/ownership_test.go` adds
+cross-user coverage for every resource. Coverage for the package went
+**25.9% → 50.5%**, and all 25 handlers that were at 0.0% are now covered.
+
+Two deviations in the lift, both needed by the tests that followed: the
+harness builds a real filesystem blob store in the test's temp dir rather
+than passing `nil` (uploads were among the uncovered handlers, and a nil
+`Blob` panics rather than failing usefully), and it gained an `upload()`
+multipart helper plus `mustCreate`/`createTrip`/`createItem`.
+
+Every ownership violation is asserted to answer **404, not 403** — the
+handlers deliberately report "not found" for another user's resource
+rather than confirming it exists. The tests also assert the 404 body
+carries none of the owner's strings, so they pin the
+information-disclosure behaviour and not just the access control.
+
+Non-vacuity is where this milestone earned its keep, and it needed a
+correction. The plan says to run each new test through `scripts/without.sh`;
+that turns out to be the wrong instrument here, and the run proved it by
+answering **VACUOUS** for a test that is in fact fine. `without.sh` asks
+"does this command depend on my uncommitted *fix*?" — but these guards are
+already committed, so the only uncommitted change available is a *break*,
+and reverting a break restores the guard and makes the tests pass. Correct
+verdict, wrong question. The right instrument is the direct one: disable a
+guard and confirm the tests go red. (`without.sh` did earn its place even
+so: it refused a run where the edit had silently failed to apply, rather
+than reporting a meaningless result.)
+
+Done that way, all three ownership guards are covered:
+
+| Guard disabled | Tests that catch it |
+| --- | --- |
+| `loadOwnedTrip` (trips.go) | Trip, Item, Checklist, Document, Media — 5 |
+| `loadOwnedItem` (items.go) | Item, Document, Media — 3 |
+| `hasTripAccess` (media.go) | Checklist, Document, Media, + the existing itinerary test — 4 |
+
+The failures are concrete rather than abstract: with `loadOwnedTrip`
+disabled another user reads the trip, renames it via PATCH and deletes it;
+with `hasTripAccess` disabled they download the owner's document and fetch
+the owner's image bytes. The added `TestSetDayNotesRejectsMalformedDate`
+was verified the same way — removing the validation makes all five
+malformed dates return 200, including `2026-02-30` and `2026-8-1`, and the
+test also asserts a *valid* date still returns 200 so it can't pass by
+rejecting everything.
+
+One incidental lesson worth keeping: `grep` silently skipped the test-log
+file while diagnosing a probe, because the media upload's PNG bytes make it
+look binary. `grep -a` is needed there — the same flag `dev_server.sh`
+already uses on `/proc/<pid>/exe`.
 
 ---
 

@@ -216,3 +216,26 @@ func contains(haystack []string, needle string) bool {
 	}
 	return false
 }
+
+// The date in this route is a URL parameter that goes straight into a DB write,
+// so its format is validated in the handler. Stage 08 Milestone 6 measured that
+// nothing covered that check: the whole package passed with it removed, and the
+// API then accepted a day dated "13-99-2026".
+func TestSetDayNotesRejectsMalformedDate(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login("dates")
+	tripID := ts.createTrip(cookie, "Trip")
+
+	for _, date := range []string{"13-99-2026", "2026-13-01", "2026-02-30", "not-a-date", "2026-8-1"} {
+		w := ts.do(http.MethodPut, "/api/trips/"+tripID+"/itinerary/days/"+date, cookie, `{"notes":"x"}`)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("PUT day %q: got %d, want 400 — body %s", date, w.Code, w.Body.String())
+		}
+	}
+
+	// A well-formed date must still work, or the check above proves nothing.
+	w := ts.do(http.MethodPut, "/api/trips/"+tripID+"/itinerary/days/2026-08-20", cookie, `{"notes":"x"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("PUT valid day: got %d, want 200 — body %s", w.Code, w.Body.String())
+	}
+}

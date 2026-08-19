@@ -5,6 +5,7 @@ import { renderItemForm } from "../components/location-form.js";
 import { renderImageField } from "../components/image-field.js";
 import { renderDocumentList } from "../components/document-list.js";
 import { icon } from "../icon.js";
+import { confirmDialog } from "../components/dialog.js";
 
 // Both modes render the same cards, in the same order - Basic info, Cover
 // photo, Location, Links, Dates, Documents - matching the read view's
@@ -172,7 +173,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     container.querySelector('[data-action="cancel"]').addEventListener("click", cancel);
 
     container.querySelector('[data-action="delete"]')?.addEventListener("click", async () => {
-      if (!window.confirm(t("item.deleteConfirm"))) return;
+      if (!(await confirmDialog({ messageKey: "item.deleteConfirm" }))) return;
       await api.delete(`/items/${item.id}`);
       navigate(`/trips/${tripId}`);
     });

@@ -433,6 +433,40 @@ a:visited {
   color: var(--color-accent);
 }
 
+/* Modal dialogs (components/dialog.js), replacing window.confirm/alert.
+   A <dialog> is display:none until opened, so these only ever apply to the
+   open one; showModal() also puts it in the top layer, which is why there's
+   no z-index here. The UA default centres it and gives it a border - reset
+   to the app's card look. */
+.dialog {
+  max-width: min(28rem, calc(100vw - 2rem));
+  padding: 1.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.dialog::backdrop {
+  /* Dark in both themes: the backdrop's job is to dim the page behind it, and
+     a light scrim over a light page dims nothing. */
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.dialog__message {
+  margin: 0 0 1.25rem;
+}
+
+.dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  /* Cancel is first in the DOM (it takes the autofocus - see dialog.js), so
+     right-align the pair to keep the confirming action at the end of the row
+     where the eye lands last. */
+  justify-content: flex-end;
+}
+
 button {
   font-family: inherit;
 }

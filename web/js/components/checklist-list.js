@@ -1,6 +1,7 @@
 import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
+import { confirmDialog } from "./dialog.js";
 
 // Renders a trip's checklists: each an "editor-card" with a title, its
 // checkable items, an "add item" input, and a delete-checklist action.
@@ -66,7 +67,7 @@ export async function renderChecklistList(container, tripId) {
       }
 
       card.querySelector('[data-action="delete-checklist"]').addEventListener("click", async () => {
-        if (!window.confirm(t("checklists.deleteConfirm"))) return;
+        if (!(await confirmDialog({ messageKey: "checklists.deleteConfirm" }))) return;
         await api.delete(`/checklists/${checklist.id}`);
         checklists = checklists.filter((c) => c.id !== checklist.id);
         render();

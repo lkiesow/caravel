@@ -1,6 +1,7 @@
 import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
+import { confirmDialog } from "./dialog.js";
 
 // Renders a read-only document list (filename, size, note, download link,
 // delete) plus an inline single-file add row (file picker + optional
@@ -85,7 +86,7 @@ export async function renderDocumentList(container, path, { staged } = {}) {
           render();
           return;
         }
-        if (!window.confirm(t("documents.deleteConfirm"))) return;
+        if (!(await confirmDialog({ messageKey: "documents.deleteConfirm" }))) return;
         await api.delete(`/documents/${row.id}`);
         docs = docs.filter((d) => d.id !== row.id);
         render();

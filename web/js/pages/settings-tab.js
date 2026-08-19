@@ -1,9 +1,10 @@
 import { api } from "../api.js";
-import { t, translatePage } from "../i18n.js";
+import { translatePage } from "../i18n.js";
 import { navigate } from "../router.js";
 import { icon } from "../icon.js";
 import { renderTripForm } from "../components/trip-form.js";
 import { renderImageField } from "../components/image-field.js";
+import { confirmDialog } from "../components/dialog.js";
 
 // Renders the trip's own settings inline in the Settings tab - the same
 // three cards (Basic Info / Cover Photo / Delete) trip-editor-page.js's
@@ -46,7 +47,7 @@ export function renderSettingsTab(content, trip, { onTripUpdated }) {
     });
 
     content.querySelector('[data-action="delete"]').addEventListener("click", async () => {
-      if (!window.confirm(t("trip.deleteConfirm"))) return;
+      if (!(await confirmDialog({ messageKey: "trip.deleteConfirm" }))) return;
       await api.delete(`/trips/${trip.id}`);
       navigate("/trips");
     });

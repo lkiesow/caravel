@@ -79,7 +79,12 @@ export function renderImageField(container, { tripId, imageUrl, attachPath, onCh
         if (!res.ok) throw new Error(asset.error || "upload failed");
         await attach(asset.id, asset.url);
       } catch (err) {
-        showError(err.message || t("common.error"));
+        // Translated copy, developer detail to the console - the server's
+        // message here is Go error text ("server returned status 403", or a
+        // whole dial tcp: lookup ... failure) and was previously rendered
+        // verbatim into the card, untranslated even in the German UI.
+        console.error("image upload failed:", err.message || err);
+        showError(t("image.uploadFailed"));
       }
     });
 
@@ -104,7 +109,8 @@ export function renderImageField(container, { tripId, imageUrl, attachPath, onCh
         const asset = await api.post(`/trips/${tripId}/media/url`, { url: input.value });
         await attach(asset.id, asset.url);
       } catch (err) {
-        showError(err.body?.error || t("common.error"));
+        console.error("image url fetch failed:", err.body?.error || err.message || err);
+        showError(t("image.fetchFailed"));
       }
     });
 

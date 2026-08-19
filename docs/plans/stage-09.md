@@ -299,6 +299,64 @@ confirming deletes; assert no `window.confirm` override was needed (i.e. grep
 `web/js` for `window.confirm|window.alert` returns nothing outside vendor).
 `make ci`.
 
+**Done.** New `web/js/components/dialog.js` exports `confirmDialog` and
+`alertDialog`, both promise-returning so callers keep the `if (!(await ...))
+return;` shape the blocking `window.confirm` had. Built on `<dialog>` +
+`showModal()`, which supplies the focus trap, Escape-to-dismiss and the top
+layer (hence no `z-index` anywhere in the CSS). One dialog is created per call
+and removed on `close`, so there is no long-lived instance to keep in sync.
+All five `window.confirm` sites and the one remaining `window.alert` are
+converted; `grep` for either now matches nothing in `web/js` outside
+`dialog.js`'s own comments.
+
+Deviations from the plan:
+
+- **No `titleKey`.** The existing `*.deleteConfirm` strings are already
+  self-contained prompts ("Delete this trip? This cannot be undone."), so the
+  dialog is message-only and the message doubles as the accessible name via
+  `aria-labelledby`. That avoided inventing five title strings in two locales
+  for no gain.
+- **Cancel comes first in the DOM**, the reverse of the app's usual
+  primary-first order, so `<dialog>`'s autofocus lands on it and Enter can't
+  delete by accident. The row is right-aligned so the confirming action still
+  reads last.
+- **The second `window.alert` was already gone** — Milestone 2 replaced
+  `flushUploads`'s alert with an inline error in the Basic info card — so only
+  `trip-editor-page.js`'s remained.
+- **No backdrop-click dismissal.** Every caller is destructive; an explicit
+  choice is wanted.
+
+Translated errors: two new keys, `image.fetchFailed` and `image.uploadFailed`,
+now cover all three paths that used to render Go error text verbatim — the
+existing-trip URL fetch (`dial tcp: lookup ... no such host`), the file upload,
+and the create-form failure. Each logs the raw detail via `console.error` and
+shows app copy instead. `item.detail.close` got its first real caller (the
+alert dialog's dismiss button), so `scripts/i18n.py unused` is down to one
+orphan (`common.edit`, Milestone 7's call). Two now-stale `t` imports were
+dropped from `settings-tab.js` and `trip-editor-page.js`, which no longer call
+it at all.
+
+Verified: `make ci` and `make test-ui` (9 tests) green. A Playwright script
+asserted 24 behaviours covering **all five** confirm sites (location, checklist,
+itinerary day, document, trip) plus the error path: each opens a real
+`dialog.dialog` matching `:modal` with its own translated copy; focus starts on
+Cancel; Escape and the Cancel button both close without deleting; the element is
+removed from the DOM on close; confirming actually deletes (checked via the API,
+not the DOM). The itinerary day keeps its two-mode behaviour — a day with content
+asks (with a "Remove" confirm label, not "Delete"), an empty day is still removed
+with no dialog at all. A `page.on("dialog")` counter proves **no native dialog
+fired anywhere in the run**. The image-URL failure shows the translated sentence
+with no Go text in it, and the detail lands in `console.error`. A second script
+checked the dialog in German at 324×756 in dark mode: both strings translated,
+the box fits (16..308 of 324) with no internal overflow, both buttons 44px, and
+the message measures 14.27:1 against the dialog surface.
+
+Non-vacuity: `scripts/without.sh` on the six tracked call-site files fails the
+script at `waiting for locator('dialog.dialog') to be visible` — the native
+dialog fires instead — which is the right reason. (`dialog.js` itself is new and
+untracked, so `without.sh` can't include it; reverting the call sites is the
+equivalent test.)
+
 ## 5. Loading states and a real not-found route
 
 - Small shared helper (e.g. `renderLoading(container)` in a new

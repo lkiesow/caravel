@@ -2,6 +2,7 @@ import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
 import { navigate } from "../router.js";
 import { icon } from "../icon.js";
+import { confirmDialog } from "../components/dialog.js";
 
 const CATEGORY_COLORS = {
   site: "#16a34a",
@@ -90,7 +91,7 @@ export async function renderItineraryTab(container, trip) {
       // Only confirm when there's something to lose. Removing an empty day
       // the user just mistyped shouldn't demand a dialog.
       const hasContent = day.entries.length > 0 || (day.notes ?? "").trim() !== "";
-      if (hasContent && !window.confirm(t("itinerary.removeDayConfirm"))) return;
+      if (hasContent && !(await confirmDialog({ messageKey: "itinerary.removeDayConfirm", confirmKey: "common.remove" }))) return;
       await api.delete(`/itinerary/days/${day.id}`);
       days = days.filter((d) => d.date !== day.date);
       render();

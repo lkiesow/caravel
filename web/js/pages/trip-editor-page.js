@@ -1,9 +1,10 @@
 import { api } from "../api.js";
-import { t, translatePage } from "../i18n.js";
+import { translatePage } from "../i18n.js";
 import { navigate } from "../router.js";
 import { renderTripForm } from "../components/trip-form.js";
 import { renderImageField } from "../components/image-field.js";
 import { icon } from "../icon.js";
+import { alertDialog } from "../components/dialog.js";
 
 // Trip creation only ("/trips/new" - editing an existing trip now happens
 // inline in its Settings tab, see settings-tab.js). Two cards, Basic info
@@ -70,8 +71,15 @@ export async function renderTripEditorPage(container) {
             // failed image upload. Land on the trip's Settings tab
             // instead of the view page, since that's the one place this
             // can be retried.
+            //
+            // The message is the app's own, not the server's: this used to
+            // alert() the Go error verbatim ("could not fetch image from url:
+            // server returned status 403"), untranslated and in developer
+            // language, while reading as though the whole create had failed.
+            // The detail is still worth having, so it goes to the console.
             imageFailed = true;
-            window.alert(err.body?.error || err.message || t("common.error"));
+            console.error("preview image upload failed:", err.body?.error || err.message || err);
+            await alertDialog({ messageKey: "image.fetchFailed" });
           }
         }
         navigate(imageFailed ? `/trips/${saved.id}/settings` : `/trips/${saved.id}`);

@@ -87,6 +87,8 @@
   "image.upload": "Foto hochladen",
   "image.urlPlaceholder": "Oder Bild-URL einfügen",
   "image.loadFailed": "Dieses Bild konnte nicht geladen werden. Bitte eine andere Datei oder einen anderen Link versuchen.",
+  "image.fetchFailed": "Dieser Bild-Link konnte nicht abgerufen werden. Bitte den Link prüfen oder die Datei hochladen.",
+  "image.uploadFailed": "Dieses Bild konnte nicht hochgeladen werden. Bitte eine andere Datei versuchen.",
   "image.setUrl": "Bild setzen",
   "image.remove": "Entfernen",
   "trip.overview.image": "Titelbild",

@@ -147,14 +147,12 @@ require a redesign later — they're additive, not blocked, but none are built:
   it — confirmed it currently parses clean that way. So this isn't a
   one-line widening of the find; it wants a second check with the other
   parse mode, which is why it wasn't folded into that milestone.
-- **Two orphaned i18n keys: `common.edit` and `item.detail.close`.** Found by
-  `scripts/i18n.py unused` (Stage 08 Milestone 2) — neither is referenced by
-  any of the five routes a key can reach `t()` through, so both are dead
-  copy in `en.json` and `de.json`. Not deleted there because that milestone
-  built the tool rather than acting on its output, and because `common.edit`
-  in particular looks like a key some future ⋮-menu (see the checklist entry
-  under Stage 05) would want to re-add rather than re-invent. Decide per key:
-  delete, or keep with a note.
+- **One orphaned i18n key: `common.edit`.** Found by `scripts/i18n.py unused`
+  (Stage 08 Milestone 2), which reported two — `item.detail.close` picked up a
+  real caller in Stage 09 Milestone 4 (the dialog component's dismiss button),
+  leaving this one. It looks like a key some future ⋮-menu (see the checklist
+  entry under Stage 05) would want to re-add rather than re-invent, so the
+  decision is delete-and-re-add-later or keep-with-a-note.
 - **`scripts/i18n.py unused` is not wired into `make ci`.** It has a
   `--strict` flag that exits non-zero, but 9 keys (the `trip.tabs.*` and
   `item.category.*` families) are only reachable via runtime-composed keys
@@ -342,22 +340,19 @@ triaged with the user rather than dropped silently.
   padding, nothing else on the page. It's the state a stale bookmark or a
   deleted-trip link lands on, so it's worth looking deliberate; the fix is
   wrapping it in the same page layout every other route uses.
-- **Image-URL errors surface too late, as a raw alert.** A cover photo set
-  by URL on the *new trip* form is staged locally and only fetched
-  server-side when Create is pressed, where a failure becomes a native
-  `alert()` carrying developer text ("could not fetch image from url:
-  server returned status 403"). Worse, the trip is created anyway, so the
-  alert reads like a total failure that wasn't one. Should validate/fetch
-  at "Set image" time and report inline. (Stage 07 Milestone 9 makes the
-  *broken preview* visible, which is the other half of the same confusion.)
-  Second facet, found while verifying that milestone: on an **existing**
-  trip the same field does fetch server-side at "Set image" time — the right
-  moment — but renders the Go error verbatim, e.g. `could not fetch image
-  from url: Get "https://example.invalid/x.jpg": dial tcp: lookup
-  example.invalid: no such host`, untranslated even with the German UI
-  active. So the two modes fail at different times *and* with different
-  copy. Whatever fixes the timing should also map these to a translated
-  message, keeping the detail for the console rather than the card.
+- **A cover photo set by URL on the *new trip* form is still only validated
+  server-side at Create time.** Stage 09 Milestone 4 fixed the *copy* half of
+  this: both the existing-trip card and the create form now show translated
+  messages (`image.fetchFailed` / `image.uploadFailed`) with the Go error going
+  to `console.error` instead of into the UI, and the create form's failure is
+  an in-app dialog rather than a native `alert()`. What's unchanged is the
+  *timing*: the URL is staged locally, the trip is created, and only then does
+  the fetch happen — so the dialog still arrives after a create that partly
+  succeeded. A real fix means validating at "Set image" time, which needs
+  either a trip-independent validation endpoint or accepting the browser's own
+  `<img>` load as the check (Stage 07 Milestone 9's preview-error handler
+  already does exactly that inline, which softens this a lot — a URL the
+  browser can't load is flagged in the card before Create is ever pressed).
 - **Trip settings' date inputs clip at 324px.** The start/end date fields
   sit side by side in `.trip-form__dates`; at the phone's width each is
   ~123px and the browser truncates the year under the calendar icon —
@@ -372,10 +367,6 @@ triaged with the user rather than dropped silently.
   height, gesture handling (e.g. Leaflet's one-finger-pan opt-in) and
   legend placement rather than a quick tweak.
 - **Polish batch, all confirmed in the same round:**
-    - Destructive confirmations and error reporting still go through native
-      `window.confirm()`/`alert()` (documents, checklists, trips, locations),
-      which on mobile renders as a "localhost:8080 says" system dialog —
-      visually disconnected from the app.
     - Mobile trip-tab labels are 0.625rem (10px), below the ~11-12px floor a
       tab bar usually holds to; the tap targets themselves are fine (≥44px).
     - Category is a fixed `<select>` (Site/Stay/Transport) while Type is

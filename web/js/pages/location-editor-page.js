@@ -89,6 +89,11 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
               <span data-i18n="item.detail.address"></span>
               <input type="text" name="address" />
             </label>
+            <label class="location-form__checkbox">
+              <input type="checkbox" name="showOnMap" checked />
+              <span data-i18n="location.form.showOnMap"></span>
+            </label>
+            <p class="location-form__hint" data-i18n="location.form.showOnMapHint" hidden></p>
           </form>
         </div>
 
@@ -178,7 +183,14 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
   async function save() {
     itemForm.clearError();
 
-    const body = { ...itemForm.readValues(), links: draft.links, dates: draft.dates };
+    // show_on_map is a field of the item itself, not of its nested location,
+    // even though its checkbox sits in the Location card - see readValues().
+    const body = {
+      ...itemForm.readValues(),
+      show_on_map: container.querySelector('.location-form [name="showOnMap"]').checked,
+      links: draft.links,
+      dates: draft.dates,
+    };
 
     // Absent means "leave it alone", so only send the key when there is
     // something to say: the typed coordinates, or explicit nulls to clear a
@@ -279,6 +291,25 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       form.lng.value = item.location.lng ?? "";
       form.address.value = item.location.address ?? "";
     }
+    // Checked by default for a new location, matching the API's own default.
+    if (item) form.showOnMap.checked = item.show_on_map;
+
+    // "Show on map" only does anything once there are coordinates to show -
+    // GET /trips/{id}/map filters on lat AND lng being present as well as on
+    // this flag - and before Milestone 3 the checkbox sat in the Basic info
+    // card, several cards above the fields it depends on. It's next to them
+    // now, and says so when they're empty rather than silently doing nothing.
+    // The box stays enabled either way: unchecking it isn't what's missing,
+    // and the user's intent should survive until they fill the coordinates in.
+    const hint = container.querySelector(".location-form__hint");
+    const syncHint = () => {
+      const hasCoordinates = Boolean(form.lat.value && form.lng.value);
+      hint.hidden = hasCoordinates || !form.showOnMap.checked;
+    };
+    form.lat.addEventListener("input", syncHint);
+    form.lng.addEventListener("input", syncHint);
+    form.showOnMap.addEventListener("change", syncHint);
+    syncHint();
     // The card has no button of its own any more - these values are read
     // back by save(). Enter in a coordinate field saves the page, via the
     // same submit-plus-keydown pair the Basic info card uses and for the same

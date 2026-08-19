@@ -34,10 +34,6 @@ export function renderItemForm(container, item, { onSubmit }) {
         <span data-i18n="location.form.notes"></span>
         <textarea name="notes" rows="6"></textarea>
       </label>
-      <label class="item-form__checkbox">
-        <input type="checkbox" name="showOnMap" checked />
-        <span data-i18n="location.form.showOnMap"></span>
-      </label>
     </form>
   `;
   translatePage(container);
@@ -50,7 +46,6 @@ export function renderItemForm(container, item, { onSubmit }) {
     form.category.value = item.category;
     form.type.value = item.type ?? "";
     form.notes.value = item.notes ?? "";
-    form.showOnMap.checked = item.show_on_map;
   }
 
   // Notes grow with their content rather than making the user scroll a
@@ -91,12 +86,14 @@ export function renderItemForm(container, item, { onSubmit }) {
   });
 
   return {
+    // No show_on_map here: it gates whether the item's *coordinates* put it
+    // on the map, so the checkbox lives in the Location card next to them
+    // (Stage 09 Milestone 3) and the page reads it from there.
     readValues: () => ({
       category: form.category.value,
       type: form.type.value,
       title: form.title.value,
       notes: form.notes.value || null,
-      show_on_map: form.showOnMap.checked,
     }),
     // The page reports save failures here, in the card the required fields
     // live in, rather than in a dialog at the bottom of the page.

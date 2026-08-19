@@ -238,6 +238,41 @@ the map, save, then assert `GET /api/trips/{id}/map` contains it, and that the
 hint is visible with coordinates empty and hidden once they are filled. `make ci`
 (i18n parity).
 
+**Done.** The checkbox moved out of `location-form.js` into the Location card,
+directly under the lat/lng/address row, and `readValues()` no longer returns
+`show_on_map` — the page reads it from where it now lives and puts it in the same
+single request as everything else. It stays checked by default for a new
+location (matching the API default) and prefills from `item.show_on_map` when
+editing. The new `location.form.showOnMapHint` (both locales) appears exactly
+while the box is ticked and the coordinates are incomplete, updating live on
+input.
+
+Judgement calls: the hint keys off **both** lat and lng, because that is what
+`ListMapItems` filters on — one coordinate alone still yields no pin. And the
+checkbox stays **enabled** with no coordinates rather than being disabled:
+unchecking isn't what's missing, and the user's intent should survive until they
+fill the fields in.
+
+Also cleaned up, both dead as a result of this stage: `.item-form__checkbox`
+became `.location-form label.location-form__checkbox` (its only user moved
+cards), which let the rule's two `!important`s go — `label.` outspecifies
+`.location-form label` on its own — and the `.location-form button` rules (the
+base one and its mobile override) went, orphaned by Milestone 2 removing that
+card's Save button.
+
+Verified: `make ci` and `make test-ui` (9 tests) green. A Playwright script
+asserted 17 behaviours: the checkbox is in the Location card and not in Basic
+info, and renders *below* the coordinate fields (measured, lat y=881 vs box
+y=929); no hint while unchecked, hint on checking with empty fields, hint still
+there with only a latitude, gone once both are filled, gone again on unchecking;
+the stored value round-trips into the editor; a new location opens checked with
+the hint already showing. End-to-end: a location that `GET /trips/{id}/map`
+excluded appears in that response after one Save, carrying the right
+coordinates — the exact "coordinates saved, map still empty" confusion from
+`todo.md`. Separately checked in a German locale at 324×756: both strings render
+translated and the row doesn't overflow its card. `scripts/without.sh` on the two
+JS files fails the script without the change.
+
 ## 4. In-app dialogs, and translated errors
 
 - New `web/js/components/dialog.js`: `confirmDialog({titleKey, bodyKey, confirmKey, danger})

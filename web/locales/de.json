@@ -58,6 +58,7 @@
   "location.form.title": "Titel",
   "location.form.notes": "Notizen",
   "location.form.showOnMap": "Auf der Karte anzeigen",
+  "location.form.showOnMapHint": "Ergänze oben Breiten- und Längengrad, damit dieser Ort auf der Karte erscheint.",
   "location.editor.basicInfo": "Basisinformationen",
   "location.editor.newTitle": "Neuer Ort",
   "location.editor.editTitle": "{title} bearbeiten",

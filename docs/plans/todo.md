@@ -342,13 +342,6 @@ triaged with the user rather than dropped silently.
   padding, nothing else on the page. It's the state a stale bookmark or a
   deleted-trip link lands on, so it's worth looking deliberate; the fix is
   wrapping it in the same page layout every other route uses.
-- **Coordinates alone don't put a location on the map.** `show_on_map` is a
-  checkbox in the *Basic info* card, several cards above the coordinate
-  fields, so setting coordinates and expecting a pin gets an empty map:
-  verified that `GET /api/trips/{id}/map` returns `[]` while the item's
-  coordinates are saved, with nothing in the UI explaining why. Options:
-  default `show_on_map` on once coordinates exist, or move the checkbox
-  next to the coordinates it actually gates.
 - **Image-URL errors surface too late, as a raw alert.** A cover photo set
   by URL on the *new trip* form is staged locally and only fetched
   server-side when Create is pressed, where a failure becomes a native

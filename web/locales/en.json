@@ -58,6 +58,7 @@
   "location.form.title": "Title",
   "location.form.notes": "Notes",
   "location.form.showOnMap": "Show on map",
+  "location.form.showOnMapHint": "Add both a latitude and a longitude above for this location to appear on the map.",
   "location.editor.basicInfo": "Basic info",
   "location.editor.newTitle": "New location",
   "location.editor.editTitle": "Edit {title}",

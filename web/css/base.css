@@ -777,10 +777,29 @@ button {
   color: var(--color-text-muted);
 }
 
-.item-form__checkbox {
-  flex-direction: row !important;
+/* The "Show on map" checkbox, which lives in the Location card next to the
+   coordinates it gates (Stage 09 Milestone 3). Row rather than the stacked
+   label-above-input the sibling fields use, and a full-width flex item so it
+   gets its own line under them. `label.` in the selector outspecifies
+   `.location-form label` without needing !important. */
+.location-form label.location-form__checkbox {
+  flex: 1 1 100%;
+  flex-direction: row;
   align-items: center;
-  gap: 0.5rem !important;
+  gap: 0.5rem;
+  color: var(--color-text);
+}
+
+/* Shown only while "Show on map" is ticked but the coordinates are empty. */
+.location-form__hint {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.location-form__hint[hidden] {
+  display: none;
 }
 
 .item-form input,
@@ -839,13 +858,6 @@ button {
   gap: 0.25rem;
   font-size: 0.875rem;
   color: var(--color-text-muted);
-}
-
-/* The lone Save button (edit mode) wraps onto its own row once the three
-   fields fill the first one; keep it at the same right edge as the add-row
-   buttons rather than stranded on the left. */
-.location-form button {
-  margin-left: auto;
 }
 
 .location-form input,
@@ -1177,7 +1189,6 @@ button {
      stray button rather than that row's action. Full-width and labelled
      (see .btn-row, which opts out of .btn-collapse) says what it does. */
   .location-form label,
-  .location-form button,
   .link-form input,
   .date-form input,
   .document-form input[type="text"],

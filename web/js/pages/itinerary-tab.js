@@ -3,6 +3,7 @@ import { t, translatePage } from "../i18n.js";
 import { navigate } from "../router.js";
 import { icon } from "../icon.js";
 import { confirmDialog } from "../components/dialog.js";
+import { renderLoading } from "../components/loading.js";
 
 const CATEGORY_COLORS = {
   site: "#16a34a",
@@ -11,6 +12,7 @@ const CATEGORY_COLORS = {
 };
 
 export async function renderItineraryTab(container, trip) {
+  renderLoading(container);
   let days = await api.get(`/trips/${trip.id}/itinerary`);
   days.forEach((d) => (d.entries ??= []));
   const items = await api.get(`/trips/${trip.id}/items`);

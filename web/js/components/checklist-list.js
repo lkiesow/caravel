@@ -2,6 +2,7 @@ import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
 import { confirmDialog } from "./dialog.js";
+import { renderLoading } from "./loading.js";
 
 // Renders a trip's checklists: each an "editor-card" with a title, its
 // checkable items, an "add item" input, and a delete-checklist action.
@@ -9,6 +10,7 @@ import { confirmDialog } from "./dialog.js";
 // list/create calls; item-level calls are scoped by their own checklist id
 // (see internal/httpapi/checklists.go's route shape).
 export async function renderChecklistList(container, tripId) {
+  renderLoading(container);
   let checklists = await api.get(`/trips/${tripId}/checklists`);
 
   function render() {

@@ -162,16 +162,29 @@ export async function buildRoutes(page) {
     if (scenario === "full") continue;
     routes.push({ path: `/trips/${id}/itinerary`, label: `${scenario} itinerary` });
   }
+  // Both ways to reach the not-found page (Stage 09 Milestone 5): a URL that
+  // matches no route at all, and a well-formed one whose resource is gone.
+  // They render the same page but through different paths - the router's
+  // catch-all, and a page's own failed fetch - and it's a real screen now, so
+  // it gets swept for overflow, headings and accessible names like any other.
+  routes.push({ path: "/no-such-page", label: "not found (unmatched URL)" });
+  routes.push({ path: `/trips/${MISSING_UUID}/locations`, label: "not found (missing trip)" });
   return routes;
 }
 
+// A syntactically valid UUID that is guaranteed not to be a real ID.
+const MISSING_UUID = "00000000-0000-0000-0000-000000000000";
+
 // Navigates and asserts we landed where we meant to.
 //
-// This assertion is not ceremony. Caravel's router silently redirects any
-// unmatched path to /trips, so a typo'd route makes a layout check pass
-// trivially against the wrong page — which is exactly what happened during
+// This assertion is not ceremony. It used to guard against the router
+// silently redirecting any unmatched path to /trips, which made a typo'd
+// route pass trivially against the wrong page — exactly what happened during
 // Stage 04, where a manual sweep tested /trips for several milestones while
-// believing it was testing something else.
+// believing it was testing something else. Stage 09 Milestone 5 replaced that
+// redirect with a real not-found page, so a typo now shows up as a route with
+// no content rather than as a false pass; keeping the assertion still catches
+// the reverse mistake, a path that redirects somewhere on purpose ("/" -> "/trips").
 export async function gotoRoute(page, path) {
   await page.goto(path);
 
@@ -194,6 +207,6 @@ export async function gotoRoute(page, path) {
   const landed = await page.evaluate(() => window.location.pathname);
   expect(
     landed,
-    `navigating to ${path} landed on ${landed} — the router redirects unmatched paths to /trips, so this route pattern is probably wrong`
+    `navigating to ${path} landed on ${landed} — this route pattern is probably wrong, or it redirects on purpose`
   ).toBe(path);
 }

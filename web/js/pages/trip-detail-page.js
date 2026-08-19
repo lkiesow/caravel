@@ -1,5 +1,5 @@
 import { api } from "../api.js";
-import { t, translatePage } from "../i18n.js";
+import { translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
 import "../components/leaflet-map.js";
 import { renderItemsTab } from "./locations-tab.js";
@@ -9,15 +9,19 @@ import { renderChecklistList } from "../components/checklist-list.js";
 import { renderSettingsTab } from "./settings-tab.js";
 import { TRIP_TABS } from "../trip-tabs.js";
 import { formatDateRange } from "../format.js";
+import { renderLoading } from "../components/loading.js";
+import { renderNotFoundPage } from "./not-found-page.js";
 
 const TABS = TRIP_TABS.map(({ key }) => key);
 
 export async function renderTripDetailPage(container, { tripId, tab }) {
+  renderLoading(container);
+
   let trip;
   try {
     trip = await api.get(`/trips/${tripId}`);
   } catch {
-    container.innerHTML = `<p>${t("common.notFound")}</p><a href="/trips" data-link>${t("common.back")}</a>`;
+    renderNotFoundPage(container, { href: "/trips", labelKey: "common.home" });
     return;
   }
 

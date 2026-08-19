@@ -2,6 +2,7 @@ import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
 import { confirmDialog } from "./dialog.js";
+import { renderLoading } from "./loading.js";
 
 // Renders a read-only document list (filename, size, note, download link,
 // delete) plus an inline single-file add row (file picker + optional
@@ -20,6 +21,8 @@ import { confirmDialog } from "./dialog.js";
 // request, so post-create is the only option regardless (see todo.md).
 export async function renderDocumentList(container, path, { staged } = {}) {
   const isStaging = !path;
+  // Nothing is fetched in staging mode, so there is nothing to wait for.
+  if (!isStaging) renderLoading(container);
   let docs = isStaging ? [] : await api.get(path);
 
   // Full rebuild on every call, list and add-form together - not a

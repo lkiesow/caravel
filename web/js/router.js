@@ -8,9 +8,16 @@ export function navigate(path) {
 
 // Minimal History API router. Routes are {pattern, render} where pattern
 // segments starting with ":" are captured as params, e.g. "/trips/:tripId".
+//
+// One pattern is special: "*" is the catch-all, rendered when nothing else
+// matches. It's a route in the list like any other (see app.js) rather than
+// an option on createRouter, so reading the routes array tells you what an
+// unknown URL does. Unmatched paths used to be redirected to /trips instead,
+// which silently pretended the URL had been something else.
 export function createRouter(routes, container) {
   function match(path) {
     for (const route of routes) {
+      if (route.pattern === "*") continue;
       const patternParts = route.pattern.split("/").filter(Boolean);
       const pathParts = path.split("/").filter(Boolean);
       if (patternParts.length !== pathParts.length) continue;
@@ -25,15 +32,13 @@ export function createRouter(routes, container) {
       });
       if (isMatch) return { route, params };
     }
-    return null;
+    const catchAll = routes.find((r) => r.pattern === "*");
+    return catchAll ? { route: catchAll, params: {} } : null;
   }
 
   async function render() {
     const result = match(window.location.pathname);
-    if (!result) {
-      navigate("/trips");
-      return;
-    }
+    if (!result) return;
     await result.route.render(container, result.params);
   }
 

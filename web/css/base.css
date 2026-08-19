@@ -471,6 +471,16 @@ button {
   font-family: inherit;
 }
 
+/* The per-route loading line (components/loading.js). Muted, because it is a
+   placeholder rather than content, and padded so it doesn't sit flush against
+   the edge of whatever container it was dropped into - it stands in for both
+   whole pages and single list bodies. */
+.loading {
+  color: var(--color-text-muted);
+  padding: 1rem;
+  margin: 0;
+}
+
 .page {
   padding: 1rem;
   max-width: 60rem;

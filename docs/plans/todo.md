@@ -99,17 +99,25 @@ require a redesign later — they're additive, not blocked, but none are built:
   is a read-only sweep, so it needs a decision about isolation (its own trip per
   run? a reset between specs?) before it can join `make test-ui`. Until then the
   stage's headline fix has no automated guard.
-- **Routes render an empty shell before their data arrives, with no loading
-  state.** Surfaced by Stage 08 Milestone 5: `common.loading` is used exactly
-  once, at app boot (`app.js:62`), and none of the per-route renderers show
-  anything while their `fetch` is in flight — they paint a shell into `#app`
-  and fill it in when the response lands. The UI suite hit this as a race (the
-  heading check briefly saw a location page with no headings at all, on a page
-  whose outline is fine) and works around it by waiting on an injected
-  in-flight-fetch counter. The user-facing version is a flash of empty or
-  partial page on every navigation, which on a slow connection stops looking
-  like a flash. Cheap fix: reuse the existing `common.loading` key per route,
-  or a skeleton block.
+- **The UI suite still needs its in-flight-fetch counter, even now that routes
+  show a loading state.** Stage 09 Milestone 5 gave every route a
+  `common.loading` line (`components/loading.js`), which fixes the *user-facing*
+  half of this — no more flash of empty or partial page. It does not remove the
+  suite's problem: a loading line carries no `<h1>`, so `gotoRoute` must still
+  wait for fetches to settle before asserting heading outlines, and that wait is
+  still an injected `window.fetch` wrapper (`tests/ui/helpers/scenarios.js`)
+  rather than anything the app exposes. A `data-loading` attribute on `#app`, or
+  a "ready" event, would let the suite wait on the app's own state instead of on
+  monkey-patched plumbing.
+- **The UI suite can fail with HTTP 429 rather than a real assertion.** Found
+  while verifying Stage 09 Milestone 5. `internal/httpapi/router.go` rate limits
+  login to `newLoginLimiter(10, time.Minute)` per IP, and the suite logs in once
+  per spec — 9 per run — so two runs inside a minute, or one run alongside a
+  hand-written Playwright script, trips it. The specs then render the login page
+  and fail on unrelated assertions, and the message actively misleads: it reads
+  "login as demo failed — has `make dev-reset FORCE=1` been run?" when the seed
+  is fine. Fixes: share one `storageState` across specs instead of logging in
+  nine times, and/or have `login()` name 429 explicitly.
 - **Contrast is measured but not asserted.** `tests/ui/contrast.js` reports
   ratios and has a `--min` flag, but nothing runs it in CI, so a regression
   like Stage 07's 2.54:1 primary button would not be caught automatically —
@@ -334,12 +342,6 @@ dark mode found 19 issues; 11 are being fixed in that stage
 (`stage-07.md`), and these are the ones deliberately deferred. Each was
 triaged with the user rather than dropped silently.
 
-- **The "Not found" state renders unstyled.** Hitting a nonexistent trip or
-  location ID (`/trips/<bad-uuid>/locations`) renders bare "Not found."
-  text and a raw underlined link flush against x=0 — no page container, no
-  padding, nothing else on the page. It's the state a stale bookmark or a
-  deleted-trip link lands on, so it's worth looking deliberate; the fix is
-  wrapping it in the same page layout every other route uses.
 - **A cover photo set by URL on the *new trip* form is still only validated
   server-side at Create time.** Stage 09 Milestone 4 fixed the *copy* half of
   this: both the existing-trip card and the create form now show translated
@@ -373,9 +375,6 @@ triaged with the user rather than dropped silently.
       free text, so a location detail page reads "Site landmark" with
       mismatched capitalisation. Either derive Type from a per-category list
       or at least normalise its display.
-    - Unmatched URLs silently redirect to `/trips` with no "that page
-      doesn't exist" feedback. (Already recorded above as a *testing*
-      footgun; this is the user-facing side of the same behaviour.)
     - The Documents tab's "Upload" is styled `btn-secondary` though it is
       that row's primary action, while "New checklist" next to an identical
       input row is `btn-primary` — the two rows should agree.

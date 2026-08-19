@@ -6,8 +6,9 @@ import { renderTripDetailPage } from "./pages/trip-detail-page.js";
 import { renderTripEditorPage } from "./pages/trip-editor-page.js";
 import { renderLocationEditorPage } from "./pages/location-editor-page.js";
 import { renderLocationViewPage } from "./pages/location-view-page.js";
+import { renderNotFoundPage } from "./pages/not-found-page.js";
 import { renderUserMenu } from "./components/user-menu.js";
-import { createRouter } from "./router.js";
+import { createRouter, navigate } from "./router.js";
 import { TRIP_TABS } from "./trip-tabs.js";
 
 const app = document.getElementById("app");
@@ -24,6 +25,10 @@ const tripTabRoutes = TRIP_TABS.map(({ key }) => ({
 }));
 
 const routes = [
+  // index.html is served at "/", so that's where a fresh visit lands.
+  // Canonicalize it to the trips list rather than letting it fall through to
+  // the catch-all below and report the app's own entry point as not found.
+  { pattern: "/", render: () => navigate("/trips") },
   { pattern: "/trips", render: renderTripsPage },
   // "/trips/new" must precede "/trips/:tripId", and "/trips/:tripId/locations/new"
   // must precede "/trips/:tripId/locations/:itemId" - same segment counts, and
@@ -35,6 +40,9 @@ const routes = [
   { pattern: "/trips/:tripId/locations/:itemId", render: renderLocationViewPage },
   ...tripTabRoutes,
   { pattern: "/trips/:tripId", render: renderTripDetailPage },
+  // The catch-all. Must be last: the router takes the first pattern that
+  // fits, and "*" fits everything.
+  { pattern: "*", render: renderNotFoundPage },
 ];
 
 async function renderAuthenticated(user) {

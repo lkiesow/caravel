@@ -1,8 +1,9 @@
 import { api } from "../api.js";
-import { t, translatePage } from "../i18n.js";
+import { translatePage } from "../i18n.js";
 import "../components/trip-card.js";
 import { navigate } from "../router.js";
 import { icon } from "../icon.js";
+import { renderLoading } from "../components/loading.js";
 
 export async function renderTripsPage(container) {
   container.innerHTML = `
@@ -21,6 +22,7 @@ export async function renderTripsPage(container) {
   const emptyState = container.querySelector(".trips-empty");
 
   async function load() {
+    renderLoading(grid);
     const trips = await api.get("/trips");
     grid.innerHTML = "";
     emptyState.hidden = trips.length > 0;

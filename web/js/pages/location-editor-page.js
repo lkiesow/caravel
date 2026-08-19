@@ -6,6 +6,8 @@ import { renderImageField } from "../components/image-field.js";
 import { renderDocumentList } from "../components/document-list.js";
 import { icon } from "../icon.js";
 import { confirmDialog } from "../components/dialog.js";
+import { renderLoading } from "../components/loading.js";
+import { renderNotFoundPage } from "./not-found-page.js";
 
 // Both modes render the same cards, in the same order - Basic info, Cover
 // photo, Location, Links, Dates, Documents - matching the read view's
@@ -32,10 +34,11 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
   let item = null;
 
   if (itemId) {
+    renderLoading(container);
     try {
       item = await api.get(`/items/${itemId}`);
     } catch {
-      container.innerHTML = `<p>${t("common.notFound")}</p><a href="/trips/${tripId}" data-link>${t("common.back")}</a>`;
+      renderNotFoundPage(container, { href: `/trips/${tripId}`, labelKey: "common.back" });
       return;
     }
   }

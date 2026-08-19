@@ -3,6 +3,8 @@ import { t, translatePage } from "../i18n.js";
 import { navigate } from "../router.js";
 import { icon } from "../icon.js";
 import "../components/leaflet-map.js";
+import { renderLoading } from "../components/loading.js";
+import { renderNotFoundPage } from "./not-found-page.js";
 
 const CATEGORY_COLORS = {
   site: "#16a34a",
@@ -31,11 +33,13 @@ const CATEGORY_COLORS = {
 // mobile. At the bottom it can be full-width and keep its label at every
 // width - editing isn't frequent enough to need to be above the fold.
 export async function renderLocationViewPage(container, { tripId, itemId }) {
+  renderLoading(container);
+
   let item;
   try {
     item = await api.get(`/items/${itemId}`);
   } catch {
-    container.innerHTML = `<p>${t("common.notFound")}</p><a href="/trips/${tripId}" data-link>${t("common.back")}</a>`;
+    renderNotFoundPage(container, { href: `/trips/${tripId}`, labelKey: "common.back" });
     return;
   }
 

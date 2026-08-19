@@ -4,6 +4,7 @@ import { navigate } from "../router.js";
 import { icon } from "../icon.js";
 import { renderMenu } from "../components/menu.js";
 import "../components/location-card.js";
+import { renderLoading } from "../components/loading.js";
 
 const CATEGORIES = ["site", "stay", "transport"];
 
@@ -96,6 +97,7 @@ export async function renderItemsTab(container, tripId) {
     navigate(`/trips/${tripId}/locations/${e.detail.itemId}`);
   });
 
+  renderLoading(list);
   allItems = await api.get(`/trips/${tripId}/items`);
   applyFilters();
 }

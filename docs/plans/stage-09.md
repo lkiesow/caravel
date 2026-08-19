@@ -385,6 +385,52 @@ equivalent test.)
 assertion that `/trips/00000000-0000-0000-0000-000000000000/locations` renders one
 `h1` inside `.page` rather than redirecting. `make ci`.
 
+**Done.** Two new modules. `components/loading.js` exports `renderLoading(target)`,
+called by all six await-then-paint renderers (trip detail, location view, location
+editor, itinerary tab, checklist list, document list) with their page container,
+and by the two shell-first ones (`trips-page`, `locations-tab`) with just their
+list container — so on those the heading and toolbar stay put and only the list
+waits. `pages/not-found-page.js` exports `renderNotFoundPage(container, {href,
+labelKey})`, used for both flavours: the router's catch-all, and the three
+fetch-by-ID pages' failure path, which is why the back link is a parameter (Home
+for an unknown URL, back to the trip for a location that's gone).
+
+The router gained a `"*"` catch-all pattern rather than a `createRouter` option,
+so the routes array in `app.js` says out loud what an unknown URL does; the
+silent `navigate("/trips")` is gone. That exposed something the plan didn't
+mention: `index.html` is served at `/`, so without a route for it the app's own
+entry point would have reported itself as not found. `/` is now an explicit
+route that canonicalizes to `/trips`.
+
+i18n: `common.notFound` ("Not found.") was orphaned by this — it existed only for
+those bare fallbacks, and its trailing period reads wrong as a heading — so it
+was replaced by `notFound.title` + `notFound.body` in both locales. Two more
+stale `t` imports went (`trip-detail-page.js`, `trips-page.js`).
+
+The UI suite's `buildRoutes()` now yields **19 routes**, up from 17: one
+unmatched URL and one missing trip, so both paths to the page get swept for
+overflow, headings and accessible names. Two comments in `scenarios.js` that
+warned about the `/trips` redirect were rewritten, since the behaviour they
+describe no longer exists.
+
+Verified: `make ci` and `make test-ui` (9 tests, 19 routes) green. A Playwright
+script asserted 22 behaviours: an unmatched URL stays at its own path instead of
+redirecting, renders `.page.not-found` with exactly one translated `h1` and real
+explanatory copy, and — measured, since "renders unstyled" was the original
+complaint — sits at x=176 inside the page padding rather than flush at x=0; all
+three missing-resource routes render the same page with the right back link; `/`
+still lands on `/trips`. For loading, the API response is held open mid-flight:
+the locations list shows the translated `role="status"` line **while its heading
+and toolbar stay rendered**, then is replaced by real cards; an await-then-paint
+route shows the line instead of a blank container. `scripts/without.sh` on six of
+the touched files fails at `waiting for locator('.not-found h1')`.
+
+Not a regression from this milestone, but found by it and recorded in `todo.md`:
+the suite can fail with **HTTP 429** instead of a real assertion. Login is rate
+limited to 10/min per IP and the suite logs in once per spec (9 per run), so two
+runs inside a minute — or one run alongside a hand-written script — trips it, and
+the resulting message blames the seed rather than the limiter.
+
 ## 6. Raise touch targets to the 44px guideline
 
 - CSS in [web/css/base.css](web/css/base.css): `.btn` min-height 40 → 44px;

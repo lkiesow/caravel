@@ -70,7 +70,6 @@
   "item.detail.lat": "Breitengrad",
   "item.detail.lng": "Längengrad",
   "item.detail.address": "Adresse",
-  "item.detail.saveLocation": "Standort speichern",
   "item.detail.links": "Links",
   "item.detail.linksEmpty": "Noch keine Links.",
   "item.detail.addLink": "Link hinzufügen",

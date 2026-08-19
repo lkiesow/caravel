@@ -1,19 +1,18 @@
-import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
-import { icon } from "../icon.js";
 
 const CATEGORIES = ["site", "stay", "transport"];
 
-// Renders a create/edit form for an item's core fields into `container`.
-// Pass an existing item to edit it, or null (with a tripId) to create one.
+// Renders the Basic info fields of a location into `container`. Pass an
+// existing item to prefill them, or null to start empty.
 //
-// With showActions: false the form renders no Save/Cancel row and the
-// caller places its own submit control, driving it through the returned
-// `submit()` - same arrangement as renderTripForm. That's what the create
-// page does: creating a location commits several cards at once (photo,
-// location, dates, links, documents), so the button belongs at the bottom
-// of all of them rather than inside the first one.
-export function renderItemForm(container, item, { tripId, onSaved, onCancel, showActions = true }) {
+// This form does not save anything and owns no button. The location editor
+// commits every card - basic info, coordinates, links, dates - in one
+// request (see location-editor-page.js), so the submit control belongs at
+// the bottom of all of them and the request belongs to the page. What this
+// component exposes instead is `readValues()`, `showError()` and the
+// `onSubmit` hook that fires when the user presses Enter in a field, so
+// Enter and the page's Save button do the same thing.
+export function renderItemForm(container, item, { onSubmit }) {
   container.innerHTML = `
     <form class="item-form" novalidate>
       <p class="item-form__error" role="alert" hidden></p>
@@ -39,16 +38,6 @@ export function renderItemForm(container, item, { tripId, onSaved, onCancel, sho
         <input type="checkbox" name="showOnMap" checked />
         <span data-i18n="location.form.showOnMap"></span>
       </label>
-      ${
-        showActions
-          ? `
-        <div class="item-form__actions">
-          <button type="submit" class="btn btn-primary">${icon("check")} <span data-i18n="${item ? "common.save" : "location.editor.createButton"}"></span></button>
-          <button type="button" class="btn btn-secondary" data-action="cancel">${icon("x")} <span data-i18n="common.cancel"></span></button>
-        </div>
-      `
-          : ""
-      }
     </form>
   `;
   translatePage(container);
@@ -80,32 +69,44 @@ export function renderItemForm(container, item, { tripId, onSaved, onCancel, sho
   form.notes.addEventListener("input", autoGrowNotes);
   autoGrowNotes();
 
-  container.querySelector('[data-action="cancel"]')?.addEventListener("click", () => onCancel?.());
-
-  form.addEventListener("submit", async (e) => {
+  // Enter in any single-line field means "save the page", the same as the
+  // Save button at the bottom.
+  //
+  // Both listeners are needed. The submit one is the safety net: a form with
+  // exactly one field that blocks implicit submission *does* submit natively
+  // on Enter even with no submit button, which would reload the whole app, so
+  // it must be caught even though this form currently has several fields. The
+  // keydown one is what actually fires today: with several such fields and no
+  // submit button, the implicit submission algorithm does nothing at all, so
+  // without it Enter would silently do nothing (verified in Firefox).
+  form.addEventListener("submit", (e) => {
     e.preventDefault();
-    errorEl.hidden = true;
+    onSubmit?.();
+  });
+  form.addEventListener("keydown", (e) => {
+    // Not in the notes textarea, where Enter is a newline.
+    if (e.key !== "Enter" || e.target.tagName === "TEXTAREA") return;
+    e.preventDefault();
+    onSubmit?.();
+  });
 
-    const body = {
+  return {
+    readValues: () => ({
       category: form.category.value,
       type: form.type.value,
       title: form.title.value,
       notes: form.notes.value || null,
       show_on_map: form.showOnMap.checked,
-    };
-
-    try {
-      const saved = item
-        ? await api.patch(`/items/${item.id}`, body)
-        : await api.post(`/trips/${tripId}/items`, body);
-      onSaved?.(saved);
-    } catch (err) {
-      errorEl.textContent = err.body?.error || t("common.error");
+    }),
+    // The page reports save failures here, in the card the required fields
+    // live in, rather than in a dialog at the bottom of the page.
+    showError: (message) => {
+      errorEl.textContent = message || t("common.error");
       errorEl.hidden = false;
-    }
-  });
-
-  // requestSubmit() (not submit()) so the handler above still runs - that's
-  // where saving and error display live.
-  return { submit: () => form.requestSubmit() };
+      errorEl.scrollIntoView({ block: "nearest" });
+    },
+    clearError: () => {
+      errorEl.hidden = true;
+    },
+  };
 }

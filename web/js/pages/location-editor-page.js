@@ -6,35 +6,29 @@ import { renderImageField } from "../components/image-field.js";
 import { renderDocumentList } from "../components/document-list.js";
 import { icon } from "../icon.js";
 
-// Both modes now render the same cards, in the same order - Basic info,
-// Cover photo, Location, Links, Dates, Documents - matching the read view's
-// section order (location-view-page.js). What differs is when the writes
-// happen:
+// Both modes render the same cards, in the same order - Basic info, Cover
+// photo, Location, Links, Dates, Documents - matching the read view's
+// section order (location-view-page.js), and both commit through the same
+// single Save button at the bottom.
 //
-// - Edit mode: each card saves on its own (its own Save button, or an
-//   add/remove that hits the API immediately), plus a Delete card at the
-//   end. The item ID exists, so every sub-resource endpoint is reachable.
-// - Create mode: nothing is written until the single "Create location"
-//   button at the bottom. Everything typed or picked before that is held in
-//   memory - the cover photo via image-field.js's staging mode, documents
-//   via document-list.js's, links and dates as plain arrays, coordinates
-//   read straight off the form at flush time - and then written in one
-//   sequence after the item POST returns an ID. The location, links, dates
-//   and documents endpoints all require an existing item, and a multipart
-//   document upload can't ride along in a JSON create request, so
-//   post-create writes are the only shape available without a backend
-//   change (a transactional create is a todo.md entry).
+// Everything typed on the page is held in `draft` until then, and goes out
+// as ONE request: the item's own fields plus nested location/links/dates,
+// which handleCreateItem/handleUpdateItem write in a transaction (Stage 09
+// Milestone 1). Before that the page had five independent save paths, and
+// the visually primary Save only carried Basic info - so coordinates typed
+// into the card below it were silently discarded. One request also means
+// there is nothing to guard against navigating away from: either Save was
+// pressed and everything landed, or it wasn't and nothing did.
 //
-// That sequence isn't atomic: if the item is created but a link fails, the
-// location exists half-populated. Same policy as the staged cover photo has
-// always used - report what failed once, and land on the edit page rather
-// than the view page, since that's where the missing pieces can be
-// re-added.
+// Two things still cannot ride along in a JSON body, and both are uploads:
+// the cover photo and documents. In edit mode they write immediately
+// against the existing item (image-field.js and document-list.js each take
+// a path and own their own request). In create mode there is no item to
+// attach them to yet, so they stage in memory and flushUploads() writes
+// them after the create returns an ID - the one remaining non-atomic step,
+// reported through the Basic info card's error line if it fails.
 export async function renderLocationEditorPage(container, { tripId, itemId }) {
   let item = null;
-  // Create mode only; in edit mode the equivalents live on `item` (or are
-  // already on the server, for documents).
-  const staged = { image: null, links: [], dates: [], documents: [] };
 
   if (itemId) {
     try {
@@ -45,10 +39,22 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     }
   }
 
-  // The list-backing arrays: the item's own in edit mode, the staging ones
-  // in create mode. Both are mutated in place by the add/remove handlers.
-  const links = () => (item ? item.links : staged.links);
-  const dates = () => (item ? item.dates : staged.dates);
+  // The page's working copy, in both modes. links/dates are edited here and
+  // sent as whole lists (the API replaces the set), so the add/remove
+  // handlers just push and splice - no per-row request, and no difference
+  // between creating and editing. image/documents are the upload staging
+  // slots, used in create mode only.
+  // Set by render(); save() and the per-card Enter handlers reach it through
+  // this binding rather than being passed it, since they're all closures over
+  // the same single render.
+  let itemForm;
+
+  const draft = {
+    image: null,
+    documents: [],
+    links: (item?.links ?? []).map((l) => ({ url: l.url, label: l.label ?? null })),
+    dates: (item?.dates ?? []).map((d) => ({ start_date: d.start_date, end_date: d.end_date, label: d.label ?? null })),
+  };
 
   function render() {
     container.innerHTML = `
@@ -83,7 +89,6 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
               <span data-i18n="item.detail.address"></span>
               <input type="text" name="address" />
             </label>
-            ${item ? `<button type="submit" class="btn btn-secondary btn-row">${icon("check")} <span data-i18n="item.detail.saveLocation"></span></button>` : ""}
           </form>
         </div>
 
@@ -113,6 +118,11 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
           <div class="document-list-slot"></div>
         </div>
 
+        <div class="editor-actions">
+          <button class="btn btn-primary" data-action="save">${icon("check")} <span data-i18n="${item ? "common.save" : "location.editor.createButton"}"></span></button>
+          <button class="btn btn-secondary" data-action="cancel">${icon("x")} <span data-i18n="common.cancel"></span></button>
+        </div>
+
         ${
           item
             ? `
@@ -122,31 +132,14 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
             <button class="btn btn-danger" data-action="delete">${icon("trash-2")} <span data-i18n="common.delete"></span></button>
           </div>
         `
-            : `
-          <div class="editor-actions">
-            <button class="btn btn-primary" data-action="create">${icon("check")} <span data-i18n="location.editor.createButton"></span></button>
-            <button class="btn btn-secondary" data-action="cancel">${icon("x")} <span data-i18n="common.cancel"></span></button>
-          </div>
-        `
+            : ""
         }
       </div>
     `;
     translatePage(container);
     setHeading();
 
-    const itemForm = renderItemForm(container.querySelector(".item-form-slot"), item, {
-      tripId,
-      showActions: Boolean(item),
-      onSaved: async (saved) => {
-        if (item) {
-          Object.assign(item, saved);
-          setHeading();
-          return;
-        }
-        await flushStaged(saved);
-      },
-      onCancel: cancel,
-    });
+    itemForm = renderItemForm(container.querySelector(".item-form-slot"), item, { onSubmit: save });
 
     renderImageField(container.querySelector(".image-field-slot"), {
       tripId,
@@ -159,7 +152,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
         }
       },
       onStaged: (image) => {
-        staged.image = image;
+        draft.image = image;
       },
     });
 
@@ -168,96 +161,91 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     bindLinkForm();
     renderDatesList();
     bindDateForm();
-    renderDocumentList(container.querySelector(".document-list-slot"), item ? `/items/${item.id}/documents` : null, { staged: staged.documents });
+    renderDocumentList(container.querySelector(".document-list-slot"), item ? `/items/${item.id}/documents` : null, { staged: draft.documents });
 
-    if (item) {
-      container.querySelector('[data-action="delete"]').addEventListener("click", async () => {
-        if (!window.confirm(t("item.deleteConfirm"))) return;
-        await api.delete(`/items/${item.id}`);
-        navigate(`/trips/${tripId}`);
-      });
+    container.querySelector('[data-action="save"]').addEventListener("click", save);
+    container.querySelector('[data-action="cancel"]').addEventListener("click", cancel);
+
+    container.querySelector('[data-action="delete"]')?.addEventListener("click", async () => {
+      if (!window.confirm(t("item.deleteConfirm"))) return;
+      await api.delete(`/items/${item.id}`);
+      navigate(`/trips/${tripId}`);
+    });
+  }
+
+  // The page's one and only write of the item itself: basic info plus the
+  // nested location, links and dates, committed together server-side.
+  async function save() {
+    itemForm.clearError();
+
+    const body = { ...itemForm.readValues(), links: draft.links, dates: draft.dates };
+
+    // Absent means "leave it alone", so only send the key when there is
+    // something to say: the typed coordinates, or explicit nulls to clear a
+    // location the item already had. An untouched card on a location that
+    // never had one sends nothing rather than creating an empty row.
+    const location = readLocationForm();
+    if (location) body.location = location;
+    else if (item?.location) body.location = { lat: null, lng: null, address: null };
+
+    let saved;
+    try {
+      saved = item ? await api.patch(`/items/${item.id}`, body) : await api.post(`/trips/${tripId}/items`, body);
+    } catch (err) {
+      itemForm.showError(err.body?.error);
       return;
     }
 
-    container.querySelector('[data-action="create"]').addEventListener("click", () => itemForm.submit());
-    container.querySelector('[data-action="cancel"]').addEventListener("click", cancel);
+    // Uploads staged in create mode have an item to attach to now. A failure
+    // here leaves the location itself saved, so it reports and stays put
+    // rather than navigating away from a half-finished page.
+    if (!item) {
+      const failure = await flushUploads(saved.id);
+      if (failure) {
+        itemForm.showError(failure);
+        return;
+      }
+    }
+
+    navigate(`/trips/${tripId}/locations/${saved.id}`);
   }
 
   function cancel() {
-    if (staged.image?.kind === "file" && staged.image.previewUrl) URL.revokeObjectURL(staged.image.previewUrl);
+    if (draft.image?.kind === "file" && draft.image.previewUrl) URL.revokeObjectURL(draft.image.previewUrl);
     navigate(item ? `/trips/${tripId}/locations/${item.id}` : `/trips/${tripId}`);
   }
 
-  // Writes everything staged in create mode against the item that was just
-  // created, in the order the cards appear, then navigates. Failures are
-  // collected rather than thrown so one bad link doesn't silently drop the
-  // dates after it, and reported once at the end.
-  async function flushStaged(saved) {
-    const failures = [];
-    const fail = (err) => failures.push(err.body?.error || err.message || t("common.error"));
-
-    if (staged.image) {
-      try {
+  // Writes the cover photo and documents staged during create against the
+  // item that was just created - the two things a JSON body can't carry.
+  // Returns an error message, or null when everything landed.
+  async function flushUploads(savedId) {
+    try {
+      if (draft.image) {
         let asset;
-        if (staged.image.kind === "file") {
+        if (draft.image.kind === "file") {
           const formData = new FormData();
-          formData.append("file", staged.image.file);
+          formData.append("file", draft.image.file);
           const res = await fetch(`/api/trips/${tripId}/media`, { method: "POST", body: formData, credentials: "same-origin" });
           asset = await res.json();
           if (!res.ok) throw new Error(asset.error || "upload failed");
         } else {
-          asset = await api.post(`/trips/${tripId}/media/url`, { url: staged.image.url });
+          asset = await api.post(`/trips/${tripId}/media/url`, { url: draft.image.url });
         }
-        await api.put(`/items/${saved.id}/image`, { media_asset_id: asset.id });
-      } catch (err) {
-        fail(err);
+        await api.put(`/items/${savedId}/image`, { media_asset_id: asset.id });
       }
-    }
 
-    const location = readLocationForm();
-    if (location) {
-      try {
-        await api.put(`/items/${saved.id}/location`, location);
-      } catch (err) {
-        fail(err);
-      }
-    }
-
-    for (const link of staged.links) {
-      try {
-        await api.post(`/items/${saved.id}/links`, { url: link.url, label: link.label });
-      } catch (err) {
-        fail(err);
-      }
-    }
-
-    for (const date of staged.dates) {
-      try {
-        await api.post(`/items/${saved.id}/dates`, { start_date: date.start_date, end_date: date.end_date, label: date.label });
-      } catch (err) {
-        fail(err);
-      }
-    }
-
-    for (const doc of staged.documents) {
-      try {
+      for (const doc of draft.documents) {
         const formData = new FormData();
         formData.append("file", doc.file);
         if (doc.note) formData.append("note", doc.note);
-        const res = await fetch(`/api/items/${saved.id}/documents`, { method: "POST", body: formData, credentials: "same-origin" });
+        const res = await fetch(`/api/items/${savedId}/documents`, { method: "POST", body: formData, credentials: "same-origin" });
         const body = await res.json();
         if (!res.ok) throw new Error(body.error || "upload failed");
-      } catch (err) {
-        fail(err);
       }
+    } catch (err) {
+      return err.body?.error || err.message || t("common.error");
     }
-
-    if (failures.length) {
-      window.alert(failures.join("\n"));
-      navigate(`/trips/${tripId}/locations/${saved.id}/edit`);
-      return;
-    }
-    navigate(`/trips/${tripId}/locations/${saved.id}`);
+    return null;
   }
 
   // "Edit {title}" needs the item's title interpolated into the string,
@@ -272,8 +260,8 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       : t("location.editor.newTitle");
   }
 
-  // null when nothing was filled in, so an untouched Location card doesn't
-  // produce a pointless all-null PUT on create.
+  // null when nothing was filled in, so an untouched Location card says
+  // nothing about the item's location rather than clearing it.
   function readLocationForm() {
     const form = container.querySelector(".location-form");
     if (!form.lat.value && !form.lng.value && !form.address.value) return null;
@@ -291,12 +279,19 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       form.lng.value = item.location.lng ?? "";
       form.address.value = item.location.address ?? "";
     }
-    // Create mode has no per-card save button: the values are read back by
-    // readLocationForm() when the whole page is committed.
-    if (!item) return;
-    form.addEventListener("submit", async (e) => {
+    // The card has no button of its own any more - these values are read
+    // back by save(). Enter in a coordinate field saves the page, via the
+    // same submit-plus-keydown pair the Basic info card uses and for the same
+    // reason (see location-form.js): the submit listener catches the native
+    // reload, the keydown is what actually fires for a multi-field form with
+    // no submit button.
+    const saveFromForm = (e) => {
       e.preventDefault();
-      item.location = await api.put(`/items/${item.id}/location`, readLocationForm() ?? { lat: null, lng: null, address: null });
+      save();
+    };
+    form.addEventListener("submit", saveFromForm);
+    form.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") saveFromForm(e);
     });
   }
 
@@ -311,8 +306,8 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
   // buttons it wires are freshly created nodes every time.
   function renderLinksList() {
     const list = container.querySelector(".link-list");
-    list.innerHTML = links().length
-      ? links()
+    list.innerHTML = draft.links.length
+      ? draft.links
           .map(
             (l, i) =>
               `<li><a href="${escapeAttr(l.url)}" target="_blank" rel="noopener">${escapeHtml(l.label || l.url)}</a> <button class="icon-remove" data-action="delete-link" data-index="${i}" aria-label="${t("common.remove")}">${icon("x")}</button></li>`
@@ -321,10 +316,8 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       : `<li class="empty">${t("item.detail.linksEmpty")}</li>`;
 
     list.querySelectorAll('[data-action="delete-link"]').forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const i = Number(btn.getAttribute("data-index"));
-        if (item) await api.delete(`/items/${item.id}/links/${item.links[i].id}`);
-        links().splice(i, 1);
+      btn.addEventListener("click", () => {
+        draft.links.splice(Number(btn.getAttribute("data-index")), 1);
         renderLinksList();
       });
     });
@@ -332,10 +325,9 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
 
   function bindLinkForm() {
     const form = container.querySelector(".link-form");
-    form.addEventListener("submit", async (e) => {
+    form.addEventListener("submit", (e) => {
       e.preventDefault();
-      const link = { url: form.url.value, label: form.label.value || null };
-      links().push(item ? await api.post(`/items/${item.id}/links`, link) : link);
+      draft.links.push({ url: form.url.value, label: form.label.value || null });
       form.reset();
       renderLinksList();
     });
@@ -344,8 +336,8 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
   // Same split as renderLinksList()/bindLinkForm() above, same reason.
   function renderDatesList() {
     const list = container.querySelector(".date-list");
-    list.innerHTML = dates().length
-      ? dates()
+    list.innerHTML = draft.dates.length
+      ? draft.dates
           .map((d, i) => {
             const range = d.end_date ? `${escapeHtml(d.start_date || "")} – ${escapeHtml(d.end_date)}` : escapeHtml(d.start_date || "");
             return `<li>${range}${d.label ? " — " + escapeHtml(d.label) : ""} <button class="icon-remove" data-action="delete-date" data-index="${i}" aria-label="${t("common.remove")}">${icon("x")}</button></li>`;
@@ -354,10 +346,8 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       : `<li class="empty">${t("item.detail.datesEmpty")}</li>`;
 
     list.querySelectorAll('[data-action="delete-date"]').forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const i = Number(btn.getAttribute("data-index"));
-        if (item) await api.delete(`/items/${item.id}/dates/${item.dates[i].id}`);
-        dates().splice(i, 1);
+      btn.addEventListener("click", () => {
+        draft.dates.splice(Number(btn.getAttribute("data-index")), 1);
         renderDatesList();
       });
     });
@@ -365,10 +355,9 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
 
   function bindDateForm() {
     const form = container.querySelector(".date-form");
-    form.addEventListener("submit", async (e) => {
+    form.addEventListener("submit", (e) => {
       e.preventDefault();
-      const date = { start_date: form.startDate.value, end_date: form.endDate.value || null, label: form.label.value || null };
-      dates().push(item ? await api.post(`/items/${item.id}/dates`, date) : date);
+      draft.dates.push({ start_date: form.startDate.value, end_date: form.endDate.value || null, label: form.label.value || null });
       form.reset();
       renderDatesList();
     });

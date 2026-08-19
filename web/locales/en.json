@@ -70,7 +70,6 @@
   "item.detail.lat": "Latitude",
   "item.detail.lng": "Longitude",
   "item.detail.address": "Address",
-  "item.detail.saveLocation": "Save location",
   "item.detail.links": "Links",
   "item.detail.linksEmpty": "No links yet.",
   "item.detail.addLink": "Add link",

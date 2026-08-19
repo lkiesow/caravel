@@ -93,6 +93,12 @@ require a redesign later — they're additive, not blocked, but none are built:
   in via the API, so those routes are never rendered), and German copy (the
   suite runs in the default locale only, so `de.json` is still only
   eyeballed by hand).
+  *Concrete instance since Stage 09 Milestone 2:* the location editor's single
+  Save was verified by a 20-assertion Playwright script that was **not** checked
+  in — it mutates data (creates and deletes a location), and every existing spec
+  is a read-only sweep, so it needs a decision about isolation (its own trip per
+  run? a reset between specs?) before it can join `make test-ui`. Until then the
+  stage's headline fix has no automated guard.
 - **Routes render an empty shell before their data arrives, with no loading
   state.** Surfaced by Stage 08 Milestone 5: `common.loading` is used exactly
   once, at app boot (`app.js:62`), and none of the per-route renderers show
@@ -293,17 +299,24 @@ require a redesign later — they're additive, not blocked, but none are built:
   onto the component needs `renderMenu` to grow a non-select "action item"
   mode first (Log out isn't a selection), which is also what the ⋮
   contextual menu in the checklist entry above wants.
-- **Create-mode writes aren't atomic — *backend half fixed, frontend half
-  outstanding*.** Stage 06 Milestone 4 lets a new location carry coordinates,
-  links, dates and documents, but it commits them as a sequence of requests
-  after the item POST returns an ID; if one fails the location is left
-  half-populated. Stage 09 Milestone 1 built the fix on the API side:
-  `itemRequest` now takes optional nested `location`/`links`/`dates` and
-  `handleCreateItem`/`handleUpdateItem` write them inside `Store.WithTx`.
-  What remains is `location-editor-page.js` actually *using* it instead of
-  `flushStaged`'s request sequence — that's Stage 09 Milestone 2. Documents
-  can't ride along either way, being multipart, so they stay a post-create
-  upload regardless.
+- **The cover photo and documents are still a post-create upload.** All that
+  is left of "create-mode writes aren't atomic" (Stage 06 Milestone 4) after
+  Stage 09 Milestones 1–2, which made the item and its location/links/dates
+  one transactional request. These two can't ride in a JSON body, so a new
+  location still stages them in memory and `flushUploads()` writes them once
+  the create returns an ID. If that fails the location exists without its
+  photo or files; unlike before, the failure reports inline in the Basic info
+  card and the page stays put so it can be retried. Closing the gap entirely
+  would mean a multipart create endpoint — not obviously worth it.
+- **Three item sub-resource endpoints now have no caller.** Stage 09 Milestone 2
+  moved the frontend onto nested `location`/`links`/`dates` in the item request,
+  which leaves `PUT /items/{id}/location`, `POST|DELETE /items/{id}/links` and
+  `POST|DELETE /items/{id}/dates` reachable but unused by the app (they still
+  have ownership-test coverage). Keep them as a documented API surface, or
+  delete them and shrink the router — worth an explicit decision rather than
+  letting them quietly rot. Deleting would also drop `itemLinkRequest`'s and
+  `itemDateRequest`'s standalone handlers while keeping the structs, which the
+  nested path reuses.
 - **Click-to-pick coordinates on a map.** Both create and edit still take
   latitude/longitude as raw number inputs — fine for pasting from
   elsewhere, unpleasant on a phone. `leaflet-map.js` is read-only today
@@ -313,8 +326,9 @@ require a redesign later — they're additive, not blocked, but none are built:
   out of Stage 06, whose Milestone 4 was scoped to plumbing endpoints that
   already exist — but it's the obvious next step for making the Location
   card pleasant to fill in.
-  *Stage 07's test round reinforces this: entering coordinates by hand is
-  also where the split-save trap below bites hardest.*
+  *Stage 09 Milestone 2 removed the split-save trap that made hand-entry
+  actively lossy, so this is now purely about convenience.*
+
 ## Deferred from Stage 07 (automated UI/UX test round)
 
 Stage 07's Playwright pass over desktop (1280×800), mobile (324×756) and
@@ -328,17 +342,6 @@ triaged with the user rather than dropped silently.
   padding, nothing else on the page. It's the state a stale bookmark or a
   deleted-trip link lands on, so it's worth looking deliberate; the fix is
   wrapping it in the same page layout every other route uses.
-- **Location edit's split saves discard typed coordinates.** Latitude and
-  longitude live in their own card with a "Save location" button, while the
-  visually primary "Save" in the Basic info card above them submits only
-  title/category/type/notes. Verified: typing coordinates and pressing
-  Save leaves `location` null on the item with no warning, and there's no
-  unsaved-changes guard when navigating away, so the input is simply lost.
-  The new-location form has the opposite shape — one Create button commits
-  everything — so the two forms teach contradictory habits. Fixing it means
-  either unifying the edit form onto one submit (which wants the
-  transactional-create work in the Stage 06 entry above) or warning about
-  unsaved section changes.
 - **Coordinates alone don't put a location on the map.** `show_on_map` is a
   checkbox in the *Basic info* card, several cards above the coordinate
   fields, so setting coordinates and expecting a pin gets an empty map:

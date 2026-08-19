@@ -798,12 +798,6 @@ button {
   resize: vertical;
 }
 
-.item-form__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
 .location-form,
 .link-form,
 .date-form,

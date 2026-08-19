@@ -158,6 +158,58 @@ regression that todo.md records as verified-broken); assert
 `GET /api/items/{id}` returns them. Same for create mode in one shot. Plus
 `make ci`.
 
+**Done.** `renderItemForm` no longer saves anything: it renders the Basic info
+fields and returns `readValues()` / `showError()` / `clearError()`, with the
+request moved to the page. The editor now keeps one `draft` object
+(`links`, `dates`, plus the `image`/`documents` upload slots) used identically in
+both modes, so the `links()`/`dates()` mode-switching accessors are gone along
+with the per-row `POST`/`DELETE` calls — adding or removing a link or date is a
+`push`/`splice` on the draft and reaches the server only when Save does. Both
+modes render the same `.editor-actions` row (labelled Save or Create location);
+the Location card's own submit button and its listener are gone, and
+`flushStaged` shrank to `flushUploads`, which handles only the cover photo and
+documents. Its failure now reports inline in the Basic info card and stays on the
+page instead of `window.alert` plus a redirect to the edit page.
+
+Deviations from the plan, both deliberate:
+
+- **Edit mode's Save navigates to the view page** (it used to stay put and only
+  refresh the heading), matching create mode. With one Save committing
+  everything, staying on the form gives no signal that anything happened.
+- **The actions row sits above the Delete card**, so the danger zone stays last.
+- **Enter needed an explicit handler.** The plan assumed the `submit` listener
+  was enough. It isn't: with several fields and no submit button, the HTML
+  implicit-submission algorithm does *nothing*, so Enter silently did nothing —
+  caught by the verification, not by reading the code. Both the Basic info and
+  Location cards now bind `submit` (the safety net against a native reload, which
+  *does* fire if a form is ever left with a single field) plus `keydown` on Enter,
+  excluding the notes textarea.
+
+Also removed as this milestone orphaned them: the `item.detail.saveLocation` key
+in both locales (its button is gone) and the `.item-form__actions` CSS rule
+(`.editor-actions` carries the row now). No unsaved-changes guard was added, and
+none is needed: with a single Save there is no half-committed state to warn
+about — either Save was pressed and everything landed, or it wasn't and nothing
+did.
+
+Verified: `make ci` and `make test-ui` (9 tests) green. A Playwright script
+asserted 20 behaviours against the seeded dev server: exactly one Save button and
+no per-card save; adding *and* removing a link writes nothing until Save; Cancel
+discards a removal; coordinates, address and the staged link all survive the
+primary Save; the link count goes up by exactly one (no double-write); create
+issues **exactly one** `POST /items` where it used to issue up to four, and the
+created location comes back with its coordinates, link and date; Enter in a
+coordinate field and in a Basic info field both save client-side with no page
+reload and without losing the other card's input.
+
+Non-vacuity: `scripts/without.sh` on the two JS files fails the main script, but
+only because the old markup has no single Save button. So the data loss itself was
+re-proved with a second, version-agnostic script that presses whichever button is
+the page's *visually primary* Save — the Basic info submit on the old code, the
+actions-row Save on the new. It reports `coordinates were DISCARDED by the
+primary Save (location={"lat":null,...})` on the reverted frontend and `PASS` on
+this one, which is the Stage 07 bug reproducing and then being fixed.
+
 ## 3. Couple `show_on_map` to the coordinates it gates
 
 - Move the `showOnMap` checkbox out of Basic info

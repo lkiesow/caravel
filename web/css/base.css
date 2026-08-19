@@ -555,13 +555,19 @@ button {
 }
 
 /* A page-level action row, for pages whose single action commits several
-   cards at once (the create editors) - the same shape as the in-form
-   *__actions rows above, just not inside a card. */
+   cards at once (the location editor) - the same shape as the in-form
+   *__actions rows above, just not inside a card.
+
+   Symmetric 1rem, matching .editor-card's own margin-bottom, so the row sits
+   evenly between the last card and whatever follows it. The bottom half only
+   started mattering in Stage 09 Milestone 2: the row used to be the last thing
+   on the page, and now the Delete card follows it in edit mode. */
 .editor-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
   margin-top: 1rem;
+  margin-bottom: 1rem;
 }
 
 .trip-form input,

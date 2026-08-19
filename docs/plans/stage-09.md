@@ -210,6 +210,15 @@ actions-row Save on the new. It reports `coordinates were DISCARDED by the
 primary Save (location={"lat":null,...})` on the reverted frontend and `PASS` on
 this one, which is the Stage 07 bug reproducing and then being fixed.
 
+**Follow-up.** Spotted in testing: the Save/Cancel row sat flush against the
+Delete card below it. `.editor-actions` only had `margin-top`, which was enough
+while it was the last thing on the page — moving it above the Delete card
+exposed the missing bottom half. Now symmetric `1rem`, matching
+`.editor-card`'s own `margin-bottom`. Verified by measuring the rendered gaps
+rather than by eye: above, below and card-to-card all come out at 16px, and
+`scripts/without.sh web/css/base.css` fails that check (no gap below the row) on
+the reverted CSS. `make ci` and `make test-ui` still green.
+
 ## 3. Couple `show_on_map` to the coordinates it gates
 
 - Move the `showOnMap` checkbox out of Basic info

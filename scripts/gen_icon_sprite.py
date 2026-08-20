@@ -35,6 +35,7 @@ ICONS = [
     "settings",
     "search",
     "funnel",
+    "ellipsis",
 ]
 
 

@@ -131,21 +131,26 @@ export async function renderItineraryTab(container, trip) {
 
     for (const entry of day.entries) {
       const li = document.createElement("li");
+      // A real <a href>, not a button with a click handler. The router
+      // intercepts [data-link] clicks itself, so navigation still stays
+      // client-side, but this is the app's primary way into a location from the
+      // itinerary and as a link it also gets middle-click, open-in-new-tab,
+      // "copy link address" and the browser's own focus and status-bar
+      // affordances - none of which a <button> can offer. It was also 22px
+      // tall, being styled purely as text; it now carries the tap-target
+      // min-height at phone width like every other control.
       li.innerHTML = `
-        <button type="button" class="itinerary-entry__link" data-action="open">
+        <a href="/trips/${trip.id}/locations/${entry.item_id}" data-link class="itinerary-entry__link">
           ${
             entry.item_image_url
               ? `<img class="itinerary-entry__thumb" src="${escapeAttr(entry.item_image_url)}" alt="" />`
               : `<span class="dot" style="background:${CATEGORY_COLORS[entry.item_category] || "#71717a"}"></span>`
           }
           <span>${escapeHtml(entry.item_title)}</span>
-        </button>
+        </a>
         ${entry.note ? `<span class="itinerary-entry__note">${escapeHtml(entry.note)}</span>` : ""}
         <button class="icon-remove" data-action="remove" aria-label="${t("common.remove")}">${icon("x")}</button>
       `;
-      li.querySelector('[data-action="open"]').addEventListener("click", () => {
-        navigate(`/trips/${trip.id}/locations/${entry.item_id}`);
-      });
       li.querySelector('[data-action="remove"]').addEventListener("click", async () => {
         await api.delete(`/itinerary/days/${day.id}/entries/${entry.id}`);
         day.entries = day.entries.filter((e) => e.id !== entry.id);

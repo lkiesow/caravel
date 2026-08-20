@@ -1,5 +1,5 @@
 import { api } from "../api.js";
-import { translatePage } from "../i18n.js";
+import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
 import "../components/leaflet-map.js";
 import { renderItemsTab } from "./locations-tab.js";
@@ -7,7 +7,8 @@ import { renderItineraryTab } from "./itinerary-tab.js";
 import { renderDocumentList } from "../components/document-list.js";
 import { renderChecklistList } from "../components/checklist-list.js";
 import { renderSettingsTab } from "./settings-tab.js";
-import { TRIP_TABS } from "../trip-tabs.js";
+import { TRIP_TABS, OVERFLOW_TRIP_TABS } from "../trip-tabs.js";
+import { renderMenu } from "../components/menu.js";
 import { formatDateRange } from "../format.js";
 import { renderLoading } from "../components/loading.js";
 import { renderNotFoundPage } from "./not-found-page.js";
@@ -56,9 +57,10 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
         ${summaryParts.length ? `<div class="trip-summary">${summaryParts.join("")}</div>` : ""}
         <nav class="trip-tabs">
           ${TRIP_TABS.map(
-            ({ key, icon: tabIcon }) =>
-              `<button data-tab="${key}" class="${key === tab ? "active" : ""}">${icon(tabIcon)} <span data-i18n="trip.tabs.${key}"></span></button>`
+            ({ key, icon: tabIcon, overflow }) =>
+              `<button data-tab="${key}" class="${[key === tab ? "active" : "", overflow ? "trip-tabs__overflow-tab" : ""].filter(Boolean).join(" ")}">${icon(tabIcon)} <span data-i18n="trip.tabs.${key}"></span></button>`
           ).join("")}
+          <div class="trip-tabs__more-slot"></div>
         </nav>
         <div class="trip-tab-content"></div>
       </div>
@@ -80,6 +82,33 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
         window.history.pushState({}, "", `/trips/${trip.id}/${tab}`);
         render();
       });
+    });
+
+    // "More" holds the tabs that don't fit a phone's row (see trip-tabs.js).
+    // Both the row buttons and these menu items exist at every width; which
+    // set is visible is a CSS decision, so there's no resize listener and no
+    // re-render on rotation. The menu is the same component as the locations
+    // filter rather than a third hand-rolled popup - it just wears a static
+    // label and tab styling.
+    renderMenu(container.querySelector(".trip-tabs__more-slot"), {
+      iconName: "ellipsis",
+      label: t("trip.tabs.more"),
+      chevron: false,
+      triggerClass: OVERFLOW_TRIP_TABS.some(({ key }) => key === tab) ? "active" : "",
+      className: "menu--tabs",
+      ariaLabel: "trip.tabs.more",
+      // Same icon each section shows in the row, so a tab that moved into the
+      // menu still looks like itself.
+      items: OVERFLOW_TRIP_TABS.map(({ key, icon: tabIcon }) => ({ value: key, label: t(`trip.tabs.${key}`), iconName: tabIcon })),
+      // No neutralValue: unlike a filter, one of these is always the current
+      // section or none of them is, and the trigger's own `active` class
+      // already carries that.
+      activeValue: tab,
+      onSelect: (key) => {
+        tab = key;
+        window.history.pushState({}, "", `/trips/${trip.id}/${tab}`);
+        render();
+      },
     });
 
     const content = container.querySelector(".trip-tab-content");

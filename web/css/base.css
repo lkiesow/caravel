@@ -429,6 +429,13 @@ a:visited {
   visibility: hidden;
 }
 
+/* An item's own icon (menu.js's items[].iconName) sits in the same slot the
+   checkmark would, and stays visible on every row - it identifies the
+   destination rather than marking the selection. */
+.menu__item-icon {
+  flex: none;
+}
+
 .menu__dropdown button[aria-checked="true"] {
   color: var(--color-accent);
 }
@@ -636,7 +643,7 @@ button {
   margin-bottom: 1rem;
 }
 
-.trip-tabs button {
+.trip-tabs > button {
   display: flex;
   align-items: center;
   gap: 0.4em;
@@ -649,9 +656,99 @@ button {
   border-bottom: 2px solid transparent;
 }
 
-.trip-tabs button.active {
+.trip-tabs > button.active {
   color: var(--color-text);
   border-bottom-color: var(--color-accent);
+}
+
+/* Above the phone breakpoint every tab is in the row, so the "More" menu is
+   not rendered at all - the row scrolls horizontally there and six labels fit.
+   The two overflow tabs are hidden the other way round below 640px, in the
+   mobile block near the end of this file. */
+.trip-tabs__more-slot {
+  display: none;
+}
+
+/* The trigger is one cell of the tab row rather than a button on a toolbar, so
+   it inherits the row's own button styling. renderMenu is told not to apply its
+   default .btn classes (triggerClass), which leaves these to do the work. */
+/* flex: 1 all the way down. The trigger is three elements deep inside its grid
+   cell (cell > .trip-tabs__more-slot > .menu > .menu__trigger), and without
+   each level growing, the trigger sizes to its own short label - 45px inside a
+   58px cell, which showed up as visibly less padding than its neighbours and an
+   active underline that hugged the word instead of spanning the cell. */
+.trip-tabs .menu {
+  display: flex;
+  flex: 1;
+}
+
+/* `.trip-tabs > button` above deliberately doesn't reach the trigger - it is
+   nested inside .trip-tabs__more-slot, and that selector is scoped to direct
+   children so the *dropdown's* rows don't get styled as tabs either - so
+   everything a tab needs is repeated here. That includes `display: flex`:
+   without it the mobile block's `flex-direction: column` silently does nothing
+   and the icon sits beside the label instead of above it. */
+.trip-tabs .menu__trigger {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4em;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.5rem 0.75rem;
+  color: var(--color-text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+/* Open, or holding the current section: either way it reads as engaged, the
+   same accent the row's .active tab carries. */
+.trip-tabs .menu__trigger--open,
+.trip-tabs .menu__trigger.active {
+  color: var(--color-text);
+  border-bottom-color: var(--color-accent);
+}
+
+.trip-tabs .menu__trigger--open .icon {
+  color: var(--color-accent);
+}
+
+/* Directly below the tab row and spanning it, not a small popup hanging off
+   one 60px cell: the items are section names, and the row's bottom border is
+   the edge it should appear to drop from. */
+.menu--tabs {
+  position: static;
+}
+
+.menu--tabs .menu__dropdown {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  /* Flush against the row's bottom border, which is the edge it drops from. */
+  margin-top: 0;
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  /* The base rule's 9rem floor is wider than a 324px screen once the row's own
+     padding is counted; left/right pinning already sizes this. */
+  min-width: 0;
+}
+
+/* The menu is an extension of the tab row, so its rows follow the row's own
+   convention: sections you could go to are muted, the one you are on is at full
+   strength. Deliberately not the accent the locations filter uses for its
+   checked row - here the *trigger* has taken the accent (it is the active tab),
+   and two things in one open menu saying "active" in the same colour reads as a
+   mistake. */
+.menu--tabs .menu__dropdown button {
+  color: var(--color-text-muted);
+}
+
+.menu--tabs .menu__dropdown button[aria-checked="true"] {
+  color: var(--color-text);
+  font-weight: 600;
 }
 
 @media (min-width: 768px) {
@@ -674,13 +771,13 @@ button {
     border-right: 1px solid var(--color-border);
   }
 
-  .trip-tabs button {
+  .trip-tabs > button {
     text-align: left;
     border-bottom: none;
     border-left: 2px solid transparent;
   }
 
-  .trip-tabs button.active {
+  .trip-tabs > button.active {
     border-left-color: var(--color-accent);
   }
 }
@@ -1068,17 +1165,21 @@ button {
   flex-shrink: 0;
 }
 
+/* An <a href> since Stage 09 Milestone 6, so the button resets this used to
+   need (background, border, font, text-align, cursor) are gone; what remains is
+   the layout plus turning off a link's default colour and underline, since it
+   reads as a row of content rather than as prose. */
 .itinerary-entry__link {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  background: none;
-  border: none;
   padding: 0;
-  cursor: pointer;
   color: inherit;
-  font: inherit;
-  text-align: left;
+  text-decoration: none;
+}
+
+.itinerary-entry__link:visited {
+  color: inherit;
 }
 
 .itinerary-entry__link:hover span:not(.dot) {
@@ -1218,12 +1319,43 @@ button {
    28-36px tall, well under the ~44px a finger can reliably hit.
    --------------------------------------------------------------------------- */
 @media (max-width: 640px) {
-  .btn {
+  /* Everything the user aims a finger at clears --tap-min at phone width, not
+     just the things that look like buttons. Stage 08 Milestone 5 measured the
+     app and found buttons at 40px, block links at 30px, the icon+text
+     "Back"/"Home" links at 22px and checkbox rows at 20px; Stage 09 Milestone 6
+     closed all of it, and tests/ui/routes.spec.js asserts the guideline (44px)
+     rather than the old measured floor.
+
+     Checkbox and radio inputs are the exception, and are excluded here on
+     purpose: a native checkbox is ~14px and blowing it up to 44 looks wrong.
+     For those the *label* is the tap target - clicking it toggles the control -
+     so the label carries the min-height instead (see .checklist-item label and
+     .location-form__checkbox below), which is also what the spec measures. */
+  button,
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea,
+  .btn,
+  .image-field__upload,
+  .back-link,
+  .itinerary-entry__link,
+  .link-list li a,
+  .location-view__maps-link,
+  .checklist-item label,
+  .location-form label.location-form__checkbox {
     min-height: var(--tap-min);
   }
 
-  .image-field__upload {
-    min-height: var(--tap-min);
+  /* A min-height only reaches the guideline if the content is centred in it -
+     otherwise the box grows downward and the text stays at the top, which
+     measures 44px but doesn't feel like it. */
+  .back-link,
+  .link-list li a,
+  .location-view__maps-link,
+  .checklist-item label,
+  .location-form label.location-form__checkbox {
+    display: flex;
+    align-items: center;
   }
 
   /* The editor's sub-resource rows stack into one control per line, each
@@ -1232,6 +1364,14 @@ button {
      submit button onto a line of its own, where an icon-only "+" read as a
      stray button rather than that row's action. Full-width and labelled
      (see .btn-row, which opts out of .btn-collapse) says what it does. */
+  /* Side by side, each date field is ~123px at 324px wide and the browser
+     truncates the year under the calendar icon ("20 / 08 / 202"). The editor's
+     other rows already stacked here (Stage 06 Milestone 5); this one was
+     missed. */
+  .trip-form__dates {
+    flex-direction: column;
+  }
+
   .location-form label,
   .link-form input,
   .date-form input,
@@ -1257,7 +1397,8 @@ button {
     justify-content: center;
   }
 
-  .trip-tabs button {
+  .trip-tabs > button,
+  .trip-tabs .menu__trigger {
     min-height: var(--tap-min);
   }
 
@@ -1267,25 +1408,88 @@ button {
      hid "Itinerary" mid-word with no indication there was more to scroll to. */
   .trip-tabs {
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
+    /* Five cells, not six: Documents and Settings move into "More" here (see
+       trip-tabs.js for why those two, and why at this breakpoint rather than a
+       narrower one). Six labels never fit - at 324px each cell was 49px while
+       "Documents" alone needed 60px, so labels overran their cells into their
+       neighbours'.
+
+       minmax(0, 1fr), not 1fr: a bare `1fr` track floors at the item's
+       min-content width, so one long unbreakable label would still push the
+       whole bar wider than the viewport.
+
+       All five cells are equal, "More" included: an `auto` track sized to its
+       own short label gave it visibly less breathing room than its neighbours,
+       and its active underline hugged the text while theirs spanned a full
+       cell. Uniform cells make the spacing uniform by construction.
+
+       The cost is ~58px per cell against German's longest label
+       ("Checklisten", 59px at this size), which is what `hyphens: auto` below
+       is for. */
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     overflow-x: visible;
     gap: 0;
+    /* The dropdown is positioned against this row. */
+    position: relative;
   }
 
-  .trip-tabs button {
+  /* `.trip-tabs > button` above also carries `display: flex`, so a bare class
+     here would lose to it on specificity and the tab would stay visible. */
+  .trip-tabs > button.trip-tabs__overflow-tab {
+    display: none;
+  }
+
+  .trip-tabs__more-slot {
+    display: flex;
+  }
+
+  /* min-width: 0: as a flex item the label defaults to min-content, which for
+     an unbreakable word is its full width - so it would overflow the cell
+     instead of wrapping, whatever hyphens/overflow-wrap say.
+
+     min-height of two lines: with the labels vertically centred, a cell whose
+     label wraps has a taller stack than its neighbours, so its icon sits
+     higher - 6px higher in German, where "Checklisten" hyphenates onto a
+     second line. Reserving the second line everywhere keeps every icon and
+     every label on the same line as its neighbours, and makes the bar's height
+     the same in every language rather than depending on whether some
+     translation happens to wrap. */
+  .trip-tabs > button > span,
+  .trip-tabs .menu__trigger .menu__label {
+    min-width: 0;
+    min-height: 2.3em;
+  }
+
+  .trip-tabs > button,
+  .trip-tabs .menu__trigger {
     flex-direction: column;
     justify-content: center;
     gap: 0.15rem;
     padding: 0.375rem 0.125rem;
-    font-size: 0.625rem;
+    /* 0.6875rem (11px), not 0.625rem (10px): the floor a tab bar should hold
+       to is ~11-12px. 12px doesn't fit even with only five cells - German's
+       "Checklisten" needs 64px at that size against a 64px cell at 324px wide,
+       i.e. no margin at all - so 11 is the largest size that holds in both
+       locales. */
+    font-size: 0.6875rem;
+    /* A label wider than its cell wraps to a second line rather than running
+       into its neighbour. hyphens: auto does it properly where the browser has
+       a dictionary for the active language (i18n.js sets <html lang>, and this
+       is what carries German's "Checklisten" in a 58px cell); overflow-wrap is
+       the fallback for languages or browsers without one. */
+    hyphens: auto;
+    overflow-wrap: break-word;
     line-height: 1.15;
     white-space: normal;
     text-align: center;
   }
 
   /* Icons use em-sizing (see .icon in the button system above) so they'd
-     otherwise shrink along with the 0.625rem label text. */
-  .trip-tabs button .icon {
+     otherwise shrink along with the small label text. The trigger is listed
+     separately for the reason its own rule gives: `.trip-tabs > button` does
+     not reach it. */
+  .trip-tabs > button .icon,
+  .trip-tabs .menu__trigger .icon {
     width: 1.1rem;
     height: 1.1rem;
   }

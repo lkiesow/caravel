@@ -200,6 +200,17 @@ func (s seedCtx) newTrip(scenarioName, title string, start, end *string, subtitl
 	})
 }
 
+type linkSpec struct {
+	url   string
+	label string
+}
+
+type dateSpec struct {
+	start string
+	end   string
+	label string
+}
+
 type itemSpec struct {
 	key      string // stable per-trip identity, for the deterministic ID
 	category string
@@ -208,6 +219,8 @@ type itemSpec struct {
 	notes    string
 	lat, lng *float64 // nil = no coordinates at all
 	onMap    bool
+	links    []linkSpec
+	dates    []dateSpec
 }
 
 func (s seedCtx) addItems(scenarioName, tripID string, specs []itemSpec) ([]db.Item, error) {
@@ -238,6 +251,29 @@ func (s seedCtx) addItems(scenarioName, tripID string, specs []itemSpec) ([]db.I
 				Lng:    spec.lng,
 			}); err != nil {
 				return nil, fmt.Errorf("set location for %s: %w", spec.key, err)
+			}
+		}
+		for j, l := range spec.links {
+			if _, err := s.store.CreateItemLink(s.ctx, db.CreateItemLinkParams{
+				ID:        seedID(scenarioName, "link", spec.key, l.url),
+				ItemID:    itemID,
+				URL:       l.url,
+				Label:     ptr(l.label),
+				SortOrder: j,
+			}); err != nil {
+				return nil, fmt.Errorf("add link for %s: %w", spec.key, err)
+			}
+		}
+		for _, d := range spec.dates {
+			if _, err := s.store.CreateItemDate(s.ctx, db.CreateItemDateParams{
+				ID:        seedID(scenarioName, "date", spec.key, d.start),
+				ItemID:    itemID,
+				StartDate: ptr(d.start),
+				EndDate:   ptr(d.end),
+				Label:     ptr(d.label),
+				AllDay:    true,
+			}); err != nil {
+				return nil, fmt.Errorf("add date for %s: %w", spec.key, err)
 			}
 		}
 		items = append(items, item)
@@ -329,9 +365,17 @@ func seedFull(s seedCtx) error {
 	}
 
 	items, err := s.addItems("full", trip.ID, []itemSpec{
+		// The link and date are here so the Links and Dates cards render with
+		// content on the location view and editor pages. Without them both cards
+		// only ever showed their empty state, so the UI sweeps never measured a
+		// link-list row - which is how a 22px tap target in it survived until
+		// Stage 09 Milestone 6 (found only because leftover manual test data
+		// happened to be present that run).
 		{key: "kirkjufell", category: "site", itemType: "landmark", title: "Kirkjufell",
 			notes: "Iconic mountain on the Snæfellsnes peninsula.\n\n## Getting there\n\nPark at the waterfall lot.",
-			lat:   ptr(64.9275), lng: ptr(-23.3106), onMap: true},
+			lat:   ptr(64.9275), lng: ptr(-23.3106), onMap: true,
+			links: []linkSpec{{url: "https://www.openstreetmap.org/?mlat=64.9275&mlon=-23.3106", label: "On the map"}},
+			dates: []dateSpec{{start: "2026-08-20", end: "2026-08-20", label: "Sunrise shoot"}}},
 		{key: "foss-hotel", category: "stay", itemType: "hotel", title: "Foss Hotel Reykjavik",
 			notes: "Check-in from 15:00.", lat: ptr(64.1466), lng: ptr(-21.9426), onMap: true},
 		{key: "kef-flight", category: "transport", itemType: "flight", title: "Flight to Keflavik",

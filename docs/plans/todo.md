@@ -93,12 +93,23 @@ require a redesign later — they're additive, not blocked, but none are built:
   in via the API, so those routes are never rendered), and German copy (the
   suite runs in the default locale only, so `de.json` is still only
   eyeballed by hand).
-  *Concrete instance since Stage 09 Milestone 2:* the location editor's single
-  Save was verified by a 20-assertion Playwright script that was **not** checked
-  in — it mutates data (creates and deletes a location), and every existing spec
-  is a read-only sweep, so it needs a decision about isolation (its own trip per
-  run? a reset between specs?) before it can join `make test-ui`. Until then the
-  stage's headline fix has no automated guard.
+  *Concrete instances from Stage 09.* Milestone 2's single Save was verified by a
+  20-assertion Playwright script, and Milestone 6's follow-up (the tab bar's
+  "More" menu: open, toggle, outside-click, Escape, select-and-close, active-state
+  marking, in two locales) by a 33-assertion one. **Neither is checked in.** The
+  first mutates data, and every existing spec is a read-only sweep, so it needs an
+  isolation decision (its own trip per run? a reset between specs?) first. The
+  menu one doesn't mutate anything and is the cheaper of the two to adopt — it
+  only needs a page load, a few clicks and computed-style reads — so it is the
+  obvious first interaction spec. Until then the stage's headline fixes have no
+  automated guard.
+  Related gap the tab overlap exposed: the sweeps check page-level overflow and
+  control *height*, but nothing checks that a label's ink stays inside its own
+  box. That is why six overlapping tab labels passed `make test-ui` — the bar fit
+  the viewport and the tabs were 47px tall, while the text ran into its
+  neighbours. A per-element "content fits its box" assertion
+  (`scrollWidth > clientWidth`, or a child wider than its parent) would have
+  caught it.
 - **The UI suite still needs its in-flight-fetch counter, even now that routes
   show a loading state.** Stage 09 Milestone 5 gave every route a
   `common.loading` line (`components/loading.js`), which fixes the *user-facing*
@@ -118,32 +129,32 @@ require a redesign later — they're additive, not blocked, but none are built:
   "login as demo failed — has `make dev-reset FORCE=1` been run?" when the seed
   is fine. Fixes: share one `storageState` across specs instead of logging in
   nine times, and/or have `login()` name 429 explicitly.
+- **Leaflet's own controls are below the tap-target guideline, and the sweep
+  excludes them.** Stage 09 Milestone 6 raised everything Caravel owns to 44px
+  and `tests/ui/routes.spec.js` now asserts the guideline, but the vendored
+  library's markup inside the map's shadow root is skipped by class
+  (`[class*="leaflet-"]`): its zoom buttons measure 30px and the OpenStreetMap
+  attribution link 14px. Restyling a dependency's internals to satisfy our own
+  sweep is the tail wagging the dog, and the attribution is conventionally
+  small — but if the map ever becomes a primary interaction surface on phones,
+  the zoom buttons are the ones worth revisiting. (The legend, which *is* ours,
+  was fixed in that milestone via `leaflet-map.js`'s own shadow styles.)
+- **The UI sweeps only measure what the seed actually renders.** Two 22px tap
+  targets — a location's external-link row and its "View on Google Maps" link —
+  survived every sweep until Stage 09 Milestone 6, because the `full` scenario
+  created no item links, so those cards only ever rendered their empty state.
+  One was found only because leftover manual test data happened to be in the
+  database that run. The seeder now gives that location a link and a date;
+  worth a pass over the remaining empty states for the same reason — nothing in
+  any scenario sets an item preview image or a trip cover photo, so
+  `.image-field__preview`, `.itinerary-entry__thumb` and the location card's
+  thumbnail are never measured by anything.
 - **Contrast is measured but not asserted.** `tests/ui/contrast.js` reports
   ratios and has a `--min` flag, but nothing runs it in CI, so a regression
   like Stage 07's 2.54:1 primary button would not be caught automatically —
   only found by someone running it. Turning it into a spec needs a decision
   about which elements have a defensible threshold (decorative fills and
   large text differ), which is why it stayed a measurement tool.
-- **Nothing in the app meets the 44px tap-target guideline.** Measured by
-  Stage 08 Milestone 5 across seven routes at 324×756: buttons bottom out at
-  **40px**, block links at **30px**, the icon+text "Back"/"Home" links at
-  **22px**, and checkbox inputs at **14px** (20px counting their wrapping
-  label). Stage 04's note that "the tap targets themselves are fine (≥44px)"
-  turns out to have been about the trip tab bar specifically, not the app as
-  a whole. `tests/ui/routes.spec.js` therefore guards the *current* floor
-  (40px, buttons only) rather than the guideline, so this is a real gap and
-  not a regression risk — raising the floor is a deliberate CSS change, and
-  the suite's constant should move with it.
-- **`.itinerary-entry__link` is a 22px tap target, and it's a `<button>`
-  pretending to be a link.** Found by the same sweep. It's the primary way to
-  open a location from the itinerary, and on a phone it's 22px tall because
-  it has no padding, no background, no border and `font: inherit` — styled
-  purely as text. Two separate questions: the size, and whether in-app
-  navigation should be an `<a href>` (which would also give it middle-click,
-  copy-link and focus semantics) rather than a button with a click handler.
-  The UI suite deliberately excludes button-styled-as-text from its tap
-  target check, so fixing this will not make a test go green — it needs doing
-  on its own merits.
 - **`web/sw.js` is never syntax-checked.** Surfaced by Stage 08 Milestone 1
   while fixing the parse mode: both the old and new checks only walk
   `web/js`, and the service worker lives one level up at `web/sw.js`, so a
@@ -301,10 +312,15 @@ require a redesign later — they're additive, not blocked, but none are built:
   wired only the locations filter to it — `user-menu.js` still carries its
   own copy of the same behavior plus `.user-menu__dropdown` CSS that
   `.menu__dropdown` now duplicates. Two popup implementations in the tree
-  is exactly the half-migrated state worth avoiding. Folding user-menu
-  onto the component needs `renderMenu` to grow a non-select "action item"
-  mode first (Log out isn't a selection), which is also what the ⋮
-  contextual menu in the checklist entry above wants.
+  is exactly the half-migrated state worth avoiding.
+  *Closer since Stage 09 Milestone 6's follow-up:* the trip tab bar's "More"
+  menu is a third caller of `renderMenu`, and getting it there gave the
+  component `label` (a pinned trigger label, so the trigger no longer has to
+  track the selection), `chevron: false`, `triggerClass` and `className`. A
+  pinned label plus custom trigger styling is most of what user-menu needs;
+  what's still missing is the non-select **action item** mode (Log out isn't a
+  selection, so `role="menuitemradio"`/`aria-checked` is wrong for it), which
+  is also what the ⋮ contextual menu in the checklist entry above wants.
 - **The cover photo and documents are still a post-create upload.** All that
   is left of "create-mode writes aren't atomic" (Stage 06 Milestone 4) after
   Stage 09 Milestones 1–2, which made the item and its location/links/dates
@@ -355,11 +371,6 @@ triaged with the user rather than dropped silently.
   `<img>` load as the check (Stage 07 Milestone 9's preview-error handler
   already does exactly that inline, which softens this a lot — a URL the
   browser can't load is flagged in the card before Create is ever pressed).
-- **Trip settings' date inputs clip at 324px.** The start/end date fields
-  sit side by side in `.trip-form__dates`; at the phone's width each is
-  ~123px and the browser truncates the year under the calendar icon —
-  "20 / 08 / 202". The location editor's rows already stack under the
-  640px breakpoint (Stage 06 Milestone 5); this row was missed.
 - **The mobile map page swallows vertical scrolling.** On the Map tab at
   324×756 the map is 424px tall starting at y=383, with only ~67px of page
   below it — so a touch drag starting anywhere in the lower half of the
@@ -369,8 +380,6 @@ triaged with the user rather than dropped silently.
   height, gesture handling (e.g. Leaflet's one-finger-pan opt-in) and
   legend placement rather than a quick tweak.
 - **Polish batch, all confirmed in the same round:**
-    - Mobile trip-tab labels are 0.625rem (10px), below the ~11-12px floor a
-      tab bar usually holds to; the tap targets themselves are fine (≥44px).
     - Category is a fixed `<select>` (Site/Stay/Transport) while Type is
       free text, so a location detail page reads "Site landmark" with
       mismatched capitalisation. Either derive Type from a per-category list

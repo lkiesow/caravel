@@ -8,21 +8,17 @@ import { test, expect } from "@playwright/test";
 import { login, buildRoutes, gotoRoute, VIEWPORTS, COLOR_SCHEMES } from "./helpers/scenarios.js";
 import { DEEP_DOM_SOURCE } from "./helpers/deep-dom.js";
 
-// Tap-target floor for buttons, in CSS px at phone width.
+// Tap-target floor at phone width, in CSS px. This is THE ACCESSIBILITY
+// GUIDELINE, not a measured floor.
 //
-// This is a REGRESSION GUARD SET TO THE APP'S MEASURED CURRENT FLOOR, not the
-// accessibility guideline. The guideline is 44px; measured across seven routes at
-// 324px wide, nothing in Caravel reaches it — buttons bottom out at 40px, block
-// links at 30px, inline-flex links (the "Back"/"Home" links) at 22px, and
-// checkbox inputs at 14px (20px counting their label). Stage 04's note that "the
-// tap targets themselves are fine (≥44px)" was about the trip tab bar
-// specifically, not the whole app.
-//
-// So asserting 44px here would just be red on every route, which is a finding to
-// record rather than a test to run. 40px locks in the current state so a future
-// change can't quietly shrink a button; closing the remaining 4px is an app
-// change, recorded in todo.md.
-const MIN_TAP_TARGET_PX = 40;
+// It used to be 40 with a long comment explaining that nothing in the app
+// reached 44 — buttons bottomed out at 40px, block links at 30px, the icon+text
+// "Back"/"Home" links at 22px, checkbox rows at 20px — so the constant locked in
+// the current state instead. Stage 09 Milestone 6 closed that gap in CSS
+// (base.css's max-width: 640px block, plus the map legend inside
+// leaflet-map.js's own shadow styles), so the constant now says what it should:
+// 2.75rem, the same value --tap-min carries.
+const MIN_TAP_TARGET_PX = 44;
 
 for (const scheme of COLOR_SCHEMES) {
   for (const viewport of VIEWPORTS) {
@@ -87,34 +83,50 @@ for (const scheme of COLOR_SCHEMES) {
             const result = await page.evaluate(
               ({ deepSource, min }) => {
                 eval(deepSource);
-                // Buttons that are *styled as buttons*. Links are excluded
-                // because prose links must be allowed to be inline-sized, and
-                // Caravel's icon+text "Back" links are a design question rather
-                // than a regression risk; input sizing likewise.
+
+                // Every control the user aims a finger at, not just the ones
+                // that look like buttons — which is what this checked before
+                // Stage 09 Milestone 6, when links and inputs were exempt
+                // because too many of them were too small to assert on.
                 //
-                // The style filter is not a convenience. `.itinerary-entry__link`
-                // is a <button> with no background, no border, no padding and
-                // `font: inherit` — a text link in disguise, sized by its text
-                // (22px). Judging it by a button's standard would be judging the
-                // wrong thing. Everything excluded here is measured and recorded
-                // in todo.md rather than dropped.
-                const looksLikeAButton = (el, style) => {
-                  if (/(^|\s)btn(\s|$|-)/.test(el.className || "")) return true;
-                  const bg = style.backgroundColor;
-                  const hasBg = bg && bg !== "transparent" && !/rgba\(\s*0,\s*0,\s*0,\s*0\s*\)/.test(bg);
-                  const hasBorder = parseFloat(style.borderTopWidth) > 0 || parseFloat(style.borderBottomWidth) > 0;
-                  return hasBg || hasBorder;
+                // Three exclusions, each for a reason, not for convenience:
+                //
+                // 1. Prose links. A link inside a paragraph has to be allowed
+                //    to be inline-sized; making body copy 44px tall per line
+                //    is not the guideline's intent.
+                // 2. Leaflet's own controls and its OpenStreetMap attribution
+                //    (anything under a `leaflet-*` class). That markup and its
+                //    CSS come from the vendored library inside the map's shadow
+                //    root — the zoom buttons measure 30px and the attribution
+                //    link 14px. Restyling a dependency's internals to satisfy
+                //    our own sweep would be the tail wagging the dog, and the
+                //    attribution is conventionally small on purpose.
+                // 3. Checkbox and radio inputs *that a <label> wraps*. A native
+                //    checkbox is ~14px; the tap target is the label around it,
+                //    which toggles it, and that label is measured here instead
+                //    (base.css gives those labels the min-height for the same
+                //    reason). A checkbox with no wrapping label has no larger
+                //    target and is still measured.
+                const scope = (el) => {
+                  if (el.closest("p")) return false;
+                  if (el.closest('[class*="leaflet-"]')) return false;
+                  if (el.localName === "label") return Boolean(el.querySelector("input, select, textarea"));
+                  if (el.localName === "input" && (el.type === "checkbox" || el.type === "radio")) {
+                    return !el.closest("label");
+                  }
+                  return true;
                 };
 
-                const controls = deepQueryAll("button");
+                const controls = deepQueryAll("button, a, input, select, textarea, label");
                 const out = [];
                 let checked = 0;
                 for (const el of controls) {
                   const style = getComputedStyle(el);
                   if (style.display === "none" || style.visibility === "hidden") continue;
+                  if (el.localName === "input" && el.type === "hidden") continue;
                   const rect = el.getBoundingClientRect();
                   if (rect.width === 0 || rect.height === 0) continue;
-                  if (!looksLikeAButton(el, style)) continue;
+                  if (!scope(el)) continue;
                   checked++;
                   if (rect.height < min) {
                     out.push({
@@ -135,12 +147,14 @@ for (const scheme of COLOR_SCHEMES) {
             }
           }
 
-          // A sweep that finds nothing is not a pass.
+          // A sweep that finds nothing is not a pass. The floor is well under
+          // the ~200 controls the current routes actually yield, so it catches
+          // "the selector stopped matching" without breaking on every UI edit.
           expect(
             totalChecked,
-            "no buttons were measured at all — the sweep found nothing, so this check proves nothing"
-          ).toBeGreaterThan(20);
-          expect(failures, `${failures.length} button(s) below ${MIN_TAP_TARGET_PX}px`).toEqual([]);
+            "no controls were measured at all — the sweep found nothing, so this check proves nothing"
+          ).toBeGreaterThan(100);
+          expect(failures, `${failures.length} control(s) below ${MIN_TAP_TARGET_PX}px`).toEqual([]);
         });
       }
     });

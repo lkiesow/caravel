@@ -45,6 +45,14 @@ const styles = `
   .map-wrap {
     position: relative;
     height: 100%;
+    /* Leaflet parks internal helpers (.leaflet-proxy, the zoom-animation
+       panes) at very large offsets - measured at right=1825757 on a settled
+       page. .leaflet-container clips them once it is initialised, but during
+       init and zoom animation they briefly contribute to layout, and the UI
+       suite caught that as a page-level horizontal overflow of 1636px against
+       a 1280px viewport. The component should not be able to widen the
+       document whatever the library does mid-animation. */
+    overflow: hidden;
   }
   #map {
     height: 100%;
@@ -110,6 +118,17 @@ const styles = `
       flex-wrap: wrap;
       width: 100%;
       margin-top: 0.5rem;
+    }
+    /* The legend's category toggles are tap targets like any other, and at
+       20px they were among the smallest in the app (Stage 09 Milestone 6).
+       The label carries the height rather than the checkbox inside it, for
+       the reason base.css's mobile block gives: a native checkbox blown up
+       to 44px looks wrong, and clicking the label toggles it anyway.
+       --tap-min is inherited through the shadow boundary (custom properties
+       do pierce it, unlike the box-sizing reset noted above), with a literal
+       fallback in case this component is ever used without base.css. */
+    .legend label {
+      min-height: var(--tap-min, 2.75rem);
     }
   }
 `;
@@ -244,7 +263,10 @@ class LeafletMap extends HTMLElement {
         `<strong>${escapeHtml(title)}</strong><br/><a href="${escapeAttr(mapsUrl)}" target="_blank" rel="noopener">${t("map.viewOnGoogleMaps")}</a>`
       );
       this._markers.push(marker);
-      this._map.setView([lat, lng], SINGLE_MARKER_ZOOM);
+      // animate: false - this is the first and only view this embed ever
+      // takes, so there is nothing to animate *from*; the animation only
+      // produced a transient wide layout (see .map-wrap's overflow note).
+      this._map.setView([lat, lng], SINGLE_MARKER_ZOOM, { animate: false });
       return;
     }
 

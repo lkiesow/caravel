@@ -38,7 +38,7 @@ export async function renderTripEditorPage(container) {
           <div class="trip-form-slot"></div>
         </div>
         <div class="editor-card">
-          <h2 data-i18n="trip.overview.image"></h2>
+          <h2 data-i18n="trip.settings.image"></h2>
           <div class="image-field-slot"></div>
         </div>
         <div class="editor-actions">

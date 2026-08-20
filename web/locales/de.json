@@ -92,7 +92,7 @@
   "image.uploadFailed": "Dieses Bild konnte nicht hochgeladen werden. Bitte eine andere Datei versuchen.",
   "image.setUrl": "Bild setzen",
   "image.remove": "Entfernen",
-  "trip.overview.image": "Titelbild",
+  "trip.settings.image": "Titelbild",
   "trip.editor.newTitle": "Neue Reise",
   "trip.editor.basicInfo": "Basisinformationen",
   "trip.editor.createButton": "Reise erstellen",

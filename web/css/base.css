@@ -827,6 +827,17 @@ button {
   flex-shrink: 0;
 }
 
+/* Category is a fixed list rendered through i18n ("Site"), Type is whatever
+   the user typed ("landmark"), and as bare adjacent spans they read as one
+   broken phrase with mismatched capitalisation. Separated and capitalized for
+   display only - the stored value is left exactly as entered, since it is the
+   user's text and Type is still free-form. Unlike .trip-summary__dot this
+   separator stays visible under 640px: category and type are two short words
+   that never need to stack. */
+.location-view__meta .type-label {
+  text-transform: capitalize;
+}
+
 /* No `white-space: pre-wrap` here, deliberately. This container holds
    *rendered HTML* (notes_html), not the plain text it held when notes were
    authored and displayed raw — so pre-wrap preserved the newlines goldmark

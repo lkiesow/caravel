@@ -60,12 +60,13 @@ Things that are wrong today, each confirmed against the current source.
   (`trip-notes.txt`) and one attached to the Foss Hotel location
   (`hotel-booking.txt`); the tab shows only the former, while the latter is
   reachable on the location's own page.
-- **Category is a fixed `<select>` while Type is free text**, so a location
-  detail page reads "Site landmark" with mismatched capitalisation. (Stage 07.)
-  Either derive Type from a per-category list or at least normalise its display.
-- **The Files tab's "Upload" is styled `btn-secondary`** though it is that row's
-  primary action, while "New checklist" next to an identical input row is
-  `btn-primary`. (Stage 07.) The two rows should agree.
+- **Category is a fixed `<select>` while Type is free text.** (Stage 07.) Stage
+  10 Milestone 2 fixed the *display* half — the location view now reads
+  "Site · Landmark", separated and capitalized in CSS — but Type is still an
+  unconstrained text input, so nothing stops two locations in the same category
+  carrying "hotel", "Hotel" and "hostel". What's left is the real question:
+  derive Type from a per-category list (a `<select>` that changes options with
+  the category, or a `<datalist>` of suggestions that still allows anything).
 - **A trip's cover photo isn't shown anywhere on its default view.** (Stage 05.)
   Removing the Overview tab took away the only place the photo was visible
   without opening Settings. It's still settable and previewable there, just no
@@ -220,8 +221,9 @@ step with itself.
       `/trips/:id/documents` route all still say "documents". Renaming the route
       changes a user-visible URL, so it needs a redirect from the old path or a
       deliberate decision to break existing bookmarks.
-    - `trip.overview.image` still names the Overview tab removed in Stage 05.
-      Its value ("Cover photo" / "Titelbild") is correct; only the key is stale.
+  (The third part of this entry — the stale `trip.overview.image` key naming a
+  tab removed in Stage 05 — was done in Stage 10 Milestone 2, renamed to
+  `trip.settings.image`.)
   Doing these piecemeal is what leaves the tree half-migrated indefinitely,
   which is the whole reason this is one entry rather than three.
 - **Refactor `user-menu.js` onto `components/menu.js`.** Stage 06 Milestone 1

@@ -124,6 +124,38 @@ a separator between category and type; no page renders a raw key. Plus
 Closes two "Bugs and rough edges" entries and one third of the identifier-sweep
 entry; rewrites the Category/Type entry down to its remaining half.
 
+**Done.** All three landed, with **one deliberate deviation**: the Upload button
+became `btn btn-primary btn-row`, *not* `btn-collapse` as this plan said. The
+plan was wrong to propose that half — `.btn-row` opts out of `.btn-collapse` on
+purpose ([base.css:138-142](web/css/base.css#L138-L142)), because these add-rows
+stack full-width under 640px where a bare "+" spanning the whole row reads as a
+stray button rather than that row's action. That comment even names "Add file"
+as one of its cases. The backlog entry only ever asked for the two rows to agree
+on *variant*, so only `btn-secondary` → `btn-primary` changed, and the "New
+checklist" button keeps its own `btn-collapse` (a text input beside it, not a
+file picker plus a note field).
+
+The category/type separator is a `.meta-sep` span (`aria-hidden`, matching the
+`trip-summary__dot` idiom) plus `text-transform: capitalize` on `.type-label` —
+display only, the stored value stays exactly as the user typed it. Unlike
+`.trip-summary__dot` it is *not* hidden under 640px, since two short words never
+need to stack. `trip.overview.image` → `trip.settings.image` in both locale files
+and both call sites.
+
+Verified: `make ci` green (123 keys still in sync — the rename is symmetrical).
+In Firefox at 324×756: the meta row reads "Site · Landmark" with the separator
+between the two labels (`order: dot, category-label, meta-sep, type-label`), 8px
+on each side of it, both on one line, `text-transform: capitalize` computed, and
+`scrollWidth === clientWidth` so nothing overflows. The Files-tab submit button
+computes `btn btn-primary btn-row`, `rgb(37, 99, 235)` on white text at 44px
+tall, with its "Upload" label still laid out — the check that it did *not*
+silently collapse. The renamed key was checked on both call sites and in both
+locales: the settings tab's headings read Basic info / Cover photo / Delete this
+trip and Basisinformationen / Titelbild / Diese Reise löschen, the new-trip
+editor reads Cover photo, no `[data-i18n="trip.overview.image"]` survives
+anywhere, and a raw-key regex sweep over the rendered text finds nothing — the
+check that a renamed key left nothing dangling in either file.
+
 ---
 
 ## 3. Cover photo on the trip detail header

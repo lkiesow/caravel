@@ -92,7 +92,7 @@
   "image.uploadFailed": "That image couldn't be uploaded. Try a different file.",
   "image.setUrl": "Set image",
   "image.remove": "Remove",
-  "trip.overview.image": "Cover photo",
+  "trip.settings.image": "Cover photo",
   "trip.editor.newTitle": "New trip",
   "trip.editor.basicInfo": "Basic info",
   "trip.editor.createButton": "Create trip",

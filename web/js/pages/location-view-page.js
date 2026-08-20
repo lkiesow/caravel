@@ -57,7 +57,7 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
       <div class="location-view__meta">
         <span class="dot" style="background:${color}"></span>
         <span class="category-label"></span>
-        ${item.type ? `<span class="type-label"></span>` : ""}
+        ${item.type ? `<span class="meta-sep" aria-hidden="true">·</span><span class="type-label"></span>` : ""}
       </div>
       ${item.image_url ? `<img class="location-view__image" src="${escapeAttr(item.image_url)}" alt="" />` : ""}
       ${item.notes ? `<div class="location-view__notes"></div>` : ""}

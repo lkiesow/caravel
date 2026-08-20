@@ -674,14 +674,29 @@ func (s *postgresStore) GetDocumentByID(ctx context.Context, id string) (Documen
 	return postgresDocumentToDomain(row), nil
 }
 
-func (s *postgresStore) ListTripDocuments(ctx context.Context, tripID string) ([]Document, error) {
+func (s *postgresStore) ListTripDocuments(ctx context.Context, tripID string) ([]DocumentDetail, error) {
 	rows, err := s.q.ListTripDocuments(ctx, tripID)
 	if err != nil {
 		return nil, err
 	}
-	docs := make([]Document, len(rows))
+	docs := make([]DocumentDetail, len(rows))
 	for i, row := range rows {
-		docs[i] = postgresDocumentToDomain(row)
+		docs[i] = DocumentDetail{
+			// The joined row is its own generated struct, so this can't go
+			// through postgresDocumentToDomain like the other document queries.
+			Document: Document{
+				ID:          row.ID,
+				TripID:      row.TripID,
+				ItemID:      strPtr(row.ItemID),
+				Filename:    row.Filename,
+				StoragePath: row.StoragePath,
+				ContentType: strPtr(row.ContentType),
+				SizeBytes:   row.SizeBytes,
+				UploadedAt:  row.UploadedAt,
+				Note:        strPtr(row.Note),
+			},
+			ItemTitle: strPtr(row.ItemTitle),
+		}
 	}
 	return docs, nil
 }

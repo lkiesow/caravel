@@ -232,8 +232,12 @@ type Store interface {
 
 	CreateDocument(ctx context.Context, p CreateDocumentParams) (Document, error)
 	GetDocumentByID(ctx context.Context, id string) (Document, error)
-	// ListTripDocuments returns only trip-level (item_id IS NULL) documents.
-	ListTripDocuments(ctx context.Context, tripID string) ([]Document, error)
+	// ListTripDocuments returns every document on the trip — both trip-level
+	// ones and those attached to one of its locations — newest first, each
+	// carrying the title of the location it belongs to (nil for trip-level).
+	// It used to filter item_id IS NULL, which hid location-attached files
+	// from the trip's Files tab even though they are files on that trip.
+	ListTripDocuments(ctx context.Context, tripID string) ([]DocumentDetail, error)
 	ListItemDocuments(ctx context.Context, itemID string) ([]Document, error)
 	DeleteDocument(ctx context.Context, id, tripID string) (bool, error)
 

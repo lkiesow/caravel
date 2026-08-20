@@ -4,13 +4,20 @@ import { icon } from "../icon.js";
 import { confirmDialog } from "./dialog.js";
 import { renderLoading } from "./loading.js";
 
-// Renders a read-only document list (filename, size, note, download link,
-// delete) plus an inline single-file add row (file picker + optional
+// Renders a read-only document list (filename, size, source, note, download
+// link, delete) plus an inline single-file add row (file picker + optional
 // note + Upload button) - the same file+note+button shape as the Links/
 // Dates forms in the location editor, rather than the multi-file dialog
 // this used to be. Selecting several files is still possible, just one
 // upload at a time. `path` is either `/trips/{id}/documents` or
 // `/items/{id}/documents` - both share the same list/upload/delete shape.
+//
+// The trip-level list mixes trip files with files attached to a location, so a
+// row carrying `item_title` shows it (".document-source"): one flat list sorted
+// by upload date, where only the location-attached rows are labelled. The API
+// leaves item_title null on the item-level list, so the same template renders
+// there unlabelled without needing a mode - on a location's own page every file
+// belongs to that location and saying so on each row would be noise.
 //
 // Staging mode: pass `path: null` plus a `staged` array to collect picks
 // in memory instead of uploading them. Nothing is fetched and nothing is
@@ -80,6 +87,7 @@ export async function renderDocumentList(container, path, { staged } = {}) {
         : `
         <a href="${row.download_url}" target="_blank" rel="noopener">${escapeHtml(row.filename)}</a>
         <span class="document-size">${formatSize(row.size_bytes)}</span>
+        ${row.item_title ? `<span class="document-source">${escapeHtml(row.item_title)}</span>` : ""}
         ${row.note ? `<span class="document-note">${escapeHtml(row.note)}</span>` : ""}
         <button class="icon-remove" data-action="delete" data-id="${row.id}" aria-label="${t("common.remove")}">${icon("x")}</button>
       `;

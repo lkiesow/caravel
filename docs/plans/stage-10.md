@@ -573,6 +573,59 @@ Playwright against the `full` scenario: the Files tab lists 2 rows,
 Exercise the Postgres path too — sqlc generates two dialects and only one runs by
 default.
 
+**Done.** Landed as planned, and the milestone found **two bugs it wasn't looking
+for**.
+
+The query dropped `AND item_id IS NULL` and `LEFT JOIN items i ON i.id =
+d.item_id`; `sqlc generate` produced a `ListTripDocumentsRow` in both dialects
+(identical in shape, differing only in `UploadedAt`, as the other document
+queries already do). `DocumentDetail` embeds `Document` and adds `ItemTitle`,
+both adapters map the joined row by hand — it can't go through
+`sqliteDocumentToDomain`/`postgresDocumentToDomain`, which take the plain
+generated `Document` — and `documentDetailToResponse` *wraps* the existing mapper
+rather than repeating it, so a future field can't be set on one path and missed
+on the other. `item_title` is null on every other endpoint by design: the
+item-level list and the upload responses know their location from context.
+
+The plan was right that no new labeled-list *mode* was needed in
+`document-list.js` — one extra span, gated on `row.item_title`.
+
+**Bug found #1: the row didn't fit a phone.** At 324px the label truncated to
+"— Foss…" — which says only *that* there is a location, not which one — while the
+filename wrapped to two lines beside it. Under 640px the row now wraps, with the
+source and note on a second line via `order: 1` so the delete button stays on the
+first line at the right edge where every other row in the app puts it, and the
+source stops truncating there. Desktop keeps everything on one 22px line.
+
+**Bug found #2, and this one is the interesting part: fixing the wrap exposed a
+real pre-existing tap-target failure.** With the metadata moved off, the filename
+link fits on one line — and immediately failed Milestone 6's sweep at
+`li > a is 129.6x22px`. It had been passing only because the wrapped filename
+happened to be two lines tall, i.e. an accident of text length was standing in
+for a tap target. `.documents li a` joined the `min-height: var(--tap-min)` group
+(and the flex-centring group beside it) with the other row links. Milestone 6's
+new assertion earned itself here: this was found by CI, not by looking.
+
+Verified: `make ci` green, `make test-ui` **12/12**, and a new
+`TestListTripDocumentsIncludesLocationFiles` covering the whole contract — both
+files listed, `item_title` set on the location-attached one and null on the
+trip-level one (the LEFT JOIN's whole point, since an INNER JOIN would have
+dropped the latter), the location's own list unchanged and unlabelled, and
+deleting the location-attached file *through the trip list* working, since
+`DeleteDocument` scopes by `(id, trip_id)` for both kinds of row. Proven
+non-vacuous by restoring `AND d.item_id IS NULL` in the generated SQL: the test
+fails with "got 1 documents, want 2", which is the bug verbatim. In Firefox
+against the `full` seed: the tab lists 2 rows, `hotel-booking.txt` labelled
+"Foss Hotel Reykjavik" in full with no truncation, `trip-notes.txt` unlabelled,
+no row overflowing, at both 324×756 and 1280×800; the location's own Files list
+still shows exactly its one file, unlabelled.
+
+**Not verified: Postgres.** There is no local Postgres, no compose file and no
+Postgres job in CI, so that dialect is covered only by compiling and by its
+generated SQL being the same shape as SQLite's. Both dialects were regenerated
+and diffed. Added to `todo.md`, since it applies to every query this app has, not
+just this one.
+
 ---
 
 ## Build order

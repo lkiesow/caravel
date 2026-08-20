@@ -611,14 +611,29 @@ func (s *sqliteStore) GetDocumentByID(ctx context.Context, id string) (Document,
 	return sqliteDocumentToDomain(row), nil
 }
 
-func (s *sqliteStore) ListTripDocuments(ctx context.Context, tripID string) ([]Document, error) {
+func (s *sqliteStore) ListTripDocuments(ctx context.Context, tripID string) ([]DocumentDetail, error) {
 	rows, err := s.q.ListTripDocuments(ctx, tripID)
 	if err != nil {
 		return nil, err
 	}
-	docs := make([]Document, len(rows))
+	docs := make([]DocumentDetail, len(rows))
 	for i, row := range rows {
-		docs[i] = sqliteDocumentToDomain(row)
+		docs[i] = DocumentDetail{
+			// The joined row is its own generated struct, so this can't go
+			// through sqliteDocumentToDomain like the other document queries.
+			Document: Document{
+				ID:          row.ID,
+				TripID:      row.TripID,
+				ItemID:      strPtr(row.ItemID),
+				Filename:    row.Filename,
+				StoragePath: row.StoragePath,
+				ContentType: strPtr(row.ContentType),
+				SizeBytes:   row.SizeBytes,
+				UploadedAt:  parseTime(row.UploadedAt),
+				Note:        strPtr(row.Note),
+			},
+			ItemTitle: strPtr(row.ItemTitle),
+		}
 	}
 	return docs, nil
 }

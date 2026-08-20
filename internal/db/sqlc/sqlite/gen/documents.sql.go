@@ -131,18 +131,41 @@ func (q *Queries) ListItemDocuments(ctx context.Context, itemID sql.NullString) 
 }
 
 const listTripDocuments = `-- name: ListTripDocuments :many
-SELECT id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at, note FROM documents WHERE trip_id = ?1 AND item_id IS NULL ORDER BY uploaded_at DESC
+SELECT d.id, d.trip_id, d.item_id, d.filename, d.storage_path, d.content_type,
+       d.size_bytes, d.uploaded_at, d.note,
+       i.title AS item_title
+FROM documents d
+LEFT JOIN items i ON i.id = d.item_id
+WHERE d.trip_id = ?1
+ORDER BY d.uploaded_at DESC
 `
 
-func (q *Queries) ListTripDocuments(ctx context.Context, tripID string) ([]Document, error) {
+type ListTripDocumentsRow struct {
+	ID          string         `json:"id"`
+	TripID      string         `json:"trip_id"`
+	ItemID      sql.NullString `json:"item_id"`
+	Filename    string         `json:"filename"`
+	StoragePath string         `json:"storage_path"`
+	ContentType sql.NullString `json:"content_type"`
+	SizeBytes   int64          `json:"size_bytes"`
+	UploadedAt  string         `json:"uploaded_at"`
+	Note        sql.NullString `json:"note"`
+	ItemTitle   sql.NullString `json:"item_title"`
+}
+
+// Every file on the trip, including those attached to a location: each row
+// carries the trip's id regardless of item_id (see uploadDocument), so no join
+// is needed to find them - only to name the location for display. LEFT, not
+// INNER: a trip-level row has a NULL item_id and must survive the join.
+func (q *Queries) ListTripDocuments(ctx context.Context, tripID string) ([]ListTripDocumentsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listTripDocuments, tripID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Document
+	var items []ListTripDocumentsRow
 	for rows.Next() {
-		var i Document
+		var i ListTripDocumentsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.TripID,
@@ -153,6 +176,7 @@ func (q *Queries) ListTripDocuments(ctx context.Context, tripID string) ([]Docum
 			&i.SizeBytes,
 			&i.UploadedAt,
 			&i.Note,
+			&i.ItemTitle,
 		); err != nil {
 			return nil, err
 		}

@@ -1334,6 +1334,26 @@ button {
   font-size: 0.8rem;
 }
 
+/* Which location a file is attached to, shown only on the trip-level list and
+   only for the rows that have one. Set apart with a leading em dash rather than
+   a chip or a border: the row is already filename + size + maybe a note, and a
+   fourth boxed element on one line at 324px would be a wall. min-width: 0 plus
+   ellipsis so a long location title truncates instead of pushing the delete
+   button off the row - the row is a flex line and the title is the one part
+   with no bound on its length. */
+.document-source {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-source::before {
+  content: "— ";
+}
+
 .documents-empty {
   color: var(--color-text-muted);
   font-size: 0.875rem;
@@ -1426,6 +1446,7 @@ button {
   .back-link,
   .itinerary-entry__link,
   .link-list li a,
+  .documents li a,
   .location-view__maps-link,
   .checklist-item label,
   .location-form label.location-form__checkbox {
@@ -1437,6 +1458,7 @@ button {
      measures 44px but doesn't feel like it. */
   .back-link,
   .link-list li a,
+  .documents li a,
   .location-view__maps-link,
   .checklist-item label,
   .location-form label.location-form__checkbox {
@@ -1477,6 +1499,31 @@ button {
   .image-field__url-form {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  /* A file row is filename + size + which location it belongs to + note +
+     delete, which is too much for 324px on one line: the location truncated to
+     "— Foss…", saying only that there *is* one, while the filename wrapped to
+     two lines beside it. So the metadata drops to a second line and stops
+     truncating there.
+
+     `order` rather than DOM order: the delete button stays on the first line at
+     the right edge where every other row in the app puts it, while the source
+     and note - which come *before* it in the markup, and are read in that
+     sensible order by assistive tech - flow underneath. */
+  .documents li {
+    flex-wrap: wrap;
+  }
+
+  .documents li .document-source,
+  .documents li .document-note {
+    order: 1;
+  }
+
+  .documents li .document-source {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
   }
 
   .image-field__upload {

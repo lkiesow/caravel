@@ -78,6 +78,19 @@ type Document struct {
 	Note        *string
 }
 
+// DocumentDetail is a document plus the title of the location it is attached
+// to, for the trip-level Files list: that list mixes trip-level files with
+// location-attached ones, and a filename alone doesn't say which location a
+// file belongs to. ItemTitle is nil exactly when ItemID is - i.e. for a
+// trip-level file - so the two are read together, and it is a *join
+// projection*, not a field of Document: nothing writes it.
+//
+// Same shape as ItineraryEntryDetail below, for the same reason.
+type DocumentDetail struct {
+	Document
+	ItemTitle *string
+}
+
 type Checklist struct {
 	ID        string
 	TripID    string

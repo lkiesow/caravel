@@ -2,9 +2,92 @@ package httpapi
 
 import (
 	"io"
+	"net/http"
 	"strings"
 	"testing"
 )
+
+// The trip-level Files list must show files attached to a location as well as
+// files on the trip itself, each labelled with the location it belongs to.
+//
+// It used to filter `item_id IS NULL`, so a booking uploaded to a hotel was
+// invisible on the trip's Files tab even though it is a file on that trip -
+// reachable only by knowing which location to open.
+func TestListTripDocumentsIncludesLocationFiles(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login("demo")
+	tripID := ts.createTrip(cookie, "Iceland")
+	itemID := ts.createItem(cookie, tripID, "Foss Hotel Reykjavik")
+
+	if w := ts.upload("/api/trips/"+tripID+"/documents", cookie, "trip-notes.txt", "text/plain", []byte("trip level")); w.Code != http.StatusCreated {
+		t.Fatalf("upload trip document: %d %s", w.Code, w.Body.String())
+	}
+	if w := ts.upload("/api/items/"+itemID+"/documents", cookie, "hotel-booking.txt", "text/plain", []byte("item level")); w.Code != http.StatusCreated {
+		t.Fatalf("upload item document: %d %s", w.Code, w.Body.String())
+	}
+
+	w := ts.do(http.MethodGet, "/api/trips/"+tripID+"/documents", cookie, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("list trip documents: %d %s", w.Code, w.Body.String())
+	}
+	docs := decode[[]documentResponse](t, w)
+	if len(docs) != 2 {
+		t.Fatalf("got %d documents, want 2 (trip-level + location-attached): %s", len(docs), w.Body.String())
+	}
+
+	byName := map[string]documentResponse{}
+	for _, d := range docs {
+		byName[d.Filename] = d
+	}
+
+	tripDoc, ok := byName["trip-notes.txt"]
+	if !ok {
+		t.Fatal("the trip-level document is missing from the list")
+	}
+	if tripDoc.ItemID != nil {
+		t.Errorf("trip-level document has item_id %q, want null", *tripDoc.ItemID)
+	}
+	// The LEFT JOIN's whole point: a trip-level row has no item to join to and
+	// must still come back. An INNER JOIN would have dropped this one.
+	if tripDoc.ItemTitle != nil {
+		t.Errorf("trip-level document has item_title %q, want null", *tripDoc.ItemTitle)
+	}
+
+	itemDoc, ok := byName["hotel-booking.txt"]
+	if !ok {
+		t.Fatal("the location-attached document is missing from the list — this is the bug this test exists for")
+	}
+	if itemDoc.ItemID == nil || *itemDoc.ItemID != itemID {
+		t.Errorf("location-attached document has item_id %v, want %q", itemDoc.ItemID, itemID)
+	}
+	if itemDoc.ItemTitle == nil || *itemDoc.ItemTitle != "Foss Hotel Reykjavik" {
+		t.Errorf("location-attached document has item_title %v, want %q", itemDoc.ItemTitle, "Foss Hotel Reykjavik")
+	}
+
+	// The location's own list is unchanged: its file, and not the trip's.
+	w = ts.do(http.MethodGet, "/api/items/"+itemID+"/documents", cookie, "")
+	itemDocs := decode[[]documentResponse](t, w)
+	if len(itemDocs) != 1 || itemDocs[0].Filename != "hotel-booking.txt" {
+		t.Fatalf("location's own list should hold exactly its own file, got %s", w.Body.String())
+	}
+	// item_title is left null off the trip listing: on a location's own page
+	// every row belongs to that location, so labelling each one is noise.
+	if itemDocs[0].ItemTitle != nil {
+		t.Errorf("item-level list set item_title %q, want null", *itemDocs[0].ItemTitle)
+	}
+
+	// Deleting a location-attached file from the trip list works: DeleteDocument
+	// scopes by (id, trip_id), which holds for both kinds of row - worth
+	// asserting rather than assuming, since the trip list can now offer a delete
+	// for a file it doesn't directly own.
+	if w := ts.do(http.MethodDelete, "/api/documents/"+itemDoc.ID, cookie, ""); w.Code != http.StatusNoContent {
+		t.Fatalf("delete location-attached document: %d %s", w.Code, w.Body.String())
+	}
+	w = ts.do(http.MethodGet, "/api/trips/"+tripID+"/documents", cookie, "")
+	if remaining := decode[[]documentResponse](t, w); len(remaining) != 1 || remaining[0].Filename != "trip-notes.txt" {
+		t.Fatalf("after deleting the location file, got %s", w.Body.String())
+	}
+}
 
 func TestIsInlineSafeContentType(t *testing.T) {
 	cases := []struct {

@@ -65,6 +65,12 @@ type documentResponse struct {
 	UploadedAt  string  `json:"uploaded_at"`
 	Note        *string `json:"note"`
 	DownloadURL string  `json:"download_url"`
+	// The title of the location this file is attached to, for the trip-level
+	// list where trip files and location files appear together. Null for a
+	// trip-level file, and null on every other endpoint: the item-level list
+	// and the upload responses know their location from context, so only the
+	// trip listing pays for the join.
+	ItemTitle *string `json:"item_title"`
 }
 
 func documentToResponse(d db.Document) documentResponse {
@@ -79,6 +85,15 @@ func documentToResponse(d db.Document) documentResponse {
 		Note:        d.Note,
 		DownloadURL: fmt.Sprintf("/api/documents/%s/download", d.ID),
 	}
+}
+
+// documentDetailToResponse wraps the plain mapper rather than repeating it, so
+// a new field on documentResponse can't end up set on one path and not the
+// other.
+func documentDetailToResponse(d db.DocumentDetail) documentResponse {
+	resp := documentToResponse(d.Document)
+	resp.ItemTitle = d.ItemTitle
+	return resp
 }
 
 // uploadDocument handles the shared multipart-upload logic for both
@@ -154,7 +169,7 @@ func (s *Server) handleListTripDocuments(w http.ResponseWriter, r *http.Request)
 	}
 	resp := make([]documentResponse, len(docs))
 	for i, d := range docs {
-		resp[i] = documentToResponse(d)
+		resp[i] = documentDetailToResponse(d)
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

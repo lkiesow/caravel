@@ -43,23 +43,6 @@ Things that are wrong today, each confirmed against the current source.
   load as the check (Stage 07 Milestone 9's preview-error handler already does
   exactly that inline, which softens this a lot — a URL the browser can't load
   is flagged in the card before Create is ever pressed).
-- **The trip-level Files tab doesn't show files attached to locations.**
-  Confirmed: `GET /trips/{id}/documents` filters `AND item_id IS NULL`
-  (`ListTripDocuments`, `internal/db/sqlc/queries/documents.sql`), so the tab
-  only ever shows files attached directly to the trip — even though every
-  document row already carries the trip's `trip_id` regardless (set in
-  `uploadDocument`, `internal/httpapi/documents.go`), so the fix doesn't need a
-  join through `items`, just dropping that one filter (or a new query) plus
-  joining in each document's item title for display. Decided display shape: one
-  flat list (as today), sorted by upload date, with a small inline label on
-  location-attached files showing which location they belong to (e.g. "Hotel
-  booking.pdf — Foss Hotel Reykjavik"); trip-level files show no label.
-  `document-list.js` would need a new labeled-list mode, since today it only
-  renders one homogeneous list for exactly one `path` at a time.
-  *Repro:* the `full` seed scenario has one trip-level document
-  (`trip-notes.txt`) and one attached to the Foss Hotel location
-  (`hotel-booking.txt`); the tab shows only the former, while the latter is
-  reachable on the location's own page.
 - **Category is a fixed `<select>` while Type is free text.** (Stage 07.) Stage
   10 Milestone 2 fixed the *display* half — the location view now reads
   "Site · Landmark", separated and capitalized in CSS — but Type is still an
@@ -346,6 +329,18 @@ step with itself.
   wants the question "which scenario renders this?" asked of it. The known
   remaining blind spot is anything behind an interaction (menus opened, dialogs,
   forms submitted), which the first entry in this section already covers.
+- **Nothing ever runs the Postgres dialect.** `sqlc generate` emits both
+  dialects and `internal/db` has a hand-written adapter for each, but every test,
+  the seeder and the dev server run SQLite: there is no local Postgres, no
+  compose file, and no Postgres job in CI. So the Postgres half of any query
+  change is verified only by compiling — which catches a type error and nothing
+  else. A wrong column order, a dialect-specific NULL or timestamp difference, or
+  an adapter that maps the wrong field would ship green. Noticed while changing
+  `ListTripDocuments` in Stage 10 Milestone 7, but it applies to every query in
+  the app. Cheapest fix that would actually mean something: a CI job with a
+  `postgres` service container running `go test ./...` against it, which needs
+  the test harness (`newTestServerWithStore`) to take the driver from an env var
+  instead of hard-coding `"sqlite"`.
 - **Contrast is measured but not asserted.** `tests/ui/contrast.js` reports
   ratios and has a `--min` flag, but nothing runs it in CI, so a regression like
   Stage 07's 2.54:1 primary button would not be caught automatically — only

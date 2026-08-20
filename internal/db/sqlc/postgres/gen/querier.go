@@ -63,7 +63,11 @@ type Querier interface {
 	// ListMapItemsByTrip: show_on_map is filtered in the store layer, not here,
 	// since its Go type (int64 vs bool) diverges by dialect (plan Section 2.1).
 	ListMapItemsByTrip(ctx context.Context, tripID string) ([]ListMapItemsByTripRow, error)
-	ListTripDocuments(ctx context.Context, tripID string) ([]Document, error)
+	// Every file on the trip, including those attached to a location: each row
+	// carries the trip's id regardless of item_id (see uploadDocument), so no join
+	// is needed to find them - only to name the location for display. LEFT, not
+	// INNER: a trip-level row has a NULL item_id and must survive the join.
+	ListTripDocuments(ctx context.Context, tripID string) ([]ListTripDocumentsRow, error)
 	ListTripsByOwner(ctx context.Context, ownerID string) ([]Trip, error)
 	SetChecklistItemChecked(ctx context.Context, arg SetChecklistItemCheckedParams) (ChecklistItem, error)
 	SetItemImage(ctx context.Context, arg SetItemImageParams) (Item, error)

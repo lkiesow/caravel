@@ -64,6 +64,30 @@ inside `.location-view__notes` is ≤ 24px (it is ~58px today).
 
 Closes the first "Bugs and rough edges" entry.
 
+**Done.** Landed as planned, both halves together. `.location-view__notes` lost
+its `white-space: pre-wrap` — the rule now holds only a comment explaining why
+the property must not come back, since the container holds rendered HTML and the
+next person to see loose-looking prose would reach for exactly that property.
+`internal/markdown` gained a package-level
+`goldmark.New(goldmark.WithRendererOptions(html.WithHardWraps()))` in place of
+the bare package-level `goldmark.Convert`, so single newlines survive as `<br>`
+instead of relying on CSS to preserve source whitespace. The sanitize step is
+untouched; `bluemonday.UGCPolicy()` already permits `<br>`.
+
+Verified: `make ci` green (123 keys in sync), plus a new
+`TestToSafeHTML_HardWraps` asserting a single newline yields one `<p>` with a
+`<br>` and a blank line yields two `<p>`s with none — proven non-vacuous with
+`scripts/without.sh internal/markdown/markdown.go`, which fails on
+`<p>first line\nsecond line</p>` without the change. In the browser at 324×756,
+on the seeded Kirkjufell location (a paragraph, an `<h2>`, a paragraph): computed
+`white-space` is now `normal` and the paragraph-to-`<h2>` gap measures **20px,
+down from the 58px** the backlog entry recorded — the whole note is 138px tall.
+The hard-wrap half was checked against the live API: PATCHing notes to
+`line one\nline two\n\nsecond para` returns
+`<p>line one<br>\nline two</p>\n<p>second para</p>`, and the seeded notes were
+PATCHed back afterwards (confirmed byte-identical to the original
+`notes_html`).
+
 ---
 
 ## 2. Three one-line consistency fixes

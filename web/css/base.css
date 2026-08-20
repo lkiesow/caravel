@@ -827,9 +827,16 @@ button {
   flex-shrink: 0;
 }
 
-.location-view__notes {
-  white-space: pre-wrap;
-}
+/* No `white-space: pre-wrap` here, deliberately. This container holds
+   *rendered HTML* (notes_html), not the plain text it held when notes were
+   authored and displayed raw — so pre-wrap preserved the newlines goldmark
+   leaves *between* block elements as literal blank lines, stacking on top of
+   each element's own margins. Measured on a real note: 58px between a
+   paragraph and the following <h2>, of which 38px was pure preserved
+   newline, with the same penalty before every list, list item and paragraph.
+   Single line breaks inside a paragraph still break, but via <br> from
+   goldmark's WithHardWraps (internal/markdown) rather than via CSS preserving
+   source whitespace — which is what makes dropping this safe. */
 
 .location-view__address {
   margin-top: 0;

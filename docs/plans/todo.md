@@ -22,21 +22,6 @@ scratch file removed, so there's only ever one list.
 
 Things that are wrong today, each confirmed against the current source.
 
-- **Rendered notes are spaced far too loosely — `white-space: pre-wrap` is the
-  cause, not the heading margins.** `.location-view__notes` (`base.css`) sets
-  `white-space: pre-wrap`, which made sense when notes were plain text but is
-  wrong now they're rendered to HTML: the newlines *between* block elements in
-  `notes_html` survive as literal blank lines, stacking on top of each element's
-  own margins. Measured on a real note: the gap between a paragraph and the
-  following `<h2>` is **58px with pre-wrap, 20px without** — 38px of it pure
-  preserved newline, and the same penalty applies before every list, list item
-  and paragraph. A page of notes that needed scrolling fits on one screen
-  without it. The h2 itself is fine (24px, 19.92px margins). Fix is to drop
-  `pre-wrap` — but note the trade-off it was presumably hiding: goldmark
-  collapses a *single* newline into a space, so a note relying on single line
-  breaks would reflow. If those should stay, enable goldmark's hard-wrap option
-  (`html.WithHardWraps()` in `internal/markdown`) at the same time, so line
-  breaks come from `<br>` rather than from CSS preserving source whitespace.
 - **The mobile map page swallows vertical scrolling.** (Stage 07.) On the Map tab
   at 324×756 the map is 424px tall starting at y=383, with only ~67px of page
   below it — so a touch drag starting anywhere in the lower half of the screen

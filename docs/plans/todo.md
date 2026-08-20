@@ -139,17 +139,43 @@ Direction already agreed or obviously wanted; none of it built.
 - **"Add to every day of this stay."** (Stage 01.) For multi-day items such as a
   3-night hotel, driven by the item's date range. Today adding an item to a day
   is manual, one day at a time, via each day's own dropdown.
+- **An account settings screen, reached from the user menu.** (From the user's
+  notes; this decides the "where does it live?" question the two entries below
+  used to carry.) Settings sits in the same menu as "Log out" and holds four
+  things, in rough order of readiness:
+    - a **language selector** — see below, the mechanism already exists;
+    - an **appearance selector** with three states, light / dark / **auto** —
+      "auto" being the current behaviour, so the control has to represent
+      "follow the OS" as a real choice rather than as the absence of one;
+    - **set my password**, for local accounts only (`auth_identities.provider
+      = 'local'`; an OIDC identity has no password here to change). Nothing
+      exists for this yet: `internal/auth` has Register, Authenticate,
+      StartSession, ValidateSession and Logout and no password-change path, and
+      there is no route. Wants the usual decisions — require the current
+      password, and whether changing it invalidates the user's other sessions
+      (it should);
+    - a **profile picture**. This one has a schema wrinkle: `media_assets.trip_id`
+      is `NOT NULL` and cascades from `trips`, so a user-scoped image has no
+      valid home today and deleting a trip would take an avatar with it. Needs a
+      migration — nullable `trip_id`, or a `user_id` column, or a separate table —
+      before the existing upload pipeline can be reused.
+  The screen is also what finally forces the `user-menu.js` → `menu.js` refactor
+  in the cleanup section: a second item in that menu, and an action item rather
+  than a selection, which is precisely the mode that component still lacks.
 - **An in-app language switcher.** `i18n.js` has a working `setLocale()` and a
   `localStorage` cache for it, but nothing calls it — confirmed again during
   Stage 09 that `setLocale` has no caller outside `i18n.js`. German is reachable
   only by changing the browser's language, and it renders cleanly when you do.
-  Needs a decision on where the control lives (user menu vs. a settings screen)
-  and whether the choice persists per account rather than per browser.
+  It belongs in the settings screen above. Still open: whether the choice
+  persists per account (a column on `users`, so it follows you between browsers)
+  or stays per browser as the `localStorage` cache implies.
 - **A manual light/dark theme toggle.** Theming is purely
   `prefers-color-scheme`-driven. Stage 01 deliberately structured it "so a manual
   `data-theme` override can be added later"; nothing in the tree sets
   `data-theme` today, so there's still no way to override the OS setting from
-  inside the app.
+  inside the app. Belongs in the settings screen above, as the three-state
+  light/dark/auto control described there — and the same per-account vs.
+  per-browser question applies as for the language.
 - **A trip journal with photos.** (Stage 01.) A `journal_entries` table
   (trip_id, date, body markdown) reusing the existing `media_assets` pipeline
   for photos.
@@ -191,6 +217,30 @@ together rather than bolting a column onto an existing table.
   shared (everyone can see *and* tick them). Explicitly for after real
   multi-user support exists; the visibility column wants designing alongside the
   roles above.
+- **Per-visibility files, on the same model as the checklists above.** (From the
+  user's notes.) The motivating case is a private one: uploading an identity card
+  or a boarding pass to a shared trip without everyone else on it seeing the
+  file. So this is not merely symmetry with checklists — for documents,
+  "personal" is the *default* people will expect for anything carrying their own
+  details, which makes the default itself a design question rather than just a
+  column value. Same dependency: design it with the roles above, not bolted on
+  after. The storage side is already indifferent — a document row carries
+  `trip_id` and an optional `item_id` and nothing else, so mechanically this is a
+  visibility column plus a predicate in `ListTripDocuments`/`ListItemDocuments`.
+  The interesting parts are who counts as the owner of a file and what a public
+  share link (see above) is allowed to expose.
+- **Per-visibility files, on the same model as the checklists above.** (From the
+  user's notes.) The motivating case is a private one: uploading an identity card
+  or a boarding pass to a shared trip without everyone else on it seeing the
+  file. So this is not merely symmetry with checklists — for documents, "personal"
+  is the *default* people will expect for anything with their own details on it,
+  which makes the default itself a design question rather than a column value.
+  Same dependency: it wants designing with the roles above, not bolted on
+  afterwards. Note the storage side is already indifferent — every document row
+  carries `trip_id` and an optional `item_id` and nothing else, so a visibility
+  column plus a filter in `ListTripDocuments`/`ListItemDocuments` is the shape,
+  with the interesting work being who counts as the author and what a shared link
+  (see above) is allowed to expose.
 - **Expenses / cost-splitting.** (Stage 01.) A new `expenses` table referencing
   `trip_id` and optionally `item_id`, with no changes to existing tables. The
   *splitting* half only means anything once several people share a trip, which
@@ -238,8 +288,11 @@ step with itself.
   wants the same mode, so one of those two should build it and the other
   should follow.
   Related: the user menu still has only "Log out" in it (Stage 02 built it
-  "structured so more items can be added later"), so an in-app language
-  switcher or a settings entry is the likely trigger for finishing this.
+  "structured so more items can be added later"). The trigger is now decided —
+  the settings screen in Planned features goes in that menu, giving it a second
+  item, and both entries in it ("Settings", "Log out") are actions rather than
+  selections. So whoever builds that screen builds the action-item mode, and the
+  ⋮ checklist menu inherits it.
 
 ---
 

@@ -4,6 +4,7 @@ import { navigate } from "../router.js";
 import { icon } from "../icon.js";
 import "../components/leaflet-map.js";
 import { renderLoading } from "../components/loading.js";
+import { renderFileList } from "../components/file-list.js";
 import { renderNotFoundPage } from "./not-found-page.js";
 
 const CATEGORY_COLORS = {
@@ -117,11 +118,7 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
           ? `
         <div class="editor-card">
           <h2 data-i18n="item.detail.files"></h2>
-          <ul class="files">
-            ${files
-              .map((d) => `<li><a href="${d.download_url}" target="_blank" rel="noopener">${escapeHtml(d.filename)}</a> <span class="file-size">${formatSize(d.size_bytes)}</span></li>`)
-              .join("")}
-          </ul>
+          <div class="file-list-slot"></div>
         </div>
       `
           : ""
@@ -132,6 +129,15 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
   `;
   translatePage(container);
 
+  // The same card the editor and the trip tab render, in read-only mode: no
+  // add row and no per-row menu, since everything editable on this page lives
+  // behind the Edit button at the bottom. The rows are handed over rather than
+  // refetched - they were already needed above to decide whether this card
+  // exists at all.
+  if (files.length) {
+    renderFileList(container.querySelector(".file-list-slot"), `/items/${itemId}/files`, { rows: files, readOnly: true });
+  }
+
   container.querySelector("h1").textContent = item.title;
   container.querySelector(".category-label").textContent = t(`item.category.${item.category}`);
   if (item.type) container.querySelector(".type-label").textContent = item.type;
@@ -141,12 +147,6 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
   container.querySelector('[data-action="edit"]').addEventListener("click", () => {
     navigate(`/trips/${tripId}/locations/${itemId}/edit`);
   });
-}
-
-function formatSize(bytes) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function escapeHtml(s) {

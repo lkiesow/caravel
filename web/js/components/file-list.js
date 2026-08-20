@@ -20,6 +20,12 @@ import { renderLoading } from "./loading.js";
 // there unlabelled without needing a mode - on a location's own page every file
 // belongs to that location and saying so on each row would be noise.
 //
+// Read-only mode: pass `readOnly: true` for a list with no add row and no
+// per-row menu - the location *view* page, where editing lives behind its Edit
+// button. That caller already has the rows (it fetches them to decide whether
+// to render its card at all), so it passes them as `rows` and the component
+// skips the request rather than asking for the same list twice.
+//
 // Staging mode: pass `path: null` plus a `staged` array to collect picks
 // in memory instead of uploading them. Nothing is fetched and nothing is
 // POSTed; each pick is pushed as { file, note } and the list renders from
@@ -27,11 +33,14 @@ import { renderLoading } from "./loading.js";
 // brand-new location can carry files, then uploads them itself once
 // the item ID exists - a multipart upload can't be part of the JSON create
 // request, so post-create is the only option regardless (see todo.md).
-export async function renderFileList(container, path, { staged } = {}) {
+export async function renderFileList(container, path, { staged, rows: given, readOnly = false } = {}) {
   const isStaging = !path;
-  // Nothing is fetched in staging mode, so there is nothing to wait for.
-  if (!isStaging) renderLoading(container);
-  let files = isStaging ? [] : await api.get(path);
+  // Nothing is fetched in staging mode, and nothing when the caller already
+  // has the rows (the location view page fetches them itself to decide whether
+  // to render its card at all - refetching here would be a second request for
+  // the same list).
+  if (!isStaging && !given) renderLoading(container);
+  let files = isStaging ? [] : given ?? (await api.get(path));
 
   // Full rebuild on every call, list and add-form together - not a
   // partial re-render that reuses a persistent form across calls. The
@@ -53,8 +62,13 @@ export async function renderFileList(container, path, { staged } = {}) {
   function render() {
     container.innerHTML = `
       <div class="file-list">
+        <p class="file-list__summary" hidden></p>
         <ul class="files"></ul>
         <p class="file-list-empty" data-i18n="files.empty" hidden></p>
+        ${
+          readOnly
+            ? ""
+            : `
         <p class="file-form__error" role="alert" hidden></p>
         <form class="file-form">
           <label class="image-field__upload">
@@ -64,6 +78,8 @@ export async function renderFileList(container, path, { staged } = {}) {
           <input type="text" name="note" data-i18n-placeholder="files.notePlaceholder" />
           <button type="submit" class="btn btn-primary btn-row">${isStaging ? `${icon("plus")} <span data-i18n="files.stage"></span>` : `${icon("upload")} <span data-i18n="files.upload"></span>`}</button>
         </form>
+        `
+        }
       </div>
     `;
     translatePage(container);
@@ -73,24 +89,75 @@ export async function renderFileList(container, path, { staged } = {}) {
     const rows = isStaging ? staged : files;
     emptyState.hidden = rows.length > 0;
 
+    // Count and total size, above the list. The heading itself belongs to the
+    // caller (a tab, or an .editor-card), so this says "3 files - 459 KB"
+    // rather than repeating the word the heading already carries. Plural via
+    // t()'s count argument, so German gets its own two forms too.
+    const summary = container.querySelector(".file-list__summary");
+    summary.hidden = rows.length === 0;
+    if (rows.length) {
+      const total = rows.reduce((sum, row) => sum + (isStaging ? row.file.size : row.size_bytes), 0);
+      summary.textContent = t("files.summary", { total: formatSize(total) }, rows.length);
+    }
+
     rows.forEach((row, i) => {
+      // One view model for both modes: a staged pick is a File object
+      // (name/size/type and nothing else), an uploaded one is an API row, and
+      // every difference between them belongs here rather than in two copies
+      // of the card template.
+      const view = isStaging
+        ? { filename: row.file.name, size: row.file.size, contentType: row.file.type, note: row.note, itemTitle: null, href: null }
+        : { filename: row.filename, size: row.size_bytes, contentType: row.content_type, note: row.note, itemTitle: row.item_title, href: row.download_url };
+
+      // The note wins the title when there is one, and the filename drops to
+      // the meta line. A note is the only readable name a file uploaded as
+      // "5d2ffd5f-b621-41d9-9b10-173d5a72f860.png" will ever have, and it used
+      // to render as a small italic afterthought behind exactly that string.
+      const title = view.note ? escapeHtml(view.note) : filenameHtml(view.filename);
+
+      const sep = (variant = "") => `<span class="file-card__sep${variant ? ` file-card__sep--${variant}` : ""}" aria-hidden="true">·</span>`;
+
+      // The size appears twice in the markup and exactly once on screen: the
+      // standalone column is hidden under 640px, this copy shown, and vice
+      // versa above it. Two nodes rather than one because CSS can move a box
+      // within its own flex parent but cannot move it into a different one,
+      // and on a phone there is no room for a size column beside the name.
+      // The inline size carries its own separator (hidden with it above 640px,
+      // where the standalone size column takes over) - otherwise desktop showed
+      // a stray leading dot in front of the filename.
+      const metaHead =
+        `<span class="file-card__size file-card__size--inline">${formatSize(view.size)}</span>` + (view.note ? `${sep("size")}${filenameHtml(view.filename)}` : "");
+
+      // Then the desktop-only "No note" hint, and the location this file is
+      // attached to (trip-level lists only). Order matters for the punctuation:
+      // every separator here has to have something visible in front of it at
+      // its own breakpoint, or it strands a dot at the start of the line.
+      //   mobile:  [size · filename] / [location on its own line]
+      //   desktop: [filename or "No note" · location]  (size is the column)
+      // So "No note" needs no separator of its own - it is only ever first -
+      // while the location's is desktop-only, hidden where the location wraps.
+      const metaTail =
+        (view.note ? "" : `<span class="file-card__nonote">${escapeHtml(t("files.noNote"))}</span>`) +
+        (view.itemTitle ? `${sep("source")}<span class="file-card__source">${escapeHtml(view.itemTitle)}</span>` : "");
+
+      const body = `
+        <span class="file-card__tile">${icon(tileIconName(view.contentType))}</span>
+        <span class="file-card__text">
+          <span class="file-card__name">${title}</span>
+          <span class="file-card__meta">${metaHead}${metaTail}</span>
+        </span>
+      `;
+
       const li = document.createElement("li");
-      // A staged row has no id, no URL and nothing uploaded yet, so it's
-      // plain text with no download link, and removing it needs no
-      // confirmation - it only drops a local pick.
-      li.innerHTML = isStaging
-        ? `
-        <span>${escapeHtml(row.file.name)}</span>
-        <span class="file-size">${formatSize(row.file.size)}</span>
-        ${row.note ? `<span class="file-note">${escapeHtml(row.note)}</span>` : ""}
-        <span class="file-actions"></span>
-      `
-        : `
-        <a href="${row.download_url}" target="_blank" rel="noopener">${escapeHtml(row.filename)}</a>
-        <span class="file-size">${formatSize(row.size_bytes)}</span>
-        ${row.item_title ? `<span class="file-source">${escapeHtml(row.item_title)}</span>` : ""}
-        ${row.note ? `<span class="file-note">${escapeHtml(row.note)}</span>` : ""}
-        <span class="file-actions"></span>
+      li.className = "file-card";
+      // The whole card is the download link, which is also what clears the
+      // 44px tap target without a min-height propping it up - the old row was
+      // a bare filename link measuring 22px. A staged pick has nothing to
+      // download yet, so there its body is a plain span.
+      li.innerHTML = `
+        ${view.href ? `<a class="file-card__body" href="${view.href}" target="_blank" rel="noopener">${body}</a>` : `<span class="file-card__body">${body}</span>`}
+        <span class="file-card__size">${formatSize(view.size)}</span>
+        ${readOnly ? "" : `<span class="file-actions"></span>`}
       `;
 
       // One overflow menu per row rather than a bare delete icon: a note can
@@ -99,6 +166,10 @@ export async function renderFileList(container, path, { staged } = {}) {
       // pile-up this row already has too much of. renderMenu's action-item
       // mode exists for this - these are things the menu does, not a
       // selection it holds.
+      if (readOnly) {
+        list.appendChild(li);
+        return;
+      }
       renderMenu(li.querySelector(".file-actions"), {
         iconName: "ellipsis",
         chevron: false,
@@ -141,6 +212,10 @@ export async function renderFileList(container, path, { staged } = {}) {
       });
       list.appendChild(li);
     });
+
+    // Read-only mode stops here: no add row, so nothing below this line has a
+    // node to bind to.
+    if (readOnly) return;
 
     const form = container.querySelector(".file-form");
     const fileInput = form.file;
@@ -189,6 +264,30 @@ export async function renderFileList(container, path, { staged } = {}) {
   }
 
   render();
+}
+
+// Which tile a file gets, from the content type the server sniffed on upload
+// (never the client-declared one - see internal/httpapi/files.go). Three
+// buckets, because that is as much as a 36px tile can say: a picture, a
+// document, or something else.
+function tileIconName(contentType) {
+  const type = (contentType || "").split(";")[0].trim();
+  if (type.startsWith("image/")) return "image";
+  if (type.startsWith("text/") || type === "application/pdf") return "file-text";
+  return "file";
+}
+
+// A filename split into stem and extension, so the stem can ellipsize while
+// the extension stays visible: "5d2ffd5f-b621-4... .png" rather than
+// "5d2ffd5f-b621-41d9-9b10-173..." with the one part that says what the file
+// *is* cut off. CSS-only (the stem gets overflow: hidden, the extension
+// flex: none), so there is no measuring and no resize listener.
+function filenameHtml(filename) {
+  const dot = filename.lastIndexOf(".");
+  const hasExt = dot > 0 && dot < filename.length - 1;
+  const stem = hasExt ? filename.slice(0, dot) : filename;
+  const ext = hasExt ? filename.slice(dot) : "";
+  return `<span class="file-card__filename"><span class="file-card__stem">${escapeHtml(stem)}</span>${ext ? `<span class="file-card__ext">${escapeHtml(ext)}</span>` : ""}</span>`;
 }
 
 function formatSize(bytes) {

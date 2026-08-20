@@ -369,6 +369,62 @@ pass at 324×756 via the Playwright MCP tools against `make dev`, asserting the
 computed layout — card count, no horizontal overflow, the tile/name/meta
 present — rather than eyeballing a screenshot.
 
+**Done.** The card is as drawn: type tile, name, one meta line, size, ⋮. `file`
+joined the sprite (`ICONS` + regenerate per `CLAUDE.md`; the diff is four added
+lines and no existing symbol changed), and `tileIconName` buckets the
+server-sniffed content type three ways — `image/*`, `text/*` + `application/pdf`,
+everything else. The two render modes collapsed into one template via a small
+view model, so a staged pick (a `File` object) and an uploaded row (an API row)
+no longer have separate card markup — that also removes the duplication the old
+two-branch template had. Middle truncation is CSS-only as planned: the stem
+ellipsizes inside a wrapper, the extension never does, and a storage-blob name
+reads `5d2ffd5f-b621-41….png`.
+
+**Deviation, deliberate:** Milestone 6's "point `location-view-page.js` at the
+shared card" is done here instead. Keeping the old row CSS alive for one more
+commit *just* for that page would have meant either two file-row designs in the
+tree or a throwaway `files--plain` class, both worse than moving one bullet
+forward. It needed a `readOnly` mode (no add row, no ⋮ — everything editable on
+that page lives behind its Edit button) plus a `rows` option so the caller can
+hand over the list it already fetched to decide whether to render its card at
+all; verified as exactly one request for that list, not two. Its duplicate
+`formatSize` went with it. Milestone 6 keeps the `format.js` move and the
+i18n/dead-CSS sweep.
+
+**Punctuation was the whole difficulty**, and it took three passes. The meta
+line's parts differ by breakpoint — the size is inline on a phone and a
+right-hand column above 640px, "No note" is desktop-only, and the location wraps
+to its own line on a phone — so a naive `join("·")` stranded a dot at the start
+or end of a line in four different combinations. What works: separators are
+nodes with their own variant class, each hidden together with the element it
+belongs to, and the parts are ordered so every separator always has something
+visible in front of it at its own breakpoint — `[size · filename] / [location]`
+on mobile, `[filename or "No note" · location]` with the size in the column on
+desktop. Two other fixes on the way: the meta line wraps rather than shrinking
+(inline, the filename truncated to "hotel…" *and* the location to "Foss Ho…", so
+neither said anything), and the stem/extension pair needed a wrapper of its own,
+because as bare flex items they inherited the meta line's gap and an untruncated
+name read as "hotel-booking .txt".
+
+**One real bug found by measuring:** the card body came out **42px** tall — the
+tap-target guideline missed by 2px, and missed in exactly the way Stage 10
+Milestone 7 described, with the height coming from however tall the text
+happened to be. `.file-card__body` now carries `min-height: var(--tap-min)`
+itself instead of hoping its contents are tall enough.
+
+**Verified.** `make ci` green, `make test-ui` **14/14** (the overflow and
+tap-target sweeps cover the new card at both widths, in both themes). By hand
+against `make dev` at 324×756 and 1280×800, on all three surfaces — trip Files
+tab, location view, location editor: mobile shows `28 B · hotel-booking.txt`
+with the location on its own line and no truncation; desktop shows the filename
+and location on the meta line with the size right-aligned and no stray leading
+dot; the summary reads "2 files · 56 B" and, in German, "2 Dateien · 56 B" and
+"1 Datei · 28 B" — both plural forms exercised. Two throwaway uploads covered
+what the seed cannot: a `.png` gave the image tile and a long name to truncate,
+an `application/octet-stream` gave the generic `file` tile, and both showed the
+"No note" hint. Both were deleted afterwards, so the seed is back to its four
+files.
+
 ---
 
 ## 5. The drop zone, and editing a note

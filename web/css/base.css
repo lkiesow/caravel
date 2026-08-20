@@ -1337,10 +1337,13 @@ button {
   min-width: 0;
 }
 
-.file-note {
+/* Count and total size above the list. Muted and small: it is a fact about the
+   list, not a heading - the heading belongs to whatever card or tab the list
+   sits in. */
+.file-list__summary {
   color: var(--color-text-muted);
-  font-size: 0.875rem;
-  font-style: italic;
+  font-size: 0.8rem;
+  margin: 0 0 0.5rem;
 }
 
 .files {
@@ -1352,44 +1355,147 @@ button {
   gap: 0.375rem;
 }
 
-.files > li {
+/* A file is a card, not a line of text with a link in it.
+   Before Stage 11 a row was filename-link + size + location + note + delete on
+   one flex line, which needed a wrap override and an `order` shuffle to fit a
+   phone at all, and whose only tap target was the filename itself (22px, propped
+   up to 44 by a min-height that was standing in for a real target). The card
+   *is* the link, so it clears the guideline by construction, and everything
+   secondary moved onto one meta line underneath the name. */
+.file-card {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
 }
 
-/* The row's overflow menu (menu.js, action-item mode). The wrapper takes the
-   margin-left: auto that the bare delete button used to carry, so the actions
-   still sit at the right edge of the row; the trigger itself borrows
-   .icon-remove's look above, including its 44px mobile target. */
-.file-actions {
+.file-card__body {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  /* The card body is the tap target for the whole card, so it carries the
+     floor itself rather than relying on its contents happening to be tall
+     enough - a two-line card measured 42px, which is the same "the text
+     happened to fit" accident that the old filename link was passing on. */
+  min-height: var(--tap-min);
+  /* min-width: 0 all the way down the chain, or the ellipsis below never
+     happens: a flex item's automatic minimum size is its content, so one long
+     filename would push the size and the ⋮ off the card instead of truncating. */
+  min-width: 0;
+  flex: 1;
+  color: inherit;
+  text-decoration: none;
+}
+
+/* The type tile. Three buckets (picture / document / other - see
+   file-list.js's tileIconName), tinted with the accent so the card has one
+   fixed anchor on the left whatever the name beside it does. */
+.file-card__tile {
   display: inline-flex;
-  margin-left: auto;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  color: var(--color-accent);
 }
 
-.file-size {
-  color: var(--color-text-muted);
-  font-size: 0.8rem;
+.file-card__text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
 }
 
-/* Which location a file is attached to, shown only on the trip-level list and
-   only for the rows that have one. Set apart with a leading em dash rather than
-   a chip or a border: the row is already filename + size + maybe a note, and a
-   fourth boxed element on one line at 324px would be a wall. min-width: 0 plus
-   ellipsis so a long location title truncates instead of pushing the delete
-   button off the row - the row is a flex line and the title is the one part
-   with no bound on its length. */
-.file-source {
+.file-card__name,
+.file-card__meta {
+  display: flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.file-card__name {
+  /* Not bold-by-default: the name is the one thing on the card that has to be
+     readable at a glance, and the meta line under it is already muted and
+     smaller, which is contrast enough. */
+  overflow: hidden;
+}
+
+.file-card__meta {
   color: var(--color-text-muted);
   font-size: 0.8rem;
+  overflow: hidden;
+  /* Wraps rather than squeezing everything: at 324px "28 B · hotel-booking.txt
+     · Foss Hotel Reykjavik" cannot fit one line, and without this the flex
+     items all shrink at once - the filename truncated to "hotel…" *and* the
+     location to "Foss Ho…", so neither said anything. Wrapping lets the
+     location take its own line and both stay readable, which is the same
+     conclusion the old row reached with an `order` shuffle. */
+  flex-wrap: wrap;
+}
+
+/* Middle truncation without measuring anything: the stem ellipsizes, the
+   extension never does, so a storage-blob filename reads
+   "5d2ffd5f-b621-4….png" instead of losing the one part that says what the
+   file is. The wrapper exists to hold the two halves flush against each other -
+   as bare items of .file-card__meta they inherited its gap and an untruncated
+   name read as "hotel-booking .txt". */
+.file-card__filename {
+  display: inline-flex;
+  min-width: 0;
+}
+
+.file-card__stem {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.file-source::before {
-  content: "— ";
+.file-card__ext,
+.file-card__sep,
+.file-card__size {
+  flex: none;
+}
+
+.file-card__nonote,
+.file-card__source {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+
+.file-card__size {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+/* The standalone size column, which only exists above 640px - see the
+   media query at the end of this file, and file-list.js on why the size is
+   two nodes rather than one. */
+.file-card > .file-card__size {
+  margin-left: auto;
+}
+
+.file-card__size--inline,
+.file-card__sep--size {
+  display: none;
+}
+
+/* The card's overflow menu (menu.js, action-item mode). The trigger borrows
+   .icon-remove's look above, including its 44px mobile target. */
+.file-actions {
+  display: inline-flex;
+  flex: none;
 }
 
 .file-list-empty {
@@ -1484,7 +1590,6 @@ button {
   .back-link,
   .itinerary-entry__link,
   .link-list li a,
-  .files > li > a,
   .location-view__maps-link,
   .checklist-item label,
   .location-form label.location-form__checkbox {
@@ -1496,7 +1601,6 @@ button {
      measures 44px but doesn't feel like it. */
   .back-link,
   .link-list li a,
-  .files > li > a,
   .location-view__maps-link,
   .checklist-item label,
   .location-form label.location-form__checkbox {
@@ -1539,29 +1643,38 @@ button {
     align-items: stretch;
   }
 
-  /* A file row is filename + size + which location it belongs to + note +
-     delete, which is too much for 324px on one line: the location truncated to
-     "— Foss…", saying only that there *is* one, while the filename wrapped to
-     two lines beside it. So the metadata drops to a second line and stops
-     truncating there.
-
-     `order` rather than DOM order: the delete button stays on the first line at
-     the right edge where every other row in the app puts it, while the source
-     and note - which come *before* it in the markup, and are read in that
-     sensible order by assistive tech - flow underneath. */
-  .files > li {
-    flex-wrap: wrap;
+  /* No room for a size column beside the name at 324px, so the standalone one
+     goes and the copy inside the meta line arrives - see file-list.js on why
+     the size is two nodes. This is the swap the whole two-node arrangement
+     exists for; exactly one of them is ever displayed. */
+  .file-card > .file-card__size {
+    display: none;
   }
 
-  .files > li > .file-source,
-  .files > li > .file-note {
-    order: 1;
+  .file-card__size--inline,
+  .file-card__sep--size {
+    display: inline;
   }
 
-  .files > li > .file-source {
-    overflow: visible;
-    text-overflow: clip;
+  /* "No note" is a desktop-only hint that a note can be added - on a phone the
+     meta line has the size in it already, and "28 B · No note" spends a whole
+     line saying almost nothing. */
+  .file-card__nonote {
+    display: none;
+  }
+
+  /* The location takes a line of its own here. Inline it was the item with no
+     bound on its length competing with the filename, and both lost: "hotel…"
+     next to "Foss Ho…" says only that there is a file and a location. Its
+     separator goes with it, for the same stranded-dot reason. */
+  .file-card__source {
+    flex-basis: 100%;
     white-space: normal;
+    overflow: visible;
+  }
+
+  .file-card__sep--source {
+    display: none;
   }
 
   .image-field__upload {

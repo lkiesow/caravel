@@ -325,14 +325,6 @@ step with itself.
   small — but if the map becomes a primary interaction surface on phones, the
   zoom buttons are worth revisiting. (The legend, which *is* ours, was fixed in
   that milestone via `leaflet-map.js`'s own shadow styles.)
-- **`web/sw.js` is never syntax-checked.** `scripts/check_js.sh` walks `web/js`
-  only, and the service worker lives one level up, so a syntax error in it
-  reaches the browser with `make ci` green — the same class of hole Stage 08
-  Milestone 1 closed, one directory over. It needs the *opposite* parse mode:
-  `app.js` registers it via `navigator.serviceWorker.register("/sw.js")` with no
-  `{type: "module"}`, so it is a classic script and `node --check` (script mode)
-  is correct for it. So this isn't a one-line widening of the `find`; it wants a
-  second check with the other mode.
 - **`scripts/i18n.py unused` is not wired into `make ci`.** It has a `--strict`
   flag that exits non-zero, but 9 keys (the `trip.tabs.*` and `item.category.*`
   families) are only reachable via runtime-composed keys and so are unprovable
@@ -357,14 +349,13 @@ step with itself.
   in a `GREP` pattern, meaning Playwright ran no tests at all) reads as proof.
   Worth having it distinguish "the command failed" from "the command didn't
   run", or at least echoing enough output that the reader can tell.
-- **A startup banner carrying the build's git SHA.** The other half of the
-  stale-binary problem left over after Stage 08 Milestone 3 built
-  `make dev-marker`: that check needs you to *supply* a marker string, and the
-  string has to be one the code actually uses (an unused Go const is folded away
-  and never reaches the binary). A SHA stamped in at build time via
-  `-ldflags -X` and logged at startup — ideally also returned by
-  `/api/health` — would let any test assert which build it is talking to without
-  inventing a marker each time.
+  Fourth, and the most convincing disguise of that third one, from Stage 10
+  Milestone 5: reverting the file under test removed a struct the *test*
+  referenced, so `go test` failed to **compile** and `without.sh` reported
+  "OK — genuinely depends on your change" with not one assertion having run. A
+  compile error reads as a test failure in the output, so this is the case least
+  likely to be noticed. Both want the same fix: tell "failed" apart from "never
+  ran".
 
 ---
 

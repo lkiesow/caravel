@@ -354,6 +354,62 @@ erroring.
 
 Closes the `sw.js` and startup-banner entries.
 
+**Done.** Both landed, and the `sw.js` half turned out to be a trap worth
+recording.
+
+**`node --check <path>` is not script mode on Node 22.** The plan (and the
+backlog entry) both said to use it, on the reasoning that a path argument means
+CommonJS. It does not any more: Node 22 detects module syntax and silently
+re-parses as ESM, so an `import` statement added to `sw.js` **passed** that check
+— while the browser, loading it via `register("/sw.js")` with no
+`{type: "module"}`, would refuse it outright. Caught by testing the mode rather
+than only the failure, and the pass now uses `node --input-type=commonjs --check`
+over stdin, mirroring the module pass for the same reason: the mode has to be
+stated, not inferred. Second counter, second zero guard, so moving `sw.js` under
+`web/js` fails loudly rather than silently checking nothing.
+
+For the version: `internal/buildinfo` holds `var Version = "dev"`, stamped at
+link time. `scripts/version.sh` owns the string (short SHA plus `-dirty`,
+`unknown` outside a checkout) because the Makefile and `scripts/dev_server.sh`
+both start servers and would otherwise be free to disagree — `dev-restart` runs
+its own `go run`, so without that the restarted dev server would have reported
+`dev` while `make dev` reported a SHA. `run`, `dev` and `build` all stamp it; the
+startup banner logs it; `/api/health` returns it (now via `writeJSON`, with a
+`healthResponse` struct, instead of hand-written bytes).
+
+Added beyond the plan: **`make dev-version`**, which asks the running server what
+build it is and compares with the tree. That is the payoff the backlog entry was
+after — `dev-marker` answers the same question but only with a marker string you
+have to invent per test, whereas the stamped version is always present. Its
+limitation is documented in the Makefile: two `-dirty` versions matching means
+"same commit, both dirty", not "same code", so uncommitted edits still want
+`dev-marker` with a real string.
+
+Verified, and precise about what each check proves:
+
+- **The `sw.js` pass is not vacuous, in both directions.** A plain syntax error
+  (`const broken = ;`) fails it, naming the file. An `import` statement fails it
+  too — the check that the *mode* is right, and the one that would have passed
+  under `node --check <path>`.
+- **The stamping is verified at runtime, four ways**, because that is the only
+  thing that can prove `-ldflags` works: `make build && ./bin/caravel` logs
+  `caravel ea02bf2-dirty listening on :8099` and `/api/health` returns
+  `{"status":"ok","version":"ea02bf2-dirty"}`; a bare `go build` with no ldflags
+  reports `dev` in both places, degrading rather than erroring; a
+  `make dev-restart` through `dev_server.sh` reports the stamped version, not
+  `dev`; and `make dev-version` prints "matches this tree", reports "the server
+  is stale" against the unstamped binary (exit 1), and "no server answered"
+  against a dead port (exit 1).
+- **The Go test guards the response *shape*, not the stamping** —
+  `TestHealthReportsStatusAndVersion` asserts 200, `application/json`,
+  `status: "ok"` and a non-empty `version` equal to `buildinfo.Version`. Under
+  `go test` there are no ldflags, so both sides are `"dev"`: this test would not
+  notice the stamping breaking. Worth stating plainly, because
+  `scripts/without.sh internal/httpapi/router.go` "passes" here only by failing
+  to *compile* — exactly the false-proof its own backlog entry describes, so it
+  is not evidence of anything.
+- `make ci` green (31 modules + 1 script, 126 keys) and `make test-ui` 9/9.
+
 ---
 
 ## 6. UI suite: stop the false 429s, and catch content overflowing its box

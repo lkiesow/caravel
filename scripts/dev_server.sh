@@ -124,8 +124,12 @@ stop_port() {
 start_server() {
 	mkdir -p "$LOG_DIR"
 	: > "$LOG_FILE"
+	# Stamped the same way `make dev` and `make build` stamp it, so a restarted
+	# dev server reports the same kind of version as any other - see
+	# scripts/version.sh and internal/buildinfo.
+	local ldflags="-X caravel/internal/buildinfo.Version=$("$(dirname "$0")/version.sh")"
 	# setsid + nohup so the server outlives this script and make's process group.
-	CARAVEL_WEB_DIR=web setsid nohup go run ./cmd/caravel >>"$LOG_FILE" 2>&1 &
+	CARAVEL_WEB_DIR=web setsid nohup go run -ldflags "$ldflags" ./cmd/caravel >>"$LOG_FILE" 2>&1 &
 	local runner=$!
 	echo "dev-restart: starting (go run pid ${runner}, compiling…), logging to ${LOG_FILE}"
 

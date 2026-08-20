@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"caravel/internal/auth"
+	"caravel/internal/buildinfo"
 	"caravel/internal/db"
 	"caravel/internal/storagefs"
 )
@@ -170,13 +171,20 @@ func (s *Server) buildRouter() chi.Router {
 	return r
 }
 
+type healthResponse struct {
+	Status  string `json:"status"`
+	Version string `json:"version"`
+}
+
+// The version is reported here as well as in the startup banner so a test, a
+// deploy script or a person can ask the *running* server what it is, without
+// access to its logs — the banner is only visible to whoever started it. This
+// endpoint is unauthenticated, so the SHA is public; for a self-hosted app
+// whose source is public anyway that is information, not a secret.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
 	if err := s.DB.PingContext(r.Context()); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		w.Write([]byte(`{"status":"error"}`))
+		writeJSON(w, http.StatusServiceUnavailable, healthResponse{Status: "error", Version: buildinfo.Version})
 		return
 	}
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status":"ok"}`))
+	writeJSON(w, http.StatusOK, healthResponse{Status: "ok", Version: buildinfo.Version})
 }

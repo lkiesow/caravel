@@ -9,6 +9,7 @@ import (
 
 	webassets "caravel"
 	"caravel/internal/auth"
+	"caravel/internal/buildinfo"
 	"caravel/internal/config"
 	"caravel/internal/db"
 	"caravel/internal/httpapi"
@@ -43,7 +44,7 @@ func main() {
 	webFS := httpapi.WebFS(webassets.FS(), cfg.WebDir)
 	server := httpapi.NewServer(dbConn, store, authService, blob, webFS, cfg.WebDir != "", cfg.OpenSignup)
 
-	log.Printf("caravel listening on :%s (db=%s)", cfg.Port, cfg.DBDriver)
+	log.Printf("caravel %s listening on :%s (db=%s)", buildinfo.Version, cfg.Port, cfg.DBDriver)
 	if err := http.ListenAndServe(":"+cfg.Port, server); err != nil {
 		log.Fatalf("server: %v", err)
 	}

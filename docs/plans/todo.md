@@ -67,11 +67,6 @@ Things that are wrong today, each confirmed against the current source.
   carrying "hotel", "Hotel" and "hostel". What's left is the real question:
   derive Type from a per-category list (a `<select>` that changes options with
   the category, or a `<datalist>` of suggestions that still allows anything).
-- **A trip's cover photo isn't shown anywhere on its default view.** (Stage 05.)
-  Removing the Overview tab took away the only place the photo was visible
-  without opening Settings. It's still settable and previewable there, just no
-  longer visible by default. Worth revisiting whether it should reappear near
-  the title/subtitle/dates block now that layout has settled.
 - **The cover photo and files are still a post-create upload.** All that is left
   of "create-mode writes aren't atomic" (Stage 06 Milestone 4) after Stage 09
   Milestones 1–2 made the item and its location/links/dates one transactional
@@ -297,11 +292,18 @@ step with itself.
   survived every sweep until Stage 09 Milestone 6, because the `full` scenario
   created no item links, so those cards only rendered their empty state. One was
   found only because leftover manual test data happened to be in the database
-  that run. The seeder now gives that location a link and a date; the same pass
-  is worth doing over the remaining empty states, since no scenario sets an item
-  preview image or a trip cover photo, so `.image-field__preview`,
-  `.itinerary-entry__thumb` and the location card's thumbnail are never measured
-  by anything.
+  that run. The seeder now gives that location a link and a date, and Stage 10
+  Milestone 3 closed the image half: the `full` scenario carries a trip cover
+  photo and an image on Kirkjufell (embedded fixtures in `cmd/seed/images/`,
+  added through the same `imaging.DecodeAndResize` path a real upload takes), so
+  `.image-field__preview`, `.itinerary-entry__thumb`, the trip card's thumbnail
+  and the cover banner are all swept now — and deliberately only on that
+  scenario, so the no-image path stays covered too. What's left is the habit
+  rather than a named gap: an element that only renders when data exists is
+  invisible to the sweeps until some scenario creates that data, so anything new
+  wants the question "which scenario renders this?" asked of it. The known
+  remaining blind spot is anything behind an interaction (menus opened, dialogs,
+  forms submitted), which the first entry in this section already covers.
 - **Contrast is measured but not asserted.** `tests/ui/contrast.js` reports
   ratios and has a `--min` flag, but nothing runs it in CI, so a regression like
   Stage 07's 2.54:1 primary button would not be caught automatically — only

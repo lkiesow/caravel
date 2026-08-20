@@ -760,6 +760,7 @@ button {
   }
 
   .trip-detail .back-link,
+  .trip-detail__cover,
   .trip-detail .page__header,
   .trip-detail .trip-summary {
     grid-column: 1 / -1;
@@ -780,6 +781,26 @@ button {
   .trip-tabs > button.active {
     border-left-color: var(--color-accent);
   }
+}
+
+/* The trip's cover photo, shown on every tab above the title - the only place
+   it is visible outside Settings since Stage 05 removed the Overview tab.
+   Rendered only when the trip actually has one (see trip-detail-page.js);
+   there is deliberately no placeholder box for trips without one.
+
+   A banner rather than a thumbnail, so it reads as the page's own image rather
+   than as content inside a tab. aspect-ratio sets the shape and object-fit
+   crops to it, so a portrait or square upload can't push the tabs off the
+   first screen; max-height then caps it on wide viewports, where 16/6 of a
+   60rem column would otherwise be a ~340px band before any content. */
+.trip-detail__cover {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 6;
+  max-height: 14rem;
+  object-fit: cover;
+  border-radius: 0.5rem;
+  margin-bottom: 1rem;
 }
 
 /* Tighter than .page__header's default 1rem: this page follows the title

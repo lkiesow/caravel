@@ -51,6 +51,7 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
     container.innerHTML = `
       <div class="page trip-detail">
         <a href="/trips" data-link class="back-link">${icon("arrow-left")} <span data-i18n="common.home"></span></a>
+        ${trip.preview_image_url ? `<img class="trip-detail__cover" alt="" />` : ""}
         <div class="page__header">
           <h1></h1>
         </div>
@@ -69,6 +70,13 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
     container.querySelector(".page__header h1").textContent = trip.title;
     const subtitleEl = container.querySelector(".trip-summary__subtitle");
     if (subtitleEl) subtitleEl.textContent = trip.subtitle;
+    // src assigned as a property rather than interpolated into the template
+    // above, the same way the title and subtitle are - no local escape helper
+    // needed, and the URL can't break out of an attribute it never enters.
+    // alt="" because it's decorative: the <h1> right below already names the
+    // trip, so announcing the photo would just repeat it.
+    const coverEl = container.querySelector(".trip-detail__cover");
+    if (coverEl) coverEl.src = trip.preview_image_url;
 
     container.querySelectorAll("[data-tab]").forEach((btn) => {
       btn.addEventListener("click", () => {

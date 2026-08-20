@@ -184,6 +184,49 @@ element.
 
 Closes the "cover photo isn't shown anywhere on its default view" entry.
 
+**Done.** Landed with **one addition to scope**: there was no test data to see it
+with. No scenario set a trip cover photo or an item image, so this milestone
+would have been verifiable only by hand-uploading a file every time — and that
+same gap is a separate backlog entry ("the UI sweeps only measure what the seed
+actually renders", which named `.image-field__preview`,
+`.itinerary-entry__thumb` and the location card's thumbnail as never measured by
+anything). So the seeder grew image support first.
+
+Two fixture JPEGs (`cmd/seed/images/`, ~343×200, ~19KB each) are cropped from a
+contact sheet the repo now keeps at `docs/plans/preview-images.jpg` for
+provenance, the same way `caravel-logo-drafts.png` is kept. They are embedded
+with `//go:embed images/*.jpg` — the precedent being `internal/db`'s migrations —
+so `go run ./cmd/seed` works from any directory. A new `addImage` helper puts
+them through `imaging.DecodeAndResize`, the *same* call `handleUploadMedia`
+makes, rather than copying bytes to the blob store directly: a seeded asset is
+then byte-for-byte what uploading that file would have produced, content type
+and dimensions included, instead of exercising a path no real upload takes. The
+`full` scenario alone gets them (Godafoss as the trip cover, Moraine Lake on
+Kirkjufell), deliberately — the trips list now shows one card with a thumbnail
+and six without, so the no-image path stays covered.
+
+The cover itself renders in `render()` between the back link and the header, with
+`src` assigned as a property alongside the existing `textContent` assignments for
+title and subtitle rather than interpolated into the template — this file has no
+local escape helper and now needs none. `alt=""`, decorative. CSS gives it
+`aspect-ratio: 16 / 6` with `object-fit: cover` so a portrait upload can't push
+the tabs off the first screen, `max-height: 14rem` to cap it on wide viewports
+(16/6 of a 60rem column would otherwise be a ~340px band), and it joins the
+`grid-column: 1 / -1` list in the ≥768px sidebar grid.
+
+Verified: `make ci` green, and `make test-ui` 9/9 — which now genuinely measures
+the image elements that had only ever rendered their empty state. In Firefox at
+324×756 the banner is 292×110 with `object-fit: cover`, above the `<h1>`, inside
+its parent, no document overflow, tabs still at y=472 on the first screen; at
+1280×800 it is 928×224 (the `max-height` cap doing its job on what 16/6 would
+have made 348px) with `grid-column: 1 / -1` computed. A trip *without* a cover
+renders zero `.trip-detail__cover` elements and no placeholder `<img>` at all.
+The live-update path was exercised through the UI, not asserted from the code:
+clicking Remove in the Settings tab's Cover photo card dropped the banner
+immediately with no reload and the page still on the Settings tab, and PUTting
+the asset back brought it straight back — the `onTripUpdated` callback carrying
+it, as intended.
+
 ---
 
 ## 4. Collapse past and empty itinerary days

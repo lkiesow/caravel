@@ -15,7 +15,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"embed"
 	"flag"
 	"fmt"
 	"log"
@@ -28,8 +30,16 @@ import (
 	"caravel/internal/auth"
 	"caravel/internal/config"
 	"caravel/internal/db"
+	"caravel/internal/imaging"
 	"caravel/internal/storagefs"
 )
+
+// Embedded rather than read from disk, so `go run ./cmd/seed` works from any
+// working directory and a built seed binary needs no companion files — the same
+// reason internal/db embeds its migrations.
+//
+//go:embed images/*.jpg
+var fixtureImages embed.FS
 
 const (
 	demoUsername    = "demo"
@@ -321,6 +331,51 @@ func (s seedCtx) addChecklist(scenarioName, tripID, title string, items []string
 	return nil
 }
 
+// addImage stores one of the embedded fixture images as a media asset and
+// returns its ID, ready to hand to SetTripPreviewImage or SetItemImage.
+//
+// It goes through imaging.DecodeAndResize — the same call handleUploadMedia
+// makes — rather than copying the bytes straight to the blob store, so a
+// seeded asset is byte-for-byte what an upload of the same file would have
+// produced, content type and dimensions included. Otherwise the seed would be
+// exercising a path no real upload takes.
+//
+// Why any of this exists: no scenario set a trip cover photo or an item image,
+// so .image-field__preview, .itinerary-entry__thumb and the location card's
+// thumbnail rendered their empty state in every UI sweep and were never
+// measured (see todo.md). The fixtures are small (~343x200) crops of a test
+// sheet, deliberately: they are test data, so softness when a 640px-wide banner
+// scales one up is expected and is not a layout bug.
+func (s seedCtx) addImage(scenarioName, tripID, filename string) (string, error) {
+	data, err := fixtureImages.ReadFile("images/" + filename)
+	if err != nil {
+		return "", fmt.Errorf("read fixture %s: %w", filename, err)
+	}
+	result, err := imaging.DecodeAndResize(bytes.NewReader(data))
+	if err != nil {
+		return "", fmt.Errorf("decode fixture %s: %w", filename, err)
+	}
+
+	id := seedID(scenarioName, "image", filename)
+	key := fmt.Sprintf("%s/images/%s.jpg", tripID, id)
+	if _, err := s.blob.Put(s.ctx, key, bytes.NewReader(result.Data)); err != nil {
+		return "", fmt.Errorf("store blob for %s: %w", filename, err)
+	}
+	if _, err := s.store.CreateMediaAsset(s.ctx, db.CreateMediaAssetParams{
+		ID:          id,
+		TripID:      tripID,
+		Kind:        "upload",
+		StoragePath: &key,
+		ContentType: &result.ContentType,
+		Width:       &result.Width,
+		Height:      &result.Height,
+		CreatedAt:   time.Now().UTC(),
+	}); err != nil {
+		return "", fmt.Errorf("create media asset for %s: %w", filename, err)
+	}
+	return id, nil
+}
+
 // addDocument writes a real (tiny) file through the blob store as well as the
 // row, so the Documents tab has something that actually downloads.
 func (s seedCtx) addDocument(scenarioName, tripID string, itemID *string, filename, body string) error {
@@ -383,6 +438,29 @@ func seedFull(s seedCtx) error {
 	})
 	if err != nil {
 		return err
+	}
+
+	// A cover photo on the trip and an image on one location, so the elements
+	// that only ever rendered their empty state in the UI sweeps have something
+	// to measure: the trip card's thumbnail on the trips list, the cover banner
+	// on the trip page, .image-field__preview in Settings and the location
+	// editor, .itinerary-entry__thumb on the itinerary (Kirkjufell is on day 2),
+	// and the location card's thumbnail. Deliberately only *this* scenario, so
+	// the no-image path stays covered too — the trips list shows one card with a
+	// thumbnail and six without.
+	coverID, err := s.addImage("full", trip.ID, "iceland-godafoss.jpg")
+	if err != nil {
+		return err
+	}
+	if _, err := s.store.SetTripPreviewImage(s.ctx, trip.ID, s.ownerID, &coverID, time.Now().UTC()); err != nil {
+		return fmt.Errorf("set trip cover photo: %w", err)
+	}
+	itemImageID, err := s.addImage("full", trip.ID, "banff-moraine-lake.jpg")
+	if err != nil {
+		return err
+	}
+	if _, err := s.store.SetItemImage(s.ctx, items[0].ID, trip.ID, &itemImageID, time.Now().UTC()); err != nil {
+		return fmt.Errorf("set location image: %w", err)
 	}
 
 	firstDay, err := s.addDay("full", trip.ID, start, ptr("Arrival day — take it easy."))

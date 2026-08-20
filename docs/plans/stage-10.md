@@ -192,9 +192,10 @@ actually renders", which named `.image-field__preview`,
 `.itinerary-entry__thumb` and the location card's thumbnail as never measured by
 anything). So the seeder grew image support first.
 
-Two fixture JPEGs (`cmd/seed/images/`, ~343×200, ~19KB each) are cropped from a
-contact sheet the repo now keeps at `docs/plans/preview-images.jpg` for
-provenance, the same way `caravel-logo-drafts.png` is kept. They are embedded
+Two fixture JPEGs (`cmd/seed/images/`, ~343×200, ~19KB each) are cropped out of a
+12-tile contact sheet supplied for the purpose (Godafoss and Moraine Lake). Only
+the crops are committed — the ~1MB sheet itself is not in the repo, so if another
+fixture is wanted later the sheet has to be supplied again. They are embedded
 with `//go:embed images/*.jpg` — the precedent being `internal/db`'s migrations —
 so `go run ./cmd/seed` works from any directory. A new `addImage` helper puts
 them through `imaging.DecodeAndResize`, the *same* call `handleUploadMedia`

@@ -17,6 +17,33 @@ export async function renderItineraryTab(container, trip) {
   days.forEach((d) => (d.entries ??= []));
   const items = await api.get(`/trips/${trip.id}/items`);
 
+  // Which days are expanded. Seeded from the rule below and then owned by the
+  // user: toggling a day updates this set, so a re-render (adding or removing
+  // a day re-renders the whole list) doesn't collapse everything they had
+  // opened. Keyed by date rather than by index because days get inserted in
+  // the middle when one is added.
+  const openDates = initialOpenDates();
+
+  // A day is worth opening if it is still ahead and has something on it, plus
+  // the next day coming up even when empty - that is the one being planned.
+  // Past days and empty days stay closed; a 10-day trip used to render as ten
+  // fully expanded cards and one unbroken scroll.
+  function initialOpenDates() {
+    // No date range means no "today" to measure against, and every day on such
+    // a trip was added deliberately - the same reasoning isRemovable() uses.
+    if (!trip.start_date || !trip.end_date) return new Set(days.map((d) => d.date));
+
+    const today = todayISO();
+    const open = new Set(days.filter((d) => d.date >= today && hasContent(d)).map((d) => d.date));
+    const nextUpcoming = days.find((d) => d.date >= today);
+    if (nextUpcoming) open.add(nextUpcoming.date);
+    // A trip entirely in the past would otherwise be nothing but closed rows,
+    // which reads as a page that failed to load rather than as a summary. Its
+    // last day stands in for "where the trip got to".
+    if (open.size === 0 && days.length) open.add(days[days.length - 1].date);
+    return open;
+  }
+
   function render() {
     container.innerHTML = `
       <div class="itinerary">
@@ -40,6 +67,9 @@ export async function renderItineraryTab(container, trip) {
       const day = await api.put(`/trips/${trip.id}/itinerary/days/${date}`, { notes: null });
       days.push(day);
       days.sort((a, b) => a.date.localeCompare(b.date));
+      // Open on arrival even if it's in the past: the user just asked for this
+      // day, so they are about to put something on it.
+      openDates.add(date);
       render();
     });
   }
@@ -57,13 +87,19 @@ export async function renderItineraryTab(container, trip) {
   }
 
   function renderDay(day) {
-    const el = document.createElement("div");
+    const el = document.createElement("details");
     el.className = "itinerary-day";
+    el.open = openDates.has(day.date);
+    // The chevron is drawn rather than left to the UA marker: `display: flex`
+    // on a <summary> drops the native triangle, and the header has been a flex
+    // row since Stage 04. Rotated by CSS on [open].
     el.innerHTML = `
-      <div class="itinerary-day__header">
+      <summary class="itinerary-day__header">
+        ${icon("chevron-down", { className: "itinerary-day__chevron" })}
         <h2>${formatDate(day.date)}</h2>
+        <span class="itinerary-day__count"></span>
         ${isRemovable(day) ? `<button class="icon-remove" data-action="remove-day" aria-label="${t("itinerary.removeDay")}">${icon("x")}</button>` : ""}
-      </div>
+      </summary>
       <textarea class="itinerary-day__notes" data-i18n-placeholder="itinerary.notesPlaceholder"></textarea>
       <ul class="itinerary-day__entries"></ul>
       <p class="itinerary-day__empty" data-i18n="itinerary.empty" hidden></p>
@@ -89,11 +125,21 @@ export async function renderItineraryTab(container, trip) {
 
     renderEntries(el, day);
 
-    el.querySelector('[data-action="remove-day"]')?.addEventListener("click", async () => {
+    // The user's own expand/collapse wins over the initial rule from here on,
+    // including across the re-render that adding or removing a day triggers.
+    el.addEventListener("toggle", () => {
+      if (el.open) openDates.add(day.date);
+      else openDates.delete(day.date);
+    });
+
+    el.querySelector('[data-action="remove-day"]')?.addEventListener("click", async (e) => {
+      // Inside a <summary>, so without this a click would also toggle the
+      // disclosure - the day would fold shut behind its own confirm dialog.
+      e.preventDefault();
+      e.stopPropagation();
       // Only confirm when there's something to lose. Removing an empty day
       // the user just mistyped shouldn't demand a dialog.
-      const hasContent = day.entries.length > 0 || (day.notes ?? "").trim() !== "";
-      if (hasContent && !(await confirmDialog({ messageKey: "itinerary.removeDayConfirm", confirmKey: "common.remove" }))) return;
+      if (hasContent(day) && !(await confirmDialog({ messageKey: "itinerary.removeDayConfirm", confirmKey: "common.remove" }))) return;
       await api.delete(`/itinerary/days/${day.id}`);
       days = days.filter((d) => d.date !== day.date);
       render();
@@ -129,6 +175,14 @@ export async function renderItineraryTab(container, trip) {
     list.innerHTML = "";
     emptyState.hidden = day.entries.length > 0;
 
+    // What a collapsed day says about itself - otherwise a closed row is just
+    // a date with no hint whether anything is on it. Updated here rather than
+    // in renderDay() so adding or removing an entry keeps it honest; CSS hides
+    // it while the day is open, where the entries themselves are visible.
+    const count = day.entries.length;
+    el.querySelector(".itinerary-day__count").textContent =
+      count === 0 ? t("itinerary.summaryEmpty") : t("itinerary.entryCount", { count }, count);
+
     for (const entry of day.entries) {
       const li = document.createElement("li");
       // A real <a href>, not a button with a click handler. The router
@@ -161,6 +215,21 @@ export async function renderItineraryTab(container, trip) {
   }
 
   render();
+}
+
+// A day counts as having content if anything would be lost by removing it -
+// used both for the remove-day confirmation and for deciding what to expand.
+function hasContent(day) {
+  return day.entries.length > 0 || (day.notes ?? "").trim() !== "";
+}
+
+// Today as YYYY-MM-DD in the *local* timezone, so it compares directly against
+// the API's date strings. toISOString() would be wrong here: it converts to
+// UTC first, so anyone east of Greenwich late in the evening would get
+// tomorrow's date and see today's plans collapsed as past.
+function todayISO() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
 function formatDate(dateStr) {

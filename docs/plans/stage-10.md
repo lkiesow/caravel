@@ -260,6 +260,60 @@ the remove button does not; `summary` measures ≥ 44px at 324×756. Then
 
 Closes the `<details>` disclosure entry.
 
+**Done.** Day cards are `<details>` with the header as `<summary>`, opened by the
+planned rule, plus three things the plan didn't anticipate.
+
+First, **the open set is owned by the user after the first render.** The rule
+only seeds it. Adding or removing a day re-renders the whole list, and without
+this any day the user had expanded would have snapped shut underneath them; a
+`toggle` listener keeps an `openDates` set (keyed by date, since days get
+inserted in the middle) and a newly added day is added to it — the user just
+asked for that day, so they are about to put something on it.
+
+Second, **a trip entirely in the past would have rendered as nothing but closed
+rows**, which reads as a page that failed to load rather than as a summary. If
+the rule opens nothing, the last day opens as "where the trip got to".
+
+Third, **the copy had to get shorter.** "Nothing planned" as the collapsed badge
+was wide enough at 324px to push the date onto a second line, so every collapsed
+row was two lines of wrapped date — worse than what this milestone set out to
+fix. It is "Empty" / "Leer" with `white-space: nowrap`, and the collapsed rows are
+single-line again (h2 22px, summary exactly 44px). Non-empty days show a
+pluralized count (`itinerary.entryCount` / `_plural`, three new keys per locale).
+
+The chevron is drawn from the sprite rather than left to the UA marker, because a
+flex `<summary>` loses the native triangle, and `list-style: none` plus the
+`::-webkit-details-marker` reset keeps that consistent across engines. The
+remove-day button stays inside the summary with `preventDefault` +
+`stopPropagation` — a nested interactive control, but moving it into the body
+would mean expanding a day to delete it. The plan's predicted problem with the
+heading-outline spec **did not materialize**: the `<h2>` moved into the
+`<summary>`, which is always visible, so a collapsed day still contributes its
+heading and the outline is unchanged.
+
+`tests/ui/routes.spec.js` gained `summary` in its tap-target selector, since
+`<summary>` is now a real control and the 44px claim would otherwise rest on one
+manual measurement.
+
+Verified: `make ci` (126 keys in sync) and `make test-ui` 9/9. The new selector
+is provably not vacuous — `scripts/without.sh web/css/base.css -- make test-ui
+GREP="tap target"` fails with 12 summaries at 22px, naming them by selector, so
+CI would catch the min-height being lost. In Firefox at 324×756 on the `full`
+trip: 4 days, 2 open (both future days with content), 2 closed, every summary
+44px, no overflow, page 1399px against 1745px with everything open — **346px, a
+fifth of the scroll, gone on a 4-day trip**. Clicking a closed summary opens it
+with notes and entries actually rendered (not just an attribute flip) and hides
+its badge. On `out-of-range-days` (a trip whose range is entirely past, with a
+day dated today): the four past days start closed and today's opens. Clicking
+remove on that day raised the confirm dialog **without folding the day shut** —
+the specific gotcha — and Cancel left all 5 days intact. Adding 2026-08-25 kept a
+manually-opened past day open and arrived open itself; removing it again needed
+no confirmation and left the seed as it was. The no-date-range branch has no
+seeded days to exercise it, so two past days were created on the `no-dates` trip
+by hand: both opened despite being past, proving the branch, and both were
+deleted afterwards (0 days remain). German copy checked in the same pass: "2
+Einträge", "1 Eintrag", "Leer", no raw keys.
+
 ---
 
 ## 5. Tooling: check `sw.js`, and stamp the build SHA

@@ -1156,12 +1156,59 @@ button {
 
 /* The remove control sits on the date line rather than at the end of the
    card, so it reads as acting on the day itself and not on the last entry
-   in it. .icon-remove's margin-left:auto pushes it to the right edge. */
+   in it. .icon-remove's margin-left:auto pushes it to the right edge.
+
+   Also the card's <summary> since Stage 10 Milestone 4: past and empty days
+   start collapsed, so a long trip is no longer one unbroken scroll of open
+   cards. list-style: none drops the UA marker in favour of the drawn chevron
+   (a flex summary loses the native triangle anyway), and min-height keeps the
+   whole row inside the 44px tap-target guideline - it is now the control that
+   opens the day, not just a caption. */
 .itinerary-day__header {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   margin-bottom: 0.5rem;
+  min-height: var(--tap-min);
+  list-style: none;
+  cursor: pointer;
+}
+
+.itinerary-day__header::-webkit-details-marker {
+  display: none;
+}
+
+/* Collapsed days keep their margin-bottom off, so a closed row is a single
+   line of card rather than a line plus dead space. */
+.itinerary-day:not([open]) .itinerary-day__header {
+  margin-bottom: 0;
+}
+
+.itinerary-day__chevron {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.itinerary-day[open] .itinerary-day__chevron {
+  transform: rotate(180deg);
+}
+
+/* The entry count is what a closed day says about itself; open, the entries
+   are right there and repeating the count is noise. margin-left: auto keeps it
+   at the right edge, or beside the remove button when there is one. nowrap
+   because it must not be what pushes the date onto a second line: at 324px a
+   two-word badge did exactly that, turning every collapsed row into two lines
+   of wrapped date - which is why the copy is one short word. */
+.itinerary-day__count {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.itinerary-day[open] .itinerary-day__count {
+  display: none;
 }
 
 .itinerary-day h2 {

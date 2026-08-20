@@ -112,11 +112,12 @@ Direction already agreed or obviously wanted; none of it built.
   title predicate. Needs both a frontend control and backend query changes —
   not just a client-side reorder, since the API returns every trip
   unconditionally today.
-- **Collapse empty/past itinerary days behind a `<details>` disclosure.**
-  (Stage 04.) A 10-day trip renders all 10 day cards open and expanded, an
-  unbroken vertical scroll with no way to jump to "today" or collapse days that
-  are already past or still empty. Opening only the current/next upcoming one
-  would shorten that scroll significantly at any screen size.
+- **A way to jump to "today" in a long itinerary.** (Stage 04; the collapse half
+  was built in Stage 10 Milestone 4.) Past and empty days now start collapsed, so
+  the scroll is much shorter, but on a 3-week trip the open day can still be well
+  below the fold — the disclosure changed how much there is to scroll, not where
+  you land. Wants either scrolling the first open day into view on render
+  (`scrollIntoView`, cheap) or a "Today" control in the itinerary header.
 - **Checklist editing and duplication, and a ⋮-menu to hold them.** (Stage 05.)
   `checklist-list.js` supports only creating and deleting a checklist/item —
   no renaming a checklist, no editing an item's text after creation, no

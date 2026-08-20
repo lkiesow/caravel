@@ -117,7 +117,11 @@ for (const scheme of COLOR_SCHEMES) {
                   return true;
                 };
 
-                const controls = deepQueryAll("button, a, input, select, textarea, label");
+                // <summary> is in the list because it is a real control: it
+                // opens and closes the itinerary's day cards (Stage 10
+                // Milestone 4), and without it here the 44px claim on those
+                // rows would rest on one manual measurement.
+                const controls = deepQueryAll("button, a, input, select, textarea, label, summary");
                 const out = [];
                 let checked = 0;
                 for (const el of controls) {

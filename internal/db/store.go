@@ -239,6 +239,10 @@ type Store interface {
 	// from the trip's Files tab even though they are files on that trip.
 	ListTripFiles(ctx context.Context, tripID string) ([]FileDetail, error)
 	ListItemFiles(ctx context.Context, itemID string) ([]File, error)
+	// UpdateFileNote replaces a file's note, or clears it when note is nil —
+	// the one field a file has that can change after upload. Scoped by trip
+	// like DeleteFile; returns ErrNotFound if no row matches both.
+	UpdateFileNote(ctx context.Context, id, tripID string, note *string) (File, error)
 	DeleteFile(ctx context.Context, id, tripID string) (bool, error)
 
 	CreateChecklist(ctx context.Context, p CreateChecklistParams) (Checklist, error)

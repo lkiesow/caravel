@@ -177,6 +177,7 @@ func TestFileRoutesRejectAnotherUser(t *testing.T) {
 	o.assertDenied(t, http.MethodGet, "/api/trips/"+o.tripID+"/files", "")
 	o.assertDenied(t, http.MethodGet, "/api/files/"+o.fileID+"/download", "")
 	o.assertDenied(t, http.MethodDelete, "/api/files/"+o.fileID, "")
+	o.assertDenied(t, http.MethodPatch, "/api/files/"+o.fileID, `{"note":"mine now"}`)
 
 	// Uploads are multipart, so they don't go through assertDenied.
 	w := o.ts.upload("/api/trips/"+o.tripID+"/files", o.intruder, "evil.txt", "text/plain", []byte("x"))
@@ -192,6 +193,11 @@ func TestFileRoutesRejectAnotherUser(t *testing.T) {
 	files := decode[[]map[string]any](t, o.ts.do(http.MethodGet, "/api/trips/"+o.tripID+"/files", o.owner, ""))
 	if len(files) != 1 {
 		t.Fatalf("owner sees %d file(s), want 1 — an intruder call got through", len(files))
+	}
+	// A denied PATCH must not have landed either: a 404 that still wrote the
+	// row would be the worst of both.
+	if note := files[0]["note"]; note != nil {
+		t.Errorf("owner's file note is %v, want null — the intruder's PATCH got through", note)
 	}
 	w = o.ts.do(http.MethodGet, "/api/files/"+o.fileID+"/download", o.owner, "")
 	if w.Code != http.StatusOK {

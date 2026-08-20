@@ -73,6 +73,12 @@ type Querier interface {
 	SetItemImage(ctx context.Context, arg SetItemImageParams) (Item, error)
 	SetTripPreviewImage(ctx context.Context, arg SetTripPreviewImageParams) (Trip, error)
 	TouchSession(ctx context.Context, arg TouchSessionParams) error
+	// A note is the only thing about a file that can change after upload: it is
+	// the readable name a file gets when its own filename is a storage blob, so
+	// write-once was the wrong lifetime for it. Scoped by (id, trip_id) exactly
+	// like DeleteFile, so an owned-trip check is the whole authorization story.
+	// Passing NULL clears it.
+	UpdateFileNote(ctx context.Context, arg UpdateFileNoteParams) (File, error)
 	UpdateItem(ctx context.Context, arg UpdateItemParams) (Item, error)
 	UpdateItemLocation(ctx context.Context, arg UpdateItemLocationParams) (int64, error)
 	UpdateItineraryDayNotes(ctx context.Context, arg UpdateItineraryDayNotesParams) (int64, error)

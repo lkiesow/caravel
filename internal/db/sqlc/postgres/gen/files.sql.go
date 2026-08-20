@@ -191,3 +191,36 @@ func (q *Queries) ListTripFiles(ctx context.Context, tripID string) ([]ListTripF
 	}
 	return items, nil
 }
+
+const updateFileNote = `-- name: UpdateFileNote :one
+UPDATE files SET note = $1 WHERE id = $2 AND trip_id = $3
+RETURNING id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at, note
+`
+
+type UpdateFileNoteParams struct {
+	Note   sql.NullString `json:"note"`
+	ID     string         `json:"id"`
+	TripID string         `json:"trip_id"`
+}
+
+// A note is the only thing about a file that can change after upload: it is
+// the readable name a file gets when its own filename is a storage blob, so
+// write-once was the wrong lifetime for it. Scoped by (id, trip_id) exactly
+// like DeleteFile, so an owned-trip check is the whole authorization story.
+// Passing NULL clears it.
+func (q *Queries) UpdateFileNote(ctx context.Context, arg UpdateFileNoteParams) (File, error) {
+	row := q.db.QueryRowContext(ctx, updateFileNote, arg.Note, arg.ID, arg.TripID)
+	var i File
+	err := row.Scan(
+		&i.ID,
+		&i.TripID,
+		&i.ItemID,
+		&i.Filename,
+		&i.StoragePath,
+		&i.ContentType,
+		&i.SizeBytes,
+		&i.UploadedAt,
+		&i.Note,
+	)
+	return i, err
+}

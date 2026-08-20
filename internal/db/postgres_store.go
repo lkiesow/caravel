@@ -713,6 +713,18 @@ func (s *postgresStore) ListItemFiles(ctx context.Context, itemID string) ([]Fil
 	return files, nil
 }
 
+func (s *postgresStore) UpdateFileNote(ctx context.Context, id, tripID string, note *string) (File, error) {
+	row, err := s.q.UpdateFileNote(ctx, postgresgen.UpdateFileNoteParams{
+		Note:   nullString(note),
+		ID:     id,
+		TripID: tripID,
+	})
+	if err != nil {
+		return File{}, mapNotFound(err)
+	}
+	return postgresFileToDomain(row), nil
+}
+
 func (s *postgresStore) DeleteFile(ctx context.Context, id, tripID string) (bool, error) {
 	n, err := s.q.DeleteFile(ctx, postgresgen.DeleteFileParams{ID: id, TripID: tripID})
 	if err != nil {

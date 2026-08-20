@@ -192,6 +192,42 @@ document — the last by adding PATCH to the route table in
 [ownership_test.go:174](internal/httpapi/ownership_test.go#L174), which already
 sweeps list/download/delete/upload.
 
+**Done.** Landed as planned. `UpdateFileNote` in `queries/files.sql` uses
+`sqlc.narg(note)` so the parameter is nullable, scoped `WHERE id = ? AND
+trip_id = ?` exactly like `DeleteFile`; both dialects regenerated. The store
+method takes `note *string` and both adapters map it through the existing
+`nullString` helper and the per-dialect row→domain function, so nothing new was
+written for the mapping. `handleUpdateFileNote` reuses `loadOwnedFile`,
+`readJSON` and `fileToResponse` and responds with the updated row.
+
+The one judgement call not in the plan: the request's `note` is a pointer, but
+since the body has exactly *one* field, an absent note and an explicit `null`
+can only mean the same thing — clear it. Whitespace is trimmed the way the
+upload path already trims it, so `"   "` clears rather than storing a note made
+of spaces.
+
+**Verified.** `make ci` green, `make test-ui` 12/12 (nothing frontend changed,
+run as a regression check). `TestUpdateFileNote` is a table over all seven ways
+a note can be written or cleared — set, change, trimmed, empty string,
+whitespace, explicit null, omitted — each starting from a *set* note so the
+clearing cases really clear something, and each asserted twice: on the PATCH
+response and again on a re-read through the trip listing, because a handler
+that merely echoed its input would pass the first check alone. It also asserts
+the patch touches nothing else (filename, size, and `item_title` still null) and
+that an unknown id is 404 while a malformed body is 400. `TestFileRoutesRejectAnotherUser`
+gained the PATCH row plus a check that the *denied* PATCH left the owner's note
+NULL — a 404 that still wrote would be the worst of both.
+
+Proven non-vacuous: making the handler store `""` instead of nil fails
+`cleared_by_empty_string` and `cleared_by_whitespace` with `note is "", want
+null`, which is the bug verbatim. Live check against `make dev`: PATCH with
+`"  Ferry ticket  "` stored `'Ferry ticket'`, PATCH with `""` left the column
+`NULL` (checked in SQLite, not just in the response), and the seeded note was
+restored afterwards so the dev fixtures are unchanged.
+
+**Not verified: Postgres**, as ever — same generated SQL shape, no local
+instance to run it against.
+
 ---
 
 ## 3. `menu.js` grows an action-item mode

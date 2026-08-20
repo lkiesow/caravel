@@ -111,6 +111,7 @@ func (s *Server) buildRouter() chi.Router {
 
 		r.Route("/files/{fileId}", func(r chi.Router) {
 			r.Use(auth.RequireAuth)
+			r.Patch("/", s.handleUpdateFileNote)
 			r.Delete("/", s.handleDeleteFile)
 			r.Get("/download", s.handleDownloadFile)
 		})

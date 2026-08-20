@@ -129,3 +129,108 @@ func TestSniffContentType(t *testing.T) {
 		t.Errorf("reader was not rewound to the start after sniffing")
 	}
 }
+
+// A note is the one thing about a file that can change after upload: it is the
+// readable name a file gets when its own filename is a storage blob
+// ("5d2ffd5f-...-173d5a72f860.png"), and until Stage 11 it could only be set in
+// the upload form - so a file uploaded without one kept none forever.
+//
+// The clearing half is what this test is really for. "Cleared" has to mean SQL
+// NULL, not the empty string: the Files list renders the filename as the card
+// title when note is null, and an empty-string note would leave the row
+// claiming to have a note whose text is "" - a state no UI can show and no
+// user can get out of.
+func TestUpdateFileNote(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login("demo")
+	tripID := ts.createTrip(cookie, "Iceland")
+
+	w := ts.upload("/api/trips/"+tripID+"/files", cookie, "passport.png", "image/png", []byte("not really a png"))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("upload: %d %s", w.Code, w.Body.String())
+	}
+	fileID := decode[fileResponse](t, w).ID
+
+	// Uploaded with no note at all, which is the state the endpoint exists to
+	// get a file out of.
+	if got := ts.getFile(t, cookie, tripID, fileID).Note; got != nil {
+		t.Fatalf("freshly uploaded file has note %q, want null", *got)
+	}
+
+	for _, tc := range []struct {
+		name string
+		body string
+		want *string // nil = the column must be NULL
+	}{
+		{"set", `{"note":"Copy of my identity card"}`, ptr("Copy of my identity card")},
+		{"change", `{"note":"Passport scan"}`, ptr("Passport scan")},
+		{"trimmed", `{"note":"  Passport scan  "}`, ptr("Passport scan")},
+		{"cleared by empty string", `{"note":""}`, nil},
+		{"cleared by whitespace", `{"note":"   "}`, nil},
+		{"cleared by null", `{"note":null}`, nil},
+		// One field, so an absent note can only mean the same as a null one.
+		{"cleared by omission", `{}`, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Start from a set note every time, so the clearing cases are
+			// actually clearing something.
+			if w := ts.do(http.MethodPatch, "/api/files/"+fileID, cookie, `{"note":"before"}`); w.Code != http.StatusOK {
+				t.Fatalf("seed note: %d %s", w.Code, w.Body.String())
+			}
+
+			w := ts.do(http.MethodPatch, "/api/files/"+fileID, cookie, tc.body)
+			if w.Code != http.StatusOK {
+				t.Fatalf("patch %s: %d %s", tc.body, w.Code, w.Body.String())
+			}
+			assertNote(t, "response", decode[fileResponse](t, w).Note, tc.want)
+			// The response is the updated row, but a handler that echoed its
+			// own input would pass that on its own - so re-read it.
+			assertNote(t, "re-read", ts.getFile(t, cookie, tripID, fileID).Note, tc.want)
+		})
+	}
+
+	// Everything else about the file is untouched, and item_title stays null on
+	// this endpoint the way it does on every non-list one.
+	after := ts.getFile(t, cookie, tripID, fileID)
+	if after.Filename != "passport.png" || after.SizeBytes != int64(len("not really a png")) || after.ItemTitle != nil {
+		t.Errorf("patching the note changed something else: %+v", after)
+	}
+
+	if w := ts.do(http.MethodPatch, "/api/files/00000000-0000-0000-0000-000000000000", cookie, `{"note":"x"}`); w.Code != http.StatusNotFound {
+		t.Errorf("patch a file that doesn't exist: got %d, want 404", w.Code)
+	}
+	if w := ts.do(http.MethodPatch, "/api/files/"+fileID, cookie, `not json`); w.Code != http.StatusBadRequest {
+		t.Errorf("patch with a broken body: got %d, want 400", w.Code)
+	}
+}
+
+// getFile re-reads one file from the trip listing, so assertions run against
+// what a client would actually see rather than against the PATCH response.
+func (ts *testServer) getFile(t *testing.T, cookie *http.Cookie, tripID, fileID string) fileResponse {
+	t.Helper()
+	w := ts.do(http.MethodGet, "/api/trips/"+tripID+"/files", cookie, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("list files: %d %s", w.Code, w.Body.String())
+	}
+	for _, f := range decode[[]fileResponse](t, w) {
+		if f.ID == fileID {
+			return f
+		}
+	}
+	t.Fatalf("file %s is missing from the trip listing", fileID)
+	return fileResponse{}
+}
+
+func assertNote(t *testing.T, where string, got, want *string) {
+	t.Helper()
+	switch {
+	case want == nil && got != nil:
+		t.Errorf("%s: note is %q, want null", where, *got)
+	case want != nil && got == nil:
+		t.Errorf("%s: note is null, want %q", where, *want)
+	case want != nil && *got != *want:
+		t.Errorf("%s: note is %q, want %q", where, *got, *want)
+	}
+}
+
+func ptr(s string) *string { return &s }

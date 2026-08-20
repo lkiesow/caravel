@@ -227,6 +227,46 @@ func (s *Server) loadOwnedFile(w http.ResponseWriter, r *http.Request) (db.File,
 	return file, true
 }
 
+// A note is a pointer so the request can tell "leave it alone" apart from
+// "clear it" — except that this endpoint has exactly one field, so an absent
+// note and a null one mean the same thing here: clear. An empty or
+// whitespace-only string clears it too, trimmed the same way the upload path
+// trims it, so a note can't come back as " ".
+type fileNoteRequest struct {
+	Note *string `json:"note"`
+}
+
+func (s *Server) handleUpdateFileNote(w http.ResponseWriter, r *http.Request) {
+	file, ok := s.loadOwnedFile(w, r)
+	if !ok {
+		return
+	}
+
+	var req fileNoteRequest
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	var notePtr *string
+	if req.Note != nil {
+		if note := strings.TrimSpace(*req.Note); note != "" {
+			notePtr = &note
+		}
+	}
+
+	updated, err := s.Store.UpdateFileNote(r.Context(), file.ID, file.TripID, notePtr)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "file not found")
+		} else {
+			writeError(w, http.StatusInternalServerError, "could not update file")
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, fileToResponse(updated))
+}
+
 func (s *Server) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
 	file, ok := s.loadOwnedFile(w, r)
 	if !ok {

@@ -650,6 +650,18 @@ func (s *sqliteStore) ListItemFiles(ctx context.Context, itemID string) ([]File,
 	return files, nil
 }
 
+func (s *sqliteStore) UpdateFileNote(ctx context.Context, id, tripID string, note *string) (File, error) {
+	row, err := s.q.UpdateFileNote(ctx, sqlitegen.UpdateFileNoteParams{
+		Note:   nullString(note),
+		ID:     id,
+		TripID: tripID,
+	})
+	if err != nil {
+		return File{}, mapNotFound(err)
+	}
+	return sqliteFileToDomain(row), nil
+}
+
 func (s *sqliteStore) DeleteFile(ctx context.Context, id, tripID string) (bool, error) {
 	n, err := s.q.DeleteFile(ctx, sqlitegen.DeleteFileParams{ID: id, TripID: tripID})
 	if err != nil {

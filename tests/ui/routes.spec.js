@@ -34,11 +34,15 @@ for (const scheme of COLOR_SCHEMES) {
         await login(page);
         const routes = await buildRoutes(page);
         const failures = [];
+        // Reported separately from document-level overflow: the two say
+        // different things, and one shouldn't hide the other in the output.
+        const clippedFailures = [];
 
         for (const route of routes) {
           await gotoRoute(page, route.path);
 
-          const result = await page.evaluate(() => {
+          const result = await page.evaluate((deepSource) => {
+            eval(deepSource);
             const doc = document.documentElement;
             const overflow = doc.scrollWidth - window.innerWidth;
             let widest = null;
@@ -55,8 +59,58 @@ for (const scheme of COLOR_SCHEMES) {
                 }
               }
             }
-            return { overflow, widest, scrollWidth: doc.scrollWidth, innerWidth: window.innerWidth };
-          });
+
+            // Second, independent sweep: content wider than the box holding it.
+            //
+            // The document-level measurement above misses this entirely, which
+            // is how six overlapping tab labels passed in Stage 09 Milestone 6 —
+            // the bar fit the viewport and the tabs were tall enough, while the
+            // text ran into its neighbours. Note this runs unconditionally, not
+            // only when the page already overflows, and it pierces shadow roots
+            // (the trip and location cards live in them, and a clipped card
+            // title is exactly this bug).
+            //
+            // Exclusions, all deliberate:
+            //  - overflow-x auto/scroll: scrolling is the element's job.
+            //  - text-overflow: ellipsis: truncation on purpose, and it is
+            //    *implemented* as content wider than its box.
+            //  - form controls: an <input>/<textarea>/<select> whose value is
+            //    longer than its box is normal, not a layout bug.
+            //  - Leaflet's internals, whose panes are far wider than the map on
+            //    purpose (same reason the tap-target sweep skips them).
+            const clipped = [];
+            for (const el of deepQueryAll("*")) {
+              const style = getComputedStyle(el);
+              if (style.display === "none" || style.visibility === "hidden") continue;
+              if (style.overflowX === "auto" || style.overflowX === "scroll") continue;
+              if (style.textOverflow === "ellipsis") continue;
+              if (["input", "textarea", "select", "svg", "img"].includes(el.localName)) continue;
+              if (el.closest?.('[class*="leaflet-"]')) continue;
+              // Visually-hidden labels, which are *defined* as content much
+              // wider than a 1px box: .sr-only and the .btn-collapse span rule
+              // (base.css) clip a real label down to 1x1 so the button keeps its
+              // accessible name while showing only its icon. Every one of them
+              // reported here on the first run - 10 across the mobile routes -
+              // and all of them are correct as they are.
+              if (style.clipPath !== "none") continue;
+              // clientWidth is 0 for inline elements, where scrollWidth is
+              // meaningless - measuring those would report every <span> - and a
+              // box a few px wide isn't laying out content in any sense worth
+              // asserting on.
+              if (el.clientWidth <= 4) continue;
+              const over = el.scrollWidth - el.clientWidth;
+              if (over > 1) {
+                clipped.push({
+                  desc: describeElement(el),
+                  over,
+                  scrollWidth: el.scrollWidth,
+                  clientWidth: el.clientWidth,
+                  text: (el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 40),
+                });
+              }
+            }
+            return { overflow, widest, clipped, scrollWidth: doc.scrollWidth, innerWidth: window.innerWidth };
+          }, DEEP_DOM_SOURCE);
 
           if (result.overflow > 0) {
             failures.push(
@@ -64,9 +118,19 @@ for (const scheme of COLOR_SCHEMES) {
                 (result.widest ? ` — widest: <${result.widest.tag} class="${result.widest.cls}"> right=${Math.round(result.widest.right)}` : "")
             );
           }
+          for (const c of result.clipped) {
+            clippedFailures.push(
+              `${route.label}: ${c.desc} content is ${c.over}px wider than its box ` +
+                `(${c.scrollWidth} vs ${c.clientWidth}${c.text ? `, "${c.text}"` : ""})`
+            );
+          }
         }
 
         expect(failures, `horizontal overflow on ${failures.length} route(s)`).toEqual([]);
+        expect(
+          clippedFailures,
+          `${clippedFailures.length} element(s) whose content is wider than the box holding it`
+        ).toEqual([]);
       });
 
       // Tap targets only matter at phone width; skip the duplicate desktop run.
@@ -132,10 +196,15 @@ for (const scheme of COLOR_SCHEMES) {
                   if (rect.width === 0 || rect.height === 0) continue;
                   if (!scope(el)) continue;
                   checked++;
-                  if (rect.height < min) {
+                  // Width as well as height. A target is only 44px if it is
+                  // 44px in both directions: the tab bar's "More" trigger sized
+                  // to 45px inside a 58px cell in Stage 09 Milestone 6 and
+                  // nothing noticed, because only height was ever measured.
+                  if (rect.height < min || rect.width < min) {
                     out.push({
                       desc: describeElement(el),
                       height: Math.round(rect.height * 10) / 10,
+                      width: Math.round(rect.width * 10) / 10,
                       text: (el.textContent || el.value || "").replace(/\s+/g, " ").trim().slice(0, 30),
                     });
                   }
@@ -147,7 +216,7 @@ for (const scheme of COLOR_SCHEMES) {
 
             totalChecked += result.checked;
             for (const s of result.small) {
-              failures.push(`${route.label}: ${s.desc} is ${s.height}px tall ("${s.text}")`);
+              failures.push(`${route.label}: ${s.desc} is ${s.width}x${s.height}px ("${s.text}")`);
             }
           }
 

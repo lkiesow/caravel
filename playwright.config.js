@@ -10,6 +10,7 @@
 // It also expects the seeded scenarios from `make dev-reset` to be present —
 // see tests/ui/helpers/scenarios.js.
 import { defineConfig, devices } from "@playwright/test";
+import { AUTH_STATE_FILE } from "./tests/ui/helpers/scenarios.js";
 
 const baseURL = process.env.CARAVEL_TEST_URL || "http://localhost:8080";
 
@@ -44,9 +45,22 @@ export default defineConfig({
     },
   },
   projects: [
+    // One login for the whole run, saved and reused by every spec — see
+    // tests/ui/auth.setup.js. Its own testMatch, since the top-level one only
+    // picks up *.spec.js.
+    // Firefox here too, not just on the project below: a project with no
+    // browser named falls back to chromium, which this suite deliberately does
+    // not install — so the setup died with "Executable doesn't exist" and took
+    // all nine specs down with it ("9 did not run").
+    {
+      name: "setup",
+      testMatch: /.*\.setup\.js/,
+      use: { ...devices["Desktop Firefox"] },
+    },
     {
       name: "firefox",
-      use: { ...devices["Desktop Firefox"] },
+      use: { ...devices["Desktop Firefox"], storageState: AUTH_STATE_FILE },
+      dependencies: ["setup"],
     },
   ],
 });

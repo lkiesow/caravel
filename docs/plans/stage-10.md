@@ -457,6 +457,59 @@ spec — a page load, a few clicks and computed-style reads, mutating nothing.
 **Verify.** `make test-ui` green, then run it twice inside one minute — no 429.
 Delete `tests/ui/.auth/` and re-run, to confirm the setup project regenerates it.
 
+**Done.** All three landed plus the interaction spec, and the "expect real
+failures" prediction was **wrong in an interesting way**: the new assertions
+found ten offenders on the first run and *every one of them was correct as it
+stood*. They were the visually-hidden label idiom — `.sr-only` and
+`.btn-collapse span` clip a real label down to a 1×1 box so an icon-only button
+keeps its accessible name, which is *by definition* content far wider than its
+box (67px of text in a 1px box). Excluded by testing for `clip-path` rather than
+by listing selectors, so the exclusion covers both rules and any future use of
+the idiom, and with a floor of `clientWidth <= 4` since a box a few px wide isn't
+laying out content in any sense worth asserting on. After that both new
+assertions pass across all 19 routes — there was nothing real to fix.
+
+Which made proving them non-vacuous the actual work, since an assertion that has
+never failed on a real bug is a guess. Both were tested by *injecting* the
+historical bug each exists for:
+
+- **Per-element overflow.** A temporary CSS rule reproducing Stage 09 Milestone
+  6's shape (tab labels `nowrap` and too wide for their flex cells, spilling past
+  them while the bar still fits the viewport). The new check names them —
+  `nav.trip-tabs > button content is 11px wider than its box (69 vs 58)` — while
+  the document-level check reports **nothing at all**, which is exactly the
+  blindness that let that bug ship. A first attempt at the probe (a narrow box
+  with wrapping text) failed to fail, correctly: wrapped text has no horizontal
+  overflow, so the bug shape has to include `nowrap`.
+- **Tap-target width.** `.icon-remove` forced to 30px wide (with `!important`,
+  since the earlier `min-width: var(--tap-min)` otherwise wins) → 20 failures
+  reading `button.icon-remove is 30x44px`: tall enough, too narrow, precisely the
+  "45px trigger in a 58px cell" case the height-only assertion could not see.
+
+`tests/ui/menu.spec.js` is the suite's **first interaction spec** — the tab bar's
+More menu, in both locales: closed state (`hidden` and `aria-expanded` agreeing),
+tap-target floor on the trigger, open, toggle shut, outside click, Escape (twice,
+so a closed menu's detached listener is covered), select-and-navigate with the
+trigger left marked active, and exactly one checked row on reopen. It mutates
+nothing, so it needs no isolation decision — which is why the backlog named it as
+the one to adopt first. German copy is asserted as literal strings rather than
+read from `trip-tabs.js`, so a wrong *translation* fails instead of mirroring the
+source. Proven non-vacuous twice: breaking the Escape handler and breaking the
+outside-click handler in `menu.js` each fail it in both locales.
+
+The `storageState` work needed one fix the plan didn't foresee: a project with no
+browser named falls back to chromium, which this Firefox-only suite deliberately
+never installs, so the setup died with "Executable doesn't exist" and took all
+nine specs with it ("9 did not run"). The setup project now names Firefox too.
+
+Verified: `make ci` green, `make test-ui` **12 passed** (was 9: one setup, two
+menu specs). Three runs back-to-back inside two minutes all pass, where the old
+9-logins-per-run would have been over budget by the second — confirmed against
+the limiter directly: 12 consecutive logins return `200`×10 then `429`×2. Deleting
+`tests/ui/.auth/` and re-running regenerates it. CI needs no change: it installs
+Firefox only and calls `make test-ui`, and the setup runs as a project
+dependency.
+
 ---
 
 ## 7. The Files tab shows location-attached files

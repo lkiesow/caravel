@@ -298,40 +298,28 @@ step with itself.
 
 ## Testing, CI and dev tooling
 
-- **The UI suite covers four checks; more were listed than built.** Stage 08
-  Milestone 5 landed the sweep matrix (overflow + tap targets), the
-  shadow-DOM-aware heading outline and the accessible-name sweep in `tests/ui/`,
-  run by `make test-ui` and a `ui` job in CI. Not covered, and worth adding as
-  the app grows: anything behind an interaction (menus opened, forms submitted,
-  dialogs), the login/register pages (the suite logs in via the API, so those
-  routes are never rendered), and German copy (the suite runs in the default
-  locale only, so `de.json` is still only eyeballed by hand).
-  *Concrete instances from Stage 09.* Milestone 2's single Save was verified by a
-  20-assertion Playwright script; Milestone 6's follow-up (the tab bar's "More"
-  menu — open, toggle, outside-click, Escape, select-and-close, active-state
-  marking, two locales) by a 34-assertion one; Milestone 7's copy pass by a
-  17-assertion one. **None are checked in.** The Save one mutates data and every
-  existing spec is a read-only sweep, so it needs an isolation decision (its own
-  trip per run? a reset between specs?) first. The menu one mutates nothing and
-  is the cheapest to adopt — a page load, a few clicks and computed-style
-  reads — so it is the obvious first interaction spec. Until then the stage's
-  headline fixes have no automated guard.
-- **Nothing checks that content fits inside its own box.** The sweeps check
-  page-level overflow and control *height*, which is why six overlapping tab
-  labels passed `make test-ui` in Stage 09 Milestone 6: the bar fit the viewport
-  and the tabs were 47px tall while the text ran into its neighbours. A
-  per-element assertion (`scrollWidth > clientWidth`, or a child wider than its
-  parent) would have caught it, and would also have caught the More trigger
-  sizing to 45px inside a 58px cell later in the same milestone.
-- **The UI suite can fail with HTTP 429 rather than a real assertion.**
-  `internal/httpapi/router.go` rate limits login to `newLoginLimiter(10,
-  time.Minute)` per IP, and the suite logs in once per spec — 9 per run — so two
-  runs inside a minute, or one run alongside a hand-written Playwright script,
-  trips it. The specs then render the login page and fail on unrelated
-  assertions, and the message actively misleads: "login as demo failed — has
-  `make dev-reset FORCE=1` been run?" when the seed is fine. Fixes: share one
-  `storageState` across specs instead of logging in nine times, and/or have
-  `login()` name 429 explicitly.
+- **The UI suite still doesn't cover data-mutating flows, or the login pages.**
+  Stage 10 Milestone 6 took the interaction half of this entry: `menu.spec.js`
+  drives the tab bar's More menu (open, toggle, outside click, Escape,
+  select-and-navigate, checked row) in **both locales**, so "anything behind an
+  interaction" and "German copy is only eyeballed" are no longer true as blanket
+  statements. What remains from the original list:
+    - **Mutating flows.** Stage 09 Milestone 2's single-Save check was a
+      20-assertion script and is still not checked in, because every spec runs
+      against the shared seed and a write would leak into the others. Needs an
+      isolation decision first — its own trip created and deleted per spec is
+      probably the cheapest, since `full`'s fixtures are the only ones other
+      specs depend on. Dialogs and submitted forms sit behind the same decision.
+    - **The login and register pages**, which no spec renders: the suite arrives
+      already authenticated (`auth.setup.js`), so those two routes get no
+      overflow, heading, accessible-name or tap-target coverage at all. They are
+      also the only pages an unauthenticated visitor sees, which makes the gap
+      worse than it looks. Cheap to fix: one spec with a fresh, unauthenticated
+      context.
+    - **German beyond the menu.** `menu.spec.js` proves the mechanism works, but
+      the sweeps themselves (overflow, headings, names, tap targets) still run in
+      one locale, and German copy is the longer of the two — the case most likely
+      to overflow a box.
 - **The suite still needs its in-flight-fetch counter, even now that routes show
   a loading state.** Stage 09 Milestone 5 gave every route a `common.loading`
   line, which fixes the user-facing half of the old "empty shell" problem but

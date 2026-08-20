@@ -10,6 +10,10 @@ import { expect } from "@playwright/test";
 export const DEMO_USER = { username: "demo", password: "demo1234" };
 export const OTHER_USER = { username: "other", password: "other1234" };
 
+// Where auth.setup.js parks the demo user's session for the rest of the run.
+// Gitignored: it holds a live session token, and it is regenerated every run.
+export const AUTH_STATE_FILE = "tests/ui/.auth/demo.json";
+
 // Scenario name -> seeded trip title (cmd/seed/main.go's titlePrefix + title).
 export const SCENARIO_TITLES = {
   full: "Demo: Iceland Ring Road",
@@ -88,22 +92,32 @@ export async function blockExternalRequests(page) {
   });
 }
 
-// Logs in via the API rather than the login form: it's one request instead of a
-// page load plus form fill, and a broken login form should fail the login spec,
-// not every other spec in the suite.
+// Prepares a page for the seeded app: request interception, the fetch tracker,
+// and a first navigation.
+//
+// The demo user is *already* authenticated by the time this runs - the session
+// cookie arrives with the browser context from auth.setup.js via storageState,
+// one login for the whole run instead of one per spec (see that file for the
+// 429 this fixes). The name stays `login` because that is what callers mean,
+// and because any other user still logs in here: only the default one is cached.
 export async function login(page, user = DEMO_USER) {
   await installFetchTracker(page);
   await blockExternalRequests(page);
+
+  if (user !== DEMO_USER) {
+    // page.request rather than an in-page fetch: it needs no loaded document,
+    // and it shares the context's cookie jar, so the session applies to the
+    // navigation below.
+    const res = await page.request.post("/api/auth/login", { data: user });
+    expect(
+      res.status(),
+      res.status() === 429
+        ? `login as ${user.username} was rate limited (HTTP 429), not rejected — wait a minute and re-run`
+        : `login as ${user.username} failed — has \`make dev-reset FORCE=1\` been run?`
+    ).toBe(200);
+  }
+
   await page.goto("/");
-  const status = await page.evaluate(async (creds) => {
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(creds),
-    });
-    return res.status;
-  }, user);
-  expect(status, `login as ${user.username} failed — has \`make dev-reset FORCE=1\` been run?`).toBe(200);
 }
 
 export async function fetchTrips(page) {

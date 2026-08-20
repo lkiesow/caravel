@@ -17,3 +17,6 @@
 /test-results/
 /playwright-report/
 /blob-report/
+
+# A live session token, written fresh by tests/ui/auth.setup.js on every run.
+/tests/ui/.auth/

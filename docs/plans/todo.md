@@ -166,12 +166,6 @@ require a redesign later — they're additive, not blocked, but none are built:
   it — confirmed it currently parses clean that way. So this isn't a
   one-line widening of the find; it wants a second check with the other
   parse mode, which is why it wasn't folded into that milestone.
-- **One orphaned i18n key: `common.edit`.** Found by `scripts/i18n.py unused`
-  (Stage 08 Milestone 2), which reported two — `item.detail.close` picked up a
-  real caller in Stage 09 Milestone 4 (the dialog component's dismiss button),
-  leaving this one. It looks like a key some future ⋮-menu (see the checklist
-  entry under Stage 05) would want to re-add rather than re-invent, so the
-  decision is delete-and-re-add-later or keep-with-a-note.
 - **`scripts/i18n.py unused` is not wired into `make ci`.** It has a
   `--strict` flag that exits non-zero, but 9 keys (the `trip.tabs.*` and
   `item.category.*` families) are only reachable via runtime-composed keys
@@ -180,17 +174,6 @@ require a redesign later — they're additive, not blocked, but none are built:
   human should eyeball. Worth revisiting if an allowlist of known-dynamic
   prefixes turns out to be maintainable — that would make the check a real
   gate instead of a report.
-- **`itinerary.noDates` points at a tab that no longer exists.** A trip with
-  no start/end date shows "Set a start and end date on the **Overview tab**
-  to build a day-by-day itinerary, or add days manually below" — but Stage
-  05 removed the Overview tab; those fields live under **Settings** now.
-  Spotted while verifying Stage 07 Milestone 7 on a dateless trip. A
-  two-locale copy fix, deliberately not folded into that milestone since it
-  isn't part of day deletion; worth grepping the rest of `locales/` for
-  other references to removed UI while doing it.
-  *Repro since Stage 08 Milestone 4:* `make dev-reset FORCE=1`, then the
-  `no-dates` scenario's Itinerary tab shows it directly — no hand-built
-  dateless trip needed.
 - **`scripts/without.sh` only handles *uncommitted* changes.** By design (it
   works via `git stash push`), but it means the common case of "does this
   test actually cover the fix I landed last week?" needs the change staged as
@@ -288,20 +271,32 @@ require a redesign later — they're additive, not blocked, but none are built:
   Settings, just no longer visible by default. Worth revisiting whether
   the photo should reappear near the title/subtitle/dates block once that
   layout has settled from more real use.
-- **Broader "item" → "location" terminology sweep.** Stage 05 fixed the
-  most user-visible instances (`locations.new`/`location.editor.newTitle`
-  copy, the dynamic "Edit {title}" heading), but a real inconsistency
-  remains underneath: `location.editor.createButton` still reads "Create
-  item"/"Eintrag erstellen", and the whole `item.detail.*`/
-  `item.category.*`/`item.deleteConfirm` i18n namespace is still
-  item-flavored despite `location.form.*`/`location.editor.*` already
-  having migrated. On the JS side, `location-form.js` exports
-  `renderItemForm`, `locations-tab.js` exports `renderItemsTab` and still
-  uses `data-action="new-item"` internally. None of this is user-visible
-  beyond the one leftover button label, so it's cosmetic/consistency
-  cleanup rather than a bug — but worth doing as one deliberate pass
-  (rename every key and identifier together) rather than piecemeal, to
-  avoid leaving the codebase in a half-migrated state indefinitely.
+- **Identifier sweep: "item" → "location", and "documents" → "files".** Stage 05
+  fixed the most user-visible item/location instances (`locations.new`/
+  `location.editor.newTitle` copy, the dynamic "Edit {title}" heading), and this
+  entry used to also cite `location.editor.createButton` as still reading "Create
+  item" — checked in Stage 09 Milestone 7 and it is already correct in both
+  locales ("Create location" / "Ort erstellen"), so that part was stale.
+  What remains is entirely below the surface, and there are now two renames
+  wanting the same pass:
+    - The whole `item.detail.*`/`item.category.*`/`item.deleteConfirm` i18n
+      namespace is still item-flavored despite `location.form.*`/
+      `location.editor.*` having migrated. On the JS side, `location-form.js`
+      exports `renderItemForm`, `locations-tab.js` exports `renderItemsTab` and
+      uses `data-action="new-item"`, and the list renders `<item-card>`.
+    - Stage 09 Milestone 7 renamed "Documents" to "Files" in the *copy* only, so
+      the `documents.*` keys, `item.detail.documents`, `trip.tabs.documents`, the
+      `data-tab="documents"` value, `document-list.js` and the
+      `/trips/:id/documents` route all still say "documents". Renaming the route
+      would change a user-visible URL, so it needs a redirect from the old path
+      or a deliberate decision to break existing bookmarks.
+  None of this is user-visible, so it is consistency cleanup rather than a bug —
+  but worth doing as one deliberate pass (keys, identifiers and route together)
+  rather than piecemeal, to avoid leaving the tree half-migrated indefinitely.
+- **The key `trip.overview.image` still names the Overview tab** removed in Stage
+  05. Its *value* ("Cover photo" / "Titelbild") is correct and user-visible copy
+  is fine; only the key name is stale, so it belongs with the identifier sweep
+  above rather than being renamed on its own.
 
 ## Deferred from Stage 06
 

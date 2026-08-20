@@ -663,6 +663,43 @@ of the breakpoint.
 the `no-dates` seed scenario (available since Stage 08 Milestone 4) in both
 locales and read the corrected sentence.
 
+**Done.** `itinerary.noDates` no longer names the removed Overview tab — but the
+plan's instruction, "Overview → Settings", turned out to be wrong too: Milestone
+6 moved Settings into the "More" menu on phones, so *any* copy naming a tab
+position is wrong at some width. Both locales now name the place rather than the
+tab: "Set a start and end date in this trip's settings…" / "Lege in den
+Einstellungen dieser Reise…". A grep of both locale files for references to
+removed or renamed UI found nothing else; the only other Overview trace is the
+*key* `trip.overview.image`, whose value ("Cover photo") is fine and whose name
+is identifier churn, recorded rather than renamed.
+
+`common.edit` is deleted from both locales — `scripts/i18n.py unused` now reports
+**"No unused keys"** for the first time, the other of its two orphans
+(`item.detail.close`) having picked up a real caller in Milestone 4. Two entries
+in `todo.md` were corrected rather than implemented: the leftover "Create item"
+button label was already fixed in both locales ("Create location" / "Ort
+erstellen"), and the orphan-keys entry was down to one key.
+
+Added to the milestone at the user's request (from `docs/plans/notes.md`):
+**"Documents" → "Files"** in the visible copy — the tab label, the More-menu row,
+the card heading on location pages, the empty state, the delete confirmation and
+the two prose mentions inside the delete descriptions, in both locales, 12
+strings in all. Deliberately **copy only**: the `documents.*` keys, the
+`/trips/:id/documents` route and the `data-tab` value are unchanged, since
+renaming those is identifier churn that `todo.md` wants done as one deliberate
+pass, and changing the route would break existing bookmarks. Worth noting the
+section's own upload controls already said "Choose a file" / "Add file", so this
+makes it consistent with its own buttons rather than introducing a new word.
+
+Verified: `make ci` (123 keys in sync) and `make test-ui` (9 tests) green, plus a
+17-assertion Playwright script over the `no-dates` scenario in both locales: the
+hint names neither "Overview"/"Übersicht" nor any tab at all, while pointing at
+the settings; at 324px the settings section really is behind "More", which is
+what makes the reworded copy correct rather than merely different; the More row
+and the section's empty state read "Files"/"Dateien" with the old word gone from
+the section entirely; and a nine-route sweep confirms no page renders a raw i18n
+key — the check that a deleted key left nothing dangling.
+
 ---
 
 ## Build order

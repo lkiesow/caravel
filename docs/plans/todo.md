@@ -108,8 +108,9 @@ Direction already agreed or obviously wanted; none of it built.
   Suggested UI: replace the bare delete icon with a vertical-ellipsis button
   opening a small dropdown (Edit / Duplicate / Delete). Needs concept work
   first — how in-place editing should look, whether duplication copies
-  checked-state or resets it. Depends on `renderMenu` growing an action-item
-  mode (see the cleanup section).
+  checked-state or resets it. No longer blocked: `renderMenu` grew its
+  action-item mode in Stage 11 Milestone 3, and the Files row's ⋮ (Edit note /
+  Delete) is the working example to copy, `promptDialog` included.
 - **A markdown preview for location notes.** Notes are authored in a plain
   `<textarea>` (`location-form.js`) and only rendered after saving, on the view
   page — so formatting is written blind. Wants a preview (side-by-side, or a
@@ -257,20 +258,18 @@ step with itself.
   that behaviour plus `.user-menu__dropdown` CSS that `.menu__dropdown`
   duplicates. Two popup implementations in one tree is exactly the half-migrated
   state worth avoiding.
-  *Closer since Stage 09 Milestone 6:* the tab bar's "More" menu is a third
-  caller, and getting it there gave the component `label` (a pinned trigger
-  label), `chevron: false`, `triggerClass`, `className` and `items[].iconName`.
-  That covers most of what user-menu needs; what's missing is the non-select
-  **action item** mode — Log out isn't a selection, so
-  `role="menuitemradio"`/`aria-checked` is wrong for it. The ⋮ checklist menu
-  wants the same mode, so one of those two should build it and the other
-  should follow.
+  *Nothing is missing from the component any more.* Stage 09 Milestone 6 gave it
+  `label` (a pinned trigger label), `chevron: false`, `triggerClass`, `className`
+  and `items[].iconName`, and Stage 11 Milestone 3 added the last piece the user
+  menu needed: the non-select **action item** mode (`role="menuitem"`, no
+  `aria-checked`, fires on every click, optional `danger` tint). Log out is an
+  action, so that was the blocker; the Files row's ⋮ is the example to follow.
+  What is left is purely the migration itself, plus deleting the duplicated
+  `.user-menu__dropdown` CSS.
   Related: the user menu still has only "Log out" in it (Stage 02 built it
-  "structured so more items can be added later"). The trigger is now decided —
-  the settings screen in Planned features goes in that menu, giving it a second
-  item, and both entries in it ("Settings", "Log out") are actions rather than
-  selections. So whoever builds that screen builds the action-item mode, and the
-  ⋮ checklist menu inherits it.
+  "structured so more items can be added later"). The settings screen in Planned
+  features goes in that menu, giving it a second item — also an action, so both
+  entries fit the mode that now exists.
 
 ---
 
@@ -281,7 +280,9 @@ step with itself.
   drives the tab bar's More menu (open, toggle, outside click, Escape,
   select-and-navigate, checked row) in **both locales**, so "anything behind an
   interaction" and "German copy is only eyeballed" are no longer true as blanket
-  statements. What remains from the original list:
+  statements. Stage 11 Milestone 3 added the Files row's ⋮ menu to the same spec
+  — but only up to the click, since Edit note and Delete both write. What
+  remains from the original list:
     - **Mutating flows.** Stage 09 Milestone 2's single-Save check was a
       20-assertion script and is still not checked in, because every spec runs
       against the shared seed and a write would leak into the others. Needs an

@@ -1,12 +1,13 @@
 import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
-import { confirmDialog } from "./dialog.js";
+import { confirmDialog, promptDialog } from "./dialog.js";
+import { renderMenu } from "./menu.js";
 import { renderLoading } from "./loading.js";
 
-// Renders a read-only file list (filename, size, source, note, download
-// link, delete) plus an inline single-file add row (file picker + optional
-// note + Upload button) - the same file+note+button shape as the Links/
+// Renders a file list (filename, size, source, note, download link, and a
+// per-row overflow menu holding Edit note / Delete) plus an inline
+// single-file add row (file picker + optional note + Upload button) - the same file+note+button shape as the Links/
 // Dates forms in the location editor, rather than the multi-file dialog
 // this used to be. Selecting several files is still possible, just one
 // upload at a time. `path` is either `/trips/{id}/files` or
@@ -82,25 +83,61 @@ export async function renderFileList(container, path, { staged } = {}) {
         <span>${escapeHtml(row.file.name)}</span>
         <span class="file-size">${formatSize(row.file.size)}</span>
         ${row.note ? `<span class="file-note">${escapeHtml(row.note)}</span>` : ""}
-        <button class="icon-remove" data-action="delete" aria-label="${t("common.remove")}">${icon("x")}</button>
+        <span class="file-actions"></span>
       `
         : `
         <a href="${row.download_url}" target="_blank" rel="noopener">${escapeHtml(row.filename)}</a>
         <span class="file-size">${formatSize(row.size_bytes)}</span>
         ${row.item_title ? `<span class="file-source">${escapeHtml(row.item_title)}</span>` : ""}
         ${row.note ? `<span class="file-note">${escapeHtml(row.note)}</span>` : ""}
-        <button class="icon-remove" data-action="delete" data-id="${row.id}" aria-label="${t("common.remove")}">${icon("x")}</button>
+        <span class="file-actions"></span>
       `;
-      li.querySelector('[data-action="delete"]').addEventListener("click", async () => {
-        if (isStaging) {
-          staged.splice(i, 1);
+
+      // One overflow menu per row rather than a bare delete icon: a note can
+      // now be changed after upload (PATCH /api/files/{id}), so the row has
+      // two actions, and two icons competing beside a filename is exactly the
+      // pile-up this row already has too much of. renderMenu's action-item
+      // mode exists for this - these are things the menu does, not a
+      // selection it holds.
+      renderMenu(li.querySelector(".file-actions"), {
+        iconName: "ellipsis",
+        chevron: false,
+        triggerClass: "file-actions__trigger",
+        ariaLabel: "files.actions",
+        items: [
+          { value: "note", label: t("files.editNote"), iconName: "pencil", action: true },
+          { value: "delete", label: t(isStaging ? "common.remove" : "common.delete"), iconName: "trash-2", action: true, danger: true },
+        ],
+        onSelect: async (action) => {
+          if (action === "note") {
+            const note = await promptDialog({
+              messageKey: "files.notePrompt",
+              value: row.note || "",
+              placeholderKey: "files.notePlaceholder",
+            });
+            // null means cancelled; "" means "clear it", which is a real
+            // answer and has to reach the server.
+            if (note === null) return;
+            if (isStaging) {
+              staged[i].note = note || null;
+            } else {
+              const updated = await api.patch(`/files/${row.id}`, { note });
+              files = files.map((f) => (f.id === updated.id ? updated : f));
+            }
+            render();
+            return;
+          }
+
+          if (isStaging) {
+            staged.splice(i, 1);
+            render();
+            return;
+          }
+          if (!(await confirmDialog({ messageKey: "files.deleteConfirm" }))) return;
+          await api.delete(`/files/${row.id}`);
+          files = files.filter((f) => f.id !== row.id);
           render();
-          return;
-        }
-        if (!(await confirmDialog({ messageKey: "files.deleteConfirm" }))) return;
-        await api.delete(`/files/${row.id}`);
-        files = files.filter((d) => d.id !== row.id);
-        render();
+        },
       });
       list.appendChild(li);
     });

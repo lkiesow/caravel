@@ -119,3 +119,73 @@ for (const locale of ["en", "de"]) {
     });
   });
 }
+
+// The same component in its *other* mode: the per-file overflow menu on the
+// Files tab (Stage 11 Milestone 3). Its items are actions, not a selection, so
+// the assertions here are the mirror image of the ones above - role="menuitem"
+// and no aria-checked anywhere, where the tab bar has role="menuitemradio" and
+// exactly one checked row.
+//
+// Nothing here clicks an action: Edit note and Delete both mutate the shared
+// seed, which the suite has no isolation for yet (see todo.md). Everything up
+// to the click is still worth holding: the roles, the copy in both locales, the
+// destructive tint, and the trigger's tap target.
+const FILE_MENU_LABELS = {
+  en: { actions: "File actions", items: ["Edit note", "Delete"] },
+  de: { actions: "Dateiaktionen", items: ["Notiz bearbeiten", "Löschen"] },
+};
+
+for (const locale of ["en", "de"]) {
+  test.describe(`file row overflow menu (${locale})`, () => {
+    test.use({ viewport: MOBILE, locale });
+
+    test(`renders actions, not a selection (${locale})`, async ({ page }) => {
+      await login(page);
+      const trips = await resolveScenarioTrips(page);
+      await gotoRoute(page, `/trips/${trips.full}/files`);
+      const copy = FILE_MENU_LABELS[locale];
+
+      // The `full` scenario seeds two files: one on the trip, one on a
+      // location. Both rows carry their own menu.
+      const rows = page.locator(".files > li");
+      await expect(rows).toHaveCount(2);
+
+      const trigger = rows.first().locator(".menu__trigger");
+      const dropdown = rows.first().locator(".menu__dropdown");
+
+      // An icon-only trigger, so the accessible name is the only thing naming
+      // it - and it has to clear the tap floor at 324px like every other
+      // control in a row.
+      await expect(trigger).toHaveAttribute("aria-label", copy.actions);
+      await expect(trigger).toHaveAttribute("aria-expanded", "false");
+      const box = await trigger.boundingBox();
+      expect(box.height, "row menu trigger height").toBeGreaterThanOrEqual(44);
+      expect(box.width, "row menu trigger width").toBeGreaterThanOrEqual(44);
+
+      await trigger.click();
+      await expect(dropdown).toBeVisible();
+      await expect(trigger).toHaveClass(/menu__trigger--open/);
+
+      // The whole point of the mode: these are menuitems, and nothing in here
+      // claims a checked state. "Delete" is not a state the menu is now in.
+      await expect(dropdown.locator('[role="menuitem"]')).toHaveText(copy.items);
+      await expect(dropdown.locator('[role="menuitemradio"]')).toHaveCount(0);
+      await expect(dropdown.locator("[aria-checked]")).toHaveCount(0);
+
+      // The destructive one is tinted, and only it. Asserting the computed
+      // color rather than the class, because the class was silently losing to
+      // `.menu__dropdown button` on specificity when this was first written.
+      const items = dropdown.locator('[role="menuitem"]');
+      const danger = await items.last().evaluate((el) => getComputedStyle(el).color);
+      const plain = await items.first().evaluate((el) => getComputedStyle(el).color);
+      expect(danger, "Delete is tinted").not.toBe(plain);
+      await expect(items.last()).toHaveClass(/menu__action--danger/);
+      await expect(items.first()).not.toHaveClass(/menu__action--danger/);
+
+      // Popup behaviour is the component's, so it must hold here too.
+      await page.keyboard.press("Escape");
+      await expect(dropdown).toBeHidden();
+      await expect(trigger).toHaveAttribute("aria-expanded", "false");
+    });
+  });
+}

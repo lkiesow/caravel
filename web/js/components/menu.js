@@ -20,6 +20,15 @@ import { icon } from "../icon.js";
 // when it actually changes, so callers don't have to guard against
 // re-selecting the current option.
 //
+// An item marked `action: true` is not a selection: "Delete" is something the
+// menu *does*, not a state it is now in, so `role="menuitemradio"` and
+// `aria-checked` would both be lies. Action items render as plain
+// `role="menuitem"`, never take the checked styling, and fire onSelect on every
+// click - the "don't re-fire the current value" guard below is exactly wrong
+// for them, since pressing Delete twice has to mean twice. `danger: true`
+// tints one red, for the destructive one in the list. Radio and action items
+// can share a menu; only the action ones opt out.
+//
 // An item's optional `iconName` takes the leading slot that otherwise holds
 // the check mark. Where the items are things that also exist elsewhere in the
 // UI with an icon - the tab bar's overflow sections - dropping the icon on the
@@ -69,8 +78,20 @@ export function renderMenu(
           .map(
             (item) => `
           <li role="none">
-            <button type="button" role="menuitemradio" data-value="${escapeAttr(item.value)}" aria-checked="${item.value === active}">
-              ${item.iconName ? icon(item.iconName, { className: "menu__item-icon" }) : icon("check", { className: "menu__check" })}
+            <button type="button" ${item.action ? `role="menuitem" class="menu__action${item.danger ? " menu__action--danger" : ""}"` : `role="menuitemradio" aria-checked="${item.value === active}"`} data-value="${escapeAttr(item.value)}">
+              ${
+                item.iconName
+                  ? icon(item.iconName, { className: "menu__item-icon" })
+                  : // An action item with no icon gets no leading slot at all,
+                    // rather than an invisible checkmark reserving space for a
+                    // selection it can never carry. Mixing icon-less action
+                    // items with radio ones in one menu would misalign them,
+                    // which is a reason to give action items icons, not a
+                    // reason for the component to fake one.
+                    item.action
+                    ? ""
+                    : icon("check", { className: "menu__check" })
+              }
               <span></span>
             </button>
           </li>
@@ -96,7 +117,9 @@ export function renderMenu(
   function syncLabel() {
     labelEl.textContent = label ?? items.find((item) => item.value === active)?.label ?? "";
     trigger.classList.toggle("menu__trigger--active", neutralValue !== undefined && active !== neutralValue);
-    dropdown.querySelectorAll("[data-value]").forEach((btn) => {
+    // Only the radio items carry a checked state; an action item has none to
+    // sync, and stamping aria-checked on it would invent one.
+    dropdown.querySelectorAll('[role="menuitemradio"]').forEach((btn) => {
       btn.setAttribute("aria-checked", String(btn.getAttribute("data-value") === active));
     });
   }
@@ -131,10 +154,14 @@ export function renderMenu(
     else close();
   });
 
-  dropdown.querySelectorAll("[data-value]").forEach((btn) => {
+  dropdown.querySelectorAll("[data-value]").forEach((btn, i) => {
     btn.addEventListener("click", () => {
       const value = btn.getAttribute("data-value");
       close();
+      if (items[i].action) {
+        onSelect?.(value);
+        return;
+      }
       if (value === active) return;
       active = value;
       syncLabel();

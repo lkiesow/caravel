@@ -160,7 +160,8 @@ a:visited {
   color: white;
 }
 
-.icon-remove {
+.icon-remove,
+.file-actions__trigger {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -173,16 +174,19 @@ a:visited {
   border-radius: var(--radius);
 }
 
-.icon-remove:hover {
+.icon-remove:hover,
+.file-actions__trigger:hover {
   color: var(--color-danger-fg);
 }
 
-.icon-remove:focus-visible {
+.icon-remove:focus-visible,
+.file-actions__trigger:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
-.icon-remove .icon {
+.icon-remove .icon,
+.file-actions__trigger .icon {
   width: 1rem;
   height: 1rem;
 }
@@ -440,6 +444,19 @@ a:visited {
   color: var(--color-accent);
 }
 
+/* Action items (menu.js's items[].action) never take the accent above - they
+   are things the menu does, not the option it currently holds - so the only
+   styling they get is the destructive one, for the Delete at the bottom of the
+   list. Colouring the row rather than boxing it: a filled red button inside a
+   dropdown reads as the menu's primary action, which is the opposite of what a
+   delete should look like before it's been chosen. */
+/* Qualified by .menu__dropdown, not bare: `.menu__dropdown button` above sets
+   the row color, and a lone class selector loses to it on specificity - the
+   red silently didn't apply until this was written the longer way. */
+.menu__dropdown .menu__action--danger {
+  color: var(--color-danger);
+}
+
 /* Modal dialogs (components/dialog.js), replacing window.confirm/alert.
    A <dialog> is display:none until opened, so these only ever apply to the
    open one; showModal() also puts it in the top layer, which is why there's
@@ -461,6 +478,17 @@ a:visited {
 }
 
 .dialog__message {
+  margin: 0 0 1.25rem;
+}
+
+/* The prompt dialog's single field (components/dialog.js's promptDialog).
+   Full width and above the buttons: the message asks a question, the field is
+   the answer, and a field narrower than the dialog would read as one of a
+   row of controls rather than the whole point of the box. Field styling
+   itself is shared with the editor forms above. */
+.dialog__input {
+  display: block;
+  width: 100%;
   margin: 0 0 1.25rem;
 }
 
@@ -1043,7 +1071,8 @@ button {
 .location-form input,
 .link-form input,
 .date-form input,
-.file-form input[type="text"] {
+.file-form input[type="text"],
+.dialog__input {
   padding: 0.5rem;
   border-radius: 0.375rem;
   border: 1px solid var(--color-border);
@@ -1323,10 +1352,19 @@ button {
   gap: 0.375rem;
 }
 
-.files li {
+.files > li {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+/* The row's overflow menu (menu.js, action-item mode). The wrapper takes the
+   margin-left: auto that the bare delete button used to carry, so the actions
+   still sit at the right edge of the row; the trigger itself borrows
+   .icon-remove's look above, including its 44px mobile target. */
+.file-actions {
+  display: inline-flex;
+  margin-left: auto;
 }
 
 .file-size {
@@ -1446,7 +1484,7 @@ button {
   .back-link,
   .itinerary-entry__link,
   .link-list li a,
-  .files li a,
+  .files > li > a,
   .location-view__maps-link,
   .checklist-item label,
   .location-form label.location-form__checkbox {
@@ -1458,7 +1496,7 @@ button {
      measures 44px but doesn't feel like it. */
   .back-link,
   .link-list li a,
-  .files li a,
+  .files > li > a,
   .location-view__maps-link,
   .checklist-item label,
   .location-form label.location-form__checkbox {
@@ -1511,16 +1549,16 @@ button {
      the right edge where every other row in the app puts it, while the source
      and note - which come *before* it in the markup, and are read in that
      sensible order by assistive tech - flow underneath. */
-  .files li {
+  .files > li {
     flex-wrap: wrap;
   }
 
-  .files li .file-source,
-  .files li .file-note {
+  .files > li > .file-source,
+  .files > li > .file-note {
     order: 1;
   }
 
-  .files li .file-source {
+  .files > li > .file-source {
     overflow: visible;
     text-overflow: clip;
     white-space: normal;
@@ -1630,7 +1668,8 @@ button {
   /* Was padding: 0 around a 1rem icon — a ~16px target, the smallest in the
      app. The negative margin keeps the larger hit area from visually pushing
      its row apart. */
-  .icon-remove {
+  .icon-remove,
+  .file-actions__trigger {
     min-width: var(--tap-min);
     min-height: var(--tap-min);
     margin-block: -0.5rem;

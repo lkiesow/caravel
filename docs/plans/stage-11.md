@@ -257,6 +257,58 @@ outside-click/Escape in both locales) with the assertion that an action item
 exposes `role="menuitem"` and no `aria-checked`, and that the radio menus are
 unchanged.
 
+**Done.** The component change is small and exactly as planned: an item marked
+`action: true` renders `role="menuitem"` with no `aria-checked` and no
+check-mark slot, `danger: true` tints it, `syncLabel` now stamps `aria-checked`
+only on `[role="menuitemradio"]` rows so an action item can't have one invented
+for it, and the click handler fires `onSelect` on every click for actions —
+skipping the "same value, don't re-fire" guard, which is exactly wrong when
+pressing Delete twice has to mean twice. Radio and action items can share one
+menu; only the action ones opt out.
+
+**Deviation, deliberate:** the plan had this milestone teach the mode and use it
+"from the file card only", but the card doesn't exist until Milestone 4 — which
+would have left this commit unverifiable behaviourally. So the consumer is the
+*existing* file row: its bare ✕ became a ⋮ holding **Edit note** and
+**Delete/Remove**, which also pulls `promptDialog` forward from Milestone 5.
+Milestone 4 is now purely layout, and each commit stands on its own. Three new
+i18n keys in both locales (`files.actions`, `files.editNote`,
+`files.notePrompt`); `files.notePlaceholder` is reused as the dialog's
+placeholder.
+
+`promptDialog({ messageKey, value, placeholderKey })` threads one text input
+through `dialog.js`'s existing private `open()`, as planned. It resolves to the
+typed string or to **null** when dismissed, so "saved an empty value" (which is
+how a note gets cleared) stays distinguishable from "changed their mind" — a
+bare `""` could not carry that. Two details the plan didn't name: Enter in the
+field closes with confirm (without it, Enter falls through to `<dialog>`'s
+default button, which is Cancel), and the field takes focus over the first
+button, since typing is the point of the box.
+
+**Two bugs found while verifying, both mine, both invisible without measuring.**
+First, `.menu__action--danger` silently lost to `.menu__dropdown button` on
+specificity, so Delete rendered in the ordinary text color; it is now written
+as `.menu__dropdown .menu__action--danger`, and the spec asserts the *computed*
+color rather than the class so this can't come back. Second, adding a `<ul>` to
+each row meant `.files li` began matching the dropdown's own `<li>`s, so the
+row's flex and its ≤640px wrap rules were leaking into menu items — the file-row
+rules are now `.files > li` (and `.files > li > a`).
+
+**Verified.** `make ci` green, `make test-ui` **14/14** — the two new tests being
+`menu.spec.js`'s file-row menu in both locales: `role="menuitem"` on both items,
+zero `[role="menuitemradio"]` and zero `[aria-checked]` in the dropdown (the
+mirror image of the tab bar's assertions), German copy, the destructive tint,
+the 44×44 icon-only trigger and its accessible name, and Escape closing. It
+stops short of clicking an action, since both mutate the shared seed. Proven
+non-vacuous: dropping `action: true` from the two items fails it on the roles.
+By hand at 324×756 against `make dev`: Edit note prefills the current note,
+saves on Enter, the row re-renders from the PATCH response; an emptied field
+clears the note; Cancel with text typed changes nothing; and the seeded note was
+restored afterwards. The staging path was driven too, on a new location's Files
+card — a staged pick's note is edited locally with no request, and Remove drops
+it with no confirmation, leaving the empty state — and nothing was created,
+since the location form was never submitted.
+
 ---
 
 ## 4. The file card

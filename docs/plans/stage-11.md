@@ -425,6 +425,16 @@ an `application/octet-stream` gave the generic `file` tile, and both showed the
 "No note" hint. Both were deleted afterwards, so the seed is back to its four
 files.
 
+**Follow-up (same day, review feedback).** The card's overflow trigger used the
+*horizontal* ellipsis, which is the sprite's only one and the icon the tab bar's
+"More" already carries. A per-row overflow reads as the vertical form
+everywhere else, so `ellipsis-vertical` joined the sprite (again four added
+lines, no existing symbol touched) and the card menu uses it; the tab bar keeps
+the horizontal one, so the two menus no longer look like the same control.
+Verified: `make ci` green, `make test-ui` 14/14, and the rendered `<use href>`
+checked on both — `#lucide-ellipsis-vertical` on the cards,
+`#lucide-ellipsis` on the tab bar.
+
 ---
 
 ## 5. The drop zone, and editing a note

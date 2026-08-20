@@ -37,6 +37,7 @@ ICONS = [
     "funnel",
     "ellipsis",
     "file",
+    "ellipsis-vertical",
 ]
 
 

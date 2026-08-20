@@ -171,7 +171,10 @@ export async function renderFileList(container, path, { staged, rows: given, rea
         return;
       }
       renderMenu(li.querySelector(".file-actions"), {
-        iconName: "ellipsis",
+        // Vertical, not the horizontal ellipsis the tab bar's "More" uses: this
+        // one belongs to the row it sits in, and the vertical form is what a
+        // per-row overflow reads as everywhere else.
+        iconName: "ellipsis-vertical",
         chevron: false,
         triggerClass: "file-actions__trigger",
         ariaLabel: "files.actions",

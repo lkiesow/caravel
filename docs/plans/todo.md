@@ -209,7 +209,7 @@ together rather than bolting a column onto an existing table.
   column value. Same dependency: design it with the roles above, not bolted on
   after. The storage side is already indifferent — a document row carries
   `trip_id` and an optional `item_id` and nothing else, so mechanically this is a
-  visibility column plus a predicate in `ListTripDocuments`/`ListItemDocuments`.
+  visibility column plus a predicate in `ListTripFiles`/`ListItemFiles`.
   The interesting parts are who counts as the owner of a file and what a public
   share link (see above) is allowed to expose.
 - **Per-visibility files, on the same model as the checklists above.** (From the
@@ -221,7 +221,7 @@ together rather than bolting a column onto an existing table.
   Same dependency: it wants designing with the roles above, not bolted on
   afterwards. Note the storage side is already indifferent — every document row
   carries `trip_id` and an optional `item_id` and nothing else, so a visibility
-  column plus a filter in `ListTripDocuments`/`ListItemDocuments` is the shape,
+  column plus a filter in `ListTripFiles`/`ListItemFiles` is the shape,
   with the interesting work being who counts as the author and what a shared link
   (see above) is allowed to expose.
 - **Expenses / cost-splitting.** (Stage 01.) A new `expenses` table referencing
@@ -236,25 +236,20 @@ together rather than bolting a column onto an existing table.
 No user-visible change; the point is to stop the tree drifting further out of
 step with itself.
 
-- **Identifier sweep: "item" → "location", and "documents" → "files".** Stage 05
-  fixed the user-visible item/location copy and Stage 09 Milestone 7 renamed
-  Documents to Files in the copy, so what's left is entirely below the surface —
-  two renames wanting one deliberate pass:
-    - The whole `item.detail.*`/`item.category.*`/`item.deleteConfirm` i18n
-      namespace is still item-flavoured despite `location.form.*`/
-      `location.editor.*` having migrated. On the JS side, `location-form.js`
-      exports `renderItemForm`, `locations-tab.js` exports `renderItemsTab` and
-      uses `data-action="new-item"`, and the list renders `<item-card>`.
-    - The `documents.*` keys, `item.detail.documents`, `trip.tabs.documents`, the
-      `data-tab="documents"` value, `document-list.js` and the
-      `/trips/:id/documents` route all still say "documents". Renaming the route
-      changes a user-visible URL, so it needs a redirect from the old path or a
-      deliberate decision to break existing bookmarks.
-  (The third part of this entry — the stale `trip.overview.image` key naming a
-  tab removed in Stage 05 — was done in Stage 10 Milestone 2, renamed to
-  `trip.settings.image`.)
-  Doing these piecemeal is what leaves the tree half-migrated indefinitely,
-  which is the whole reason this is one entry rather than three.
+- **Identifier sweep: "item" → "location".** Stage 05 fixed the user-visible
+  item/location copy, so what's left is entirely below the surface: the whole
+  `item.detail.*`/`item.category.*`/`item.deleteConfirm` i18n namespace is still
+  item-flavoured despite `location.form.*`/`location.editor.*` having migrated,
+  and on the JS side `location-form.js` exports `renderItemForm`,
+  `locations-tab.js` exports `renderItemsTab` and uses
+  `data-action="new-item"`, and the list renders `<item-card>`. Note the API and
+  schema say `items` too (`/api/items/{id}`, the `items` table), so this one has
+  the same choose-your-depth question the files rename had.
+  (Two former parts of this entry are done: the stale `trip.overview.image` key
+  in Stage 10 Milestone 2, and the whole "documents" → "files" rename in Stage 11
+  Milestone 1 — which went all the way down to a `0006` table rename, dropped
+  the `/trips/:id/documents` URL outright rather than redirecting it, and is the
+  precedent to copy here.)
 - **Refactor `user-menu.js` onto `components/menu.js`.** Stage 06 Milestone 1
   extracted the popup pattern (hidden-attribute visibility, `aria-expanded`
   sync, outside-click and Escape listeners attached on open and removed on
@@ -336,8 +331,8 @@ step with itself.
   change is verified only by compiling — which catches a type error and nothing
   else. A wrong column order, a dialect-specific NULL or timestamp difference, or
   an adapter that maps the wrong field would ship green. Noticed while changing
-  `ListTripDocuments` in Stage 10 Milestone 7, but it applies to every query in
-  the app. Cheapest fix that would actually mean something: a CI job with a
+  `ListTripFiles` (`ListTripDocuments` at the time) in Stage 10 Milestone 7, but
+  it applies to every query in the app. Cheapest fix that would actually mean something: a CI job with a
   `postgres` service container running `go test ./...` against it, which needs
   the test harness (`newTestServerWithStore`) to take the driver from an env var
   instead of hard-coding `"sqlite"`.
@@ -400,8 +395,8 @@ step with itself.
 Nothing here is needed to keep developing; all of it is needed before anyone
 else runs this.
 
-- **Squash the migrations before the first real release.** There are now **five**
-  files per dialect (`0001_init` through `0005_trip_subtitle`, in both
+- **Squash the migrations before the first real release.** There are now **six**
+  files per dialect (`0001_init` through `0006_rename_documents_to_files`, in both
   `internal/db/migrations/sqlite/` and `.../postgres/`). Since nobody has
   deployed this yet, collapsing them into a single `0001_init` is safe — and
   stops being safe the moment someone has.

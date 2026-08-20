@@ -585,8 +585,8 @@ func sqliteItineraryEntryToDomain(e sqlitegen.ItineraryEntry) ItineraryEntry {
 	}
 }
 
-func (s *sqliteStore) CreateDocument(ctx context.Context, p CreateDocumentParams) (Document, error) {
-	row, err := s.q.CreateDocument(ctx, sqlitegen.CreateDocumentParams{
+func (s *sqliteStore) CreateFile(ctx context.Context, p CreateFileParams) (File, error) {
+	row, err := s.q.CreateFile(ctx, sqlitegen.CreateFileParams{
 		ID:          p.ID,
 		TripID:      p.TripID,
 		ItemID:      nullString(p.ItemID),
@@ -598,30 +598,30 @@ func (s *sqliteStore) CreateDocument(ctx context.Context, p CreateDocumentParams
 		Note:        nullString(p.Note),
 	})
 	if err != nil {
-		return Document{}, err
+		return File{}, err
 	}
-	return sqliteDocumentToDomain(row), nil
+	return sqliteFileToDomain(row), nil
 }
 
-func (s *sqliteStore) GetDocumentByID(ctx context.Context, id string) (Document, error) {
-	row, err := s.q.GetDocumentByID(ctx, id)
+func (s *sqliteStore) GetFileByID(ctx context.Context, id string) (File, error) {
+	row, err := s.q.GetFileByID(ctx, id)
 	if err != nil {
-		return Document{}, mapNotFound(err)
+		return File{}, mapNotFound(err)
 	}
-	return sqliteDocumentToDomain(row), nil
+	return sqliteFileToDomain(row), nil
 }
 
-func (s *sqliteStore) ListTripDocuments(ctx context.Context, tripID string) ([]DocumentDetail, error) {
-	rows, err := s.q.ListTripDocuments(ctx, tripID)
+func (s *sqliteStore) ListTripFiles(ctx context.Context, tripID string) ([]FileDetail, error) {
+	rows, err := s.q.ListTripFiles(ctx, tripID)
 	if err != nil {
 		return nil, err
 	}
-	docs := make([]DocumentDetail, len(rows))
+	files := make([]FileDetail, len(rows))
 	for i, row := range rows {
-		docs[i] = DocumentDetail{
+		files[i] = FileDetail{
 			// The joined row is its own generated struct, so this can't go
-			// through sqliteDocumentToDomain like the other document queries.
-			Document: Document{
+			// through sqliteFileToDomain like the other file queries.
+			File: File{
 				ID:          row.ID,
 				TripID:      row.TripID,
 				ItemID:      strPtr(row.ItemID),
@@ -635,23 +635,23 @@ func (s *sqliteStore) ListTripDocuments(ctx context.Context, tripID string) ([]D
 			ItemTitle: strPtr(row.ItemTitle),
 		}
 	}
-	return docs, nil
+	return files, nil
 }
 
-func (s *sqliteStore) ListItemDocuments(ctx context.Context, itemID string) ([]Document, error) {
-	rows, err := s.q.ListItemDocuments(ctx, nullString(&itemID))
+func (s *sqliteStore) ListItemFiles(ctx context.Context, itemID string) ([]File, error) {
+	rows, err := s.q.ListItemFiles(ctx, nullString(&itemID))
 	if err != nil {
 		return nil, err
 	}
-	docs := make([]Document, len(rows))
+	files := make([]File, len(rows))
 	for i, row := range rows {
-		docs[i] = sqliteDocumentToDomain(row)
+		files[i] = sqliteFileToDomain(row)
 	}
-	return docs, nil
+	return files, nil
 }
 
-func (s *sqliteStore) DeleteDocument(ctx context.Context, id, tripID string) (bool, error) {
-	n, err := s.q.DeleteDocument(ctx, sqlitegen.DeleteDocumentParams{ID: id, TripID: tripID})
+func (s *sqliteStore) DeleteFile(ctx context.Context, id, tripID string) (bool, error) {
+	n, err := s.q.DeleteFile(ctx, sqlitegen.DeleteFileParams{ID: id, TripID: tripID})
 	if err != nil {
 		return false, err
 	}
@@ -768,8 +768,8 @@ func sqliteChecklistItemToDomain(c sqlitegen.ChecklistItem) ChecklistItem {
 	}
 }
 
-func sqliteDocumentToDomain(d sqlitegen.Document) Document {
-	return Document{
+func sqliteFileToDomain(d sqlitegen.File) File {
+	return File{
 		ID:          d.ID,
 		TripID:      d.TripID,
 		ItemID:      strPtr(d.ItemID),

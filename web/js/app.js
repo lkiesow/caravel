@@ -13,7 +13,7 @@ import { TRIP_TABS } from "./trip-tabs.js";
 
 const app = document.getElementById("app");
 
-// Trip detail tabs (Locations/Map/Itinerary/Documents/Checklists/Settings)
+// Trip detail tabs (Locations/Map/Itinerary/Files/Checklists/Settings)
 // are each a real 3-segment route so the URL reflects the active tab and
 // back/forward works - see trip-detail-page.js. They're all distinct
 // literals at the same depth, so there's no ordering conflict between

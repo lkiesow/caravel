@@ -3,14 +3,14 @@ import { t, translatePage } from "../i18n.js";
 import { navigate } from "../router.js";
 import { renderItemForm } from "../components/location-form.js";
 import { renderImageField } from "../components/image-field.js";
-import { renderDocumentList } from "../components/document-list.js";
+import { renderFileList } from "../components/file-list.js";
 import { icon } from "../icon.js";
 import { confirmDialog } from "../components/dialog.js";
 import { renderLoading } from "../components/loading.js";
 import { renderNotFoundPage } from "./not-found-page.js";
 
 // Both modes render the same cards, in the same order - Basic info, Cover
-// photo, Location, Links, Dates, Documents - matching the read view's
+// photo, Location, Links, Dates, Files - matching the read view's
 // section order (location-view-page.js), and both commit through the same
 // single Save button at the bottom.
 //
@@ -24,8 +24,8 @@ import { renderNotFoundPage } from "./not-found-page.js";
 // pressed and everything landed, or it wasn't and nothing did.
 //
 // Two things still cannot ride along in a JSON body, and both are uploads:
-// the cover photo and documents. In edit mode they write immediately
-// against the existing item (image-field.js and document-list.js each take
+// the cover photo and files. In edit mode they write immediately
+// against the existing item (image-field.js and file-list.js each take
 // a path and own their own request). In create mode there is no item to
 // attach them to yet, so they stage in memory and flushUploads() writes
 // them after the create returns an ID - the one remaining non-atomic step,
@@ -46,7 +46,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
   // The page's working copy, in both modes. links/dates are edited here and
   // sent as whole lists (the API replaces the set), so the add/remove
   // handlers just push and splice - no per-row request, and no difference
-  // between creating and editing. image/documents are the upload staging
+  // between creating and editing. image/files are the upload staging
   // slots, used in create mode only.
   // Set by render(); save() and the per-card Enter handlers reach it through
   // this binding rather than being passed it, since they're all closures over
@@ -55,7 +55,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
 
   const draft = {
     image: null,
-    documents: [],
+    files: [],
     links: (item?.links ?? []).map((l) => ({ url: l.url, label: l.label ?? null })),
     dates: (item?.dates ?? []).map((d) => ({ start_date: d.start_date, end_date: d.end_date, label: d.label ?? null })),
   };
@@ -123,8 +123,8 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
         </div>
 
         <div class="editor-card">
-          <h2 data-i18n="item.detail.documents"></h2>
-          <div class="document-list-slot"></div>
+          <h2 data-i18n="item.detail.files"></h2>
+          <div class="file-list-slot"></div>
         </div>
 
         <div class="editor-actions">
@@ -170,7 +170,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     bindLinkForm();
     renderDatesList();
     bindDateForm();
-    renderDocumentList(container.querySelector(".document-list-slot"), item ? `/items/${item.id}/documents` : null, { staged: draft.documents });
+    renderFileList(container.querySelector(".file-list-slot"), item ? `/items/${item.id}/files` : null, { staged: draft.files });
 
     container.querySelector('[data-action="save"]').addEventListener("click", save);
     container.querySelector('[data-action="cancel"]').addEventListener("click", cancel);
@@ -231,7 +231,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     navigate(item ? `/trips/${tripId}/locations/${item.id}` : `/trips/${tripId}`);
   }
 
-  // Writes the cover photo and documents staged during create against the
+  // Writes the cover photo and files staged during create against the
   // item that was just created - the two things a JSON body can't carry.
   // Returns an error message, or null when everything landed.
   async function flushUploads(savedId) {
@@ -250,11 +250,11 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
         await api.put(`/items/${savedId}/image`, { media_asset_id: asset.id });
       }
 
-      for (const doc of draft.documents) {
+      for (const file of draft.files) {
         const formData = new FormData();
-        formData.append("file", doc.file);
-        if (doc.note) formData.append("note", doc.note);
-        const res = await fetch(`/api/items/${savedId}/documents`, { method: "POST", body: formData, credentials: "same-origin" });
+        formData.append("file", file.file);
+        if (file.note) formData.append("note", file.note);
+        const res = await fetch(`/api/items/${savedId}/files`, { method: "POST", body: formData, credentials: "same-origin" });
         const body = await res.json();
         if (!res.ok) throw new Error(body.error || "upload failed");
       }

@@ -243,13 +243,13 @@ a:visited {
    construction.
 
    One rule for all five error paragraphs in the app - auth, trip form,
-   location form, documents, image field - which previously carried three
+   location form, files, image field - which previously carried three
    near-identical copies of the same declarations plus two
    (.trip-form__error, .item-form__error) that had no error styling at all. */
 .auth-form__error,
 .trip-form__error,
 .item-form__error,
-.document-form__error,
+.file-form__error,
 .image-field__error {
   color: var(--color-text);
   font-size: 0.875rem;
@@ -1006,7 +1006,7 @@ button {
 .location-form,
 .link-form,
 .date-form,
-.document-form {
+.file-form {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
@@ -1024,8 +1024,8 @@ button {
 .location-form label,
 .link-form input,
 .date-form input,
-.document-form input[type="text"],
-.document-form .image-field__upload {
+.file-form input[type="text"],
+.file-form .image-field__upload {
   flex: 1 1 8rem;
   min-width: 0;
 }
@@ -1043,7 +1043,7 @@ button {
 .location-form input,
 .link-form input,
 .date-form input,
-.document-form input[type="text"] {
+.file-form input[type="text"] {
   padding: 0.5rem;
   border-radius: 0.375rem;
   border: 1px solid var(--color-border);
@@ -1078,7 +1078,7 @@ button {
 
 .link-list .empty,
 .date-list .empty,
-.documents .empty {
+.files .empty {
   color: var(--color-text-muted);
 }
 
@@ -1308,13 +1308,13 @@ button {
   min-width: 0;
 }
 
-.document-note {
+.file-note {
   color: var(--color-text-muted);
   font-size: 0.875rem;
   font-style: italic;
 }
 
-.documents {
+.files {
   list-style: none;
   padding: 0;
   margin: 0;
@@ -1323,13 +1323,13 @@ button {
   gap: 0.375rem;
 }
 
-.documents li {
+.files li {
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
 
-.document-size {
+.file-size {
   color: var(--color-text-muted);
   font-size: 0.8rem;
 }
@@ -1341,7 +1341,7 @@ button {
    ellipsis so a long location title truncates instead of pushing the delete
    button off the row - the row is a flex line and the title is the one part
    with no bound on its length. */
-.document-source {
+.file-source {
   color: var(--color-text-muted);
   font-size: 0.8rem;
   min-width: 0;
@@ -1350,11 +1350,11 @@ button {
   white-space: nowrap;
 }
 
-.document-source::before {
+.file-source::before {
   content: "— ";
 }
 
-.documents-empty {
+.file-list-empty {
   color: var(--color-text-muted);
   font-size: 0.875rem;
 }
@@ -1446,7 +1446,7 @@ button {
   .back-link,
   .itinerary-entry__link,
   .link-list li a,
-  .documents li a,
+  .files li a,
   .location-view__maps-link,
   .checklist-item label,
   .location-form label.location-form__checkbox {
@@ -1458,7 +1458,7 @@ button {
      measures 44px but doesn't feel like it. */
   .back-link,
   .link-list li a,
-  .documents li a,
+  .files li a,
   .location-view__maps-link,
   .checklist-item label,
   .location-form label.location-form__checkbox {
@@ -1483,8 +1483,8 @@ button {
   .location-form label,
   .link-form input,
   .date-form input,
-  .document-form input[type="text"],
-  .document-form .image-field__upload,
+  .file-form input[type="text"],
+  .file-form .image-field__upload,
   .image-field__url-form,
   .btn-row {
     flex-basis: 100%;
@@ -1511,16 +1511,16 @@ button {
      the right edge where every other row in the app puts it, while the source
      and note - which come *before* it in the markup, and are read in that
      sensible order by assistive tech - flow underneath. */
-  .documents li {
+  .files li {
     flex-wrap: wrap;
   }
 
-  .documents li .document-source,
-  .documents li .document-note {
+  .files li .file-source,
+  .files li .file-note {
     order: 1;
   }
 
-  .documents li .document-source {
+  .files li .file-source {
     overflow: visible;
     text-overflow: clip;
     white-space: normal;
@@ -1541,10 +1541,10 @@ button {
      hid "Itinerary" mid-word with no indication there was more to scroll to. */
   .trip-tabs {
     display: grid;
-    /* Five cells, not six: Documents and Settings move into "More" here (see
+    /* Five cells, not six: Files and Settings move into "More" here (see
        trip-tabs.js for why those two, and why at this breakpoint rather than a
        narrower one). Six labels never fit - at 324px each cell was 49px while
-       "Documents" alone needed 60px, so labels overran their cells into their
+       the longest label needed 60px, so labels overran their cells into their
        neighbours'.
 
        minmax(0, 1fr), not 1fr: a bare `1fr` track floors at the item's

@@ -64,9 +64,9 @@ type MapItem struct {
 	Lng      float64
 }
 
-// Document.ItemID is nil for trip-level "general documents" and set for
-// documents attached to a specific item — see plan Section 2.2.
-type Document struct {
+// File.ItemID is nil for trip-level "general files" and set for
+// files attached to a specific item — see plan Section 2.2.
+type File struct {
 	ID          string
 	TripID      string
 	ItemID      *string
@@ -78,16 +78,16 @@ type Document struct {
 	Note        *string
 }
 
-// DocumentDetail is a document plus the title of the location it is attached
+// FileDetail is a file plus the title of the location it is attached
 // to, for the trip-level Files list: that list mixes trip-level files with
 // location-attached ones, and a filename alone doesn't say which location a
 // file belongs to. ItemTitle is nil exactly when ItemID is - i.e. for a
 // trip-level file - so the two are read together, and it is a *join
-// projection*, not a field of Document: nothing writes it.
+// projection*, not a field of File: nothing writes it.
 //
 // Same shape as ItineraryEntryDetail below, for the same reason.
-type DocumentDetail struct {
-	Document
+type FileDetail struct {
+	File
 	ItemTitle *string
 }
 

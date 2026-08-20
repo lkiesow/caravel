@@ -28,7 +28,7 @@ import (
 // db.Open runs the migrations — so handlers, routing, the auth middleware and the
 // schema's ON DELETE CASCADE are all exercised as they are in production. The
 // static asset FS is an empty stand-in; the blob store is a real filesystem one
-// rooted in the test's temp dir, so the document and media upload paths work.
+// rooted in the test's temp dir, so the file and media upload paths work.
 type testServer struct {
 	*Server
 	t *testing.T
@@ -105,7 +105,7 @@ func (ts *testServer) do(method, path string, cookie *http.Cookie, body string) 
 	return w
 }
 
-// upload issues a multipart POST with a single "file" part, for the document and
+// upload issues a multipart POST with a single "file" part, for the file and
 // media handlers.
 func (ts *testServer) upload(path string, cookie *http.Cookie, filename, contentType string, content []byte) *httptest.ResponseRecorder {
 	ts.t.Helper()

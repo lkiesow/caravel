@@ -4,7 +4,7 @@ import { icon } from "../icon.js";
 import "../components/leaflet-map.js";
 import { renderItemsTab } from "./locations-tab.js";
 import { renderItineraryTab } from "./itinerary-tab.js";
-import { renderDocumentList } from "../components/document-list.js";
+import { renderFileList } from "../components/file-list.js";
 import { renderChecklistList } from "../components/checklist-list.js";
 import { renderSettingsTab } from "./settings-tab.js";
 import { TRIP_TABS, OVERFLOW_TRIP_TABS } from "../trip-tabs.js";
@@ -126,8 +126,8 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
       content.innerHTML = `<leaflet-map trip-id="${trip.id}"></leaflet-map>`;
     } else if (tab === "itinerary") {
       renderItineraryTab(content, trip);
-    } else if (tab === "documents") {
-      renderDocumentList(content, `/trips/${trip.id}/documents`);
+    } else if (tab === "files") {
+      renderFileList(content, `/trips/${trip.id}/files`);
     } else if (tab === "checklists") {
       renderChecklistList(content, trip.id);
     } else if (tab === "settings") {

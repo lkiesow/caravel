@@ -34,7 +34,7 @@ type ChecklistItem struct {
 	CreatedAt   string `json:"created_at"`
 }
 
-type Document struct {
+type File struct {
 	ID          string         `json:"id"`
 	TripID      string         `json:"trip_id"`
 	ItemID      sql.NullString `json:"item_id"`

@@ -37,7 +37,7 @@ import { icon } from "../icon.js";
 // Milestone 6 follow-up), which is the same popup with a different shape:
 //
 // - `label` pins the trigger's text, instead of it tracking the selection.
-//   "More" has to keep saying "More" even while Documents is the open
+//   "More" has to keep saying "More" even while Files is the open
 //   section, and the *item* rows carry the which-one-is-current signal.
 // - `chevron: false` drops the caret. In the tab bar the trigger is one cell
 //   of five, sized like its neighbours, and the three-dot icon already says

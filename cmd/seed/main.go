@@ -94,7 +94,7 @@ type scenario struct {
 
 // Ordered so `make dev-seed` produces a stable trips list.
 var scenarios = []scenario{
-	{"full", "everything populated: locations with coordinates on the map, itinerary, checklist, documents", seedFull},
+	{"full", "everything populated: locations with coordinates on the map, itinerary, checklist, files", seedFull},
 	{"one-pin", "exactly one mappable location — the zero-size map bounds case", seedOnePin},
 	{"start-only", "a start date but no end date", seedStartOnly},
 	{"year-boundary", "a trip crossing 31 December", seedYearBoundary},
@@ -191,7 +191,7 @@ func ensureUser(ctx context.Context, store db.Store, authService *auth.Service, 
 // creating it, which is what makes re-running the seed idempotent: the trip's ID
 // is deterministic, so without the delete a second run would collide on the
 // primary key. DeleteTrip cascades to items, days, entries, checklists and
-// documents, so this clears the whole scenario.
+// files, so this clears the whole scenario.
 func (s seedCtx) newTrip(scenarioName, title string, start, end *string, subtitle string) (db.Trip, error) {
 	id := seedID(scenarioName, "trip")
 	if _, err := s.store.DeleteTrip(s.ctx, id, s.ownerID); err != nil {
@@ -376,16 +376,16 @@ func (s seedCtx) addImage(scenarioName, tripID, filename string) (string, error)
 	return id, nil
 }
 
-// addDocument writes a real (tiny) file through the blob store as well as the
-// row, so the Documents tab has something that actually downloads.
-func (s seedCtx) addDocument(scenarioName, tripID string, itemID *string, filename, body string) error {
-	id := seedID(scenarioName, "document", filename)
+// addFile writes a real (tiny) file through the blob store as well as the
+// row, so the Files tab has something that actually downloads.
+func (s seedCtx) addFile(scenarioName, tripID string, itemID *string, filename, body string) error {
+	id := seedID(scenarioName, "file", filename)
 	key := fmt.Sprintf("%s/%s", tripID, id)
 	size, err := s.blob.Put(s.ctx, key, strings.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("store blob for %s: %w", filename, err)
 	}
-	_, err = s.store.CreateDocument(s.ctx, db.CreateDocumentParams{
+	_, err = s.store.CreateFile(s.ctx, db.CreateFileParams{
 		ID:          id,
 		TripID:      tripID,
 		ItemID:      itemID,
@@ -394,7 +394,7 @@ func (s seedCtx) addDocument(scenarioName, tripID string, itemID *string, filena
 		ContentType: ptr("text/plain; charset=utf-8"),
 		SizeBytes:   size,
 		UploadedAt:  time.Now().UTC(),
-		Note:        ptr("Seeded document"),
+		Note:        ptr("Seeded file"),
 	})
 	return err
 }
@@ -486,12 +486,12 @@ func seedFull(s seedCtx) error {
 		"Passport", "Waterproof jacket", "Swimsuit", "Adapter"}); err != nil {
 		return err
 	}
-	if err := s.addDocument("full", trip.ID, nil, "trip-notes.txt", "Seeded trip-level document.\n"); err != nil {
+	if err := s.addFile("full", trip.ID, nil, "trip-notes.txt", "Seeded trip-level file.\n"); err != nil {
 		return err
 	}
-	// Attached to a location, not the trip — the case the trip-level Documents
+	// Attached to a location, not the trip — the case the trip-level Files
 	// tab currently filters out (see todo.md).
-	return s.addDocument("full", trip.ID, &items[1].ID, "hotel-booking.txt", "Seeded item-level document.\n")
+	return s.addFile("full", trip.ID, &items[1].ID, "hotel-booking.txt", "Seeded item-level file.\n")
 }
 
 // seedOnePin has a single mappable location, so the map's bounds are a point
@@ -607,7 +607,7 @@ func seedCascade(s seedCtx) error {
 	}
 	items, err := s.addItems("cascade", trip.ID, []itemSpec{
 		{key: "a", category: "site", itemType: "landmark", title: "Cascade Location A",
-			notes: "Has a location row, a document and an itinerary entry.",
+			notes: "Has a location row, a file and an itinerary entry.",
 			lat:   ptr(48.8584), lng: ptr(2.2945), onMap: true},
 		{key: "b", category: "stay", itemType: "hotel", title: "Cascade Location B",
 			notes: "Has an itinerary entry."},
@@ -627,8 +627,8 @@ func seedCascade(s seedCtx) error {
 	if err := s.addChecklist("cascade", trip.ID, "Cascade Checklist", []string{"First", "Second"}); err != nil {
 		return err
 	}
-	if err := s.addDocument("cascade", trip.ID, nil, "cascade-trip.txt", "Trip-level, should cascade.\n"); err != nil {
+	if err := s.addFile("cascade", trip.ID, nil, "cascade-trip.txt", "Trip-level, should cascade.\n"); err != nil {
 		return err
 	}
-	return s.addDocument("cascade", trip.ID, &items[0].ID, "cascade-item.txt", "Item-level, should cascade.\n")
+	return s.addFile("cascade", trip.ID, &items[0].ID, "cascade-item.txt", "Item-level, should cascade.\n")
 }

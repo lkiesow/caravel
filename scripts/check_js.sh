@@ -16,7 +16,7 @@
 # swallows the rest of the line. The app loads all of these files as ES modules,
 # where an HTML comment is a syntax error — so the old check could pass on a
 # file the browser refuses to load. That happened for real: a comment containing
-# a stray backtick broke the Documents tab while CI stayed green.
+# a stray backtick broke the Files tab while CI stayed green.
 #
 # Passing the file on stdin with --input-type=module makes the mode explicit.
 # The cost is that Node then reports errors against "[stdin]" with no filename,

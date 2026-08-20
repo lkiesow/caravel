@@ -648,8 +648,8 @@ func postgresItineraryEntryToDomain(e postgresgen.ItineraryEntry) ItineraryEntry
 	}
 }
 
-func (s *postgresStore) CreateDocument(ctx context.Context, p CreateDocumentParams) (Document, error) {
-	row, err := s.q.CreateDocument(ctx, postgresgen.CreateDocumentParams{
+func (s *postgresStore) CreateFile(ctx context.Context, p CreateFileParams) (File, error) {
+	row, err := s.q.CreateFile(ctx, postgresgen.CreateFileParams{
 		ID:          p.ID,
 		TripID:      p.TripID,
 		ItemID:      nullString(p.ItemID),
@@ -661,30 +661,30 @@ func (s *postgresStore) CreateDocument(ctx context.Context, p CreateDocumentPara
 		Note:        nullString(p.Note),
 	})
 	if err != nil {
-		return Document{}, err
+		return File{}, err
 	}
-	return postgresDocumentToDomain(row), nil
+	return postgresFileToDomain(row), nil
 }
 
-func (s *postgresStore) GetDocumentByID(ctx context.Context, id string) (Document, error) {
-	row, err := s.q.GetDocumentByID(ctx, id)
+func (s *postgresStore) GetFileByID(ctx context.Context, id string) (File, error) {
+	row, err := s.q.GetFileByID(ctx, id)
 	if err != nil {
-		return Document{}, mapNotFound(err)
+		return File{}, mapNotFound(err)
 	}
-	return postgresDocumentToDomain(row), nil
+	return postgresFileToDomain(row), nil
 }
 
-func (s *postgresStore) ListTripDocuments(ctx context.Context, tripID string) ([]DocumentDetail, error) {
-	rows, err := s.q.ListTripDocuments(ctx, tripID)
+func (s *postgresStore) ListTripFiles(ctx context.Context, tripID string) ([]FileDetail, error) {
+	rows, err := s.q.ListTripFiles(ctx, tripID)
 	if err != nil {
 		return nil, err
 	}
-	docs := make([]DocumentDetail, len(rows))
+	files := make([]FileDetail, len(rows))
 	for i, row := range rows {
-		docs[i] = DocumentDetail{
+		files[i] = FileDetail{
 			// The joined row is its own generated struct, so this can't go
-			// through postgresDocumentToDomain like the other document queries.
-			Document: Document{
+			// through postgresFileToDomain like the other file queries.
+			File: File{
 				ID:          row.ID,
 				TripID:      row.TripID,
 				ItemID:      strPtr(row.ItemID),
@@ -698,23 +698,23 @@ func (s *postgresStore) ListTripDocuments(ctx context.Context, tripID string) ([
 			ItemTitle: strPtr(row.ItemTitle),
 		}
 	}
-	return docs, nil
+	return files, nil
 }
 
-func (s *postgresStore) ListItemDocuments(ctx context.Context, itemID string) ([]Document, error) {
-	rows, err := s.q.ListItemDocuments(ctx, nullString(&itemID))
+func (s *postgresStore) ListItemFiles(ctx context.Context, itemID string) ([]File, error) {
+	rows, err := s.q.ListItemFiles(ctx, nullString(&itemID))
 	if err != nil {
 		return nil, err
 	}
-	docs := make([]Document, len(rows))
+	files := make([]File, len(rows))
 	for i, row := range rows {
-		docs[i] = postgresDocumentToDomain(row)
+		files[i] = postgresFileToDomain(row)
 	}
-	return docs, nil
+	return files, nil
 }
 
-func (s *postgresStore) DeleteDocument(ctx context.Context, id, tripID string) (bool, error) {
-	n, err := s.q.DeleteDocument(ctx, postgresgen.DeleteDocumentParams{ID: id, TripID: tripID})
+func (s *postgresStore) DeleteFile(ctx context.Context, id, tripID string) (bool, error) {
+	n, err := s.q.DeleteFile(ctx, postgresgen.DeleteFileParams{ID: id, TripID: tripID})
 	if err != nil {
 		return false, err
 	}
@@ -831,8 +831,8 @@ func postgresChecklistItemToDomain(c postgresgen.ChecklistItem) ChecklistItem {
 	}
 }
 
-func postgresDocumentToDomain(d postgresgen.Document) Document {
-	return Document{
+func postgresFileToDomain(d postgresgen.File) File {
+	return File{
 		ID:          d.ID,
 		TripID:      d.TripID,
 		ItemID:      strPtr(d.ItemID),

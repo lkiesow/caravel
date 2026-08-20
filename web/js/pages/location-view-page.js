@@ -16,12 +16,12 @@ const CATEGORY_COLORS = {
 // location as address text plus an embedded single-marker map (leaflet-map
 // in single-marker mode, driven by lat/lng attributes instead of a
 // trip-id, since there's exactly one point to plot here - see
-// leaflet-map.js), links, dates as ranges, and documents with download
+// leaflet-map.js), links, dates as ranges, and files with download
 // links. Nothing here is directly editable; one Edit button at the very
 // bottom of the page leads to the edit route.
 //
 // Every section is conditional: a location with no coordinates, links,
-// dates or documents used to render four cards whose entire content was
+// dates or files used to render four cards whose entire content was
 // "No location set." / "No links yet." / and so on, which is most of a
 // screen of scaffolding saying nothing. Only what exists is shown, so a
 // sparse location is a short page.
@@ -44,7 +44,7 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
   }
 
   const color = CATEGORY_COLORS[item.category] || "#71717a";
-  const docs = await api.get(`/items/${itemId}/documents`);
+  const files = await api.get(`/items/${itemId}/files`);
   const hasCoords = item.location?.lat != null && item.location?.lng != null;
   const hasAddress = Boolean(item.location?.address);
 
@@ -113,13 +113,13 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
       }
 
       ${
-        docs.length
+        files.length
           ? `
         <div class="editor-card">
-          <h2 data-i18n="item.detail.documents"></h2>
-          <ul class="documents">
-            ${docs
-              .map((d) => `<li><a href="${d.download_url}" target="_blank" rel="noopener">${escapeHtml(d.filename)}</a> <span class="document-size">${formatSize(d.size_bytes)}</span></li>`)
+          <h2 data-i18n="item.detail.files"></h2>
+          <ul class="files">
+            ${files
+              .map((d) => `<li><a href="${d.download_url}" target="_blank" rel="noopener">${escapeHtml(d.filename)}</a> <span class="file-size">${formatSize(d.size_bytes)}</span></li>`)
               .join("")}
           </ul>
         </div>

@@ -61,7 +61,7 @@ type UpdateTripParams struct {
 	UpdatedAt time.Time
 }
 
-type CreateDocumentParams struct {
+type CreateFileParams struct {
 	ID          string
 	TripID      string
 	ItemID      *string
@@ -230,16 +230,16 @@ type Store interface {
 	ListItineraryEntriesByTrip(ctx context.Context, tripID string) ([]ItineraryEntryDetail, error)
 	DeleteItineraryEntry(ctx context.Context, id, itineraryDayID string) (bool, error)
 
-	CreateDocument(ctx context.Context, p CreateDocumentParams) (Document, error)
-	GetDocumentByID(ctx context.Context, id string) (Document, error)
-	// ListTripDocuments returns every document on the trip — both trip-level
+	CreateFile(ctx context.Context, p CreateFileParams) (File, error)
+	GetFileByID(ctx context.Context, id string) (File, error)
+	// ListTripFiles returns every file on the trip — both trip-level
 	// ones and those attached to one of its locations — newest first, each
 	// carrying the title of the location it belongs to (nil for trip-level).
 	// It used to filter item_id IS NULL, which hid location-attached files
 	// from the trip's Files tab even though they are files on that trip.
-	ListTripDocuments(ctx context.Context, tripID string) ([]DocumentDetail, error)
-	ListItemDocuments(ctx context.Context, itemID string) ([]Document, error)
-	DeleteDocument(ctx context.Context, id, tripID string) (bool, error)
+	ListTripFiles(ctx context.Context, tripID string) ([]FileDetail, error)
+	ListItemFiles(ctx context.Context, itemID string) ([]File, error)
+	DeleteFile(ctx context.Context, id, tripID string) (bool, error)
 
 	CreateChecklist(ctx context.Context, p CreateChecklistParams) (Checklist, error)
 	GetChecklistByID(ctx context.Context, id string) (Checklist, error)

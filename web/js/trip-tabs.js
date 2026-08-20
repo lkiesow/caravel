@@ -1,13 +1,14 @@
 // Single source of truth for the trip detail tab bar (Locations/Map/
-// Itinerary/Documents/Checklists/Settings), shared between app.js (route
+// Itinerary/Files/Checklists/Settings), shared between app.js (route
 // table) and trip-detail-page.js (nav rendering) so the two lists can't
 // drift. Every tab is a real route at every width; `overflow` only changes
 // where its control lives in the bar.
 //
 // `overflow: true` moves a tab out of the row and into the "More" menu on
 // narrow screens. Six labels do not fit a phone: at 324px each cell is 49px
-// while "Documents" alone needs 60px, so labels overran their cells and
-// collided. Documents and Settings are the two that go, being the least
+// while the longest label overruns it (measured at 60px back when this tab
+// still read "Documents"; "Einstellungen" is worse), so labels overran their
+// cells and collided. Files and Settings are the two that go, being the least
 // frequently used of the six - the four that stay are the ones you move
 // between while actually planning.
 //
@@ -23,7 +24,7 @@ export const TRIP_TABS = [
   { key: "locations", icon: "map-pin" },
   { key: "map", icon: "map" },
   { key: "itinerary", icon: "calendar" },
-  { key: "documents", icon: "file-text", overflow: true },
+  { key: "files", icon: "file-text", overflow: true },
   { key: "checklists", icon: "list-checks" },
   { key: "settings", icon: "settings", overflow: true },
 ];

@@ -15,12 +15,12 @@ import (
 	"caravel/internal/db"
 )
 
-const maxDocumentUploadBytes = 50 << 20 // 50MB, per plan Section 3.4
+const maxFileUploadBytes = 50 << 20 // 50MB, per plan Section 3.4
 
 // inlineSafeContentTypes lists MIME types the browser can be trusted to
 // display inline instead of downloading. Deliberately excludes
 // image/svg+xml — SVG can embed <script> and browsers execute it when
-// rendered inline, making it an XSS vector unlike the raster/document types
+// rendered inline, making it an XSS vector unlike the raster/file types
 // below.
 var inlineSafeContentTypes = map[string]bool{
 	"application/pdf": true,
@@ -55,7 +55,7 @@ func sniffContentType(f io.ReadSeeker) (string, error) {
 	return http.DetectContentType(buf[:n]), nil
 }
 
-type documentResponse struct {
+type fileResponse struct {
 	ID          string  `json:"id"`
 	TripID      string  `json:"trip_id"`
 	ItemID      *string `json:"item_id"`
@@ -73,8 +73,8 @@ type documentResponse struct {
 	ItemTitle *string `json:"item_title"`
 }
 
-func documentToResponse(d db.Document) documentResponse {
-	return documentResponse{
+func fileToResponse(d db.File) fileResponse {
+	return fileResponse{
 		ID:          d.ID,
 		TripID:      d.TripID,
 		ItemID:      d.ItemID,
@@ -83,24 +83,24 @@ func documentToResponse(d db.Document) documentResponse {
 		SizeBytes:   d.SizeBytes,
 		UploadedAt:  d.UploadedAt.UTC().Format(time.RFC3339),
 		Note:        d.Note,
-		DownloadURL: fmt.Sprintf("/api/documents/%s/download", d.ID),
+		DownloadURL: fmt.Sprintf("/api/files/%s/download", d.ID),
 	}
 }
 
-// documentDetailToResponse wraps the plain mapper rather than repeating it, so
-// a new field on documentResponse can't end up set on one path and not the
+// fileDetailToResponse wraps the plain mapper rather than repeating it, so
+// a new field on fileResponse can't end up set on one path and not the
 // other.
-func documentDetailToResponse(d db.DocumentDetail) documentResponse {
-	resp := documentToResponse(d.Document)
+func fileDetailToResponse(d db.FileDetail) fileResponse {
+	resp := fileToResponse(d.File)
 	resp.ItemTitle = d.ItemTitle
 	return resp
 }
 
-// uploadDocument handles the shared multipart-upload logic for both
-// trip-level and item-level documents; itemID is nil for trip-level.
-func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request, tripID string, itemID *string) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxDocumentUploadBytes)
-	if err := r.ParseMultipartForm(maxDocumentUploadBytes); err != nil {
+// uploadFile handles the shared multipart-upload logic for both
+// trip-level and item-level files; itemID is nil for trip-level.
+func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request, tripID string, itemID *string) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxFileUploadBytes)
+	if err := r.ParseMultipartForm(maxFileUploadBytes); err != nil {
 		writeError(w, http.StatusRequestEntityTooLarge, "file too large or invalid multipart form")
 		return
 	}
@@ -123,7 +123,7 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request, tripID s
 	if itemID != nil {
 		key = fmt.Sprintf("%s/items/%s/%s-%s", tripID, *itemID, id, filename)
 	} else {
-		key = fmt.Sprintf("%s/documents/%s-%s", tripID, id, filename)
+		key = fmt.Sprintf("%s/files/%s-%s", tripID, id, filename)
 	}
 
 	size, err := s.Blob.Put(r.Context(), key, file)
@@ -139,7 +139,7 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request, tripID s
 		notePtr = &note
 	}
 
-	doc, err := s.Store.CreateDocument(r.Context(), db.CreateDocumentParams{
+	row, err := s.Store.CreateFile(r.Context(), db.CreateFileParams{
 		ID:          id,
 		TripID:      tripID,
 		ItemID:      itemID,
@@ -151,122 +151,122 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request, tripID s
 		Note:        notePtr,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not save document")
+		writeError(w, http.StatusInternalServerError, "could not save file")
 		return
 	}
-	writeJSON(w, http.StatusCreated, documentToResponse(doc))
+	writeJSON(w, http.StatusCreated, fileToResponse(row))
 }
 
-func (s *Server) handleListTripDocuments(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleListTripFiles(w http.ResponseWriter, r *http.Request) {
 	trip, ok := s.loadOwnedTrip(w, r)
 	if !ok {
 		return
 	}
-	docs, err := s.Store.ListTripDocuments(r.Context(), trip.ID)
+	files, err := s.Store.ListTripFiles(r.Context(), trip.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not list documents")
+		writeError(w, http.StatusInternalServerError, "could not list files")
 		return
 	}
-	resp := make([]documentResponse, len(docs))
-	for i, d := range docs {
-		resp[i] = documentDetailToResponse(d)
+	resp := make([]fileResponse, len(files))
+	for i, d := range files {
+		resp[i] = fileDetailToResponse(d)
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
 
-func (s *Server) handleUploadTripDocument(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleUploadTripFile(w http.ResponseWriter, r *http.Request) {
 	trip, ok := s.loadOwnedTrip(w, r)
 	if !ok {
 		return
 	}
-	s.uploadDocument(w, r, trip.ID, nil)
+	s.uploadFile(w, r, trip.ID, nil)
 }
 
-func (s *Server) handleListItemDocuments(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleListItemFiles(w http.ResponseWriter, r *http.Request) {
 	item, ok := s.loadOwnedItem(w, r)
 	if !ok {
 		return
 	}
-	docs, err := s.Store.ListItemDocuments(r.Context(), item.ID)
+	files, err := s.Store.ListItemFiles(r.Context(), item.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not list documents")
+		writeError(w, http.StatusInternalServerError, "could not list files")
 		return
 	}
-	resp := make([]documentResponse, len(docs))
-	for i, d := range docs {
-		resp[i] = documentToResponse(d)
+	resp := make([]fileResponse, len(files))
+	for i, d := range files {
+		resp[i] = fileToResponse(d)
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
 
-func (s *Server) handleUploadItemDocument(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleUploadItemFile(w http.ResponseWriter, r *http.Request) {
 	item, ok := s.loadOwnedItem(w, r)
 	if !ok {
 		return
 	}
-	s.uploadDocument(w, r, item.TripID, &item.ID)
+	s.uploadFile(w, r, item.TripID, &item.ID)
 }
 
-// loadOwnedDocument fetches the document named by {docId} and confirms the
+// loadOwnedFile fetches the file named by {fileId} and confirms the
 // current user owns its trip.
-func (s *Server) loadOwnedDocument(w http.ResponseWriter, r *http.Request) (db.Document, bool) {
-	docID := chi.URLParam(r, "docId")
-	doc, err := s.Store.GetDocumentByID(r.Context(), docID)
+func (s *Server) loadOwnedFile(w http.ResponseWriter, r *http.Request) (db.File, bool) {
+	fileID := chi.URLParam(r, "fileId")
+	file, err := s.Store.GetFileByID(r.Context(), fileID)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "document not found")
+			writeError(w, http.StatusNotFound, "file not found")
 		} else {
-			writeError(w, http.StatusInternalServerError, "could not load document")
+			writeError(w, http.StatusInternalServerError, "could not load file")
 		}
-		return db.Document{}, false
+		return db.File{}, false
 	}
-	if !s.hasTripAccess(r, doc.TripID) {
-		writeError(w, http.StatusNotFound, "document not found")
-		return db.Document{}, false
+	if !s.hasTripAccess(r, file.TripID) {
+		writeError(w, http.StatusNotFound, "file not found")
+		return db.File{}, false
 	}
-	return doc, true
+	return file, true
 }
 
-func (s *Server) handleDeleteDocument(w http.ResponseWriter, r *http.Request) {
-	doc, ok := s.loadOwnedDocument(w, r)
+func (s *Server) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
+	file, ok := s.loadOwnedFile(w, r)
 	if !ok {
 		return
 	}
-	deleted, err := s.Store.DeleteDocument(r.Context(), doc.ID, doc.TripID)
+	deleted, err := s.Store.DeleteFile(r.Context(), file.ID, file.TripID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not delete document")
+		writeError(w, http.StatusInternalServerError, "could not delete file")
 		return
 	}
 	if !deleted {
-		writeError(w, http.StatusNotFound, "document not found")
+		writeError(w, http.StatusNotFound, "file not found")
 		return
 	}
-	_ = s.Blob.Delete(r.Context(), doc.StoragePath)
+	_ = s.Blob.Delete(r.Context(), file.StoragePath)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) handleDownloadDocument(w http.ResponseWriter, r *http.Request) {
-	doc, ok := s.loadOwnedDocument(w, r)
+func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
+	file, ok := s.loadOwnedFile(w, r)
 	if !ok {
 		return
 	}
 
-	f, err := s.Blob.Open(r.Context(), doc.StoragePath)
+	f, err := s.Blob.Open(r.Context(), file.StoragePath)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "document file not found")
+		writeError(w, http.StatusNotFound, "file file not found")
 		return
 	}
 	defer f.Close()
 
-	if doc.ContentType != nil {
-		w.Header().Set("Content-Type", *doc.ContentType)
+	if file.ContentType != nil {
+		w.Header().Set("Content-Type", *file.ContentType)
 	}
 	disposition := "attachment"
-	if doc.ContentType != nil && isInlineSafeContentType(*doc.ContentType) {
+	if file.ContentType != nil && isInlineSafeContentType(*file.ContentType) {
 		disposition = "inline"
 	}
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`%s; filename="%s"`, disposition, sanitizeForHeader(doc.Filename)))
-	http.ServeContent(w, r, doc.Filename, doc.UploadedAt, f)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`%s; filename="%s"`, disposition, sanitizeForHeader(file.Filename)))
+	http.ServeContent(w, r, file.Filename, file.UploadedAt, f)
 }
 
 func sanitizeForHeader(s string) string {

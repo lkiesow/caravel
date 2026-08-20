@@ -10,7 +10,7 @@ import (
 //
 // This is the case no unit test can express — it needs a real router, real auth
 // middleware and two real sessions — and it is the reason the HTTP harness in
-// testing_test.go exists. Before this file, trips, items, checklists, documents
+// testing_test.go exists. Before this file, trips, items, checklists, files
 // and media had *no* handler coverage at all (measured: 23 of 25 handlers at
 // 0.0%), so nothing would have caught a missing ownership check on any of them.
 //
@@ -29,7 +29,7 @@ type owned struct {
 	tripID      string
 	itemID      string
 	checklistID string
-	docID       string
+	fileID       string
 	mediaID     string
 }
 
@@ -47,11 +47,11 @@ func setupOwned(t *testing.T) *owned {
 		`{"title":"Packing"}`, http.StatusCreated,
 	)
 
-	w := ts.upload("/api/trips/"+tripID+"/documents", owner, "secret.txt", "text/plain", []byte("owner's document"))
+	w := ts.upload("/api/trips/"+tripID+"/files", owner, "secret.txt", "text/plain", []byte("owner's file"))
 	if w.Code != http.StatusCreated {
-		t.Fatalf("upload document: got %d, body %s", w.Code, w.Body.String())
+		t.Fatalf("upload file: got %d, body %s", w.Code, w.Body.String())
 	}
-	docID := decode[map[string]any](t, w)["id"].(string)
+	fileID := decode[map[string]any](t, w)["id"].(string)
 
 	// A 1x1 PNG, so the image pipeline has something valid to decode.
 	png := []byte{
@@ -72,7 +72,7 @@ func setupOwned(t *testing.T) *owned {
 
 	return &owned{
 		ts: ts, owner: owner, intruder: intruder,
-		tripID: tripID, itemID: itemID, checklistID: checklistID, docID: docID, mediaID: mediaID,
+		tripID: tripID, itemID: itemID, checklistID: checklistID, fileID: fileID, mediaID: mediaID,
 	}
 }
 
@@ -86,7 +86,7 @@ func (o *owned) assertDenied(t *testing.T, method, path, body string) {
 		t.Errorf("%s %s as another user: got %d, want 404 — body %s", method, path, w.Code, w.Body.String())
 		return
 	}
-	for _, secret := range []string{"Owner's trip", "Owner's location", "Packing", "secret.txt", "owner's document"} {
+	for _, secret := range []string{"Owner's trip", "Owner's location", "Packing", "secret.txt", "owner's file"} {
 		if strings.Contains(w.Body.String(), secret) {
 			t.Errorf("%s %s leaked %q in a 404 body: %s", method, path, secret, w.Body.String())
 		}
@@ -137,7 +137,7 @@ func TestItemRoutesRejectAnotherUser(t *testing.T) {
 	o.assertDenied(t, http.MethodPut, item+"/location", `{"lat":1,"lng":2}`)
 	o.assertDenied(t, http.MethodPost, item+"/links", `{"url":"https://example.com","label":"x"}`)
 	o.assertDenied(t, http.MethodPost, item+"/dates", `{"start_date":"2026-08-20"}`)
-	o.assertDenied(t, http.MethodGet, item+"/documents", "")
+	o.assertDenied(t, http.MethodGet, item+"/files", "")
 	// Creating an item on someone else's trip goes through the trip, not the item.
 	o.assertDenied(t, http.MethodPost, "/api/trips/"+o.tripID+"/items", `{"title":"x","category":"site","type":"y"}`)
 	o.assertDenied(t, http.MethodGet, "/api/trips/"+o.tripID+"/items", "")
@@ -171,33 +171,33 @@ func TestChecklistRoutesRejectAnotherUser(t *testing.T) {
 	}
 }
 
-func TestDocumentRoutesRejectAnotherUser(t *testing.T) {
+func TestFileRoutesRejectAnotherUser(t *testing.T) {
 	o := setupOwned(t)
 
-	o.assertDenied(t, http.MethodGet, "/api/trips/"+o.tripID+"/documents", "")
-	o.assertDenied(t, http.MethodGet, "/api/documents/"+o.docID+"/download", "")
-	o.assertDenied(t, http.MethodDelete, "/api/documents/"+o.docID, "")
+	o.assertDenied(t, http.MethodGet, "/api/trips/"+o.tripID+"/files", "")
+	o.assertDenied(t, http.MethodGet, "/api/files/"+o.fileID+"/download", "")
+	o.assertDenied(t, http.MethodDelete, "/api/files/"+o.fileID, "")
 
 	// Uploads are multipart, so they don't go through assertDenied.
-	w := o.ts.upload("/api/trips/"+o.tripID+"/documents", o.intruder, "evil.txt", "text/plain", []byte("x"))
+	w := o.ts.upload("/api/trips/"+o.tripID+"/files", o.intruder, "evil.txt", "text/plain", []byte("x"))
 	if w.Code != http.StatusNotFound {
 		t.Errorf("upload to another user's trip: got %d, want 404 — body %s", w.Code, w.Body.String())
 	}
-	w = o.ts.upload("/api/items/"+o.itemID+"/documents", o.intruder, "evil.txt", "text/plain", []byte("x"))
+	w = o.ts.upload("/api/items/"+o.itemID+"/files", o.intruder, "evil.txt", "text/plain", []byte("x"))
 	if w.Code != http.StatusNotFound {
 		t.Errorf("upload to another user's item: got %d, want 404 — body %s", w.Code, w.Body.String())
 	}
 
-	// The owner's document must still be there and still downloadable.
-	docs := decode[[]map[string]any](t, o.ts.do(http.MethodGet, "/api/trips/"+o.tripID+"/documents", o.owner, ""))
-	if len(docs) != 1 {
-		t.Fatalf("owner sees %d document(s), want 1 — an intruder call got through", len(docs))
+	// The owner's file must still be there and still downloadable.
+	files := decode[[]map[string]any](t, o.ts.do(http.MethodGet, "/api/trips/"+o.tripID+"/files", o.owner, ""))
+	if len(files) != 1 {
+		t.Fatalf("owner sees %d file(s), want 1 — an intruder call got through", len(files))
 	}
-	w = o.ts.do(http.MethodGet, "/api/documents/"+o.docID+"/download", o.owner, "")
+	w = o.ts.do(http.MethodGet, "/api/files/"+o.fileID+"/download", o.owner, "")
 	if w.Code != http.StatusOK {
 		t.Fatalf("owner download: got %d, body %s", w.Code, w.Body.String())
 	}
-	if w.Body.String() != "owner's document" {
+	if w.Body.String() != "owner's file" {
 		t.Errorf("owner download returned %q", w.Body.String())
 	}
 }
@@ -228,7 +228,7 @@ func TestOwnedRoutesRequireAuth(t *testing.T) {
 		{http.MethodGet, "/api/trips/" + o.tripID},
 		{http.MethodGet, "/api/items/" + o.itemID},
 		{http.MethodGet, "/api/trips/" + o.tripID + "/checklists"},
-		{http.MethodGet, "/api/documents/" + o.docID + "/download"},
+		{http.MethodGet, "/api/files/" + o.fileID + "/download"},
 		{http.MethodGet, "/api/media/" + o.mediaID + "/file"},
 	} {
 		w := o.ts.do(tc.method, tc.path, nil, "")

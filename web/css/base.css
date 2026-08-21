@@ -1076,6 +1076,58 @@ button {
   flex: 1 1 100%;
 }
 
+/* Address search, above the picker. Hidden outright when the server reports
+   no geocoder, so none of this renders in that case. */
+.location-search {
+  flex: 1 1 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.location-search[hidden] {
+  display: none;
+}
+
+.location-search__status {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.location-search__status[hidden] {
+  display: none;
+}
+
+.location-search__results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Each result is a full-width button rather than a link: choosing one fills
+   the fields in place, it does not navigate anywhere. Left-aligned and
+   wrapping, because a formatted address is a sentence, not a label. */
+.location-search__result {
+  width: 100%;
+  min-height: var(--tap-min);
+  text-align: left;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  padding: 0.5rem;
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.location-search__result:hover,
+.location-search__result:focus-visible {
+  background: var(--color-surface-muted, rgba(127, 127, 127, 0.08));
+}
+
 .item-form input,
 .item-form select,
 .item-form textarea {
@@ -1099,7 +1151,14 @@ button {
 
 .location-form,
 .link-form,
-.date-form {
+.date-form,
+/* The address-search row is one of these too, not a bespoke layout: same
+   wrapping flex, so its .btn-row button drops to its own full-width line at
+   phone width exactly as the Links and Dates rows do. Nesting it in a
+   nowrap flex of its own was the Stage 13 Milestone 5 bug - the button's
+   flex-basis: 100% under 640px had nowhere to wrap to and pushed the card
+   39px past the viewport, squeezing the input to 18px on the way. */
+.location-search__row {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
@@ -1116,7 +1175,8 @@ button {
    (same reason .trip-form__dates needs it). */
 .location-form label,
 .link-form input,
-.date-form input {
+.date-form input,
+.location-search__row input {
   flex: 1 1 8rem;
   min-width: 0;
 }
@@ -1776,6 +1836,7 @@ button {
   .location-form label,
   .link-form input,
   .date-form input,
+  .location-search__row input,
   .image-field__url-form,
   .btn-row {
     flex-basis: 100%;

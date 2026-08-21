@@ -533,3 +533,135 @@ test.describe("the location editor's coordinate picker", () => {
     expect(view.lng).toBeCloseTo(-19.0208, 1);
   });
 });
+
+
+// Milestone 5. Address search in the location editor.
+//
+// /api/geocode is stubbed at the network boundary throughout: the dev server
+// is configured with the real Nominatim URL, so an unstubbed test here would
+// send live traffic to OpenStreetMap every run. The proxy itself - request
+// shape, User-Agent, mapping, timeouts, rate limiting, the disabled case - is
+// covered by Go tests in internal/httpapi/geocode_test.go, which never leave
+// the process either.
+const GEOCODE_RESULTS = [
+  { display_name: "Reykjavík, Höfuðborgarsvæðið, Iceland", lat: 64.1466, lng: -21.9426 },
+  { display_name: "Reykjavík Airport, Iceland", lat: 64.13, lng: -21.9406 },
+];
+
+test.describe("address search in the location editor", () => {
+  let tripId;
+
+  test.beforeEach(async ({ page }) => {
+    await login(page);
+    const res = await page.request.post("/api/trips", { data: { title: "UI suite: geocode spec" } });
+    expect(res.status(), "create the spec's own trip").toBe(201);
+    tripId = (await res.json()).id;
+  });
+
+  test.afterEach(async ({ page }) => {
+    if (tripId) await page.request.delete(`/api/trips/${tripId}`);
+    tripId = null;
+  });
+
+  async function stubGeocode(page, handler) {
+    await page.route("**/api/geocode?*", handler);
+  }
+
+  async function openNewLocation(page) {
+    await gotoRoute(page, `/trips/${tripId}/locations/new`);
+    await page.waitForFunction(() => document.querySelector(".location-form__map")?.hasAttribute("data-ready"));
+  }
+
+  test("finds a place and fills the coordinates and the empty address", async ({ page }) => {
+    const queries = [];
+    await stubGeocode(page, (route, request) => {
+      queries.push(new URL(request.url()).searchParams.get("q"));
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(GEOCODE_RESULTS) });
+    });
+    await openNewLocation(page);
+
+    const panel = page.locator(".location-search");
+    await expect(panel, "the server reports a geocoder, so the control shows").toBeVisible();
+
+    await page.locator('.location-search input[name="placeQuery"]').fill("Reykjavik");
+    // Nothing may have been requested yet: a query costs an external service,
+    // so this searches on submit and never per keystroke.
+    expect(queries, "typing must not search").toEqual([]);
+
+    await page.locator('[data-action="search-place"]').click();
+    const results = page.locator(".location-search__result");
+    await expect(results).toHaveCount(2);
+    expect(queries).toEqual(["Reykjavik"]);
+    await expect(results.first()).toHaveText(GEOCODE_RESULTS[0].display_name);
+
+    await results.first().click();
+    await expect(page.locator('.location-form input[name="lat"]')).toHaveValue("64.1466");
+    await expect(page.locator('.location-form input[name="lng"]')).toHaveValue("-21.9426");
+    // An empty address gets the result's formatted name - it is the one thing
+    // a geocoder knows that the map click cannot tell you.
+    await expect(page.locator('.location-form input[name="address"]')).toHaveValue(GEOCODE_RESULTS[0].display_name);
+    await expect(results, "choosing a result should close the list").toHaveCount(0);
+
+    // And the picker followed, which is the whole point of filling the fields.
+    await expect(page.locator(".location-form__map")).toHaveAttribute("lat", "64.1466");
+    await expect
+      .poll(() => page.evaluate(() => document.querySelector(".location-form__map").shadowRoot.querySelectorAll(".leaflet-marker-icon").length))
+      .toBe(1);
+  });
+
+  test("does not overwrite an address the user already wrote", async ({ page }) => {
+    await stubGeocode(page, (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(GEOCODE_RESULTS) })
+    );
+    await openNewLocation(page);
+
+    const address = page.locator('.location-form input[name="address"]');
+    await address.fill("The blue house past the bridge");
+    await page.locator('.location-search input[name="placeQuery"]').fill("Reykjavik");
+    await page.locator('[data-action="search-place"]').click();
+    await page.locator(".location-search__result").first().click();
+
+    // The coordinates are what was asked for; the wording was not.
+    await expect(page.locator('.location-form input[name="lat"]')).toHaveValue("64.1466");
+    await expect(address).toHaveValue("The blue house past the bridge");
+  });
+
+  test("says so when the search finds nothing, and when it is unavailable", async ({ page }) => {
+    await stubGeocode(page, (route) => route.fulfill({ status: 200, contentType: "application/json", body: "[]" }));
+    await openNewLocation(page);
+
+    const status = page.locator(".location-search__status");
+    await page.locator('.location-search input[name="placeQuery"]').fill("zzzzzzzz");
+    await page.locator('[data-action="search-place"]').click();
+    await expect(status).toBeVisible();
+    const noResults = await status.textContent();
+
+    await page.unroute("**/api/geocode?*");
+    await stubGeocode(page, (route) => route.fulfill({ status: 502, contentType: "application/json", body: '{"error":"upstream"}' }));
+    await page.locator('.location-search input[name="placeQuery"]').fill("Reykjavik");
+    await page.locator('[data-action="search-place"]').click();
+    await expect(status).toBeVisible();
+    // Two different situations must not read identically - "found nothing"
+    // and "the search is broken" call for different next actions.
+    await expect(status).not.toHaveText(noResults);
+
+    // A failed search must leave the rest of the card working: the map is
+    // still the way to set a point.
+    await clickPickerAt(page, 0.5, 0.5, ".location-form__map");
+    await expect(page.locator('.location-form input[name="lat"]')).not.toHaveValue("");
+  });
+
+  test("Enter in the search box searches instead of saving the page", async ({ page }) => {
+    // The Location card treats Enter as "save the page" (location-editor's own
+    // keydown handler), which in this field would leave the trip mid-edit.
+    await stubGeocode(page, (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(GEOCODE_RESULTS) })
+    );
+    await openNewLocation(page);
+
+    await page.locator('.location-search input[name="placeQuery"]').fill("Reykjavik");
+    await page.locator('.location-search input[name="placeQuery"]').press("Enter");
+    await expect(page.locator(".location-search__result")).toHaveCount(2);
+    expect(page.url(), "Enter should not have saved and navigated away").toContain("/locations/new");
+  });
+});

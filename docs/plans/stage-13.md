@@ -438,6 +438,71 @@ returning 429, an empty `q` rejected, and the endpoint 404/disabled when
 `CARAVEL_GEOCODER_URL` is empty. No test may hit the real Nominatim. Then one
 manual search against the live service.
 
+**Done.** `GET /api/geocode?q=` in `internal/httpapi/geocode.go`, behind
+`auth.RequireAuth` and its own limiter, mapping Nominatim's response down to
+`[{display_name, lat, lng}]`. `CARAVEL_GEOCODER_URL` defaults to the public
+Nominatim and disables the feature when empty.
+
+Decisions the plan left open:
+
+- **Status codes.** A disabled geocoder is **501**, not 404 — the route exists,
+  the capability is off — and it is a backstop rather than a path the client
+  should reach, since `/auth/me` already told it. An unhappy or slow upstream
+  is **502**, not 500: someone else's service failing is not our internal
+  error, and its error text is not ours to forward to a user (there is a test
+  asserting the upstream's words do not leak).
+- **A stricter, separate limiter.** 20/minute/IP against login's 10. Higher
+  because a search is a normal repeated action rather than a credential
+  attempt, but separate because the budget is an external service's goodwill —
+  and a test asserts that exhausting geocoding does **not** lock anyone out of
+  logging in. The limiter type was renamed `loginLimiter` → `rateLimiter`,
+  since it now guards two unrelated things.
+- **A bad row is skipped, not fatal.** Nominatim sends lat/lon as strings; one
+  unparseable result drops out and the rest are returned. An empty result set
+  is `[]` and never `null`, so "searched, found nothing" stays distinguishable
+  from "did not search".
+- **`geocoding` on `userResponse`**, as planned, with the reasoning written
+  into the struct: it is a *server* capability rather than anything about the
+  user, and it rides along because `/auth/me` is the one call the app already
+  makes at boot. `web/js/session.js` caches that response so the editor reads
+  the flag without a second fetch. If a third capability appears, that trade
+  wants revisiting.
+
+Frontend: the search row is hidden entirely unless the server reports the
+capability, searches only on Enter or the button (never per keystroke), and
+fills the `address` field **only when it is empty** — a result's
+`display_name` is a whole formatted address, and overwriting what someone
+typed by hand for the sake of tidiness loses their wording. Enter is stopped
+before the card's own "Enter saves the page" handler sees it. Six new keys per
+locale (164 in sync), including distinct messages for "found nothing" and "the
+search is broken", which call for different next actions.
+
+Verified: `make ci` green with nine new Go tests — mapping, the identifying
+User-Agent and `limit`, unparseable rows skipped, `[]` not `null`, three
+upstream failure modes all becoming 502 without leaking upstream text, short
+and missing queries rejected *without* costing the upstream a request,
+anonymous 401 (also without a request), the disabled 501, the limiter, and
+`geocoding` reported both ways. **No test can reach the real Nominatim**: the
+harness leaves `GeocoderURL` empty, so forgetting to stub fails loudly with a
+501 rather than quietly sending live traffic. `make test-ui` green, 47 tests
+(was 43), three consecutive full runs, with `/api/geocode` stubbed at the
+network boundary for the same reason. One live search through the running dev
+server returned two real Kirkjufells with numeric coordinates.
+
+**A real layout bug, caught by the sweeps and worth recording.** The first
+version put the input and button in a nested `display: flex` row of my own.
+That looked fine on desktop and broke at 324px: `.btn-row` is full-width under
+640px by design — the Links and Dates rows rely on it — and in a `nowrap` flex
+it had nowhere to wrap to, so it pushed the card **39px past the viewport** and
+squeezed the input to **18px**, under the tap-target floor. Both mobile sweeps
+failed, in both colour schemes, identically on all three runs. The fix was not
+to patch the widths but to stop having a bespoke layout: `.location-search__row`
+now joins `.link-form, .date-form` in the existing wrapping-flex rules and its
+input joins theirs in the ≤640px stacking list, so the button drops to its own
+line exactly as its siblings' do. This is the case the "assertions over
+screenshots" habit exists for — a screenshot pass would have shown a plausible
+desktop layout and I would have shipped it.
+
 ---
 
 ## 6. Where am I

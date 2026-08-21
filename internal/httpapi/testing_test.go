@@ -66,7 +66,11 @@ func newTestServerWithStore(t *testing.T, wrap func(db.Store) db.Store) *testSer
 	// coverage, and a nil Blob panics rather than failing usefully.
 	blob := storagefs.NewLocalFS(filepath.Join(dir, "uploads"))
 
-	srv := NewServer(conn, store, auth.NewService(store), blob, fstest.MapFS{}, false, true)
+	// Geocoding off by default, and deliberately so: with the production
+	// default here instead, any test that reached /api/geocode would send a
+	// real request to OpenStreetMap's public Nominatim. The geocode tests set
+	// srv.GeocoderURL to their own httptest.Server.
+	srv := NewServer(conn, store, auth.NewService(store), blob, fstest.MapFS{}, false, true, "")
 	return &testServer{Server: srv, t: t}
 }
 

@@ -32,24 +32,26 @@ func securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
-// loginLimiter is a small in-memory fixed-window rate limiter keyed by
-// client IP, guarding the login endpoint against brute-force credential
-// guessing. This is a single-process app (SQLite default, one Go binary),
-// so an in-memory limiter is sufficient — no need for a shared store.
-type loginLimiter struct {
+// rateLimiter is a small in-memory fixed-window rate limiter keyed by client
+// IP. It guards the login endpoints against brute-force credential guessing,
+// and — since Stage 13 — the geocode proxy, where the budget being protected
+// is somebody else's service rather than our own. This is a single-process
+// app (SQLite default, one Go binary), so an in-memory limiter is sufficient;
+// no shared store needed.
+type rateLimiter struct {
 	mu       sync.Mutex
 	attempts map[string][]time.Time
 	max      int
 	window   time.Duration
 }
 
-func newLoginLimiter(max int, window time.Duration) *loginLimiter {
-	return &loginLimiter{attempts: make(map[string][]time.Time), max: max, window: window}
+func newRateLimiter(max int, window time.Duration) *rateLimiter {
+	return &rateLimiter{attempts: make(map[string][]time.Time), max: max, window: window}
 }
 
 // Allow reports whether another attempt from key is permitted right now,
 // and records the attempt if so.
-func (l *loginLimiter) Allow(key string) bool {
+func (l *rateLimiter) Allow(key string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -71,7 +73,7 @@ func (l *loginLimiter) Allow(key string) bool {
 
 // sweep drops keys with no attempts left in the window, bounding memory use
 // for a long-running process. Call periodically from a background goroutine.
-func (l *loginLimiter) sweep() {
+func (l *rateLimiter) sweep() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -95,6 +97,19 @@ func (s *Server) rateLimitLogin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !s.LoginLimiter.Allow(clientIP(r)) {
 			writeError(w, http.StatusTooManyRequests, "too many login attempts, try again later")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// Separate from the login limiter and stricter, because it protects a
+// different thing: not our credentials but an external service's goodwill,
+// whose usage policy asks for at most one request a second.
+func (s *Server) rateLimitGeocode(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !s.GeocodeLimiter.Allow(clientIP(r)) {
+			writeError(w, http.StatusTooManyRequests, "too many address searches, try again in a moment")
 			return
 		}
 		next.ServeHTTP(w, r)

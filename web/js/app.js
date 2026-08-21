@@ -13,6 +13,7 @@ import { renderUserMenu } from "./components/user-menu.js";
 import { createRouter, navigate } from "./router.js";
 import { initTheme } from "./theme.js";
 import { TRIP_TABS } from "./trip-tabs.js";
+import { setCurrentUser } from "./session.js";
 
 const app = document.getElementById("app");
 
@@ -92,9 +93,11 @@ async function boot() {
   app.textContent = t("common.loading");
   try {
     const user = await api.get("/auth/me");
+    setCurrentUser(user);
     await renderAuthenticated(user);
   } catch {
     const user = await renderLoginPage(app);
+    setCurrentUser(user);
     await renderAuthenticated(user);
   }
 }

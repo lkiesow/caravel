@@ -13,6 +13,10 @@ type Config struct {
 	UploadDir  string
 	WebDir     string // if set, serve static files live from this directory instead of the embedded copy
 	OpenSignup bool
+	// GeocoderURL is the upstream search endpoint the /api/geocode proxy
+	// calls. Empty disables address search outright, and the client hides
+	// the control rather than offering one that cannot work.
+	GeocoderURL string
 }
 
 func Load() (Config, error) {
@@ -23,6 +27,13 @@ func Load() (Config, error) {
 		UploadDir:  getEnv("CARAVEL_UPLOAD_DIR", "uploads"),
 		WebDir:     os.Getenv("CARAVEL_WEB_DIR"),
 		OpenSignup: getEnvBool("CARAVEL_OPEN_SIGNUP", true),
+		// Nominatim is the same project the map tiles come from. It is called
+		// from the server rather than the browser: OSM's usage policy wants an
+		// identifying User-Agent and no more than one request a second, which
+		// a browser cannot promise, and a self-hosted app should not hand a
+		// user's typing to a third party without a single place to turn that
+		// off.
+		GeocoderURL: getEnv("CARAVEL_GEOCODER_URL", "https://nominatim.openstreetmap.org/search"),
 	}
 
 	if cfg.DBDriver != "sqlite" && cfg.DBDriver != "postgres" {

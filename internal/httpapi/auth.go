@@ -19,6 +19,12 @@ type userResponse struct {
 	// screen asks rather than assuming, so it is already right when an external
 	// provider arrives.
 	HasPassword bool `json:"has_password"`
+	// Geocoding is a *server* capability rather than anything about this user,
+	// and it rides along here because /auth/me is the one call the app already
+	// makes at boot. The alternative was a second endpoint fetched by the one
+	// screen that needs it; if a third capability ever turns up, that trade
+	// is worth revisiting.
+	Geocoding bool `json:"geocoding"`
 }
 
 func (s *Server) userToResponse(r *http.Request, u db.User) userResponse {
@@ -29,7 +35,13 @@ func (s *Server) userToResponse(r *http.Request, u db.User) userResponse {
 	if err != nil {
 		hasPassword = false
 	}
-	return userResponse{ID: u.ID, Username: u.Username, DisplayName: u.DisplayName, HasPassword: hasPassword}
+	return userResponse{
+		ID:          u.ID,
+		Username:    u.Username,
+		DisplayName: u.DisplayName,
+		HasPassword: hasPassword,
+		Geocoding:   s.GeocoderURL != "",
+	}
 }
 
 type registerRequest struct {

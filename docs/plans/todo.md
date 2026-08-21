@@ -73,14 +73,6 @@ Direction already agreed or obviously wanted; none of it built.
   needs no backend change — but it does need a second control next to the
   existing category menu, and a decision about what to do with locations that
   have no coordinates (hide, or always show).
-- **Address search for the coordinate picker.** (Stage 06; the picking half was
-  built in Stage 13 Milestones 3–4.) The location editor now has a
-  `<leaflet-map pick>` under its coordinate fields — click to place, drag to
-  adjust, two-way bound to the number inputs, which stay authoritative. What
-  the original entry also asked for and is still missing is finding a place by
-  *name*: typing an address instead of knowing roughly where to click. That is
-  a geocoder, and the decision already taken is Nominatim behind our own
-  endpoint rather than called from the browser.
 - **Search, filter and sort on the trips list.** Confirmed absent:
   `trips-page.js` has no search input, filter or sort control, and
   `ListTripsByOwner` (`internal/db/sqlc/queries/trips.sql`) has a fixed
@@ -401,6 +393,22 @@ else runs this.
   `internal/db/migrations/sqlite/` and `.../postgres/`). Since nobody has
   deployed this yet, collapsing them into a single `0001_init` is safe — and
   stops being safe the moment someone has.
+- **`NewServer` has eight positional parameters.** (Stage 13 Milestone 5 added
+  the eighth, `geocoderURL`.) Four of them are now bare `bool`/`string` values
+  whose meaning is invisible at the call site — `NewServer(..., false, true,
+  "")` says nothing about which flag is which. `cmd/caravel/main.go` already
+  has the whole `config.Config`, and the test harness builds its own; passing
+  a struct (or an options value) instead would make the call sites readable
+  and stop the next capability flag widening the signature again.
+
+- **Reverse geocoding.** (Stage 13 Milestone 5.) `/api/geocode` turns a name
+  into coordinates; the opposite — clicking the map and getting a suggested
+  address for the `address` field — is not built. Nominatim has a `/reverse`
+  endpoint, so it is a second handler on the same proxy and the same limiter,
+  but it needs a decision about whether it fills the field automatically
+  (surprising, and it would overwrite a hand-written address) or offers the
+  result for the user to accept.
+
 - **S3-compatible object storage.** Swap the `internal/storagefs` `Blob`
   implementation from local filesystem to S3-compatible (MinIO, Backblaze, and
   so on); the interface already isolates callers from the backend.

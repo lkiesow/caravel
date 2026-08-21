@@ -23,38 +23,49 @@ func init() {
 }
 
 type Server struct {
-	DB           *sql.DB
-	Store        db.Store
-	Auth         *auth.Service
-	Blob         storagefs.Blob
-	WebFS        http.FileSystem // static assets (embedded, or a live directory in dev)
-	NoCache      bool            // true when serving from a live directory (dev mode)
-	OpenSignup   bool
-	LoginLimiter *loginLimiter
-	router       chi.Router
+	DB         *sql.DB
+	Store      db.Store
+	Auth       *auth.Service
+	Blob       storagefs.Blob
+	WebFS      http.FileSystem // static assets (embedded, or a live directory in dev)
+	NoCache    bool            // true when serving from a live directory (dev mode)
+	OpenSignup bool
+	// GeocoderURL is the upstream address-search endpoint /api/geocode
+	// proxies to. Empty means address search is switched off: the endpoint
+	// reports that plainly and the client hides the control.
+	GeocoderURL    string
+	LoginLimiter   *rateLimiter
+	GeocodeLimiter *rateLimiter
+	router         chi.Router
 }
 
-func NewServer(dbConn *sql.DB, store db.Store, authService *auth.Service, blob storagefs.Blob, webFS fs.FS, noCache, openSignup bool) *Server {
+func NewServer(dbConn *sql.DB, store db.Store, authService *auth.Service, blob storagefs.Blob, webFS fs.FS, noCache, openSignup bool, geocoderURL string) *Server {
 	s := &Server{
-		DB:           dbConn,
-		Store:        store,
-		Auth:         authService,
-		Blob:         blob,
-		WebFS:        http.FS(webFS),
-		NoCache:      noCache,
-		OpenSignup:   openSignup,
-		LoginLimiter: newLoginLimiter(10, time.Minute),
+		DB:          dbConn,
+		Store:       store,
+		Auth:        authService,
+		Blob:        blob,
+		WebFS:       http.FS(webFS),
+		NoCache:     noCache,
+		OpenSignup:  openSignup,
+		GeocoderURL: geocoderURL,
+		// 20/minute/IP. Higher than login's 10 because a search is a normal,
+		// repeated action rather than a credential attempt, and still far
+		// under what would embarrass us upstream.
+		LoginLimiter:   newRateLimiter(10, time.Minute),
+		GeocodeLimiter: newRateLimiter(20, time.Minute),
 	}
 	s.router = s.buildRouter()
-	go s.sweepLoginLimiterPeriodically()
+	go s.sweepLimitersPeriodically()
 	return s
 }
 
-func (s *Server) sweepLoginLimiterPeriodically() {
+func (s *Server) sweepLimitersPeriodically() {
 	ticker := time.NewTicker(10 * time.Minute)
 	defer ticker.Stop()
 	for range ticker.C {
 		s.LoginLimiter.sweep()
+		s.GeocodeLimiter.sweep()
 	}
 }
 
@@ -82,6 +93,10 @@ func (s *Server) buildRouter() chi.Router {
 			// password, so it is another place to guess one.
 			r.With(auth.RequireAuth, s.rateLimitLogin).Post("/password", s.handleChangePassword)
 		})
+
+		// Behind RequireAuth as well as its own limiter: this endpoint spends
+		// an external service's quota, so it is not for anonymous callers.
+		r.With(auth.RequireAuth, s.rateLimitGeocode).Get("/geocode", s.handleGeocode)
 
 		r.Route("/trips", func(r chi.Router) {
 			r.Use(auth.RequireAuth)

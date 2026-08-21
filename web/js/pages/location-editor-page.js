@@ -9,6 +9,7 @@ import { confirmDialog } from "../components/dialog.js";
 import { renderLoading } from "../components/loading.js";
 import { renderNotFoundPage } from "./not-found-page.js";
 import "../components/leaflet-map.js";
+import { getCurrentUser } from "../session.js";
 
 // Both modes render the same cards, in the same order - Basic info, Cover
 // photo, Location, Links, Dates, Files - matching the read view's
@@ -99,6 +100,14 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
               <span data-i18n="location.form.showOnMap"></span>
             </label>
             <p class="location-form__hint" data-i18n="location.form.showOnMapHint" hidden></p>
+            <div class="location-search" hidden>
+              <div class="location-search__row">
+                <input type="search" name="placeQuery" autocomplete="off" data-i18n-placeholder="location.form.searchPlaceholder" data-i18n-aria-label="location.form.searchPlaceholder" />
+                <button type="button" class="btn btn-secondary btn-row" data-action="search-place">${icon("search")} <span data-i18n="location.form.searchButton"></span></button>
+              </div>
+              <p class="location-search__status" role="status" hidden></p>
+              <ul class="location-search__results"></ul>
+            </div>
             <p class="location-form__pick-hint" data-i18n="location.form.pickHint"></p>
             <leaflet-map pick class="location-form__map"${
               item?.location?.lat != null && item?.location?.lng != null
@@ -357,6 +366,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       });
     }
     syncHint();
+    bindPlaceSearch(form, syncMapFromFields, syncHint);
     // The card has no button of its own any more - these values are read
     // back by save(). Enter in a coordinate field saves the page, via the
     // same submit-plus-keydown pair the Basic info card uses and for the same
@@ -370,6 +380,91 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     form.addEventListener("submit", saveFromForm);
     form.addEventListener("keydown", (e) => {
       if (e.key === "Enter") saveFromForm(e);
+    });
+  }
+
+  // Address search: find a place by name instead of knowing where to click.
+  //
+  // Hidden entirely unless the server reports the capability - the endpoint
+  // is disabled by setting CARAVEL_GEOCODER_URL empty, and a control that
+  // can only answer "not enabled on this server" is worse than no control.
+  //
+  // It searches on Enter or on the button, never per keystroke: every query
+  // costs an external service a request, and OSM's usage policy is the reason
+  // this goes through our own endpoint at all (internal/httpapi/geocode.go).
+  function bindPlaceSearch(form, syncMapFromFields, syncHint) {
+    if (!getCurrentUser()?.geocoding) return;
+
+    const panel = container.querySelector(".location-search");
+    const input = form.placeQuery;
+    const button = container.querySelector('[data-action="search-place"]');
+    const status = container.querySelector(".location-search__status");
+    const results = container.querySelector(".location-search__results");
+    panel.hidden = false;
+
+    const setStatus = (key) => {
+      status.textContent = key ? t(key) : "";
+      status.hidden = !key;
+    };
+
+    async function search() {
+      const query = input.value.trim();
+      results.innerHTML = "";
+      if (query.length < 2) {
+        setStatus("location.form.searchTooShort");
+        return;
+      }
+      setStatus("location.form.searching");
+      button.disabled = true;
+      let found;
+      try {
+        found = await api.get(`/geocode?q=${encodeURIComponent(query)}`);
+      } catch (err) {
+        // The Go error is for the console; the user gets one sentence saying
+        // the search is unavailable, not a status code.
+        console.error(err);
+        setStatus("location.form.searchFailed");
+        return;
+      } finally {
+        button.disabled = false;
+      }
+
+      if (!found.length) {
+        setStatus("location.form.searchNoResults");
+        return;
+      }
+      setStatus(null);
+      for (const place of found) {
+        const li = document.createElement("li");
+        const choose = document.createElement("button");
+        choose.type = "button";
+        choose.className = "location-search__result";
+        choose.textContent = place.display_name;
+        choose.addEventListener("click", () => {
+          form.lat.value = place.lat;
+          form.lng.value = place.lng;
+          // Only fills an *empty* address: a result's display_name is a whole
+          // formatted address, and overwriting something the user typed by
+          // hand would lose their wording for the sake of tidiness.
+          if (!form.address.value.trim()) form.address.value = place.display_name;
+          syncMapFromFields();
+          syncHint();
+          results.innerHTML = "";
+          setStatus(null);
+        });
+        li.appendChild(choose);
+        results.appendChild(li);
+      }
+    }
+
+    button.addEventListener("click", search);
+    // The card's own keydown handler treats Enter as "save the page"; in this
+    // field Enter means "search", so it is stopped before it gets there.
+    input.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      e.stopPropagation();
+      search();
     });
   }
 

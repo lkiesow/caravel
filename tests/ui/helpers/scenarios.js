@@ -216,6 +216,18 @@ export async function gotoRoute(page, path) {
     undefined,
     { timeout: 15000 }
   );
+  // A map is lazily imported *after* its route's fetches settle, so the
+  // condition above can be true while Leaflet is still loading. Without this
+  // the sweeps intermittently measured a half-built map and reported its
+  // un-sized controls as content overflowing .map-wrap - a failure that only
+  // ever appeared under a full parallel run. leaflet-map.js sets data-ready
+  // on itself once the map has laid out.
+  await page.waitForFunction(
+    () => [...document.querySelectorAll("leaflet-map")].every((el) => el.hasAttribute("data-ready")),
+    undefined,
+    { timeout: 15000 }
+  );
+
   // One frame for the render that follows the settled fetch.
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 

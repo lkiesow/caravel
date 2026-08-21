@@ -225,3 +225,199 @@ test.describe("a marker popup links back into the app", () => {
     }
   });
 });
+
+
+// Milestone 3. Pick mode: the first time leaflet-map.js has been anything but
+// read-only. No page mounts it yet (the location editor picks it up in
+// Milestone 4), so these tests mount one themselves.
+//
+// The component is registered by any route that renders a map, so the trip map
+// is used as a host page and the picker is appended beside it.
+async function mountPicker(page, attrs = {}) {
+  await page.evaluate((attributes) => {
+    document.querySelectorAll("[data-test-picker]").forEach((el) => el.remove());
+    const el = document.createElement("leaflet-map");
+    el.setAttribute("pick", "");
+    el.dataset.testPicker = "1";
+    for (const [k, v] of Object.entries(attributes)) el.setAttribute(k, v);
+    // A definite box: :host([pick]) sets the height, and the width comes from
+    // the block context, which document.body gives it.
+    el.style.width = "400px";
+    document.body.appendChild(el);
+    window.__picks = [];
+    el.addEventListener("location-picked", (e) => window.__picks.push(e.detail));
+  }, attrs);
+  await page.waitForFunction(() => document.querySelector("[data-test-picker]")?._map);
+  // Leaflet sizes itself from the container; give it the frame it needs.
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+}
+
+// A real DOM click at a point inside the map, which is what Leaflet turns into
+// a latlng. Going through map.fire("click") instead would test nothing.
+async function clickPickerAt(page, fractionX, fractionY) {
+  await page.evaluate(
+    ({ fx, fy }) => {
+      const host = document.querySelector("[data-test-picker]");
+      const mapEl = host.shadowRoot.getElementById("map");
+      const r = mapEl.getBoundingClientRect();
+      const clientX = r.left + r.width * fx;
+      const clientY = r.top + r.height * fy;
+      const opts = { bubbles: true, cancelable: true, view: window, button: 0, clientX, clientY };
+      for (const type of ["mousedown", "mouseup", "click"]) {
+        mapEl.dispatchEvent(new MouseEvent(type, opts));
+      }
+    },
+    { fx: fractionX, fy: fractionY }
+  );
+}
+
+test.describe("pick mode", () => {
+  test.beforeEach(async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+  });
+
+  test("a click reports a coordinate and places the marker", async ({ page }) => {
+    await mountPicker(page);
+
+    // With no coordinates it opens on the world view, like the empty trip map,
+    // and has no marker to show.
+    const before = await page.evaluate(() => {
+      const host = document.querySelector("[data-test-picker]");
+      return {
+        zoom: host._map.getZoom(),
+        markers: host.shadowRoot.querySelectorAll(".leaflet-marker-icon").length,
+      };
+    });
+    expect(before.zoom, "an empty picker should open on the world view").toBe(2);
+    expect(before.markers, "nothing is chosen yet, so there is nothing to mark").toBe(0);
+
+    await clickPickerAt(page, 0.5, 0.5);
+
+    const picks = await page.evaluate(() => window.__picks);
+    expect(picks.length, "a click should report exactly one coordinate").toBe(1);
+    const [{ lat, lng }] = picks;
+    expect(Number.isFinite(lat) && Number.isFinite(lng), `got ${lat},${lng}`).toBe(true);
+    expect(Math.abs(lat), "latitude must be a real latitude").toBeLessThanOrEqual(90);
+    // wrapLatLng: panning the world sideways would otherwise report longitudes
+    // past 180, which no tile server or database column wants.
+    expect(Math.abs(lng), "longitude should be wrapped into [-180, 180]").toBeLessThanOrEqual(180);
+    // 6 decimals is ~11cm; without the rounding this is a 17-digit float going
+    // straight into a number input.
+    for (const n of [lat, lng]) {
+      expect(String(n).split(".")[1]?.length ?? 0, `${n} carries more precision than a form field wants`).toBeLessThanOrEqual(6);
+    }
+
+    // The component does not move its own marker on click - the page owns the
+    // coordinates and feeds them back as attributes (Milestone 4). Doing that
+    // here is what makes the marker appear.
+    await page.evaluate(({ lat, lng }) => {
+      const host = document.querySelector("[data-test-picker]");
+      host.setAttribute("lat", String(lat));
+      host.setAttribute("lng", String(lng));
+    }, picks[0]);
+    await expect
+      .poll(() => page.evaluate(() => document.querySelector("[data-test-picker]").shadowRoot.querySelectorAll(".leaflet-marker-icon").length))
+      .toBe(1);
+  });
+
+  test("a coordinate change moves the marker without rebuilding the map", async ({ page }) => {
+    await mountPicker(page, { lat: "64.9631", lng: "-19.0208" });
+
+    // Identity, not just "a map is still there": load() used to rebuild the
+    // whole shadow root on any attribute change, which in an editor means a
+    // teardown and a fresh tile fetch per keystroke in the coordinate fields.
+    await page.evaluate(() => {
+      const host = document.querySelector("[data-test-picker]");
+      window.__mapInstance = host._map;
+      window.__tilePane = host.shadowRoot.querySelector(".leaflet-tile-pane");
+      window.__markerEl = host.shadowRoot.querySelector(".leaflet-marker-icon");
+    });
+
+    await page.evaluate(() => {
+      const host = document.querySelector("[data-test-picker]");
+      host.setAttribute("lat", "48.8584");
+      host.setAttribute("lng", "2.2945");
+    });
+
+    await expect
+      .poll(async () =>
+        page.evaluate(() => {
+          const host = document.querySelector("[data-test-picker]");
+          const p = host._pickMarker.getLatLng();
+          return { lat: Math.round(p.lat * 1e4) / 1e4, lng: Math.round(p.lng * 1e4) / 1e4 };
+        })
+      )
+      .toEqual({ lat: 48.8584, lng: 2.2945 });
+
+    const survived = await page.evaluate(() => {
+      const host = document.querySelector("[data-test-picker]");
+      return {
+        sameMap: host._map === window.__mapInstance,
+        sameTilePane: host.shadowRoot.querySelector(".leaflet-tile-pane") === window.__tilePane,
+        sameMarker: host.shadowRoot.querySelector(".leaflet-marker-icon") === window.__markerEl,
+      };
+    });
+    expect(survived.sameMap, "the Leaflet map was re-created").toBe(true);
+    expect(survived.sameTilePane, "the shadow root was re-rendered").toBe(true);
+    expect(survived.sameMarker, "the marker was torn down instead of moved").toBe(true);
+  });
+
+  test("dragging the marker reports the new coordinate", async ({ page }) => {
+    // The other half of "pick": a click places it, a drag adjusts it. Leaflet's
+    // Draggable binds mousedown on the marker and mousemove/mouseup on the
+    // document (see START in the vendored leaflet.esm.js), so the drag has to
+    // be dispatched across both.
+    await mountPicker(page, { lat: "64.9631", lng: "-19.0208" });
+    await page.evaluate(() => {
+      window.__picks = [];
+    });
+
+    // Real input through page.mouse rather than dispatched MouseEvents:
+    // Leaflet's Draggable is picky about which synthetic events it accepts,
+    // and a genuine drag is the thing being claimed anyway.
+    const from = await page.evaluate(() => {
+      const host = document.querySelector("[data-test-picker]");
+      host.scrollIntoView({ block: "center" });
+      const r = host.shadowRoot.querySelector(".leaflet-marker-icon").getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    });
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    // Two steps: Leaflet ignores movement inside its click tolerance, and a
+    // single jump can be treated as one.
+    await page.mouse.move(from.x + 20, from.y + 20);
+    await page.mouse.move(from.x + 60, from.y + 40);
+    await page.mouse.up();
+
+    await expect.poll(() => page.evaluate(() => window.__picks.length)).toBe(1);
+    const [pick] = await page.evaluate(() => window.__picks);
+    // Dragged down and to the right: south and east of where it started.
+    expect(pick.lat, "dragging down should decrease latitude").toBeLessThan(64.9631);
+    expect(pick.lng, "dragging right should increase longitude").toBeGreaterThan(-19.0208);
+  });
+
+  test("clearing a coordinate removes the marker rather than dropping it at 0,0", async ({ page }) => {
+    // Number("") is 0, which is a real place in the Gulf of Guinea. An
+    // emptied field must mean "nothing chosen", not "chosen: null island".
+    await mountPicker(page, { lat: "64.9631", lng: "-19.0208" });
+    await page.evaluate(() => document.querySelector("[data-test-picker]").setAttribute("lat", ""));
+    await expect
+      .poll(() =>
+        page.evaluate(() => document.querySelector("[data-test-picker]").shadowRoot.querySelectorAll(".leaflet-marker-icon").length)
+      )
+      .toBe(0);
+  });
+
+  test("carries none of the trip map's chrome", async ({ page }) => {
+    await mountPicker(page);
+    const chrome = await page.evaluate(() => {
+      const sr = document.querySelector("[data-test-picker]").shadowRoot;
+      return { legend: sr.querySelectorAll(".legend").length, empty: sr.querySelectorAll(".empty").length };
+    });
+    // The legend filters trip-wide markers and the empty line reports there
+    // are none; a picker has neither concept.
+    expect(chrome.legend, "a picker has no categories to filter").toBe(0);
+    expect(chrome.empty, "a picker is not an empty trip map").toBe(0);
+  });
+});

@@ -86,6 +86,16 @@ for (const scheme of COLOR_SCHEMES) {
               if (style.textOverflow === "ellipsis") continue;
               if (["input", "textarea", "select", "svg", "img"].includes(el.localName)) continue;
               if (el.closest?.('[class*="leaflet-"]')) continue;
+              // ...and the box immediately *around* a Leaflet map, for the
+              // same reason one level up. Leaflet parks its panes at enormous
+              // offsets on purpose (measured at right=1825757), and
+              // .map-wrap's overflow:hidden exists precisely to stop that
+              // reaching the document - so its content width reports the
+              // library's internals, not a layout bug of ours. Matched by
+              // "contains a .leaflet-container" rather than by our own class
+              // name, so it cannot quietly start excluding something else.
+              // The legend inside it is our markup and is still swept.
+              if (el.querySelector?.(".leaflet-container")) continue;
               // Visually-hidden labels, which are *defined* as content much
               // wider than a 1px box: .sr-only and the .btn-collapse span rule
               // (base.css) clip a real label down to 1x1 so the button keeps its

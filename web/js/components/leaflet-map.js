@@ -18,6 +18,17 @@ const SINGLE_MARKER_ZOOM = 14;
 // attribute, so it can legitimately be absent).
 const FALLBACK_MARKER_COLOR = "#71717a";
 
+// The marker being *placed* in pick mode. Amber deliberately: none of the
+// three category colours above, and not --color-accent either, which is the
+// same #2563eb transport already uses. It is also drawn as a ring with a
+// centre dot rather than as a plain disc, so it reads as "the point you are
+// setting" rather than as a fourth category.
+const PICK_MARKER_COLOR = "#ea580c";
+
+// Coordinates are emitted at 6 decimals (~11cm). Without this a map click
+// writes a 17-digit float straight into a number input.
+const PICK_PRECISION = 1e6;
+
 // Every marker in this component is drawn as a CSS dot rather than an image.
 // Leaflet's default marker is an <img> whose src is resolved relative to the
 // *page* URL, which in an SPA means /trips/<id>/locations/marker-icon.png -
@@ -29,6 +40,17 @@ function markerIcon(L, category) {
     className: "",
     html: `<span style="display:block;width:1rem;height:1rem;border-radius:50%;background:${color};border:2px solid white;box-shadow:0 0 2px rgba(0,0,0,.5)"></span>`,
     iconSize: [16, 16],
+  });
+}
+
+function pickMarkerIcon(L) {
+  return L.divIcon({
+    className: "",
+    html:
+      `<span style="display:block;width:1.5rem;height:1.5rem;border-radius:50%;box-sizing:border-box;` +
+      `border:4px solid ${PICK_MARKER_COLOR};background:rgba(255,255,255,.85);` +
+      `box-shadow:0 0 3px rgba(0,0,0,.6)"></span>`,
+    iconSize: [24, 24],
   });
 }
 
@@ -44,6 +66,14 @@ const styles = `
   }
   :host([lat]) {
     height: 16rem;
+    min-height: 0;
+  }
+  /* After :host([lat]) on purpose - equal specificity, so source order wins.
+     A picker inside an editor card is the same size whether or not it has
+     coordinates yet; without this it would be 16rem once a point exists and
+     60vh before that, which is a form card that jumps on first click. */
+  :host([pick]) {
+    height: 20rem;
     min-height: 0;
   }
   .map-wrap {
@@ -176,7 +206,7 @@ const styles = `
 
 class LeafletMap extends HTMLElement {
   static get observedAttributes() {
-    return ["trip-id", "lat", "lng", "marker-title", "marker-category"];
+    return ["trip-id", "lat", "lng", "marker-title", "marker-category", "pick"];
   }
 
   connectedCallback() {
@@ -197,6 +227,26 @@ class LeafletMap extends HTMLElement {
     // yet) - bail out here and let connectedCallback's own load() call (which
     // runs after the shadow root exists) handle it instead.
     if (!this.shadowRoot) return;
+
+    // Pick mode is settled before anything else, because it also reads
+    // lat/lng - but as a starting point that is meant to be moved, rather
+    // than as the fixed embed the single-marker branch below renders. It
+    // never fetches anything.
+    this._pick = this.hasAttribute("pick");
+    if (this._pick) {
+      // Once the map exists, a lat/lng change must only move the marker.
+      // The editor rewrites those attributes as its coordinate fields are
+      // typed in, and the inherited behaviour - a full load() and a fresh
+      // innerHTML - would tear the map down and refetch tiles per keystroke.
+      if (this._map) {
+        this.syncPickMarker();
+        return;
+      }
+      this._singleMarker = null;
+      this._items = [];
+      await this.render((this._generation = (this._generation || 0) + 1));
+      return;
+    }
 
     // connectedCallback and attributeChangedCallback both fire for the
     // initial attributes, so two loads can race; only the most recent one
@@ -230,14 +280,26 @@ class LeafletMap extends HTMLElement {
   }
 
   async render(generation) {
+    // Cleared up front and set again at the end: Leaflet is lazily imported
+    // inside this method, so between "the route's fetches have settled" and
+    // "the map has laid itself out" there is a window in which the component
+    // is on the page but half-built. The UI sweeps used to measure that
+    // window under load and report Leaflet's un-sized controls as content
+    // overflowing .map-wrap. This is the component stating its own readiness
+    // rather than the suite guessing - the small version of the "ready
+    // signal" todo.md asks for app-wide.
+    this.removeAttribute("data-ready");
     const single = this._singleMarker;
+    // The legend filters trip-wide markers, of which pick mode has none - and
+    // so does the "nothing has a location yet" line below.
+    const chromeless = single || this._pick;
     this.shadowRoot.innerHTML = `
       <link rel="stylesheet" href="/js/vendor/leaflet/leaflet.css" />
       <style>${styles}</style>
       <div class="map-wrap">
         <div id="map"></div>
         ${
-          single
+          chromeless
             ? ""
             : `<div class="legend">
           ${["site", "stay", "transport"]
@@ -256,7 +318,7 @@ class LeafletMap extends HTMLElement {
       ${isCoarsePointer() ? `<p class="gesture-hint">${t("map.twoFingerHint")}</p>` : ""}
     `;
 
-    if (!single && !this._items.length) {
+    if (!chromeless && !this._items.length) {
       this.shadowRoot.querySelector(".map-wrap").insertAdjacentHTML(
         "beforeend",
         `<p class="empty" style="position:absolute;inset:0;margin:0;">${t("map.empty")}</p>`
@@ -318,7 +380,17 @@ class LeafletMap extends HTMLElement {
       );
     });
 
-    if (!single) {
+    if (this._pick) {
+      // Click anywhere to place or move the point. Leaflet's own click event
+      // rather than a DOM listener, because it hands over the latlng already
+      // projected - and it does not fire on a marker drag, which has its own
+      // handler in syncPickMarker.
+      map.on("click", (e) => this.emitPick(e.latlng));
+    }
+
+    this.setAttribute("data-ready", "");
+
+    if (!chromeless) {
       this.shadowRoot.querySelectorAll("[data-category]").forEach((cb) => {
         cb.addEventListener("change", () => {
           const cat = cb.getAttribute("data-category");
@@ -334,6 +406,11 @@ class LeafletMap extends HTMLElement {
     const L = this._L;
     this._markers.forEach((m) => m.remove());
     this._markers = [];
+
+    if (this._pick) {
+      this.syncPickMarker({ initial: true });
+      return;
+    }
 
     if (this._singleMarker) {
       const { lat, lng, title, category } = this._singleMarker;
@@ -384,6 +461,79 @@ class LeafletMap extends HTMLElement {
       this._map.setView([20, 0], 2);
     }
   }
+
+  // Pick mode's one marker. Deliberately not part of plotMarkers' other two
+  // branches: it is the only marker that can be moved, and it has to survive
+  // a lat/lng change instead of being torn down and rebuilt with the map.
+  syncPickMarker({ initial = false } = {}) {
+    const L = this._L;
+    if (!L || !this._map) return;
+
+    const lat = readCoordinate(this, "lat");
+    const lng = readCoordinate(this, "lng");
+
+    if (lat === null || lng === null) {
+      // Nothing chosen yet, or the field was cleared. The world view is the
+      // same "we don't know where you mean" view the empty trip map takes.
+      this._pickMarker?.remove();
+      this._pickMarker = null;
+      if (initial) this._map.setView([20, 0], 2);
+      return;
+    }
+
+    if (this._pickMarker) {
+      this._pickMarker.setLatLng([lat, lng]);
+    } else {
+      this._pickMarker = L.marker([lat, lng], {
+        icon: pickMarkerIcon(L),
+        draggable: true,
+        // The marker is a control, so it has to be reachable and describable
+        // without a mouse; Leaflet gives a draggable marker keyboard focus
+        // but no name of its own.
+        keyboard: true,
+        title: t("map.pickMarkerLabel"),
+        alt: t("map.pickMarkerLabel"),
+      }).addTo(this._map);
+      this._pickMarker.on("dragend", () => this.emitPick(this._pickMarker.getLatLng()));
+    }
+
+    // Recentre on the first render, and afterwards only if the point has
+    // moved out of sight - otherwise typing into the coordinate fields would
+    // yank the map on every keystroke, and not recentring at all would let
+    // the marker silently vanish off the edge.
+    if (initial) {
+      this._map.setView([lat, lng], SINGLE_MARKER_ZOOM, { animate: false });
+    } else if (!this._map.getBounds().contains([lat, lng])) {
+      this._map.setView([lat, lng], this._map.getZoom(), { animate: false });
+    }
+  }
+
+  // The component's one output in pick mode. Composed, because it has to
+  // cross the shadow boundary to reach the page that mounted it.
+  emitPick(latlng) {
+    // Panning the world sideways gives longitudes past +/-180; wrap() folds
+    // them back, so a click three worlds to the right still stores a
+    // coordinate a database and a map tile server both accept.
+    const { lat, lng } = this._map.wrapLatLng(latlng);
+    const round = (n) => Math.round(n * PICK_PRECISION) / PICK_PRECISION;
+    this.dispatchEvent(
+      new CustomEvent("location-picked", {
+        bubbles: true,
+        composed: true,
+        detail: { lat: round(lat), lng: round(lng) },
+      })
+    );
+  }
+}
+
+// A coordinate attribute as a number, or null when it is absent, blank or
+// unparseable. Number("") and Number(null) are both 0 - a real place in the
+// Gulf of Guinea - so the emptiness check cannot be skipped.
+function readCoordinate(el, name) {
+  const raw = el.getAttribute(name);
+  if (raw == null || raw.trim() === "") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
 }
 
 // Touch-first devices, where a one-finger drag has to belong to the page

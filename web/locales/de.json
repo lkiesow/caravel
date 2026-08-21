@@ -120,6 +120,7 @@
   "map.openLocation": "Ort öffnen",
   "map.viewOnGoogleMaps": "In Google Maps ansehen",
   "map.twoFingerHint": "Bewege die Karte mit zwei Fingern.",
+  "map.pickMarkerLabel": "Gewählter Ort — zum Verschieben ziehen",
   "itinerary.noDates": "Lege in den Einstellungen dieser Reise ein Start- und Enddatum fest, um einen Tag-für-Tag-Reiseplan zu erstellen, oder füge unten manuell Tage hinzu.",
   "itinerary.addDay": "Tag hinzufügen",
   "itinerary.addDayDate": "Hinzuzufügendes Datum",

@@ -120,6 +120,7 @@
   "map.openLocation": "Open location",
   "map.viewOnGoogleMaps": "View on Google Maps",
   "map.twoFingerHint": "Use two fingers to move the map.",
+  "map.pickMarkerLabel": "Chosen location — drag to move it",
   "itinerary.noDates": "Set a start and end date in this trip's settings to build a day-by-day itinerary, or add days manually below.",
   "itinerary.addDay": "Add a day",
   "itinerary.addDayDate": "Date to add",

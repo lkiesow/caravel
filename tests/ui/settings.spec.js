@@ -442,7 +442,16 @@ test.describe("settings in German at 324px", () => {
   test.use({ locale: "de-DE", viewport: { width: 324, height: 756 } });
 
   test("neither overflows nor shrinks a control below the tap floor", async ({ page }) => {
-    await login(page, OTHER_USER);
+    // The demo user, deliberately, and it must stay that way. This test wants
+    // nothing more than an account whose /settings shows all three cards, and
+    // the password card only needs has_password - which demo has. Using
+    // OTHER_USER instead put it in a race with the password-change test above:
+    // that test deletes every session `other` has, so whenever the two
+    // overlapped this one was silently logged out mid-test and asserted
+    // against the login page ("Anmelden", not "Kontoeinstellungen"). Sharing
+    // auth.setup.js's session also spends no login attempts against the
+    // rate limiter.
+    await login(page);
     await gotoRoute(page, "/settings");
     await expect(page.locator("h1")).toHaveText("Kontoeinstellungen");
     // The longest string on the screen only renders once a change succeeds, so

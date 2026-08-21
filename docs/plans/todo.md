@@ -279,6 +279,15 @@ step with itself.
   inherits the same limit. A Chromium project added just for gesture specs
   would close it, at the cost of the "one browser keeps CI cheap" decision.
 
+- **One unexplained UI-suite failure, seen once.** (Stage 13 Milestone 3.)
+  `headings.spec.js` reported "view location: no headings at all" on a single
+  full run and has not recurred across a dozen since. The route renders fine by
+  hand and in isolation, so the likely shape is a render/fetch race that
+  `gotoRoute`'s wait does not cover — which would make it another symptom of
+  the in-flight-fetch entry below rather than its own bug. Recorded because a
+  once-seen failure that nobody writes down is a failure nobody looks for the
+  second time.
+
 - **The suite still needs its in-flight-fetch counter, even now that routes show
   a loading state.** Stage 09 Milestone 5 gave every route a `common.loading`
   line, which fixes the user-facing half of the old "empty shell" problem but
@@ -332,7 +341,11 @@ step with itself.
   and `tests/ui/routes.spec.js` asserts the guideline, but the vendored library's
   markup inside the map's shadow root is skipped by class
   (`[class*="leaflet-"]`): its zoom buttons measure 30px and the OpenStreetMap
-  attribution link 14px. Note the exclusion is an **ancestor** test
+  attribution link 14px. As of Stage 13 Milestone 3 the clipped-content sweep
+  additionally skips any element *containing* a `.leaflet-container` — that is
+  `.map-wrap`, whose `overflow: hidden` exists precisely to clip panes Leaflet
+  parks at enormous offsets on purpose, so its content width measured the
+  library rather than us. Note the older exclusion is an **ancestor** test
   (`el.closest('[class*="leaflet-"]')`), so as of Stage 13 Milestone 2 it also
   hides markup *we* own: the popup's two links sit inside
   `.leaflet-popup-content` and are therefore invisible to the sweep. They are

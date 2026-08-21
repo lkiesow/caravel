@@ -230,6 +230,110 @@ event fired with plausible finite numbers; then set `lat`/`lng` attributes and
 assert the marker moved without the map being re-created (e.g. the tile pane
 element identity survives).
 
+**Done.** `pick` is a boolean attribute on `observedAttributes`, settled at the
+top of `load()` before anything else, since it also reads `lat`/`lng` — but as
+a starting point meant to be moved rather than as the fixed embed the
+single-marker branch renders. It never fetches. Clicking the map emits
+`location-picked` (bubbling, composed, `{ lat, lng }`); the marker is
+`draggable` and emits the same on `dragend`. The component deliberately does
+**not** move its own marker on click — the page owns the coordinates and feeds
+them back as attributes, which is what makes Milestone 4's two-way binding a
+single source of truth rather than two copies.
+
+The rebuild guard the plan asked for is `if (this._map) { syncPickMarker();
+return; }`: once the map exists a coordinate change only moves the marker,
+because the inherited behaviour is a full `load()` and a fresh `innerHTML`, and
+the editor rewrites those attributes as its number fields are typed in.
+
+Four things the plan did not specify, each a decision rather than a detail:
+
+- **Recentring.** On first render the map centres on the point at
+  `SINGLE_MARKER_ZOOM`; afterwards it moves only if the point has left the
+  visible bounds. Recentring on every change would yank the map per keystroke;
+  never recentring would let the marker silently vanish off the edge.
+- **`wrapLatLng` on every emission.** Panning the world sideways yields
+  longitudes past ±180, which no tile server or database column wants.
+- **Empty is not zero.** `readCoordinate()` treats an absent, blank or
+  unparseable attribute as `null` and removes the marker, because `Number("")`
+  and `Number(null)` are both `0` — a real place in the Gulf of Guinea. An
+  emptied field means "nothing chosen", not "chosen: null island".
+- **The pick marker is a ring, not a fourth category dot**, in amber
+  (`#ea580c`) — not `--color-accent`, which is the same `#2563eb` transport
+  already uses. `:host([pick])` fixes the height at 20rem regardless of whether
+  coordinates exist yet, so the editor card will not jump on first click; it is
+  placed after `:host([lat])` because equal specificity makes source order the
+  tie-breaker. One new key per locale, `map.pickMarkerLabel`, since a draggable
+  marker is a control and Leaflet gives it focus but no name (157 in sync).
+
+Verified: `make ci` green; `make test-ui` green, 40 tests (was 35). Five new
+tests: the click path (world view and no marker when empty, one finite wrapped
+coordinate at ≤6 decimals, marker appearing once fed back), a real
+`page.mouse` drag reporting a point south-east of where it started, the
+no-rebuild assertion, clearing a coordinate, and the absence of the legend and
+empty-state. The drag test uses real input rather than dispatched `MouseEvent`s
+— Leaflet's `Draggable` ignored the synthetic ones, and a genuine drag is the
+claim anyway.
+
+Negative check: deleting the four-line rebuild guard fails **exactly** the
+no-rebuild test ("the Leaflet map was re-created") with the other four still
+passing — a precise assertion rather than a blanket one.
+
+**Verifying this milestone turned up two suite-level faults**, both of which
+cost more time than the milestone itself and are worth recording in full.
+
+*One is a genuine race, diagnosed and fixed.* `settings.spec.js`'s German
+324px sweep began failing intermittently, asserting the `h1` read
+"Kontoeinstellungen" and getting "Anmelden" — the login page. Nothing to do
+with the map: that test logged in as `OTHER_USER`, and the password-change test
+in the same file changes `other`'s password, which by design deletes **every**
+session that user has. Whenever the two overlapped across workers, the sweep
+was logged out mid-test. It was always a race; the suite growing from 35 to 40
+tests changed the scheduling enough to expose it. The sweep needs nothing from
+`other` — only an account whose `/settings` shows all three cards — so it now
+uses the demo user and `auth.setup.js`'s shared session, which also spends no
+login attempts against the rate limiter. The reasoning is a comment in the
+test, since the next person to reach for `OTHER_USER` there would reintroduce
+it.
+
+*The other is only partly understood, and the fix is a coverage decision rather
+than a diagnosis.* `routes.spec.js`'s clipped-content sweep intermittently
+reported `.map-wrap` holding content wider than its box — 1163 vs 744 on
+desktop, 414 vs 292 on mobile, the text being Leaflet's own zoom control and
+attribution. It appeared roughly once in three **full** runs and never once in
+six isolated runs of `routes.spec.js` alone, and a probe that reloaded the map
+route 25 times under a concurrent full-suite run failed to reproduce it at all.
+
+What is certain is that the sweep should not have been measuring that box.
+`.map-wrap` is ours, so the existing `[class*="leaflet-"]` exclusion does not
+cover it — but its entire purpose, per the comment that has been on it since
+Stage 07, is to clip panes Leaflet parks at enormous offsets *by design*
+(measured at right=1825757). Its content width therefore reports the library's
+internals one level up from where they are already excluded. So the sweep now
+also skips any element that **contains** a `.leaflet-container`, matched that
+way rather than by our class name so it cannot quietly grow to cover something
+else. Five consecutive full runs are green afterwards.
+
+Two honesty notes on that. First, this removes a class of false failure; it
+does not explain the timing, and a bisect was inconclusive — the pre-Stage-13
+component ran four clean rounds, but that comparison is confounded, because at
+that revision `map.spec.js`'s newer tests fail and change the load the rest of
+the suite runs under. Second, a single "view location: no headings at all"
+failure was also seen once and is **not** addressed by any of this; it is
+recorded in `todo.md` rather than being quietly folded in here.
+
+The exclusion was checked for over-reach rather than assumed safe: forcing the
+legend — our markup, a child of `.map-wrap` — to 500px inside a 290px box still
+fails the sweep, naming `div.map-wrap > div.legend` exactly.
+
+**`leaflet-map.js` also gained a `data-ready` attribute**, set on itself once
+the map has laid out and cleared while it rebuilds, with `gotoRoute` waiting on
+it. This was written as a fix for the flake above and **did not fix it** — said
+plainly because the commit would otherwise imply it did. It is kept on its own
+merits: Leaflet is lazily imported *after* a route's fetches settle, so
+"fetches quiet plus two frames" genuinely does not mean "the map is up", and
+this is the small, component-scoped version of the ready signal `todo.md` has
+been asking for app-wide.
+
 ---
 
 ## 4. Picking coordinates in the location editor

@@ -4,6 +4,7 @@ import { navigate } from "../router.js";
 import { icon } from "../icon.js";
 import { confirmDialog } from "../components/dialog.js";
 import { renderLoading } from "../components/loading.js";
+import { canEdit } from "../trip-role.js";
 
 const CATEGORY_COLORS = {
   site: "#16a34a",
@@ -12,6 +13,10 @@ const CATEGORY_COLORS = {
 };
 
 export async function renderItineraryTab(container, trip) {
+  // Four things on this tab write: removing a day, editing a day's notes,
+  // adding an entry, and removing one. A viewer keeps the whole itinerary and
+  // loses all four.
+  const editable = canEdit(trip);
   renderLoading(container);
   let days = await api.get(`/trips/${trip.id}/itinerary`);
   days.forEach((d) => (d.entries ??= []));
@@ -98,24 +103,34 @@ export async function renderItineraryTab(container, trip) {
         ${icon("chevron-down", { className: "itinerary-day__chevron" })}
         <h2>${formatDate(day.date)}</h2>
         <span class="itinerary-day__count"></span>
-        ${isRemovable(day) ? `<button class="icon-remove" data-action="remove-day" aria-label="${t("itinerary.removeDay")}">${icon("x")}</button>` : ""}
+        ${editable && isRemovable(day) ? `<button class="icon-remove" data-action="remove-day" aria-label="${t("itinerary.removeDay")}">${icon("x")}</button>` : ""}
       </summary>
-      <textarea class="itinerary-day__notes" data-i18n-placeholder="itinerary.notesPlaceholder"></textarea>
+      ${
+        editable
+          ? `<textarea class="itinerary-day__notes" data-i18n-placeholder="itinerary.notesPlaceholder"></textarea>`
+          : day.notes
+            ? `<textarea class="itinerary-day__notes" readonly></textarea>`
+            : ""
+      }
       <ul class="itinerary-day__entries"></ul>
       <p class="itinerary-day__empty" data-i18n="itinerary.empty" hidden></p>
-      <form class="itinerary-day__add-item">
+      ${
+        editable
+          ? `<form class="itinerary-day__add-item">
         <select name="itemId" aria-label="${escapeAttr(t("itinerary.addItemTo", { date: formatDate(day.date) }))}">
           <option value="" data-i18n="itinerary.selectItem"></option>
           ${items.map((i) => `<option value="${i.id}">${escapeHtml(i.title)}</option>`).join("")}
         </select>
         <button type="submit" class="btn btn-primary btn-collapse">${icon("plus")} <span data-i18n="itinerary.addItem"></span></button>
-      </form>
+      </form>`
+          : ""
+      }
     `;
     translatePage(el);
 
     const notesEl = el.querySelector(".itinerary-day__notes");
-    notesEl.value = day.notes ?? "";
-    notesEl.addEventListener("blur", async () => {
+    if (notesEl) notesEl.value = day.notes ?? "";
+    notesEl?.addEventListener("blur", async () => {
       const value = notesEl.value || null;
       if (value === day.notes) return;
       const updated = await api.put(`/trips/${trip.id}/itinerary/days/${day.date}`, { notes: value });
@@ -145,7 +160,7 @@ export async function renderItineraryTab(container, trip) {
       render();
     });
 
-    el.querySelector(".itinerary-day__add-item").addEventListener("submit", async (e) => {
+    el.querySelector(".itinerary-day__add-item")?.addEventListener("submit", async (e) => {
       e.preventDefault();
       const select = e.target.itemId;
       if (!select.value) return;
@@ -203,9 +218,9 @@ export async function renderItineraryTab(container, trip) {
           <span>${escapeHtml(entry.item_title)}</span>
         </a>
         ${entry.note ? `<span class="itinerary-entry__note">${escapeHtml(entry.note)}</span>` : ""}
-        <button class="icon-remove" data-action="remove" aria-label="${t("common.remove")}">${icon("x")}</button>
+        ${editable ? `<button class="icon-remove" data-action="remove" aria-label="${t("common.remove")}">${icon("x")}</button>` : ""}
       `;
-      li.querySelector('[data-action="remove"]').addEventListener("click", async () => {
+      li.querySelector('[data-action="remove"]')?.addEventListener("click", async () => {
         await api.delete(`/itinerary/days/${day.id}/entries/${entry.id}`);
         day.entries = day.entries.filter((e) => e.id !== entry.id);
         renderEntries(el, day);

@@ -4,6 +4,7 @@ import { navigate } from "../router.js";
 import { icon } from "../icon.js";
 import "../components/leaflet-map.js";
 import { renderLoading } from "../components/loading.js";
+import { canEdit } from "../trip-role.js";
 import { renderFileList } from "../components/file-list.js";
 import { renderNotFoundPage } from "./not-found-page.js";
 
@@ -36,9 +37,13 @@ const CATEGORY_COLORS = {
 export async function renderLocationViewPage(container, { tripId, itemId }) {
   renderLoading(container);
 
-  let item;
+  // The trip comes along for its `role` — this page has no other use for it,
+  // but the Edit button has to know whether editing is possible, and the role
+  // lives on the trip rather than on the item. In parallel with the item so it
+  // costs latency rather than a second round trip.
+  let item, trip;
   try {
-    item = await api.get(`/items/${itemId}`);
+    [item, trip] = await Promise.all([api.get(`/items/${itemId}`), api.get(`/trips/${tripId}`)]);
   } catch {
     renderNotFoundPage(container, { href: `/trips/${tripId}`, labelKey: "common.back" });
     return;
@@ -46,6 +51,7 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
 
   const color = CATEGORY_COLORS[item.category] || "#71717a";
   const files = await api.get(`/items/${itemId}/files`);
+  const editable = canEdit(trip);
   const hasCoords = item.location?.lat != null && item.location?.lng != null;
   const hasAddress = Boolean(item.location?.address);
 
@@ -124,7 +130,7 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
           : ""
       }
 
-      <button class="btn btn-secondary location-view__edit" data-action="edit">${icon("pencil")} <span data-i18n="location.view.edit"></span></button>
+      ${editable ? `<button class="btn btn-secondary location-view__edit" data-action="edit">${icon("pencil")} <span data-i18n="location.view.edit"></span></button>` : ""}
     </div>
   `;
   translatePage(container);
@@ -144,7 +150,7 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
   if (item.notes) container.querySelector(".location-view__notes").innerHTML = item.notes_html;
   if (hasAddress) container.querySelector(".location-view__address").textContent = item.location.address;
 
-  container.querySelector('[data-action="edit"]').addEventListener("click", () => {
+  container.querySelector('[data-action="edit"]')?.addEventListener("click", () => {
     navigate(`/trips/${tripId}/locations/${itemId}/edit`);
   });
 }

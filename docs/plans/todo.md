@@ -163,10 +163,11 @@ together rather than bolting a column onto an existing table.
   (owner deliberately absent, `trips.owner_id` stays authoritative), `db.TripRole`
   with owner > editor > viewer, and one seam in `internal/httpapi/authz.go` that
   all 37 trip-scoped handlers go through with an explicit minimum role. What is
-  left, after Milestone 3 shipped the members API and the Members tab: no
-  read-only mode. A viewer can be added and can see the trip, but their app still
-  renders every edit button, which now 403s rather than 404s. Stage 14
-  Milestone 4.
+  left after Milestone 4 shipped read-only mode: nothing in the roles themselves.
+  Owner/editor/viewer works end to end — the seam, the trips list, the members
+  API and UI, and a viewer's app that offers no write it cannot perform. What
+  the *cluster* still wants is the visibility work below (Stage 14 Milestones
+  7-8) and, separately, ownership transfer.
 - **Public shareable links.** An unauthenticated read-only trip view via a
   token. Needs a `share_links` table (token, trip_id, scope, expires_at) plus an
   unauthenticated route variant. IDs are already non-guessable UUIDs, so this is

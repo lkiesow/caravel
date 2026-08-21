@@ -8,6 +8,7 @@ import { renderFileList } from "../components/file-list.js";
 import { renderChecklistList } from "../components/checklist-list.js";
 import { renderSettingsTab } from "./settings-tab.js";
 import { renderMembersTab } from "./members-tab.js";
+import { canEdit, canManageMembers, isViewer } from "../trip-role.js";
 import { TRIP_TABS, OVERFLOW_TRIP_TABS } from "../trip-tabs.js";
 import { renderMenu } from "../components/menu.js";
 import { navigate } from "../router.js";
@@ -56,6 +57,7 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
         ${trip.preview_image_url ? `<img class="trip-detail__cover" alt="" />` : ""}
         <div class="page__header">
           <h1></h1>
+          ${isViewer(trip) ? `<span class="trip-detail__role" data-i18n="trip.viewerBadge"></span>` : ""}
         </div>
         ${summaryParts.length ? `<div class="trip-summary">${summaryParts.join("")}</div>` : ""}
         <nav class="trip-tabs">
@@ -123,7 +125,7 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
 
     const content = container.querySelector(".trip-tab-content");
     if (tab === "locations") {
-      renderItemsTab(content, trip.id);
+      renderItemsTab(content, trip);
     } else if (tab === "map") {
       content.innerHTML = `<leaflet-map trip-id="${trip.id}" locate></leaflet-map>`;
       // A marker popup's in-app link. leaflet-map.js can't let the router's
@@ -137,13 +139,19 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
     } else if (tab === "itinerary") {
       renderItineraryTab(content, trip);
     } else if (tab === "files") {
-      renderFileList(content, `/trips/${trip.id}/files`);
+      // file-list.js has had a documented read-only mode since Stage 11 (used
+      // by the location view); a viewer is simply the second caller for it.
+      renderFileList(content, `/trips/${trip.id}/files`, { readOnly: !canEdit(trip) });
     } else if (tab === "checklists") {
-      renderChecklistList(content, trip.id);
+      renderChecklistList(content, trip.id, { readOnly: !canEdit(trip) });
     } else if (tab === "members") {
       renderMembersTab(content, trip);
     } else if (tab === "settings") {
       renderSettingsTab(content, trip, {
+        // Editing the trip and deleting it split here: an editor may rename a
+        // trip or change its cover photo, only the owner may delete it.
+        canEdit: canEdit(trip),
+        canDelete: canManageMembers(trip),
         onTripUpdated: (updated) => {
           Object.assign(trip, updated);
           render();

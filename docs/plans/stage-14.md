@@ -578,6 +578,85 @@ surface on `canEdit(trip)` / `canManageMembers(trip)`:
 trip (editor) is the negative control in the same spec — a read-only assertion
 that would also pass on a broken editor view proves nothing.
 
+**Done.** Every surface gated, as planned. `web/js/trip-role.js` — landed unused
+in Milestone 2 — is now consumed by six files.
+
+How each surface was handled, and why they differ:
+
+- `trip-detail-page.js` resolves the role once and hands each tab what it
+  needs, so no tab consults `trip-role.js` twice and none of them re-derives it.
+  A "View only" / "Nur Lesen" badge sits beside the title, because a screen with
+  every button missing and no explanation reads as half-loaded rather than as
+  read-only. Deliberately quiet — muted text in a bordered pill, not a coloured
+  warning: it states a fact about your access, it is not an alert.
+- `locations-tab.js` now takes the whole trip rather than a `tripId`, which is
+  the same shape `renderItineraryTab` already had. Only one control on it
+  writes; search, both filters and the cards are reads and stay.
+- `checklist-list.js` gained a `readOnly` option with the same name and shape
+  as `file-list.js`'s, so the two read-only surfaces are configured alike.
+  Checkboxes are `disabled` rather than hidden: ticking a shared list is a
+  write, but the *state* is information a viewer should keep.
+- `file-list.js` needed nothing — Stage 11 documented a `readOnly` mode for the
+  location view, and a viewer is simply its second caller.
+- `itinerary-tab.js` has four write paths (remove day, edit notes, add entry,
+  remove entry) and loses all four. One judgement call: a day with no notes
+  renders no textarea at all for a viewer rather than an empty `readonly` one,
+  because an empty box still carries the "Notes for this day…" placeholder and
+  reads as an invitation to type.
+- `location-view-page.js` now fetches the trip alongside the item (in a
+  `Promise.all`, so it costs latency rather than a round trip) purely for the
+  role, and hides Edit.
+- `location-editor-page.js` **redirects** a viewer — to the location if there is
+  one, to the trip otherwise. It is the only route in the app that redirects on
+  a role, because it is the only one that exists solely to write.
+- `settings-tab.js` splits `canEdit` from `canDelete`: an editor may rename a
+  trip and change its cover photo, only the owner may delete it. A viewer gets a
+  single card explaining the situation instead of empty slots.
+
+**Verified.** `make ci` green (203 keys in sync); full Playwright suite passing.
+
+The manual pass is worth describing, because the first version of it was
+worthless. Sweeping the seeded `one-pin` trip as a viewer returned zero for
+every write control — and also zero for `.locations-search input` and
+`.itinerary-day`, which are reads that must be present. Nothing had rendered
+at all: the sweep logged in by `fetch` without reloading, so the app was still
+showing the login page. Every "read-only works" number was really "the page is
+empty". **The editor control column is the only reason that was caught**: two
+identical all-zero columns are obviously wrong where one plausible-looking
+column is not.
+
+The second problem was subtler and is the blind spot `todo.md` records about
+the UI sweeps: `one-pin` has no files, no checklists and no itinerary entries,
+so those zeros still meant "no data" rather than "hidden". The fix was to sweep
+the **same** trip twice — `other` demoted from editor to viewer on the Iceland
+trip and back — so the data is identical and the role is the only variable.
+That comparison is the actual evidence:
+
+| | editor | viewer |
+| --- | --- | --- |
+| item cards / search box | 3 / 1 | 3 / 1 |
+| "New location" | 1 | 0 |
+| itinerary days / entries | 4 / 3 | 4 / 3 |
+| add-entry forms / remove-entry | 4 / 3 | 0 / 0 |
+| editable day-notes boxes | 4 | 0 (1 rendered, `readonly`) |
+| file rows | 2 | 2 |
+| drop zone / row ⋮ | 1 / 2 | 0 / 0 |
+| checklist cards / items | 1 / 4 | 1 / 4 |
+| create forms / delete buttons | 1+1 / 1+4 | 0 / 0 |
+| enabled checkboxes (of 4) | 4 | 0 |
+| trip-form inputs / cover-photo field | 4 / 17 | 0 / 0 |
+| viewer badge | absent | "View only" |
+
+Every read survives at the same count; every write control is gone. Also
+verified: the view page keeps all three content cards with no Edit button;
+`/locations/:id/edit` redirects a viewer to the location and `/locations/new`
+to the trip, neither rendering a form; and at 324×756 in German the badge reads
+"Nur Lesen" at 7.73:1, wraps below the title, and the read-only settings card
+fits with no horizontal overflow.
+
+The demotion was reverted afterwards, so the seed is as `make dev-reset`
+leaves it.
+
 ---
 
 ## 5. Admin flag, and registration that closes itself

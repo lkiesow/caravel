@@ -15,38 +15,56 @@ import { confirmDialog } from "../components/dialog.js";
 // the whole tab bar/header in place) rather than navigating; onCancel
 // just redraws these same cards from the trip's last-saved values,
 // discarding whatever was typed but not saved.
-export function renderSettingsTab(content, trip, { onTripUpdated }) {
+// canEdit and canDelete are separate because the roles are: an editor may
+// rename a trip and change its cover photo, but only the owner may delete it.
+// Passed in rather than derived here so the tab has one source of truth for the
+// role — trip-detail-page.js, which already consults trip-role.js for the other
+// tabs.
+export function renderSettingsTab(content, trip, { onTripUpdated, canEdit = true, canDelete = true }) {
   function render() {
     content.innerHTML = `
-      <div class="editor-card">
+      ${
+        canEdit
+          ? `<div class="editor-card">
         <h2 data-i18n="trip.editor.basicInfo"></h2>
         <div class="trip-form-slot"></div>
       </div>
       <div class="editor-card">
         <h2 data-i18n="trip.settings.image"></h2>
         <div class="image-field-slot"></div>
-      </div>
-      <div class="editor-card">
+      </div>`
+          : `<div class="editor-card">
+        <h2 data-i18n="trip.tabs.settings"></h2>
+        <p class="editor-card__hint" data-i18n="trip.settings.readOnly"></p>
+      </div>`
+      }
+      ${
+        canDelete
+          ? `<div class="editor-card">
         <h2 data-i18n="trip.deleteHeading"></h2>
         <p class="editor-card__hint" data-i18n="trip.deleteDescription"></p>
         <button class="btn btn-danger" data-action="delete">${icon("trash-2")} <span data-i18n="common.delete"></span></button>
-      </div>
+      </div>`
+          : ""
+      }
     `;
     translatePage(content);
 
-    renderTripForm(content.querySelector(".trip-form-slot"), trip, {
-      onSaved: (saved) => onTripUpdated(saved),
-      onCancel: () => render(),
-    });
+    if (canEdit) {
+      renderTripForm(content.querySelector(".trip-form-slot"), trip, {
+        onSaved: (saved) => onTripUpdated(saved),
+        onCancel: () => render(),
+      });
 
-    renderImageField(content.querySelector(".image-field-slot"), {
-      tripId: trip.id,
-      imageUrl: trip.preview_image_url,
-      attachPath: `/trips/${trip.id}/preview-image`,
-      onChanged: (updated) => onTripUpdated(updated),
-    });
+      renderImageField(content.querySelector(".image-field-slot"), {
+        tripId: trip.id,
+        imageUrl: trip.preview_image_url,
+        attachPath: `/trips/${trip.id}/preview-image`,
+        onChanged: (updated) => onTripUpdated(updated),
+      });
+    }
 
-    content.querySelector('[data-action="delete"]').addEventListener("click", async () => {
+    content.querySelector('[data-action="delete"]')?.addEventListener("click", async () => {
       if (!(await confirmDialog({ messageKey: "trip.deleteConfirm" }))) return;
       await api.delete(`/trips/${trip.id}`);
       navigate("/trips");

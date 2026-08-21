@@ -150,6 +150,8 @@
   "image.setUrl": "Bild setzen",
   "image.remove": "Entfernen",
   "trip.settings.image": "Titelbild",
+  "trip.viewerBadge": "Nur Lesen",
+  "trip.settings.readOnly": "Du kannst diese Reise ansehen, aber nicht ändern. Frage den Eigentümer nach Bearbeitungsrechten, wenn du sie brauchst.",
   "trip.editor.newTitle": "Neue Reise",
   "trip.editor.basicInfo": "Basisinformationen",
   "trip.editor.createButton": "Reise erstellen",

@@ -8,6 +8,7 @@ import { icon } from "../icon.js";
 import { confirmDialog } from "../components/dialog.js";
 import { renderLoading } from "../components/loading.js";
 import { renderNotFoundPage } from "./not-found-page.js";
+import { canEdit } from "../trip-role.js";
 import "../components/leaflet-map.js";
 import { getCurrentUser } from "../session.js";
 
@@ -34,9 +35,27 @@ import { getCurrentUser } from "../session.js";
 // reported through the Basic info card's error line if it fails.
 export async function renderLocationEditorPage(container, { tripId, itemId }) {
   let item = null;
+  renderLoading(container);
+
+  // A viewer reaching this route — by typed URL, a bookmark, or a back button
+  // after being demoted — gets sent somewhere useful rather than shown a form
+  // whose every save would 403. This is the only place in the app that
+  // redirects on a role, because it is the only route that exists solely to
+  // write.
+  let trip;
+  try {
+    trip = await api.get(`/trips/${tripId}`);
+  } catch {
+    renderNotFoundPage(container, { href: "/trips", labelKey: "common.home" });
+    return;
+  }
+  if (!canEdit(trip)) {
+    // The location they were trying to edit if there is one, the trip if not.
+    navigate(itemId ? `/trips/${tripId}/locations/${itemId}` : `/trips/${tripId}`);
+    return;
+  }
 
   if (itemId) {
-    renderLoading(container);
     try {
       item = await api.get(`/items/${itemId}`);
     } catch {

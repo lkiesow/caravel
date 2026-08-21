@@ -150,6 +150,8 @@
   "image.setUrl": "Set image",
   "image.remove": "Remove",
   "trip.settings.image": "Cover photo",
+  "trip.viewerBadge": "View only",
+  "trip.settings.readOnly": "You can view this trip but not change it. Ask the owner for editor access if you need to.",
   "trip.editor.newTitle": "New trip",
   "trip.editor.basicInfo": "Basic info",
   "trip.editor.createButton": "Create trip",

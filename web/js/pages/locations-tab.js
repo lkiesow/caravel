@@ -6,6 +6,7 @@ import { renderMenu } from "../components/menu.js";
 import "../components/location-card.js";
 import { renderLoading } from "../components/loading.js";
 import { canLocate, distanceKm, getCurrentPosition, locateErrorKey } from "../geolocation.js";
+import { canEdit } from "../trip-role.js";
 
 const CATEGORIES = ["site", "stay", "transport"];
 
@@ -26,7 +27,12 @@ const ANY_DISTANCE = "any";
 // The backend's ?category= filter still exists, just unused here. This is
 // fine at realistic per-trip location counts; a `q` predicate + pagination
 // for very large trips is a todo.md item.
-export async function renderItemsTab(container, tripId) {
+// Takes the whole trip rather than just its id since Stage 14 Milestone 4: the
+// toolbar has to know whether the reader may add a location, and `trip.role` is
+// where that lives.
+export async function renderItemsTab(container, trip) {
+  const tripId = trip.id;
+  const editable = canEdit(trip);
   let activeFilter = "all";
   let query = "";
   let allItems = [];
@@ -46,7 +52,7 @@ export async function renderItemsTab(container, tripId) {
         </div>
         <div class="locations-filter-slot"></div>
         <div class="locations-distance-slot"></div>
-        <button class="btn btn-primary btn-collapse" data-action="new-item">${icon("plus")} <span data-i18n="locations.new"></span></button>
+        ${editable ? `<button class="btn btn-primary btn-collapse" data-action="new-item">${icon("plus")} <span data-i18n="locations.new"></span></button>` : ""}
       </div>
       <p class="locations-distance-status" role="status" hidden></p>
       <p class="locations-distance-note" hidden></p>
@@ -175,7 +181,7 @@ export async function renderItemsTab(container, tripId) {
     applyFilters();
   });
 
-  container.querySelector('[data-action="new-item"]').addEventListener("click", () => {
+  container.querySelector('[data-action="new-item"]')?.addEventListener("click", () => {
     navigate(`/trips/${tripId}/locations/new`);
   });
 

@@ -99,6 +99,52 @@ func (q *Queries) GetItemByID(ctx context.Context, id string) (Item, error) {
 	return i, err
 }
 
+const listItemLocationsByTrip = `-- name: ListItemLocationsByTrip :many
+SELECT l.item_id, l.lat, l.lng
+FROM item_locations l
+INNER JOIN items i ON i.id = l.item_id
+WHERE i.trip_id = ?1 AND l.lat IS NOT NULL AND l.lng IS NOT NULL
+`
+
+type ListItemLocationsByTripRow struct {
+	ItemID string          `json:"item_id"`
+	Lat    sql.NullFloat64 `json:"lat"`
+	Lng    sql.NullFloat64 `json:"lng"`
+}
+
+// ListItemLocationsByTrip: every coordinate on the trip, keyed by item.
+//
+// Deliberately NOT ListMapItemsByTrip below: that one also filters
+// show_on_map, which is about whether a place is drawn on the map and says
+// nothing about whether it has a position. The locations list filters by
+// distance, so it wants every located item regardless.
+//
+// Rows with only an address and no coordinates are excluded here rather than
+// in Go: they are not "far away", they are unmeasurable, and the caller has
+// to be able to tell those apart.
+func (q *Queries) ListItemLocationsByTrip(ctx context.Context, tripID string) ([]ListItemLocationsByTripRow, error) {
+	rows, err := q.db.QueryContext(ctx, listItemLocationsByTrip, tripID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListItemLocationsByTripRow
+	for rows.Next() {
+		var i ListItemLocationsByTripRow
+		if err := rows.Scan(&i.ItemID, &i.Lat, &i.Lng); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listItemsByTrip = `-- name: ListItemsByTrip :many
 SELECT id, trip_id, category, type, title, notes, image_id, show_on_map, sort_order, created_at, updated_at FROM items
 WHERE trip_id = ?1

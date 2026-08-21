@@ -64,6 +64,17 @@ type MapItem struct {
 	Lng      float64
 }
 
+// ItemCoordinate is one item's position, for callers that need coordinates
+// across a whole trip without the rest of each item. Unlike MapItem it
+// ignores show_on_map — that flag governs whether a place is *drawn* on the
+// map, not whether it has a position — and only rows with both values set are
+// returned, so "has no coordinates" never arrives disguised as 0,0.
+type ItemCoordinate struct {
+	ItemID string
+	Lat    float64
+	Lng    float64
+}
+
 // File.ItemID is nil for trip-level "general files" and set for
 // files attached to a specific item — see plan Section 2.2.
 type File struct {

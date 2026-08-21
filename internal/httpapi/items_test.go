@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"testing"
@@ -232,5 +233,54 @@ func TestCreateItemRollsBackWhenANestedWriteFails(t *testing.T) {
 	}
 	if items := decode[[]map[string]any](t, w); len(items) != 0 {
 		t.Errorf("got %d items after the failed create, want 0 — the transaction did not roll back", len(items))
+	}
+}
+
+// Stage 13 Milestone 7: the locations list carries coordinates so the tab can
+// filter by distance client-side. It deliberately ignores show_on_map, which
+// governs whether a place is drawn on the map and says nothing about whether
+// it has a position.
+func TestListItemsCarriesCoordinatesIgnoringShowOnMap(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login("alice")
+	tripID := ts.createTrip(cookie, "Iceland")
+
+	located := ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/items", cookie,
+		`{"title":"Kirkjufell","category":"site","location":{"lat":64.9269,"lng":-23.3086}}`, http.StatusCreated)
+	// Same, but explicitly hidden from the map. It still has a position.
+	hidden := ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/items", cookie,
+		`{"title":"Hidden but placed","category":"stay","show_on_map":false,"location":{"lat":64.1466,"lng":-21.9426}}`, http.StatusCreated)
+	// Address only, no coordinates: not far away, unmeasurable.
+	addressOnly := ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/items", cookie,
+		`{"title":"Somewhere vague","category":"site","location":{"address":"past the bridge"}}`, http.StatusCreated)
+	none := ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/items", cookie,
+		`{"title":"No location at all","category":"site"}`, http.StatusCreated)
+
+	rec := ts.do(http.MethodGet, "/api/trips/"+tripID+"/items", cookie, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var items []itemResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &items); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	byID := map[string]itemResponse{}
+	for _, it := range items {
+		byID[it.ID] = it
+	}
+
+	if got := byID[located]; got.Lat == nil || got.Lng == nil {
+		t.Errorf("a located item should carry coordinates, got %+v", got)
+	} else if *got.Lat != 64.9269 || *got.Lng != -23.3086 {
+		t.Errorf("coordinates = %v,%v", *got.Lat, *got.Lng)
+	}
+	// The whole point of not reusing ListMapItems.
+	if got := byID[hidden]; got.Lat == nil {
+		t.Error("show_on_map=false must not hide an item's coordinates from the list")
+	}
+	for name, id := range map[string]string{"address-only": addressOnly, "no location": none} {
+		if got := byID[id]; got.Lat != nil || got.Lng != nil {
+			t.Errorf("%s should have no coordinates, got %v,%v", name, got.Lat, got.Lng)
+		}
 	}
 }

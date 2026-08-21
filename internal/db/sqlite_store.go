@@ -475,6 +475,24 @@ func (s *sqliteStore) ListMapItems(ctx context.Context, tripID string) ([]MapIte
 	return items, nil
 }
 
+func (s *sqliteStore) ListItemCoordinates(ctx context.Context, tripID string) ([]ItemCoordinate, error) {
+	rows, err := s.q.ListItemLocationsByTrip(ctx, tripID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ItemCoordinate, 0, len(rows))
+	for _, row := range rows {
+		// The query already excludes NULL lat/lng, but the generated types are
+		// still nullable because the columns are; a row that somehow arrived
+		// without both is dropped rather than reported at 0,0.
+		if !row.Lat.Valid || !row.Lng.Valid {
+			continue
+		}
+		out = append(out, ItemCoordinate{ItemID: row.ItemID, Lat: row.Lat.Float64, Lng: row.Lng.Float64})
+	}
+	return out, nil
+}
+
 func (s *sqliteStore) UpsertItineraryDayNotes(ctx context.Context, newID, tripID, date string, notes *string) (ItineraryDay, error) {
 	n, err := s.q.UpdateItineraryDayNotes(ctx, sqlitegen.UpdateItineraryDayNotesParams{
 		TripID: tripID,

@@ -820,3 +820,124 @@ test.describe("the locate control when it cannot work", () => {
     expect(count, "the view page's embed should not offer a locate button").toBe(0);
   });
 });
+
+
+// Milestone 7. Distance filtering on the locations list.
+//
+// The seeded `full` trip is Iceland: the hotel is in Reykjavik, the flight is
+// ~37km away at Keflavik and Kirkjufell is ~108km up the coast - so a 5km
+// radius centred on the hotel is a real filter with an unambiguous answer.
+const AT_THE_HOTEL = { latitude: 64.1466, longitude: -21.9426, accuracy: 20 };
+
+async function pickRadius(page, value) {
+  const menu = page.locator(".locations-distance-slot .menu");
+  await menu.locator('[data-action="toggle"]').click();
+  await menu.locator(`[data-value="${value}"]`).click();
+}
+
+test.describe("distance filter on the locations list", () => {
+  test.use({ permissions: ["geolocation"], geolocation: AT_THE_HOTEL });
+
+  test("narrows the list to what is actually nearby", async ({ page }) => {
+    await login(page);
+    const routes = await buildRoutes(page);
+    await gotoRoute(page, routes.find((r) => r.label === "trip locations").path);
+
+    const cards = page.locator("item-card");
+    const before = await cards.count();
+    expect(before, "the seeded trip should have several locations").toBeGreaterThan(2);
+
+    await pickRadius(page, "5");
+
+    // Only the hotel is within 5km of the hotel.
+    await expect(cards).toHaveCount(1);
+    await expect(cards.first()).toHaveAttribute("title", /Foss Hotel/);
+
+    // ...and going back to "any distance" restores the rest, so the filter is
+    // a filter and not a one-way door.
+    await pickRadius(page, "any");
+    await expect(cards).toHaveCount(before);
+  });
+
+  test("keeps locations that have no coordinates, and says it did", async ({ page }) => {
+    await login(page);
+    const res = await page.request.post("/api/trips", { data: { title: "UI suite: distance spec" } });
+    const tripId = (await res.json()).id;
+    try {
+      // Near, far, and unmeasurable.
+      for (const body of [
+        { title: "Right here", category: "site", location: { lat: 64.1466, lng: -21.9426 } },
+        { title: "Far away", category: "site", location: { lat: 64.9275, lng: -23.3106 } },
+        { title: "No coordinates", category: "site", location: { address: "past the bridge" } },
+      ]) {
+        expect((await page.request.post(`/api/trips/${tripId}/items`, { data: body })).status()).toBe(201);
+      }
+
+      await gotoRoute(page, `/trips/${tripId}/locations`);
+      await expect(page.locator("item-card")).toHaveCount(3);
+
+      await pickRadius(page, "5");
+
+      // The far one goes; the one with no coordinates stays. It is not far
+      // away, it is unmeasurable - hiding it would make a gap in the data
+      // look like a distance result.
+      const titles = await page.locator("item-card").evaluateAll((els) => els.map((el) => el.getAttribute("title")));
+      expect(titles.sort()).toEqual(["No coordinates", "Right here"]);
+
+      // And the user is told, rather than left to wonder why an unplaced
+      // location survived a distance filter.
+      const note = page.locator(".locations-distance-note");
+      await expect(note).toBeVisible();
+      await expect(note).toContainText("1");
+    } finally {
+      await page.request.delete(`/api/trips/${tripId}`);
+    }
+  });
+});
+
+test.describe("distance filter when the position cannot be had", () => {
+  test("a refused position resets the menu instead of showing a filter that is not applied", async ({ page, context }) => {
+    await context.clearPermissions();
+    await login(page);
+    const routes = await buildRoutes(page);
+    await gotoRoute(page, routes.find((r) => r.label === "trip locations").path);
+
+    const before = await page.locator("item-card").count();
+    await pickRadius(page, "5");
+
+    // Settles rather than hanging - the same own-timer guarantee the locate
+    // control relies on. Compared against the in-progress line *exactly*: the
+    // timeout message happens to begin with the same words ("Finding your
+    // location took too long…"), so a substring match here passes while the
+    // request is still in flight, which is the bug this asserts against.
+    const IN_PROGRESS = "Finding your location\u2026";
+    await expect(page.locator(".locations-distance-status")).toBeVisible({ timeout: 20000 });
+    await expect
+      .poll(
+        () => page.evaluate(() => document.querySelector(".locations-distance-status").textContent.trim()),
+        { timeout: 20000 }
+      )
+      .not.toBe(IN_PROGRESS);
+
+    // The list is untouched and the trigger no longer claims to be filtering.
+    await expect(page.locator("item-card")).toHaveCount(before);
+    const trigger = page.locator('.locations-distance-slot [data-action="toggle"]');
+    await expect(trigger).not.toHaveClass(/menu__trigger--active/);
+    await expect(page.locator(".locations-distance-note")).toBeHidden();
+  });
+
+  test("the control is absent entirely where locating cannot work", async ({ page }) => {
+    // A filter that can only ever fail is worse than no filter, so over plain
+    // HTTP the toolbar simply does not offer one.
+    await page.addInitScript(() => {
+      Object.defineProperty(window, "isSecureContext", { get: () => false });
+    });
+    await login(page);
+    const routes = await buildRoutes(page);
+    await gotoRoute(page, routes.find((r) => r.label === "trip locations").path);
+
+    await expect(page.locator(".locations-distance-slot .menu")).toHaveCount(0);
+    // The category filter beside it is unaffected.
+    await expect(page.locator(".locations-filter-slot .menu")).toHaveCount(1);
+  });
+});

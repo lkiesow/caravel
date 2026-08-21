@@ -1050,6 +1050,20 @@ button {
   color: var(--color-text);
 }
 
+/* The distance filter's own two lines: what it is doing (locating, or why it
+   could not) and what a radius is deliberately not hiding. */
+.locations-distance-status,
+.locations-distance-note {
+  margin: 0 0 0.75rem;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.locations-distance-status[hidden],
+.locations-distance-note[hidden] {
+  display: none;
+}
+
 /* Shown only while "Show on map" is ticked but the coordinates are empty. */
 .location-form__hint {
   flex: 1 1 100%;

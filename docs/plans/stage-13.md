@@ -626,6 +626,77 @@ location — pick 5 km, assert the visible `item-card` count drops and that the
 near location survives while a far one does not. Plus the existing 324×756
 overflow sweep, which now has to pass with three controls in that row.
 
+**Done — but the plan's premise was wrong, and this needed a backend change
+after all.** "No backend change at all" rested on `locations-tab.js` filtering
+`item.location` client-side. It has no such field: `ListItemsByTrip` is
+`SELECT * FROM items` with no join, so the list response has never carried
+coordinates. (Milestone 4 met the same fact from the other side, when a
+persistence assertion read `undefined.lat`.)
+
+The tempting shortcut was to reuse `GET /trips/{id}/map`, which does have
+coordinates and needs nothing new. It is wrong: that query filters
+`show_on_map`, and that flag governs whether a place is *drawn* on the map,
+not whether it has a position — so a located-but-hidden location would have
+been treated as having no coordinates. The distance filter asks a different
+question and needs a different predicate.
+
+So, additively rather than by disturbing anything: a new
+`ListItemLocationsByTrip` query (regenerated for **both** dialects, purely
+additive), `db.ItemCoordinate`, `Store.ListItemCoordinates` plus both
+hand-written adapters, and `lat`/`lng` as nullable fields on the *list*
+response only. One extra query per list call, not one per item, and a failure
+there costs the distance filter rather than the list — the tab still renders
+every location, just with nothing to measure. A Go test pins the part that
+motivated the whole detour: `show_on_map: false` must **not** hide an item's
+coordinates, while address-only and no-location items must carry none (rather
+than arriving at 0,0).
+
+Frontend as planned: a second `renderMenu`, icon-only (`locate-fixed`, which
+reads as "near me") because the toolbar is one deliberately non-wrapping row.
+Radii 1/2/5/10/25 km with "any distance" as the neutral value. The position is
+fetched **on first use, not on load** — asking for someone's location before
+they have shown any interest in it is rude and the prompt would arrive
+unexplained — and cached across radius changes. Locations with no coordinates
+**stay listed** under a radius, with a pluralized line saying how many, because
+hiding them would make a gap in the data look like a distance result. Where
+locating cannot work at all (no API, or plain HTTP) the control is not rendered:
+a filter that can only ever fail is worse than none.
+
+`renderMenu` gained a return value, `{ setActive }`. It is needed for a case a
+click cannot cover: if the position is refused after a radius is chosen, the
+menu has to fall back to "any distance" rather than display a filter it is not
+applying.
+
+Verified: `make ci` green (176 keys) with the new Go test; `make test-ui`
+green, 56 tests (was 52), three consecutive full runs. Four new UI tests: the
+list narrowing to one card and restoring on "any"; unplaced locations
+surviving with the note shown (its own trip, created and deleted around the
+test); a refused position resetting the trigger and leaving the list untouched;
+and the control being absent entirely in an insecure context. `without.sh`
+fails three of the four on the pre-change tab — the fourth is the
+"control absent" one, which passes trivially where there is no control at all.
+
+Three things this milestone got wrong first, all worth recording:
+
+- **The dev server was serving the pre-milestone binary**, so the seeded
+  locations came back with `lat: null` and it briefly looked as though the new
+  query did nothing. `make dev-restart` is required for backend changes — the
+  exact trap this plan's Workflow section warns about, walked into anyway.
+- **A test assertion, not the code, was wrong**: it checked the status line did
+  not match `/Finding your location/i`, but the *timeout* message begins with
+  those same words ("Finding your location took too long…"), so it failed on
+  correct behaviour. Now compared against the in-progress string exactly —
+  which matters, because a substring match there would also have passed while
+  a request was still in flight, the very thing it exists to catch.
+- **An existing spec broke, reproducibly, and it was mine to fix**:
+  `settings.spec.js` asserted on `.locations-toolbar .menu__trigger`, unique
+  until this milestone put a second menu in that toolbar. Scoped to
+  `.locations-filter-slot` with a note saying why.
+
+Measured rather than hoped: at 324px in German the toolbar is still **one 44px
+row with no wrapping and no document overflow** — search 136px plus three 44px
+icon buttons inside 292px.
+
 ---
 
 ## 8. Sweep-up

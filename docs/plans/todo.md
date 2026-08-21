@@ -58,17 +58,6 @@ Things that are wrong today, each confirmed against the current source.
 
 Direction already agreed or obviously wanted; none of it built.
 
-- **Filter the locations list by distance from the device.** (From the user's
-  notes; the "show my position on a map" and "centre on it" halves were built
-  in Stage 13 Milestone 6, which also left `web/js/geolocation.js` as the
-  shared helper.) Radii of 1 / 2 / 5 / 10 / 25 km. Cheaper than it looks:
-  `locations-tab.js` already loads every item and filters client-side, so a
-  haversine over `item.location` needs no backend change — but it does need a
-  second control next to the existing category menu (the toolbar is a
-  deliberately non-wrapping row that already fits 324px, so a third control
-  has to be icon-only), and a decision about what to do with locations that
-  have no coordinates: hiding them would make a data gap look like a distance
-  result.
 - **Search, filter and sort on the trips list.** Confirmed absent:
   `trips-page.js` has no search input, filter or sort control, and
   `ListTripsByOwner` (`internal/db/sqlc/queries/trips.sql`) has a fixed

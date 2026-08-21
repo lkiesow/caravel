@@ -28,8 +28,16 @@ type itemResponse struct {
 	ImageURL  *string `json:"image_url"`
 	ShowOnMap bool    `json:"show_on_map"`
 	SortOrder int     `json:"sort_order"`
-	CreatedAt string  `json:"created_at"`
-	UpdatedAt string  `json:"updated_at"`
+	// Lat/Lng are set only on the list endpoint, and only for items that have
+	// both. The list used to carry no position at all, which meant the
+	// locations tab could not filter by distance without a second request
+	// (Stage 13 Milestone 7). Flat rather than a nested "location" object
+	// because there is no address here - the detail endpoint remains the place
+	// to get a whole location.
+	Lat       *float64 `json:"lat,omitempty"`
+	Lng       *float64 `json:"lng,omitempty"`
+	CreatedAt string   `json:"created_at"`
+	UpdatedAt string   `json:"updated_at"`
 }
 
 func (s *Server) itemToResponse(ctx context.Context, i db.Item) itemResponse {
@@ -102,9 +110,23 @@ func (s *Server) handleListItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// One extra query for the whole trip rather than one per item. A failure
+	// here costs the distance filter, not the list, so it is not fatal: the
+	// tab still renders every location, just without coordinates to measure.
+	coordinates := map[string]db.ItemCoordinate{}
+	if located, err := s.Store.ListItemCoordinates(r.Context(), trip.ID); err == nil {
+		for _, c := range located {
+			coordinates[c.ItemID] = c
+		}
+	}
+
 	resp := make([]itemResponse, len(items))
 	for i, it := range items {
 		resp[i] = s.itemToResponse(r.Context(), it)
+		if c, ok := coordinates[it.ID]; ok {
+			lat, lng := c.Lat, c.Lng
+			resp[i].Lat, resp[i].Lng = &lat, &lng
+		}
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

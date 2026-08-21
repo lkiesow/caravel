@@ -220,6 +220,11 @@ type Store interface {
 	// ListMapItems returns items with a resolvable location and show_on_map=true.
 	ListMapItems(ctx context.Context, tripID string) ([]MapItem, error)
 
+	// ListItemCoordinates returns every located item on the trip, regardless
+	// of show_on_map — see ItemCoordinate for why that differs from
+	// ListMapItems.
+	ListItemCoordinates(ctx context.Context, tripID string) ([]ItemCoordinate, error)
+
 	// UpsertItineraryDayNotes creates the day row if needed (this is the only
 	// way itinerary_days rows come into existence — see plan Section 5) and
 	// sets its notes. newID is used only if a new row must be inserted.

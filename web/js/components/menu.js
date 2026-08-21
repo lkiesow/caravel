@@ -21,6 +21,10 @@ import { icon } from "../icon.js";
 // when it actually changes, so callers don't have to guard against
 // re-selecting the current option.
 //
+// Returns { setActive(value) } for the one case a click cannot cover - a
+// caller that has to undo a selection it turned out not to be able to honor.
+// See the distance filter in locations-tab.js.
+//
 // An item marked `action: true` is not a selection: "Delete" is something the
 // menu *does*, not a state it is now in, so `role="menuitemradio"` and
 // `aria-checked` would both be lies. Action items render as plain
@@ -176,6 +180,20 @@ export function renderMenu(
       onSelect?.(value);
     });
   });
+
+  // Lets a caller move the selection without a click, for the case where the
+  // menu proposes a state the caller then cannot enter: the locations tab's
+  // distance filter needs the device's position, and if that is refused the
+  // menu must fall back to "any distance" rather than claim a filter is
+  // active. Returned rather than exposed as an option so a caller that never
+  // needs it carries no extra API.
+  return {
+    setActive(value) {
+      if (value === active) return;
+      active = value;
+      syncLabel();
+    },
+  };
 }
 
 function escapeAttr(s) {

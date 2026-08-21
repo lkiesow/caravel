@@ -58,6 +58,17 @@ type Querier interface {
 	ListItemDatesByItem(ctx context.Context, itemID string) ([]ItemDate, error)
 	ListItemFiles(ctx context.Context, itemID sql.NullString) ([]File, error)
 	ListItemLinksByItem(ctx context.Context, itemID string) ([]ItemLink, error)
+	// ListItemLocationsByTrip: every coordinate on the trip, keyed by item.
+	//
+	// Deliberately NOT ListMapItemsByTrip below: that one also filters
+	// show_on_map, which is about whether a place is drawn on the map and says
+	// nothing about whether it has a position. The locations list filters by
+	// distance, so it wants every located item regardless.
+	//
+	// Rows with only an address and no coordinates are excluded here rather than
+	// in Go: they are not "far away", they are unmeasurable, and the caller has
+	// to be able to tell those apart.
+	ListItemLocationsByTrip(ctx context.Context, tripID string) ([]ListItemLocationsByTripRow, error)
 	ListItemsByTrip(ctx context.Context, arg ListItemsByTripParams) ([]Item, error)
 	ListItineraryDaysByTrip(ctx context.Context, tripID string) ([]ItineraryDay, error)
 	ListItineraryEntriesByTrip(ctx context.Context, tripID string) ([]ListItineraryEntriesByTripRow, error)

@@ -165,6 +165,43 @@ no page load happened (stamp a sentinel on `window` beforehand and assert it
 survived — a full reload is exactly the failure mode `data-link` would have
 caused, and a pathname assertion alone would not catch it).
 
+**Done.** No backend change, as planned — `item.id` was already in the payload.
+The trip-wide popup is now the title, then **Open location**, then View on
+Google Maps: two labelled destinations, in-app first. The single-marker mode is
+untouched, since it is embedded on the very page it would link to.
+
+The click handler is **delegated on the map container** rather than bound per
+popup, which the plan did not specify but which the DOM forces: Leaflet builds
+and destroys popup markup on demand, so at bind time there is nothing to bind
+to. It dispatches the existing `item-open` contract (`bubbles`, `composed`,
+`{ itemId }`) that `location-card.js` already uses, and `trip-detail-page.js`
+turns it into a `navigate()` exactly as `locations-tab.js` does — one event
+shape for "open a location", not two. The link stays a real `<a href>` and only
+an unmodified left-click is intercepted, so ctrl/⌘/shift/middle-click keep
+working. `map.openLocation` is the one new key per locale (156 in sync).
+
+Two keys per locale and one CSS block: the popup links are `display: block` so
+each is its own row, and carry `min-height: var(--tap-min)` at ≤640px. That
+last part is **not** something the sweep would have caught — `routes.spec.js`
+skips anything under a `leaflet-*` *ancestor*, and Leaflet renders popup
+content inside `.leaflet-popup-content`, so markup we own is invisible to it
+there. `map.spec.js` measures the two links directly instead, and `todo.md`'s
+entry about that exclusion has been amended to say so.
+
+Verified: `make ci` green (156 keys); `make test-ui` green, 35 tests (was 32).
+Three new tests: the client-side navigation, a ctrl-click falling through
+without `preventDefault`, and both links measuring 44px at 324px.
+`scripts/without.sh` fails all three on the pre-change files.
+
+The negative check worth recording is the second one. The plan predicted that
+a pathname assertion alone would not catch a `data-link` implementation, and
+that is exactly what happened when it was tried deliberately: with the shadow-
+root handler removed and `data-link` on the anchor, the URL assertion **passed**
+— the browser did a full document load and landed on the right route — and only
+the `window.__caravelNoReload` sentinel failed, with the message naming the
+cause. Measured in German at 324px as well: the popup is 192px wide, no
+document overflow, both links 44px.
+
 ---
 
 ## 3. `leaflet-map.js` learns a pick mode

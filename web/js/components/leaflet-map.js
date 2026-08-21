@@ -100,6 +100,12 @@ const styles = `
     padding: 1rem;
     color: var(--color-text-muted, #666);
   }
+  /* The popup's two destinations - this location in Caravel, and Google Maps.
+     Blocks rather than inline, so each is its own row under the title and the
+     tap-target height below has something to apply to. */
+  .popup-link {
+    display: block;
+  }
   /* Rendered only on coarse pointers (see render()), where one-finger drag
      deliberately no longer pans the map. */
   .gesture-hint {
@@ -154,6 +160,16 @@ const styles = `
        fallback in case this component is ever used without base.css. */
     .legend label {
       min-height: var(--tap-min, 2.75rem);
+    }
+    /* Same reasoning, and it needs stating here rather than being caught by
+       the sweep: routes.spec.js's tap-target check skips anything under a
+       leaflet-* class, and Leaflet renders popup content inside
+       .leaflet-popup-content - so these links are invisible to it. They are
+       asserted directly in map.spec.js instead. */
+    .popup-link {
+      min-height: var(--tap-min, 2.75rem);
+      display: flex;
+      align-items: center;
     }
   }
 `;
@@ -273,6 +289,35 @@ class LeafletMap extends HTMLElement {
 
     this.plotMarkers();
 
+    // Delegated, because Leaflet builds and destroys popup DOM on demand -
+    // there is nothing to bind to until a marker is clicked.
+    //
+    // The router's own [data-link] interception cannot reach this. It is a
+    // listener on `document` doing e.target.closest("[data-link]"), and a
+    // click inside a shadow root retargets e.target to the <leaflet-map>
+    // host, so the link would never be found and the click would fall
+    // through to a full page load. Hence a listener on this side of the
+    // boundary, dispatching the same "item-open" contract location-card.js
+    // uses, which trip-detail-page.js turns into a navigation.
+    mapEl.addEventListener("click", (e) => {
+      const link = e.target.closest?.("[data-item-id]");
+      if (!link) return;
+      // A real <a href> on purpose (the reason itinerary-tab.js gives for its
+      // entry links): middle-click, open-in-new-tab, "copy link address" and
+      // the status bar all come free with a link and none of them with a
+      // button. So only a plain left-click is intercepted - a modified one
+      // falls through to the browser, which resolves the route fine.
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      e.preventDefault();
+      this.dispatchEvent(
+        new CustomEvent("item-open", {
+          bubbles: true,
+          composed: true,
+          detail: { itemId: link.dataset.itemId },
+        })
+      );
+    });
+
     if (!single) {
       this.shadowRoot.querySelectorAll("[data-category]").forEach((cb) => {
         cb.addEventListener("change", () => {
@@ -307,10 +352,22 @@ class LeafletMap extends HTMLElement {
 
     const visible = this._items.filter((item) => this._activeCategories.has(item.category));
 
+    // The trip-wide popup's primary action is opening the location *in
+    // Caravel*; Google Maps is the secondary one. Until Stage 13 Milestone 2
+    // only the latter existed, so a marker was a dead end - the payload has
+    // carried item.id all along (mapItemResponse in internal/httpapi/map.go),
+    // the popup just never used it.
+    //
+    // The single-marker branch above deliberately gets no such link: it is
+    // embedded on that location's own page, so it would link to itself.
+    const tripId = this.getAttribute("trip-id");
+
     for (const item of visible) {
       const marker = L.marker([item.lat, item.lng], { icon: markerIcon(L, item.category) }).addTo(this._map);
       marker.bindPopup(
-        `<strong>${escapeHtml(item.title)}</strong><br/><a href="${escapeAttr(item.google_maps_url)}" target="_blank" rel="noopener">${t("map.viewOnGoogleMaps")}</a>`
+        `<strong>${escapeHtml(item.title)}</strong>` +
+          `<a class="popup-link" data-item-id="${escapeAttr(item.id)}" href="${escapeAttr(`/trips/${tripId}/locations/${item.id}`)}">${t("map.openLocation")}</a>` +
+          `<a class="popup-link" href="${escapeAttr(item.google_maps_url)}" target="_blank" rel="noopener">${t("map.viewOnGoogleMaps")}</a>`
       );
       this._markers.push(marker);
     }

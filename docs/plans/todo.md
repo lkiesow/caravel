@@ -332,7 +332,13 @@ step with itself.
   and `tests/ui/routes.spec.js` asserts the guideline, but the vendored library's
   markup inside the map's shadow root is skipped by class
   (`[class*="leaflet-"]`): its zoom buttons measure 30px and the OpenStreetMap
-  attribution link 14px. Restyling a dependency's internals to satisfy our own
+  attribution link 14px. Note the exclusion is an **ancestor** test
+  (`el.closest('[class*="leaflet-"]')`), so as of Stage 13 Milestone 2 it also
+  hides markup *we* own: the popup's two links sit inside
+  `.leaflet-popup-content` and are therefore invisible to the sweep. They are
+  measured directly in `tests/ui/map.spec.js` instead — which works, but only
+  because someone remembered. Anything added to a Leaflet popup from here on
+  inherits the same blind spot. Restyling a dependency's internals to satisfy our own
   sweep is the tail wagging the dog, and the attribution is conventionally
   small — but if the map becomes a primary interaction surface on phones, the
   zoom buttons are worth revisiting. (The legend, which *is* ours, was fixed in

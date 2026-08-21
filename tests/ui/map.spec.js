@@ -49,6 +49,24 @@ async function gotoTripMap(page) {
   return mapRoute.path;
 }
 
+// Clicks the first marker and waits for its popup. Markers are Leaflet
+// divIcons inside the shadow root, so this goes through page.evaluate rather
+// than a locator - and dispatches a real MouseEvent, because Leaflet listens
+// for pointer/mouse events rather than for .click().
+async function openFirstPopup(page) {
+  await page.evaluate(() => {
+    const sr = document.querySelector("leaflet-map").shadowRoot;
+    const marker = sr.querySelector(".leaflet-marker-icon");
+    if (!marker) throw new Error("no markers on the trip map - does the seed still give the `full` trip coordinates?");
+    for (const type of ["mousedown", "mouseup", "click"]) {
+      marker.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window, button: 0 }));
+    }
+  });
+  await page.waitForFunction(
+    () => document.querySelector("leaflet-map").shadowRoot.querySelector(".leaflet-popup-content [data-item-id]") !== null
+  );
+}
+
 // Reaches into the component's shadow root, which is where every part of this
 // lives - the map element, the legend and the hint are all behind it.
 function readMap(page) {
@@ -121,5 +139,89 @@ test.describe("the trip map with a mouse", () => {
     const { dragging, hint } = await readMap(page);
     expect(dragging, "a fine pointer should keep click-and-drag panning").toBe(true);
     expect(hint, "the two-finger hint is touch-only").toBeNull();
+  });
+});
+
+
+// Milestone 2. A marker popup used to offer the title and a Google Maps link
+// and nothing else, so the map could show you where a location was but not
+// take you to it. The item id was already in the payload.
+test.describe("a marker popup links back into the app", () => {
+  test("opens the location client-side, without a page load", async ({ page }) => {
+    await login(page);
+    const mapPath = await gotoTripMap(page);
+
+    // The sentinel is the point of this test, not decoration. A full document
+    // load would also end up on the right pathname - which is exactly what
+    // would happen if this link relied on the router's [data-link] handler,
+    // since that listener cannot see through the shadow boundary. Only a
+    // value that survives on `window` proves the SPA handled it.
+    await page.evaluate(() => {
+      window.__caravelNoReload = "alive";
+    });
+
+    await openFirstPopup(page);
+    const link = await page.evaluate(() => {
+      const a = document.querySelector("leaflet-map").shadowRoot.querySelector(".leaflet-popup-content [data-item-id]");
+      return { href: a.getAttribute("href"), text: a.textContent.trim(), itemId: a.dataset.itemId };
+    });
+
+    // A real <a href>, so middle-click and "open in new tab" still work.
+    expect(link.href, "the popup link should be a real, resolvable route").toBe(
+      `${mapPath.replace(/\/map$/, "")}/locations/${link.itemId}`
+    );
+    expect(link.text, "the in-app link should be labelled").toBeTruthy();
+
+    await page.evaluate(() => {
+      document.querySelector("leaflet-map").shadowRoot.querySelector(".leaflet-popup-content [data-item-id]").click();
+    });
+    await page.waitForFunction((href) => window.location.pathname === href, link.href);
+
+    expect(
+      await page.evaluate(() => window.__caravelNoReload),
+      "the page reloaded - the click escaped the SPA instead of being handled in the shadow root"
+    ).toBe("alive");
+
+    // ...and it actually rendered that location, rather than just changing the URL.
+    await expect(page.locator("h1")).toBeVisible();
+  });
+
+  test("a modified click is left to the browser", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+    await openFirstPopup(page);
+
+    // Ctrl-click means "new tab". The handler must not preventDefault it, or
+    // the link loses every affordance it was kept an <a href> for.
+    const defaultPrevented = await page.evaluate(() => {
+      const a = document.querySelector("leaflet-map").shadowRoot.querySelector(".leaflet-popup-content [data-item-id]");
+      const e = new MouseEvent("click", { bubbles: true, cancelable: true, view: window, button: 0, ctrlKey: true });
+      a.dispatchEvent(e);
+      return e.defaultPrevented;
+    });
+    expect(defaultPrevented, "ctrl-click should fall through to the browser").toBe(false);
+    expect(page.url(), "ctrl-click should not navigate this tab").toContain("/map");
+  });
+
+  test("the popup links meet the tap target floor on a phone", async ({ page }) => {
+    // routes.spec.js's sweep skips anything under a leaflet-* class, and
+    // Leaflet renders popup content inside .leaflet-popup-content - so these
+    // two links are invisible to it and have to be measured here.
+    await page.setViewportSize(MOBILE);
+    await login(page);
+    await gotoTripMap(page);
+    await openFirstPopup(page);
+
+    const heights = await page.evaluate(() => {
+      const sr = document.querySelector("leaflet-map").shadowRoot;
+      return [...sr.querySelectorAll(".leaflet-popup-content .popup-link")].map((a) => ({
+        text: a.textContent.trim(),
+        height: a.getBoundingClientRect().height,
+      }));
+    });
+    expect(heights.length, "the popup should offer both destinations").toBe(2);
+    for (const link of heights) {
+      expect(link.height, `"${link.text}" is ${Math.round(link.height)}px`).toBeGreaterThanOrEqual(44);
+    }
   });
 });

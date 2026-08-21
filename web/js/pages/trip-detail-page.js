@@ -9,6 +9,7 @@ import { renderChecklistList } from "../components/checklist-list.js";
 import { renderSettingsTab } from "./settings-tab.js";
 import { TRIP_TABS, OVERFLOW_TRIP_TABS } from "../trip-tabs.js";
 import { renderMenu } from "../components/menu.js";
+import { navigate } from "../router.js";
 import { formatDateRange } from "../format.js";
 import { renderLoading } from "../components/loading.js";
 import { renderNotFoundPage } from "./not-found-page.js";
@@ -124,6 +125,14 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
       renderItemsTab(content, trip.id);
     } else if (tab === "map") {
       content.innerHTML = `<leaflet-map trip-id="${trip.id}"></leaflet-map>`;
+      // A marker popup's in-app link. leaflet-map.js can't let the router's
+      // [data-link] interception handle it - that listener sits on document
+      // and a click inside a shadow root retargets to the host - so it
+      // dispatches the same "item-open" event location-card.js does, and the
+      // page turns it into a navigation exactly as locations-tab.js does.
+      content.addEventListener("item-open", (e) => {
+        navigate(`/trips/${trip.id}/locations/${e.detail.itemId}`);
+      });
     } else if (tab === "itinerary") {
       renderItineraryTab(content, trip);
     } else if (tab === "files") {

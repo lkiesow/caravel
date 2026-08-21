@@ -465,19 +465,15 @@ step with itself.
 Nothing here is needed to keep developing; all of it is needed before anyone
 else runs this.
 
-- **Squash the migrations before the first real release.** There are now **six**
-  files per dialect (`0001_init` through `0006_rename_documents_to_files`, in both
-  `internal/db/migrations/sqlite/` and `.../postgres/`). Since nobody has
-  deployed this yet, collapsing them into a single `0001_init` is safe — and
-  stops being safe the moment someone has.
-- **`NewServer` has eight positional parameters.** (Stage 13 Milestone 5 added
-  the eighth, `geocoderURL`.) Four of them are now bare `bool`/`string` values
-  whose meaning is invisible at the call site — `NewServer(..., false, true,
-  "")` says nothing about which flag is which. `cmd/caravel/main.go` already
-  has the whole `config.Config`, and the test harness builds its own; passing
-  a struct (or an options value) instead would make the call sites readable
-  and stop the next capability flag widening the signature again.
-
+- **Squash the migrations before the first real release.** There are now
+  **eight** files per dialect (`0001_init` through
+  `0008_add_admin_and_settings`, in both `internal/db/migrations/sqlite/` and
+  `.../postgres/`), and Stage 14 Milestones 7-8 will add two more. Since nobody
+  has deployed this yet, collapsing them into a single `0001_init` is safe — and
+  stops being safe the moment someone has. Worth doing at the end of Stage 14,
+  while it is still only a tidy-up: ten migration pairs of which nine exist
+  purely as history is a lot of files for a schema nobody has ever migrated
+  *from*.
 - **Reverse geocoding.** (Stage 13 Milestone 5.) `/api/geocode` turns a name
   into coordinates; the opposite — clicking the map and getting a suggested
   address for the `address` field — is not built. Nominatim has a `/reverse`

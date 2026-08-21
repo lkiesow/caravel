@@ -42,7 +42,15 @@ func main() {
 	go sweepExpiredSessionsPeriodically(store)
 
 	webFS := httpapi.WebFS(webassets.FS(), cfg.WebDir)
-	server := httpapi.NewServer(dbConn, store, authService, blob, webFS, cfg.WebDir != "", cfg.OpenSignup, cfg.GeocoderURL)
+	server := httpapi.NewServer(httpapi.Options{
+		DB:          dbConn,
+		Store:       store,
+		Auth:        authService,
+		Blob:        blob,
+		WebFS:       webFS,
+		NoCache:     cfg.WebDir != "",
+		GeocoderURL: cfg.GeocoderURL,
+	})
 
 	log.Printf("caravel %s listening on :%s (db=%s)", buildinfo.Version, cfg.Port, cfg.DBDriver)
 	if err := http.ListenAndServe(":"+cfg.Port, server); err != nil {

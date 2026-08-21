@@ -18,6 +18,7 @@ type CreateUserParams struct {
 	Username    string
 	DisplayName string
 	Email       *string
+	IsAdmin     bool
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
@@ -177,6 +178,16 @@ type Store interface {
 	// case-insensitively, capped at limit. Matching is done on a lowercased
 	// pattern built here, so callers pass the raw text.
 	SearchUsers(ctx context.Context, query string, limit int) ([]UserSummary, error)
+	// CountUsers answers one question, asked in two places: is this the first
+	// account on the instance? That decides both whether it becomes an admin
+	// and whether a closed registration accepts it anyway.
+	CountUsers(ctx context.Context) (int64, error)
+
+	// Instance settings. GetAppSetting returns ErrNotFound for an unset name,
+	// so callers decide their own default rather than being handed a zero
+	// value that might be a legitimate setting.
+	GetAppSetting(ctx context.Context, name string) (string, error)
+	SetAppSetting(ctx context.Context, name, value string) error
 
 	CreateAuthIdentity(ctx context.Context, p CreateAuthIdentityParams) (AuthIdentity, error)
 	GetAuthIdentityByProvider(ctx context.Context, provider, providerUserID string) (AuthIdentity, error)

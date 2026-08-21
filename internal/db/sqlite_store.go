@@ -43,6 +43,7 @@ func (s *sqliteStore) CreateUser(ctx context.Context, p CreateUserParams) (User,
 		Username:    p.Username,
 		DisplayName: p.DisplayName,
 		Email:       nullString(p.Email),
+		IsAdmin:     boolToInt64(p.IsAdmin),
 		CreatedAt:   formatTime(p.CreatedAt),
 		UpdatedAt:   formatTime(p.UpdatedAt),
 	})
@@ -144,6 +145,22 @@ func (s *sqliteStore) DeleteSessionsByUserID(ctx context.Context, userID string)
 
 func (s *sqliteStore) DeleteExpiredSessions(ctx context.Context, now time.Time) error {
 	return s.q.DeleteExpiredSessions(ctx, formatTime(now))
+}
+
+func (s *sqliteStore) CountUsers(ctx context.Context) (int64, error) {
+	return s.q.CountUsers(ctx)
+}
+
+func (s *sqliteStore) GetAppSetting(ctx context.Context, name string) (string, error) {
+	value, err := s.q.GetAppSetting(ctx, name)
+	if err != nil {
+		return "", mapNotFound(err)
+	}
+	return value, nil
+}
+
+func (s *sqliteStore) SetAppSetting(ctx context.Context, name, value string) error {
+	return s.q.SetAppSetting(ctx, sqlitegen.SetAppSettingParams{Name: name, Value: value})
 }
 
 func (s *sqliteStore) SearchUsers(ctx context.Context, query string, limit int) ([]UserSummary, error) {
@@ -946,6 +963,7 @@ func sqliteUserToDomain(u sqlitegen.User) User {
 		Username:    u.Username,
 		DisplayName: u.DisplayName,
 		Email:       strPtr(u.Email),
+		IsAdmin:     u.IsAdmin != 0,
 		CreatedAt:   parseTime(u.CreatedAt),
 		UpdatedAt:   parseTime(u.UpdatedAt),
 	}

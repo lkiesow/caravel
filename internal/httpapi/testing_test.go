@@ -70,7 +70,22 @@ func newTestServerWithStore(t *testing.T, wrap func(db.Store) db.Store) *testSer
 	// default here instead, any test that reached /api/geocode would send a
 	// real request to OpenStreetMap's public Nominatim. The geocode tests set
 	// srv.GeocoderURL to their own httptest.Server.
-	srv := NewServer(conn, store, auth.NewService(store), blob, fstest.MapFS{}, false, true, "")
+	srv := NewServer(Options{
+		DB:    conn,
+		Store: store,
+		Auth:  auth.NewService(store),
+		Blob:  blob,
+		WebFS: fstest.MapFS{},
+	})
+
+	// Registration is closed by default from Stage 14 Milestone 5 on, and most
+	// tests here need to create several users over HTTP. Opened explicitly
+	// rather than by leaving the production default open, so the tests that
+	// care about the gate itself can close it again and the rest do not depend
+	// on what the default happens to be.
+	if err := srv.setOpenSignup(context.Background(), true); err != nil {
+		t.Fatalf("open signup for tests: %v", err)
+	}
 	return &testServer{Server: srv, t: t}
 }
 

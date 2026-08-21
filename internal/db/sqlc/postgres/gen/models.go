@@ -9,6 +9,11 @@ import (
 	"time"
 )
 
+type AppSetting struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
 type AuthIdentity struct {
 	ID             string         `json:"id"`
 	UserID         string         `json:"user_id"`
@@ -151,4 +156,5 @@ type User struct {
 	Email       sql.NullString `json:"email"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
+	IsAdmin     bool           `json:"is_admin"`
 }

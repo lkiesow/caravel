@@ -87,6 +87,21 @@ check, i18n key parity, `go test`. Don't rely on CI to catch it first.
   `internal/db/sqlc/queries/*.sql`, run `sqlc generate` by hand from
   `internal/db/sqlc/` to regenerate the dialect packages — there's no
   automation for that step, and it's easy to forget one dialect.
+- **`sqlc`'s SQLite parser has three traps, all of which report the error in
+  the wrong place.** Learned the hard way in Stage 14; each cost real time
+  because the reported line points at correct SQL.
+  - **No backticks in comments** in `internal/db/sqlc/queries/*.sql`. The
+    lexer reads them as identifier quotes even inside `--`, swallows the line
+    boundary, and blames the statement *below* the comment. Use "double
+    quotes" when quoting an identifier in prose.
+  - **Parenthesise OR-ed `LIKE` comparisons.** `LOWER(a) LIKE @p OR LOWER(b)
+    LIKE @p` is rejected; wrapping each comparison in parens is accepted.
+  - **`LIKE ... ESCAPE` is rejected outright**, and named args are *not*
+    substituted inside `ON CONFLICT ... DO UPDATE` (use `excluded.col`).
+  Read the generated file after `sqlc generate` rather than only diffing it
+  for churn — an unsubstituted `sqlc.arg(...)` compiles fine and fails at
+  runtime.
+
 - **Adding a new icon.** Icons come from a committed sprite
   (`web/icons/lucide-sprite.svg`), not a runtime dependency. Add the
   name to the `ICONS` list in `scripts/gen_icon_sprite.py`, then:

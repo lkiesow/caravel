@@ -12,8 +12,13 @@ type User struct {
 	Username    string
 	DisplayName string
 	Email       *string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	// IsAdmin governs *account* administration only — creating and removing
+	// users, resetting passwords, opening registration. It grants no access to
+	// anyone else's trips: httpapi.Server.tripRole never consults it, because a
+	// "personal" file the instance operator can read is not a personal file.
+	IsAdmin   bool
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type AuthIdentity struct {

@@ -1,7 +1,13 @@
 -- name: CreateUser :one
-INSERT INTO users (id, username, display_name, email, created_at, updated_at)
-VALUES (sqlc.arg(id), sqlc.arg(username), sqlc.arg(display_name), sqlc.arg(email), sqlc.arg(created_at), sqlc.arg(updated_at))
+INSERT INTO users (id, username, display_name, email, is_admin, created_at, updated_at)
+VALUES (sqlc.arg(id), sqlc.arg(username), sqlc.arg(display_name), sqlc.arg(email), sqlc.arg(is_admin), sqlc.arg(created_at), sqlc.arg(updated_at))
 RETURNING *;
+
+-- Used for exactly one decision, in two places: whether this is the first
+-- account on the instance, which both makes it an admin and is the one case
+-- where a closed registration still accepts a signup.
+-- name: CountUsers :one
+SELECT COUNT(*) FROM users;
 
 -- name: GetUserByID :one
 SELECT * FROM users WHERE id = sqlc.arg(id);

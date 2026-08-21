@@ -62,13 +62,26 @@ func (s *Service) Register(ctx context.Context, username, password, displayName 
 	now := s.now().UTC()
 	userID := uuid.NewString()
 
+	// The first account on an instance becomes its administrator. Someone has
+	// to be able to create the second account, and the alternative — a flag or
+	// a CLI step to promote yourself — is a setup instruction people skip and
+	// then cannot recover from.
+	//
+	// Counted inside the transaction so two simultaneous first registrations
+	// cannot both see an empty table and both become admins. Under SQLite the
+	// write lock settles it; the read has to be in the same transaction as the
+	// insert for that to hold.
 	var user db.User
 	err = s.store.WithTx(ctx, func(tx db.Store) error {
-		var txErr error
+		existing, txErr := tx.CountUsers(ctx)
+		if txErr != nil {
+			return txErr
+		}
 		user, txErr = tx.CreateUser(ctx, db.CreateUserParams{
 			ID:          userID,
 			Username:    username,
 			DisplayName: displayName,
+			IsAdmin:     existing == 0,
 			CreatedAt:   now,
 			UpdatedAt:   now,
 		})

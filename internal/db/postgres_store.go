@@ -24,6 +24,7 @@ func (s *postgresStore) CreateUser(ctx context.Context, p CreateUserParams) (Use
 		Username:    p.Username,
 		DisplayName: p.DisplayName,
 		Email:       nullString(p.Email),
+		IsAdmin:     p.IsAdmin,
 		CreatedAt:   p.CreatedAt.UTC(),
 		UpdatedAt:   p.UpdatedAt.UTC(),
 	})
@@ -382,6 +383,22 @@ func datePtr(nt sql.NullTime) *string {
 	}
 	v := nt.Time.Format(dateLayout)
 	return &v
+}
+
+func (s *postgresStore) CountUsers(ctx context.Context) (int64, error) {
+	return s.q.CountUsers(ctx)
+}
+
+func (s *postgresStore) GetAppSetting(ctx context.Context, name string) (string, error) {
+	value, err := s.q.GetAppSetting(ctx, name)
+	if err != nil {
+		return "", mapNotFound(err)
+	}
+	return value, nil
+}
+
+func (s *postgresStore) SetAppSetting(ctx context.Context, name, value string) error {
+	return s.q.SetAppSetting(ctx, postgresgen.SetAppSettingParams{Name: name, Value: value})
 }
 
 func (s *postgresStore) SearchUsers(ctx context.Context, query string, limit int) ([]UserSummary, error) {
@@ -1005,6 +1022,7 @@ func postgresUserToDomain(u postgresgen.User) User {
 		Username:    u.Username,
 		DisplayName: u.DisplayName,
 		Email:       strPtr(u.Email),
+		IsAdmin:     u.IsAdmin,
 		CreatedAt:   u.CreatedAt,
 		UpdatedAt:   u.UpdatedAt,
 	}

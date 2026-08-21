@@ -12,6 +12,10 @@ import (
 
 type Querier interface {
 	CountTripMembers(ctx context.Context, tripID string) (int64, error)
+	// Used for exactly one decision, in two places: whether this is the first
+	// account on the instance, which both makes it an admin and is the one case
+	// where a closed registration still accepts a signup.
+	CountUsers(ctx context.Context) (int64, error)
 	CreateAuthIdentity(ctx context.Context, arg CreateAuthIdentityParams) (AuthIdentity, error)
 	CreateChecklist(ctx context.Context, arg CreateChecklistParams) (Checklist, error)
 	CreateChecklistItem(ctx context.Context, arg CreateChecklistItemParams) (ChecklistItem, error)
@@ -44,6 +48,15 @@ type Querier interface {
 	// belt costs nothing and guards the most destructive call in the app.
 	DeleteTrip(ctx context.Context, arg DeleteTripParams) (int64, error)
 	DeleteTripMember(ctx context.Context, arg DeleteTripMemberParams) (int64, error)
+	// Instance-wide settings an admin changes at runtime. See migration 0008 for
+	// why this is a key/value table rather than one column per setting, and why the
+	// column is called "name" rather than "key".
+	//
+	// Note the quotes above are not stylistic: backticks anywhere in a comment in a
+	// query file break sqlc's sqlite lexer, which reads them as identifier quotes,
+	// swallows the line boundary, and then reports a syntax error pointing at the
+	// SQL below. See CLAUDE.md's gotchas.
+	GetAppSetting(ctx context.Context, name string) (string, error)
 	GetAuthIdentityByProvider(ctx context.Context, arg GetAuthIdentityByProviderParams) (AuthIdentity, error)
 	GetChecklistByID(ctx context.Context, id string) (Checklist, error)
 	GetFileByID(ctx context.Context, id string) (File, error)
@@ -132,6 +145,10 @@ type Querier interface {
 	// '--' comment, swallows the line boundary, and reports a syntax error
 	// pointing at the SQL below rather than at the comment.
 	SearchUsers(ctx context.Context, arg SearchUsersParams) ([]SearchUsersRow, error)
+	// Upsert, because a caller setting a value does not care whether the row
+	// already existed, and a migration seeding a default must not make the first
+	// write a special case.
+	SetAppSetting(ctx context.Context, arg SetAppSettingParams) error
 	SetChecklistItemChecked(ctx context.Context, arg SetChecklistItemCheckedParams) (ChecklistItem, error)
 	SetItemImage(ctx context.Context, arg SetItemImageParams) (Item, error)
 	SetTripPreviewImage(ctx context.Context, arg SetTripPreviewImageParams) (Trip, error)

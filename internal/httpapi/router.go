@@ -23,13 +23,12 @@ func init() {
 }
 
 type Server struct {
-	DB         *sql.DB
-	Store      db.Store
-	Auth       *auth.Service
-	Blob       storagefs.Blob
-	WebFS      http.FileSystem // static assets (embedded, or a live directory in dev)
-	NoCache    bool            // true when serving from a live directory (dev mode)
-	OpenSignup bool
+	DB      *sql.DB
+	Store   db.Store
+	Auth    *auth.Service
+	Blob    storagefs.Blob
+	WebFS   http.FileSystem // static assets (embedded, or a live directory in dev)
+	NoCache bool            // true when serving from a live directory (dev mode)
 	// GeocoderURL is the upstream address-search endpoint /api/geocode
 	// proxies to. Empty means address search is switched off: the endpoint
 	// reports that plainly and the client hides the control.
@@ -39,16 +38,39 @@ type Server struct {
 	router         chi.Router
 }
 
-func NewServer(dbConn *sql.DB, store db.Store, authService *auth.Service, blob storagefs.Blob, webFS fs.FS, noCache, openSignup bool, geocoderURL string) *Server {
+// Options are NewServer's dependencies and settings.
+//
+// A struct rather than positional parameters, as of Stage 14 Milestone 5. The
+// signature had reached eight arguments of which four were bare bools and
+// strings, so `NewServer(..., false, true, "")` said nothing at either call
+// site about which flag was which — and this milestone was removing one of
+// them, which is the moment to stop widening it. Whether registration is open
+// is deliberately absent: it lives in app_settings, where an admin can change
+// it (see settings.go).
+type Options struct {
+	DB    *sql.DB
+	Store db.Store
+	Auth  *auth.Service
+	Blob  storagefs.Blob
+	// WebFS is the static asset tree: the embedded copy, or a live directory
+	// in dev.
+	WebFS fs.FS
+	// NoCache disables asset caching, for serving from a live directory.
+	NoCache bool
+	// GeocoderURL is the upstream /api/geocode proxies to; empty disables
+	// address search.
+	GeocoderURL string
+}
+
+func NewServer(opts Options) *Server {
 	s := &Server{
-		DB:          dbConn,
-		Store:       store,
-		Auth:        authService,
-		Blob:        blob,
-		WebFS:       http.FS(webFS),
-		NoCache:     noCache,
-		OpenSignup:  openSignup,
-		GeocoderURL: geocoderURL,
+		DB:          opts.DB,
+		Store:       opts.Store,
+		Auth:        opts.Auth,
+		Blob:        opts.Blob,
+		WebFS:       http.FS(opts.WebFS),
+		NoCache:     opts.NoCache,
+		GeocoderURL: opts.GeocoderURL,
 		// 20/minute/IP. Higher than login's 10 because a search is a normal,
 		// repeated action rather than a credential attempt, and still far
 		// under what would embarrass us upstream.
@@ -88,6 +110,9 @@ func (s *Server) buildRouter() chi.Router {
 			r.With(s.rateLimitLogin).Post("/register", s.handleRegister)
 			r.With(s.rateLimitLogin).Post("/login", s.handleLogin)
 			r.Post("/logout", s.handleLogout)
+			// Unauthenticated: the login page needs this before anyone has a
+			// session. See handleAuthConfig for why publishing it is fine.
+			r.Get("/config", s.handleAuthConfig)
 			r.With(auth.RequireAuth).Get("/me", s.handleMe)
 			// Rate limited like login for the same reason: it takes the current
 			// password, so it is another place to guess one.

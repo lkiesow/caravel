@@ -11,10 +11,24 @@ import (
 	"time"
 )
 
+const countUsers = `-- name: CountUsers :one
+SELECT COUNT(*) FROM users
+`
+
+// Used for exactly one decision, in two places: whether this is the first
+// account on the instance, which both makes it an admin and is the one case
+// where a closed registration still accepts a signup.
+func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countUsers)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (id, username, display_name, email, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, username, display_name, email, created_at, updated_at
+INSERT INTO users (id, username, display_name, email, is_admin, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, username, display_name, email, created_at, updated_at, is_admin
 `
 
 type CreateUserParams struct {
@@ -22,6 +36,7 @@ type CreateUserParams struct {
 	Username    string         `json:"username"`
 	DisplayName string         `json:"display_name"`
 	Email       sql.NullString `json:"email"`
+	IsAdmin     bool           `json:"is_admin"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 }
@@ -32,6 +47,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		arg.Username,
 		arg.DisplayName,
 		arg.Email,
+		arg.IsAdmin,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -43,12 +59,13 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Email,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.IsAdmin,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, username, display_name, email, created_at, updated_at FROM users WHERE id = $1
+SELECT id, username, display_name, email, created_at, updated_at, is_admin FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
@@ -61,12 +78,13 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 		&i.Email,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.IsAdmin,
 	)
 	return i, err
 }
 
 const getUserByUsername = `-- name: GetUserByUsername :one
-SELECT id, username, display_name, email, created_at, updated_at FROM users WHERE username = $1
+SELECT id, username, display_name, email, created_at, updated_at, is_admin FROM users WHERE username = $1
 `
 
 func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User, error) {
@@ -79,6 +97,7 @@ func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User,
 		&i.Email,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.IsAdmin,
 	)
 	return i, err
 }

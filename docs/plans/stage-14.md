@@ -693,6 +693,83 @@ Playwright: the register toggle is absent on a closed instance. Backend
 milestone — `make dev-restart` before testing by hand, since a stale binary
 reads exactly like a missing feature.
 
+**Done.** Landed as planned, including the `NewServer` refactor.
+
+*The gate has two ways to pass, not one.* `registrationAllowed` returns true if
+the `open_signup` setting is on **or** the instance has no users at all. The
+second clause is what stops a closed-by-default install from being bricked
+behind its own default: a fresh deployment can always create its first account,
+and that account becomes the admin who decides whether the door stays open.
+`/api/auth/config` reports the *outcome* of that function rather than the
+setting, so the login page and `/auth/register` can never disagree — reporting
+the raw setting is the obvious way to get this wrong, and there is a test named
+for it.
+
+*First-account-becomes-admin is decided inside the transaction.* `CountUsers`
+runs in the same `WithTx` as the insert, so two simultaneous first
+registrations cannot both see an empty table and both become admins.
+
+*`is_admin` is not a superuser flag*, and there is a test asserting so: an admin
+gets 404 on another user's trip and an empty trips list. `tripRole` never
+consults it. Recorded in `db.User`'s own doc comment as well, because this is
+the kind of thing a later "convenience" change would undo.
+
+*The env var is gone, not merely ignored.* `CARAVEL_OPEN_SIGNUP`,
+`config.OpenSignup` and `Server.OpenSignup` were removed, along with
+`getEnvBool`, which had no other caller. Two sources for one answer would let
+the admin screen show something the server does not believe.
+
+*`NewServer` takes `httpapi.Options`* — the `todo.md` entry is deleted. Both call
+sites (`cmd/caravel/main.go`, the test harness) now name every field. The test
+harness also calls `setOpenSignup(true)` explicitly, so tests that need to
+create users over HTTP work and the tests that care about the gate can close it
+again; nothing depends on what the production default happens to be.
+
+Frontend: the login page reads `/auth/config` *after* first paint — the form is
+usable either way and blocking on a capability probe would make a slow instance
+look broken — and assumes closed until told otherwise, since appearing to offer
+registration and withdrawing it is worse than a link that arrives a moment
+late. Field values are now carried across re-renders, which that probe made
+necessary and which also stops the login/register toggle discarding a typed
+username.
+
+**Verified.** `make ci` green; full Playwright suite passing. New
+`registration_test.go` covers the bootstrap account and the door shutting behind
+it, that a later account is *not* an admin, the setting gating registration in
+both directions, `/auth/config` agreeing with the register endpoint on an empty
+instance, `is_admin` on `/auth/me`, and an admin having no access to another
+user's trips.
+
+Break-checked with six breaks. Two needed rewriting to compile (`if false {`
+orphaning a variable again — the same trap as Milestone 3). **One passed, and
+was a real gap:** making `openSignupEnabled` fail *open* instead of closed left
+every test green, because the migration seeds the row so the error branches are
+never reached on the happy path. Fixed by adding `TestOpenSignupFailsClosed`,
+which drives the setting to `"yes"`, `""`, `"TRUE-ish"`, `"0.5"` and `"maybe"`
+(all reachable: a hand-edited database, a future version's value, a setting
+added without a default) and asserts both `/auth/register` and `/auth/config`
+stay closed — plus the mirror case, that `"true"`, `"1"` and `"TRUE"` do open
+it, since a guard that refuses everything is not a guard. All six breaks now
+fail.
+
+Live verification was done on a **wiped database**, which is the only way to
+exercise the interesting path: all eight migrations applied from scratch
+(`schema_migrations` at version 8, clean), an empty instance reported
+`{"open_signup":true}` despite the setting being `false`, registering `founder`
+returned `is_admin: true`, `/auth/config` then reported `false`, and a second
+registration got 403. In the browser: a closed instance renders no switch line
+and no register link at all; flipping the setting makes the line appear *after*
+the probe lands, reading "Don't have an account? Create one", and a username
+typed before the probe survives both that re-render and the switch into
+register mode.
+
+The dev database was then wiped again and reseeded, which has a useful side
+effect for Milestone 6: `demo` is now the first account and therefore an admin,
+`other` is not. Note the limitation — that only holds for a *fresh* database. An
+existing dev database keeps `demo` non-admin, because the column defaulted to
+false when 0008 ran. Milestone 6 should have the seeder set it explicitly, which
+needs the `UpdateUser` store method that milestone is adding anyway.
+
 ---
 
 ## 6. Admin user management

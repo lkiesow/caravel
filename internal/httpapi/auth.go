@@ -25,6 +25,11 @@ type userResponse struct {
 	// screen that needs it; if a third capability ever turns up, that trade
 	// is worth revisiting.
 	Geocoding bool `json:"geocoding"`
+	// IsAdmin governs account administration only — never access to another
+	// user's trips. The client uses it to decide whether to show the admin
+	// entry in the user menu; the server checks it again on every /api/admin
+	// route, because a hidden menu item is not a permission.
+	IsAdmin bool `json:"is_admin"`
 }
 
 func (s *Server) userToResponse(r *http.Request, u db.User) userResponse {
@@ -41,6 +46,7 @@ func (s *Server) userToResponse(r *http.Request, u db.User) userResponse {
 		DisplayName: u.DisplayName,
 		HasPassword: hasPassword,
 		Geocoding:   s.GeocoderURL != "",
+		IsAdmin:     u.IsAdmin,
 	}
 }
 
@@ -51,7 +57,12 @@ type registerRequest struct {
 }
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
-	if !s.OpenSignup {
+	// Open registration, or the very first account on the instance — see
+	// registrationAllowed. A failure to determine it is treated as closed
+	// rather than as a 500: the caller gets a clear refusal instead of an
+	// error, and failing open here would be the wrong way round.
+	allowed, err := s.registrationAllowed(r.Context())
+	if err != nil || !allowed {
 		writeError(w, http.StatusForbidden, "registration is disabled")
 		return
 	}

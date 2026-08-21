@@ -8,6 +8,11 @@ import (
 	"database/sql"
 )
 
+type AppSetting struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
 type AuthIdentity struct {
 	ID             string         `json:"id"`
 	UserID         string         `json:"user_id"`
@@ -150,4 +155,5 @@ type User struct {
 	Email       sql.NullString `json:"email"`
 	CreatedAt   string         `json:"created_at"`
 	UpdatedAt   string         `json:"updated_at"`
+	IsAdmin     int64          `json:"is_admin"`
 }

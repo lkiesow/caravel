@@ -221,12 +221,14 @@ step with itself.
       of those two shapes: Stage 09 Milestone 2's single-Save check (still not
       checked in as a spec), the location and trip editors, checklists, and the
       itinerary.
-    - **The login and register pages**, which no spec renders: the suite arrives
-      already authenticated (`auth.setup.js`), so those two routes get no
-      overflow, heading, accessible-name or tap-target coverage at all. They are
-      also the only pages an unauthenticated visitor sees, which makes the gap
-      worse than it looks. Cheap to fix: one spec with a fresh, unauthenticated
-      context.
+    - **The register page**, which still no spec renders. Stage 14 Milestone 9's
+      `unauthenticated.spec.js` covers the *login* screen — overflow, heading,
+      accessible names, tap targets, the refusal path — from a fresh
+      unauthenticated context, but the register form only appears when open
+      signup is on, and the seed deliberately leaves it off. Covering it means
+      either flipping the setting inside the spec and restoring it (the
+      `settings.spec.js` shape, with the same "a silently failing restore
+      poisons the run" hazard) or a scenario that seeds an open instance.
     - **German beyond the menu.** `menu.spec.js` proves the mechanism works, but
       the sweeps themselves (overflow, headings, names, tap targets) still run in
       one locale, and German copy is the longer of the two — the case most likely

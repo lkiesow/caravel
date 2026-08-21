@@ -52,6 +52,17 @@ const (
 	otherPassword    = "other1234"
 	otherDisplayName = "Other User"
 
+	// A third account whose only purpose is to be broken and repaired by
+	// tests/ui/settings.spec.js, which changes a password and restores it.
+	// Changing a password deletes every session that account holds, so the
+	// account doing that cannot be one another spec needs a live session for —
+	// which is exactly the collision that made sharing.spec.js fail in a full
+	// run while passing alone: it holds a saved session for `other`, and the
+	// password spec was killing it mid-run.
+	pwUsername    = "pwtest"
+	pwPassword    = "pwtest1234"
+	pwDisplayName = "Password Test"
+
 	// Every seeded title starts with this, so a UI test can find its trip by
 	// name and a human can tell seeded data from anything they created.
 	titlePrefix = "Demo: "
@@ -145,6 +156,11 @@ func main() {
 	other, err := ensureUser(ctx, store, authService, otherUsername, otherPassword, otherDisplayName, false)
 	if err != nil {
 		log.Fatalf("other user: %v", err)
+	}
+	// Not given any trip or membership: it exists to have its password churned,
+	// and giving it content would make it a second `other` by accident.
+	if _, err := ensureUser(ctx, store, authService, pwUsername, pwPassword, pwDisplayName, false); err != nil {
+		log.Fatalf("password-test user: %v", err)
 	}
 
 	s := seedCtx{
@@ -346,12 +362,19 @@ func (s seedCtx) addEntry(scenarioName, dayID, itemID string, sortOrder int) err
 }
 
 func (s seedCtx) addChecklist(scenarioName, tripID, title string, items []string) error {
+	// Visibility and owner are explicit, not left to the column default: the
+	// store passes whatever the params carry, so an unset visibility inserts the
+	// empty string and trips the CHECK constraint. Which is how this was found —
+	// migration 0010 landed and the next `make dev-reset` failed on the first
+	// scenario.
 	list, err := s.store.CreateChecklist(s.ctx, db.CreateChecklistParams{
-		ID:        seedID(scenarioName, "checklist", title),
-		TripID:    tripID,
-		Title:     title,
-		SortOrder: 0,
-		CreatedAt: time.Now().UTC(),
+		ID:          seedID(scenarioName, "checklist", title),
+		TripID:      tripID,
+		Title:       title,
+		SortOrder:   0,
+		CreatedAt:   time.Now().UTC(),
+		Visibility:  db.ChecklistShared,
+		OwnerUserID: &s.ownerID,
 	})
 	if err != nil {
 		return err
@@ -435,6 +458,10 @@ func (s seedCtx) addFile(scenarioName, tripID string, itemID *string, filename, 
 		SizeBytes:   size,
 		UploadedAt:  time.Now().UTC(),
 		Note:        ptr("Seeded file"),
+		// Same as the checklist above: explicit, because the params win over the
+		// column default.
+		Visibility:  db.FileVisibilityTrip,
+		OwnerUserID: &s.ownerID,
 	})
 	return err
 }

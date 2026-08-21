@@ -15,7 +15,7 @@
 // `make dev-reset` wipes the sessions table: a cached token from an earlier run
 // would authenticate nothing and every spec would fail as if logged out.
 import { test as setup, expect } from "@playwright/test";
-import { DEMO_USER, AUTH_STATE_FILE } from "./helpers/scenarios.js";
+import { DEMO_USER, OTHER_USER, AUTH_STATE_FILE, OTHER_AUTH_STATE_FILE } from "./helpers/scenarios.js";
 
 setup("log in as the demo user", async ({ page }) => {
   // Through the API rather than the login form: one request instead of a page
@@ -34,4 +34,25 @@ setup("log in as the demo user", async ({ page }) => {
   ).toBe(200);
 
   await page.context().storageState({ path: AUTH_STATE_FILE });
+});
+
+// The second seeded user, for the specs that need two people on one trip
+// (sharing.spec.js). A separate setup test rather than a second context inside
+// the one above, because Playwright gives each test its own context and
+// storageState is a property of a context — so this is the cheap way to end up
+// with two files. Two logins per run, against a budget of ten a minute.
+setup("log in as the other user", async ({ page }) => {
+  const res = await page.request.post("/api/auth/login", { data: OTHER_USER });
+
+  expect(
+    res.status(),
+    res.status() === 429
+      ? "login was rate limited (HTTP 429) — more than 10 logins from this IP in the last minute. " +
+          "Wait a minute and re-run; the seed is not the problem."
+      : `login as ${OTHER_USER.username} failed — has \`make dev-reset FORCE=1\` been run? ` +
+          "Note settings.spec.js changes this user's password and restores it; a failure here " +
+          "can mean that restore did not run."
+  ).toBe(200);
+
+  await page.context().storageState({ path: OTHER_AUTH_STATE_FILE });
 });

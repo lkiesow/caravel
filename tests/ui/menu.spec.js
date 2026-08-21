@@ -296,6 +296,54 @@ for (const locale of ["en", "de"]) {
   });
 }
 
+// The tab bar reads in the same order at both widths (Stage 14 Milestone 9).
+//
+// Desktop shows every tab in TRIP_TABS order; a phone shows the primary ones in
+// a row and the rest behind More. Those two are only consistent if every
+// overflow tab comes after every primary one in the array — and for a while
+// files did not, so desktop read "... itinerary, files, checklists ..." while
+// the phone row read "... itinerary, checklists" with files hidden in More. The
+// same two tabs in opposite relative order depending on the width, which is the
+// kind of thing nobody notices until they use both.
+//
+// Asserted as row-then-menu equals the desktop order, because that equality is
+// the actual claim. The expected list is spelled out rather than imported from
+// trip-tabs.js, for the reason this file spells out its labels: importing the
+// source cannot disagree with it.
+const TAB_ORDER = {
+  en: ["Locations", "Map", "Itinerary", "Checklists", "Files", "Members", "Settings"],
+  de: ["Orte", "Karte", "Reiseplan", "Checklisten", "Dateien", "Mitreisende", "Einstellungen"],
+};
+
+for (const locale of ["en", "de"]) {
+  test.describe(`tab bar order (${locale})`, () => {
+    test.use({ locale });
+
+    test(`reads the same at both widths (${locale})`, async ({ page }) => {
+      await login(page);
+      const trips = await resolveScenarioTrips(page);
+      const expected = TAB_ORDER[locale];
+
+      // Desktop: every tab in the row, none behind More.
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await gotoRoute(page, `/trips/${trips.full}/locations`);
+      const visibleTabs = page.locator(".trip-tabs button[data-tab]:visible");
+      await expect(visibleTabs).toHaveText(expected);
+
+      // Phone: the row plus the More menu, concatenated, must be the same list.
+      await page.setViewportSize({ width: 324, height: 756 });
+      const row = await page.locator(".trip-tabs button[data-tab]:visible").allTextContents();
+      await page.locator(".trip-tabs__more-slot .menu__trigger").click();
+      const more = await page.locator('.trip-tabs__more-slot [role="menuitemradio"]').allTextContents();
+      const mobileOrder = [...row, ...more].map((s) => s.trim());
+      expect(mobileOrder, "phone row + More menu should read in the desktop order").toEqual(expected);
+
+      // And the part that was asked for by name: checklists before files.
+      expect(mobileOrder.indexOf(expected[3])).toBeLessThan(mobileOrder.indexOf(expected[4]));
+    });
+  });
+}
+
 // The header's user menu, third mode of the same component: one action item
 // like the file row above, but with a pinned label and an avatar in the
 // trigger (Stage 12 Milestone 1 folded it onto menu.js; before that it was a

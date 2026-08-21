@@ -1300,6 +1300,66 @@ which after eight milestones is the largest coverage gap in the tree.
 
 ---
 
+**Done.** Two new specs, a second saved session, and a bug the user reported
+alongside the milestone.
+
+*A second storage state, not a second login.* `auth.setup.js` now saves sessions
+for both seeded users, and `openAs(browser, stateFile, viewport)` opens a context
+as somebody else. Login is limited to 10/min/IP, so a spec that switched users by
+logging in would spend that budget on plumbing.
+
+*`sharing.spec.js`* drives the whole arc through the real UI at 324×756 in both
+locales: an unknown username showing its own error rather than a generic one,
+adding a viewer, that viewer's app being read-only across four tabs, promotion
+opening it back up, and leaving — ending with the trip 404 to them and absent
+from their trips list. Isolated like `files.spec.js`: its own trip with its own
+location and checklist, created in `beforeEach` and deleted in `afterEach`, so
+the seeded memberships other specs depend on are untouched. It seeds content on
+purpose, because zero controls on an empty page proves nothing — the trap
+Milestone 4 walked into.
+
+*`unauthenticated.spec.js`* covers the login screen, which no spec had ever
+rendered: overflow, a single non-empty `h1`, an accessible name on every control,
+the 44px floor at phone width, no register link while signup is closed, and a
+refused login reporting through `role="alert"` without leaking whether the
+account exists. That closes the `todo.md` entry that had been open since Stage 10.
+The refusal test sits outside the viewport loop deliberately — each run of it
+spends a real login attempt, and nothing about a refused login varies with width.
+
+**The tab order bug the user reported.** Desktop showed
+"… itinerary, files, checklists …" while the phone row showed
+"… itinerary, checklists" with files behind More: the same two tabs in opposite
+relative order depending on width. Cause: `TRIP_TABS` is both the desktop order
+*and* the source of the primary/overflow split, so an overflow tab sitting before
+a primary one makes the two disagree. Fixed by moving `checklists` ahead of
+`files` — which is also the order asked for — and the array now keeps every
+overflow tab after every primary one, with a comment saying that is the invariant
+rather than a coincidence. Pinned by a new spec asserting row-plus-More equals the
+desktop order in both locales; putting files back in front makes it fail.
+
+**Two things found on the way, both worse than the bug being fixed.**
+
+*`make dev-reset` had been broken since Milestone 8.* The seeder creates
+checklists and files without a visibility, and the store passes params straight
+through, so it inserted the empty string and hit the new CHECK constraint —
+"scenario full: CHECK constraint failed". Milestone 8 was committed without
+re-running the seeder, which is exactly the kind of thing its own verification
+should have caught. Both call sites now set visibility and owner explicitly.
+
+*A cross-spec collision that only appeared in a full run.* `settings.spec.js`
+changes a password, which deletes every session that account holds — and it used
+the `other` account, for which `sharing.spec.js` now holds a saved session. Both
+specs passed alone and failed together. Fixed by seeding a third account,
+`pwtest`, whose only job is to be broken and repaired: no trips, no memberships.
+This file already carried a comment about the same hazard discovered from the
+opposite direction (a German settings test that had been logged out mid-run by
+the password test), so the rule is now stated once, plainly: whichever account
+the password test touches must not be one another spec needs a live session for.
+
+**Verified.** `make ci` green; the suite is 76 specs, up from 61, all passing.
+The tab order was also measured directly in the browser at both widths before the
+spec was written, and the new order spec was break-checked by reverting the array.
+
 ## 10. Sweep-up
 
 Re-run everything: `make ci`, the full Playwright suite, `tests/ui/contrast.js`,

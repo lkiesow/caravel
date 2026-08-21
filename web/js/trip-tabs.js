@@ -8,9 +8,13 @@
 // narrow screens. Six labels do not fit a phone: at 324px each cell is 49px
 // while the longest label overruns it (measured at 60px back when this tab
 // still read "Documents"; "Einstellungen" is worse), so labels overran their
-// cells and collided. Files and Settings are the two that go, being the least
-// frequently used of the six - the four that stay are the ones you move
-// between while actually planning.
+// cells and collided. Files, Members and Settings are the three that go, being
+// the least frequently used - the four that stay are the ones you move between
+// while actually planning. (Members joined them in Stage 14 Milestone 3: seven
+// tabs never fit a phone row, so a new tab has no realistic choice but
+// `overflow`. This sentence said "the two that go" until Milestone 9, because
+// the Milestone 3 edit that should have updated it was a scripted replace with
+// no assertion and silently matched nothing.)
 //
 // The split is deliberately for the whole `max-width: 640px` range rather
 // than some narrower "small phone" cutoff, because the width six tabs need
@@ -20,12 +24,21 @@
 // so a threshold tuned to English would break German on exactly the devices it
 // was meant to help. Reusing the existing mobile breakpoint keeps one phone
 // layout, correct in both locales, instead of a third variant to maintain.
+// Order matters twice over, and getting it wrong is visible: this array is the
+// order the desktop bar shows *and* the order the phone splits into a row of
+// four plus a More menu. Files used to sit between itinerary and checklists
+// while being an overflow tab, so desktop read "... itinerary, files,
+// checklists ..." while the phone row read "... itinerary, checklists" with
+// files hidden in More — the same two tabs in opposite relative order depending
+// on the width. Keeping every overflow tab after every primary one makes the
+// two agree by construction, so a future tab should be inserted with that in
+// mind rather than wherever it reads best in this list.
 export const TRIP_TABS = [
   { key: "locations", icon: "map-pin" },
   { key: "map", icon: "map" },
   { key: "itinerary", icon: "calendar" },
-  { key: "files", icon: "file-text", overflow: true },
   { key: "checklists", icon: "list-checks" },
+  { key: "files", icon: "file-text", overflow: true },
   { key: "members", icon: "users", overflow: true },
   { key: "settings", icon: "settings", overflow: true },
 ];

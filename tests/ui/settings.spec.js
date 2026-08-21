@@ -10,7 +10,7 @@
 // screenshots: "the background actually changed" is the claim, and a matching
 // screenshot would prove it only for as long as nobody regenerates it.
 import { test, expect } from "@playwright/test";
-import { login, gotoRoute, resolveScenarioTrips, OTHER_USER } from "./helpers/scenarios.js";
+import { login, gotoRoute, resolveScenarioTrips, PASSWORD_USER } from "./helpers/scenarios.js";
 
 const STORAGE_KEY = "caravel.theme";
 
@@ -304,9 +304,18 @@ test.describe("language: back to Auto", () => {
 // Changing a password, end to end (Stage 12 Milestone 5) - a genuinely mutating
 // flow, and the awkward kind: it cannot use the demo user, because the change
 // deletes every session that user has and auth.setup.js's shared session state
-// is one of them. So it drives the *other* seeded account and puts its password
-// back afterwards, the same "leave the seed as you found it" contract
-// files.spec.js keeps by deleting the trip it created.
+// is one of them. It puts the password back afterwards, the same "leave the seed
+// as you found it" contract files.spec.js keeps by deleting the trip it created.
+//
+// It drives a *dedicated* account (PASSWORD_USER, seeded as `pwtest`) rather
+// than the `other` account it used until Stage 14 Milestone 9. The rule the two
+// halves of this file already discovered from opposite directions: whichever
+// account this test touches loses every session it holds, so it must not be an
+// account another spec needs a live session for. `other` became exactly that
+// when sharing.spec.js started holding a saved session for it, and the full
+// suite failed while both specs passed alone. A named account whose only job is
+// to be broken and repaired removes the class of problem rather than the
+// instance.
 const TEMP_PASSWORD = "temporary-password-1";
 
 // Whether the test got as far as actually changing the password, so afterEach
@@ -323,7 +332,7 @@ let leftTempPassword = false;
 // login form - the form is not what is under test here.
 async function loginAs(page, password) {
   const res = await page.request.post("/api/auth/login", {
-    data: { username: OTHER_USER.username, password },
+    data: { username: PASSWORD_USER.username, password },
   });
   return res.status();
 }
@@ -342,14 +351,14 @@ test.describe("password change", () => {
 
     expect(
       await loginAs(page, TEMP_PASSWORD),
-      `${OTHER_USER.username} should still be on this spec's temporary password — run \`make dev-seed\``
+      `${PASSWORD_USER.username} should still be on this spec's temporary password — run \`make dev-seed\``
     ).toBe(200);
     const res = await page.request.post("/api/auth/password", {
-      data: { current_password: TEMP_PASSWORD, new_password: OTHER_USER.password },
+      data: { current_password: TEMP_PASSWORD, new_password: PASSWORD_USER.password },
     });
     expect(
       res.status(),
-      `could not restore the seeded password for ${OTHER_USER.username} (HTTP ${res.status()}) — run \`make dev-seed\``
+      `could not restore the seeded password for ${PASSWORD_USER.username} (HTTP ${res.status()}) — run \`make dev-seed\``
     ).toBe(200);
     leftTempPassword = false;
   });
@@ -358,7 +367,7 @@ test.describe("password change", () => {
     page,
     browser,
   }) => {
-    await login(page, OTHER_USER);
+    await login(page, PASSWORD_USER);
     await gotoRoute(page, "/settings");
 
     // A second device for the same account, to prove the change reaches it.
@@ -367,7 +376,7 @@ test.describe("password change", () => {
     expect(
       (
         await otherPage.request.post("/api/auth/login", {
-          data: { username: OTHER_USER.username, password: OTHER_USER.password },
+          data: { username: PASSWORD_USER.username, password: PASSWORD_USER.password },
         })
       ).status()
     ).toBe(200);
@@ -380,7 +389,7 @@ test.describe("password change", () => {
     const success = page.locator(".password-form__success");
 
     // 1. Mistyped confirmation: caught client-side, nothing sent.
-    await form.locator('input[name="current"]').fill(OTHER_USER.password);
+    await form.locator('input[name="current"]').fill(PASSWORD_USER.password);
     await form.locator('input[name="next"]').fill(TEMP_PASSWORD);
     await form.locator('input[name="confirm"]').fill("something-else-entirely");
     await form.locator('button[type="submit"]').click();
@@ -408,7 +417,7 @@ test.describe("password change", () => {
     // login attempts against the limiter.
 
     // 4. The real thing.
-    await form.locator('input[name="current"]').fill(OTHER_USER.password);
+    await form.locator('input[name="current"]').fill(PASSWORD_USER.password);
     await form.locator('input[name="next"]').fill(TEMP_PASSWORD);
     await form.locator('input[name="confirm"]').fill(TEMP_PASSWORD);
     await form.locator('button[type="submit"]').click();
@@ -429,7 +438,7 @@ test.describe("password change", () => {
 
     // The old password is gone. That the new one works is asserted by
     // afterEach, which has to log in with it anyway to put the seed back.
-    expect(await loginAs(page, OTHER_USER.password)).toBe(401);
+    expect(await loginAs(page, PASSWORD_USER.password)).toBe(401);
   });
 });
 
@@ -447,13 +456,13 @@ test.describe("settings in German at 324px", () => {
   test("neither overflows nor shrinks a control below the tap floor", async ({ page }) => {
     // The demo user, deliberately, and it must stay that way. This test wants
     // nothing more than an account whose /settings shows all three cards, and
-    // the password card only needs has_password - which demo has. Using
-    // OTHER_USER instead put it in a race with the password-change test above:
-    // that test deletes every session `other` has, so whenever the two
-    // overlapped this one was silently logged out mid-test and asserted
+    // the password card only needs has_password - which demo has. Using the
+    // password-change account instead put it in a race with that test above:
+    // changing a password deletes every session the account holds, so whenever
+    // the two overlapped this one was silently logged out mid-test and asserted
     // against the login page ("Anmelden", not "Kontoeinstellungen"). Sharing
-    // auth.setup.js's session also spends no login attempts against the
-    // rate limiter.
+    // auth.setup.js's session also spends no login attempts against the rate
+    // limiter.
     await login(page);
     await gotoRoute(page, "/settings");
     await expect(page.locator("h1")).toHaveText("Kontoeinstellungen");

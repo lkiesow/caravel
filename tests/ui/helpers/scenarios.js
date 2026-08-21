@@ -9,10 +9,20 @@ import { expect } from "@playwright/test";
 
 export const DEMO_USER = { username: "demo", password: "demo1234" };
 export const OTHER_USER = { username: "other", password: "other1234" };
+// The account settings.spec.js is allowed to break: changing a password deletes
+// every session that account holds, so the spec that does it must not share an
+// account with a spec that holds a saved session (sharing.spec.js holds one for
+// OTHER_USER). Kept deliberately free of trips and memberships.
+export const PASSWORD_USER = { username: "pwtest", password: "pwtest1234" };
 
 // Where auth.setup.js parks the demo user's session for the rest of the run.
 // Gitignored: it holds a live session token, and it is regenerated every run.
 export const AUTH_STATE_FILE = "tests/ui/.auth/demo.json";
+// A second saved session, for the specs that need two people looking at the
+// same trip (Stage 14 Milestone 9). Saved once per run for the same reason the
+// first one is: login is limited to 10/min/IP, and a spec that switched users by
+// logging in would spend that budget on plumbing.
+export const OTHER_AUTH_STATE_FILE = "tests/ui/.auth/other.json";
 
 // Scenario name -> seeded trip title (cmd/seed/main.go's titlePrefix + title).
 export const SCENARIO_TITLES = {
@@ -25,7 +35,7 @@ export const SCENARIO_TITLES = {
   cascade: "Demo: Delete Me (Cascade)",
 };
 
-export const TRIP_TABS = ["locations", "map", "itinerary", "files", "checklists", "members", "settings"];
+export const TRIP_TABS = ["locations", "map", "itinerary", "checklists", "files", "members", "settings"];
 
 export const VIEWPORTS = [
   { name: "desktop", width: 1280, height: 800 },
@@ -118,6 +128,24 @@ export async function login(page, user = DEMO_USER) {
   }
 
   await page.goto("/");
+}
+
+// Opens a second browser context as another user, from their saved session.
+//
+// For the specs where the point *is* that two people see different things: one
+// page stays the suite's usual demo session and this one is somebody else,
+// looking at the same trip at the same time. Costs no login — the session comes
+// from auth.setup.js — and the caller closes the context when done.
+//
+// Applies the same two page-level hooks login() does, since a second page needs
+// the fetch tracker for gotoRoute and the external-request block for map tiles
+// just as much as the first.
+export async function openAs(browser, storageStateFile, viewport) {
+  const context = await browser.newContext(viewport ? { storageState: storageStateFile, viewport } : { storageState: storageStateFile });
+  const page = await context.newPage();
+  await installFetchTracker(page);
+  await blockExternalRequests(page);
+  return { context, page };
 }
 
 export async function fetchTrips(page) {

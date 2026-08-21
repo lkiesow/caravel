@@ -32,16 +32,31 @@ import { renderLoading } from "./loading.js";
 // brand-new location can carry files, then uploads them itself once
 // the item ID exists - a multipart upload can't be part of the JSON create
 // request, so post-create is the only option regardless (see todo.md).
-// Visibility (Stage 14 Milestone 7): pass `shared: true` when the trip has
-// somebody else on it. That turns on the per-file personal/trip choice — a
-// selector on the drop zone for new uploads and a radio group in each row's own
-// menu afterwards. Left off, nothing about visibility is rendered at all: on a
-// solo trip the distinction cannot mean anything, and offering it would be
-// asking a question with only one possible answer.
+// Visibility (Stage 14 Milestone 7, reworked in its follow-up): pass
+// `shared: true` when the trip has somebody else on it. Left off, nothing about
+// visibility is rendered at all — on a solo trip the distinction cannot mean
+// anything, and offering it would be asking a question with one possible answer.
+//
+// When it *is* on, the list splits into two labelled groups: files everyone on
+// the trip can see, and files only you can. The grouping is what tells you which
+// is which, so no row carries a visibility marker and no menu carries a
+// visibility *state*. Each row's menu instead offers the one move available to
+// it — "make this visible to only me" for a shared file, "make this visible to
+// everyone" for a private one.
+//
+// The first version of this did the opposite: one flat list, a lock badge per
+// personal row, and a radio group in each menu. Two things were wrong with it.
+// Finding your own document meant reading down a list of everyone's, which is
+// the thing sections fix. And passing `activeValue` to renderMenu makes the
+// trigger echo the selected item, so every row's ⋮ was labelled "Everyone on the
+// trip" — the same mistake as the members row in Milestone 3, whose menu was
+// labelled with its own role. A per-row ⋮ should say nothing.
 //
 // The value still travels on every upload either way; the server defaults it,
 // and a trip that later gains a member finds its existing files already
 // trip-visible.
+let sectionSeq = 0;
+
 export async function renderFileList(container, path, { staged, rows: given, readOnly = false, shared = false } = {}) {
   const isStaging = !path;
   // The visibility a new upload gets, remembered across a batch and across the
@@ -80,7 +95,7 @@ export async function renderFileList(container, path, { staged, rows: given, rea
     container.innerHTML = `
       <div class="file-list">
         <p class="file-list__summary" hidden></p>
-        <ul class="files"></ul>
+        <div class="file-sections"></div>
         <p class="file-list-empty" data-i18n="files.empty" hidden></p>
         ${
           readOnly
@@ -121,7 +136,7 @@ export async function renderFileList(container, path, { staged, rows: given, rea
     `;
     translatePage(container);
 
-    const list = container.querySelector(".files");
+    const sections = container.querySelector(".file-sections");
     const emptyState = container.querySelector(".file-list-empty");
     const rows = isStaging ? staged : files;
     emptyState.hidden = rows.length > 0;
@@ -137,7 +152,38 @@ export async function renderFileList(container, path, { staged, rows: given, rea
       summary.textContent = t("files.summary", { total: formatBytes(total) }, rows.length);
     }
 
-    rows.forEach((row, i) => {
+    // Grouped only when the trip is shared. Indices are carried along because
+    // staging mode addresses rows by position in `staged`, and grouping would
+    // otherwise renumber them.
+    const indexed = rows.map((row, i) => ({ row, i }));
+    const visibilityOf = (row) => (isStaging ? row.visibility || "trip" : row.visibility);
+    const groups = shared
+      ? [
+          { key: "trip", titleKey: "files.visibility.trip", entries: indexed.filter((e) => visibilityOf(e.row) === "trip") },
+          { key: "personal", titleKey: "files.personal", entries: indexed.filter((e) => visibilityOf(e.row) === "personal") },
+        ].filter((g) => g.entries.length > 0)
+      : [{ key: null, titleKey: null, entries: indexed }];
+
+    groups.forEach((group) => {
+      const wrapper = document.createElement("div");
+      wrapper.className = "file-section";
+      wrapper.dataset.visibility = group.key || "";
+      // A label rather than a heading: this is a grouping inside one card, not
+      // a new section of the document, and inserting an h3 under a tab whose
+      // only heading is the page h1 would put a hole in the outline that
+      // headings.spec.js is right to object to. aria-labelledby gives the list
+      // the same name a heading would have.
+      const titleId = `file-section-${group.key || "all"}-${sectionSeq++}`;
+      wrapper.innerHTML = group.titleKey
+        ? `<p class="file-section__title" id="${titleId}">${escapeHtml(t(group.titleKey))}</p>
+           <ul class="files" aria-labelledby="${titleId}"></ul>`
+        : `<ul class="files"></ul>`;
+      sections.appendChild(wrapper);
+      const list = wrapper.querySelector(".files");
+      group.entries.forEach(({ row, i }) => renderRow(list, row, i));
+    });
+
+    function renderRow(list, row, i) {
       // One view model for both modes: a staged pick is a File object
       // (name/size/type and nothing else), an uploaded one is an API row, and
       // every difference between them belongs here rather than in two copies
@@ -173,14 +219,12 @@ export async function renderFileList(container, path, { staged, rows: given, rea
       //   desktop: [filename or "No note" · location]  (size is the column)
       // So "No note" needs no separator of its own - it is only ever first -
       // while the location's is desktop-only, hidden where the location wraps.
-      // A personal file says so, with a lock. Only rendered when the trip is
-      // shared: on a solo trip every file is trip-visible and a badge saying so
-      // on every row would be noise.
-      const personal = shared && view.visibility === "personal";
+      // No visibility marker on the row: it lives in a labelled group that
+      // already says which kind it is, and repeating that per row was noise in
+      // a list that is mostly filenames.
       const metaTail =
         (view.note ? "" : `<span class="file-card__nonote">${escapeHtml(t("files.noNote"))}</span>`) +
-        (view.itemTitle ? `${sep("source")}<span class="file-card__source">${escapeHtml(view.itemTitle)}</span>` : "") +
-        (personal ? `${sep("visibility")}<span class="file-card__personal">${icon("lock", { className: "file-card__lock" })}${escapeHtml(t("files.personal"))}</span>` : "");
+        (view.itemTitle ? `${sep("source")}<span class="file-card__source">${escapeHtml(view.itemTitle)}</span>` : "");
 
       const body = `
         <span class="file-card__tile">${icon(tileIconName(view.contentType))}</span>
@@ -220,30 +264,33 @@ export async function renderFileList(container, path, { staged, rows: given, rea
         chevron: false,
         triggerClass: "file-actions__trigger",
         ariaLabel: "files.actions",
-        // Radio items and action items in one menu, which renderMenu supports:
-        // visibility is a state the file is in, the other two are things the
-        // menu does. The radio group appears only for the uploader's own files
-        // on a shared trip — an editor may rename or delete a shared file, but
-        // who reads someone else's document is not theirs to decide, and the
-        // server refuses it too.
-        activeValue: view.visibility,
+        // Every item here is an action, which is what keeps the trigger silent:
+        // renderMenu echoes the *selected* item when given an activeValue, so a
+        // menu holding a selection cannot also have a label-less trigger.
+        //
+        // Visibility appears as the one move available to this file rather than
+        // as a pair of states — the group it sits in already says which state
+        // that is. Offered only for the uploader's own files: an editor may
+        // rename or delete a shared file, but who reads someone else's document
+        // is not theirs to decide, and the server refuses it too.
         items: [
           ...(shared && view.isMine
             ? [
-                { value: "trip", label: t("files.visibility.trip"), iconName: "users" },
-                { value: "personal", label: t("files.visibility.personal"), iconName: "lock" },
+                view.visibility === "personal"
+                  ? { value: "share", label: t("files.makeShared"), iconName: "users", action: true }
+                  : { value: "hide", label: t("files.makePersonal"), iconName: "lock", action: true },
               ]
             : []),
           { value: "note", label: t("files.editNote"), iconName: "pencil", action: true },
           { value: "delete", label: t(isStaging ? "common.remove" : "common.delete"), iconName: "trash-2", action: true, danger: true },
         ],
         onSelect: async (action) => {
-          if (action === "trip" || action === "personal") {
-            if (action === view.visibility) return;
+          if (action === "share" || action === "hide") {
+            const next = action === "share" ? "trip" : "personal";
             if (isStaging) {
-              staged[i].visibility = action;
+              staged[i].visibility = next;
             } else {
-              const updated = await api.put(`/files/${row.id}/visibility`, { visibility: action });
+              const updated = await api.put(`/files/${row.id}/visibility`, { visibility: next });
               files = files.map((f) => (f.id === updated.id ? updated : f));
             }
             render();
@@ -280,7 +327,7 @@ export async function renderFileList(container, path, { staged, rows: given, rea
         },
       });
       list.appendChild(li);
-    });
+    }
 
     // Read-only mode stops here: no add row, so nothing below this line has a
     // node to bind to.

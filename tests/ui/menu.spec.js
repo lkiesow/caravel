@@ -143,12 +143,26 @@ const FILE_MENU_LABELS = {
   de: { actions: "Dateiaktionen", items: ["Notiz bearbeiten", "Löschen"] },
 };
 
-// The same row menu on a *shared* trip, where the uploader can also choose who
-// sees the file. Radio items and action items in one popup is a shape menu.js
-// supports and nothing else exercised until now.
+// The same row menu on a *shared* trip, where the list is grouped by visibility
+// and the uploader's own rows offer the one move available to them.
+//
+// The menu deliberately holds no *state*: an earlier version put a
+// personal/trip radio group here, which made renderMenu echo the selection onto
+// the trigger — every row's ⋮ read "Everyone on the trip". Asserting the trigger
+// is silent is what pins that.
 const FILE_VISIBILITY_LABELS = {
-  en: { radios: ["Everyone on the trip", "Only me"], actions: ["Edit note", "Delete"] },
-  de: { radios: ["Alle auf der Reise", "Nur ich"], actions: ["Notiz bearbeiten", "Löschen"] },
+  en: {
+    sections: ["Everyone on the trip", "Only you"],
+    uploadChoices: ["Everyone on the trip", "Only me"],
+    ownShared: ["Make visible to only me", "Edit note", "Delete"],
+    othersShared: ["Edit note", "Delete"],
+  },
+  de: {
+    sections: ["Alle auf der Reise", "Nur du"],
+    uploadChoices: ["Alle auf der Reise", "Nur ich"],
+    ownShared: ["Nur für mich sichtbar machen", "Notiz bearbeiten", "Löschen"],
+    othersShared: ["Notiz bearbeiten", "Löschen"],
+  },
 };
 
 for (const locale of ["en", "de"]) {
@@ -170,9 +184,11 @@ for (const locale of ["en", "de"]) {
       ).toHaveCount(2);
 
       // No visibility UI at all on a solo trip: personal versus trip-visible is
-      // a question with one possible answer there.
+      // a question with one possible answer there. One unlabelled group, no
+      // upload selector, and no section titles.
       await expect(page.locator(".file-visibility")).toHaveCount(0);
-      await expect(page.locator(".file-card__personal")).toHaveCount(0);
+      await expect(page.locator(".file-section__title")).toHaveCount(0);
+      await expect(page.locator(".file-section")).toHaveCount(1);
 
       const trigger = rows.first().locator(".menu__trigger");
       const dropdown = rows.first().locator(".menu__dropdown");
@@ -218,7 +234,7 @@ for (const locale of ["en", "de"]) {
   test.describe(`file row menu on a shared trip (${locale})`, () => {
     test.use({ viewport: MOBILE, locale });
 
-    test(`mixes a visibility selection with the actions (${locale})`, async ({ page }) => {
+    test(`groups by visibility and offers the move as an action (${locale})`, async ({ page }) => {
       await login(page);
       const trips = await resolveScenarioTrips(page);
       await gotoRoute(page, `/trips/${trips.full}/files`);
@@ -227,20 +243,36 @@ for (const locale of ["en", "de"]) {
       // The drop zone carries the choice for whatever is uploaded next, since
       // it is made before the file is sent rather than after.
       const choices = page.locator(".file-visibility .setting-choice span");
-      await expect(choices).toHaveText(copy.radios);
+      await expect(choices).toHaveText(copy.uploadChoices);
       // Trip-visible by default, deliberately — see stage-14.md.
       await expect(page.locator('.file-visibility input[value="trip"]')).toBeChecked();
 
+      // The seed puts two trip-visible files on this trip and no personal ones,
+      // so only the first group renders — an empty group shows no bare heading.
+      const sections = page.locator(".file-section");
+      await expect(sections).toHaveCount(1);
+      await expect(sections.first().locator(".file-section__title")).toHaveText(copy.sections[0]);
+      // The list takes its name from that label rather than from a heading,
+      // which would have put a hole in the page's outline.
+      const labelId = await sections.first().locator(".file-section__title").getAttribute("id");
+      await expect(sections.first().locator(".files")).toHaveAttribute("aria-labelledby", labelId);
+
       const row = page.locator(".files > li").first();
-      await row.locator(".menu__trigger").click();
+      const trigger = row.locator(".menu__trigger");
+      await trigger.click();
       const dropdown = row.locator(".menu__dropdown");
       await expect(dropdown).toBeVisible();
 
-      // Both kinds in one popup: two radios carrying the current state, then
-      // the two actions. Exactly one radio is checked.
-      await expect(dropdown.locator('[role="menuitemradio"]')).toHaveText(copy.radios);
-      await expect(dropdown.locator('[role="menuitem"]')).toHaveText(copy.actions);
-      await expect(dropdown.locator('[role="menuitemradio"][aria-checked="true"]')).toHaveCount(1);
+      // The trigger says nothing. This is the assertion that would have caught
+      // the radio-group version, whose trigger echoed the selected visibility.
+      await expect(row.locator(".menu__label")).toHaveText("");
+      await expect(dropdown.locator('[role="menuitemradio"]')).toHaveCount(0);
+      await expect(dropdown.locator("[aria-checked]")).toHaveCount(0);
+
+      // These files belong to the seeded demo user, who the suite runs as, so
+      // the move is offered. A file someone else uploaded would show only the
+      // two actions — the server refuses that change too.
+      await expect(dropdown.locator('[role="menuitem"]')).toHaveText(copy.ownShared);
 
       // Nothing is clicked: changing a visibility would mutate the shared seed,
       // which this spec has no isolation for. The Go tests cover the effect.

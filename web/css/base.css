@@ -2162,26 +2162,32 @@ button {
 }
 
 /* ---------------------------------------------------------------------------
-   File visibility (Stage 14 Milestone 7)
+   File visibility (Stage 14 Milestone 7, reworked in its follow-up)
 
-   A personal file is marked in the row's meta line rather than badged like the
-   admin flag: the meta line is already where a file's secondary facts live, and
-   a pill per row would compete with the filename in a list that is mostly
-   filenames. Muted like its neighbours, with a lock so it reads at a glance
-   without depending on the word.
+   Files split into two labelled groups on a shared trip — everyone's, and
+   yours. The grouping is the whole signal: there is no per-row marker, because
+   finding your own document by scanning a mixed list for lock icons is the
+   problem the groups exist to solve.
+
+   The label is a paragraph, not a heading. This is a grouping inside one card
+   rather than a section of the document, and an h3 under a tab whose only
+   heading is the page h1 would put a hole in the outline; the list carries
+   aria-labelledby instead, so it has the name a heading would have given it.
    --------------------------------------------------------------------------- */
 
-.file-card__personal {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  flex: none;
-  color: var(--color-text-muted);
+.file-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 }
 
-.file-card__lock {
-  width: 0.875em;
-  height: 0.875em;
+.file-section__title {
+  margin: 0 0 0.5rem;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 /* The choice for *new* uploads, under the drop zone: it applies to whatever is
@@ -2208,23 +2214,12 @@ button {
     flex-basis: 100%;
   }
 
-  /* The marker takes its own line, for the same reason .file-card__source does
-     at this width: the meta line already carries the size and the filename, and
-     a third item wrapping mid-phrase behind a separator strands the dot.
-     Its separator goes with it.
-
-     These live *here* rather than in the stylesheet's central mobile block,
-     which is where they were first written — and lost, silently. That block
-     appears earlier in the file than .file-card__personal's base rule below,
-     so at equal specificity the base rule won and flex-basis stayed auto. A
-     feature's mobile rules belong after its own base rules. */
-  .file-card__personal {
-    flex-basis: 100%;
-  }
-
-  .file-card__sep--visibility {
-    display: none;
-  }
+  /* Note for whatever is added next: put a feature's mobile rules *here*,
+     after its own base rules, not in the stylesheet's central mobile block
+     further up. Stage 14 Milestone 7 wrote a rule there and lost it silently —
+     that block appears earlier in the file than these sections do, so at equal
+     specificity the later base rule won and the media query did nothing. The
+     page looked fine; only reading the computed value showed it. */
 }
 
 /* ---------------------------------------------------------------------------

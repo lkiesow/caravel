@@ -1066,6 +1066,56 @@ shape the Members and Admin sections already use, with a comment saying why.
 
 ---
 
+## 7a. Milestone 7 follow-up: group by visibility instead of labelling each row
+
+Two pieces of review feedback, and the first was a bug I had already fixed once.
+
+**The row menu's trigger was labelled with a visibility.** Passing `activeValue`
+to `renderMenu` makes the trigger echo the selected item, so every ⋮ on the Files
+tab read "Everyone on the trip" — and then opened a menu containing Edit note and
+Delete, which that label did not describe. This is exactly the mistake Milestone
+3's follow-up fixed for the members row, whose ⋮ was labelled with its own role.
+The lesson generalises and is worth stating plainly: **a menu that holds a
+selection cannot also have a silent trigger.** A per-row ⋮ should say nothing, so
+it must contain only actions.
+
+**Finding your own file meant scanning everyone's.** A lock badge per personal
+row put the burden in the wrong place — you had to read down a mixed list looking
+for markers. The list now splits into two labelled groups on a shared trip:
+"Everyone on the trip" and "Only you". The grouping *is* the signal, so:
+
+- No per-row visibility marker at all. `.file-card__personal` and the lock icon
+  are gone, along with their separator handling.
+- No visibility state in the menu. Each row instead offers the single move
+  available to it — "Make visible to only me" for a shared file, "Make visible to
+  everyone" for a private one — as a plain action, which is what keeps the
+  trigger silent.
+- An empty group renders nothing rather than a bare heading, and a solo trip
+  still renders one unlabelled list.
+
+The group label is a paragraph with `aria-labelledby` on the list, not a heading:
+this is a grouping inside one card rather than a section of the document, and an
+`h3` under a tab whose only heading is the page `h1` would put a hole in the
+outline that `headings.spec.js` is right to object to.
+
+The drop zone keeps its selector, since where an upload lands is a choice made
+before it is sent.
+
+**Verified.** `make ci` green (249 keys, no unused); full Playwright suite
+passing. Measured in the browser at 1280 and 324×756: two groups titled
+"Everyone on the trip" and "Only you", each list named by its own label; zero
+lock markers anywhere; the trigger's label empty with `aria-label` "File
+actions"; a shared file of my own offering "Make visible to only me" and a
+personal one "Make visible to everyone", with the row genuinely moving between
+groups in both directions and the server agreeing; a file someone else uploaded
+offering only Edit note and Delete; an emptied group disappearing rather than
+showing a bare heading; and in German "Alle auf der Reise" / "Nur du" with 44px
+menu items and no overflow.
+
+`menu.spec.js`'s shared-trip spec was rewritten with the assertion that would
+have caught the original bug — that `.menu__label` is empty and no `aria-checked`
+exists in the dropdown — plus the grouping and the `aria-labelledby` wiring.
+
 ## 8. Checklist visibility
 
 Same shape, three states.

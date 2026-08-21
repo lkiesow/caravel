@@ -237,6 +237,8 @@
   "files.visibility.label": "Who can see new uploads",
   "files.visibility.trip": "Everyone on the trip",
   "files.visibility.personal": "Only me",
+  "files.makePersonal": "Make visible to only me",
+  "files.makeShared": "Make visible to everyone",
   "files.summary": "{count} file · {total}",
   "files.summary_plural": "{count} files · {total}",
   "checklists.add": "New checklist",

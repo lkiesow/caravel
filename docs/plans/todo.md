@@ -120,6 +120,19 @@ Direction already agreed or obviously wanted; none of it built.
 - **A trip journal with photos.** (Stage 01.) A `journal_entries` table
   (trip_id, date, body markdown) reusing the existing `media_assets` pipeline
   for photos.
+- **Better Google Maps interoperability.** (From the user's notes.) Two halves.
+  *Inbound:* pasting a shortened Google Maps link such as
+  `https://maps.app.goo.gl/xfB9TzpFos2N4oAW8` into a location should resolve to
+  coordinates — which means following the redirect server-side (the short form
+  carries nothing parseable) and pulling lat/lng out of the expanded URL, so it
+  wants the same proxy-and-limiter treatment `/api/geocode` got in Stage 13
+  Milestone 5. *Outbound:* the popup's and the location view's "View on Google
+  Maps" links are a `?q=lat,lng` **search**, not the place itself, so they land
+  on a dropped pin rather than on the hotel's own Google entry with its hours
+  and reviews. Linking the actual place needs a place ID, which Caravel does
+  not have and cannot get from OSM — so this half is blocked on either storing
+  a user-pasted Google URL per location or accepting the search link as good
+  enough.
 
 ---
 
@@ -170,6 +183,21 @@ together rather than bolting a column onto an existing table.
   visibility column plus a predicate in `ListTripFiles`/`ListItemFiles`.
   The interesting parts are who counts as the owner of a file and what a public
   share link (see above) is allowed to expose.
+- **Administrative tooling.** (From the user's notes.) Real multi-user use
+  needs accounts to be manageable, which today they are not: registration is
+  open by default (`CARAVEL_OPEN_SIGNUP`, `internal/config/config.go`) and
+  never closes, and there is no notion of an administrator anywhere in
+  `internal/`, `cmd/` or `web/`. Wanted:
+    - **Open registration optional, and off by default** once the first user
+      has registered or an OIDC provider is configured — the first account
+      bootstraps the instance, everyone after that is created deliberately.
+    - **An admin flag on users.** Note this is *account* administration, not
+      data access: an admin should get no automatic view of other people's
+      trips, or "personal" anything stops meaning what it says.
+    - **An admin user-management view**: add users, remove users, reset
+      passwords. `auth.SetPassword` (`internal/auth/auth.go`) is already
+      exactly the reset primitive — it skips the current-password check and
+      keeps sessions — and is currently reachable only from the seeder.
 - **Expenses / cost-splitting.** (Stage 01.) A new `expenses` table referencing
   `trip_id` and optionally `item_id`, with no changes to existing tables. The
   *splitting* half only means anything once several people share a trip, which

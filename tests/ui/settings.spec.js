@@ -170,6 +170,45 @@ async function pickLanguage(page, label) {
   await page.locator(`.language-slot .menu__dropdown [role="menuitemradio"]`).filter({ hasText: label }).click();
 }
 
+test.describe("language: the dropdown opens where the trigger is", () => {
+  test("aligns under its trigger rather than at the card's far edge", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await login(page);
+    await gotoRoute(page, "/settings");
+
+    const trigger = languageTrigger(page);
+    const dropdown = page.locator(".language-slot .menu__dropdown");
+    await trigger.click();
+    await expect(dropdown).toBeVisible();
+
+    const t = await trigger.boundingBox();
+    const d = await dropdown.boundingBox();
+
+    // This is the whole bug: `.menu` is a flex child everywhere else in the app
+    // and shrink-wraps, but in a settings card it was a plain block spanning
+    // the card, so `right: 0` put the popup against the card's right edge -
+    // ~800px from the trigger on a wide screen. Left edges within a pixel, and
+    // directly below.
+    expect(Math.abs(d.x - t.x), `dropdown x ${d.x} vs trigger x ${t.x}`).toBeLessThan(2);
+    expect(d.y, "dropdown sits below the trigger").toBeGreaterThanOrEqual(t.y + t.height - 1);
+    expect(d.y - (t.y + t.height), "and close below it").toBeLessThan(12);
+  });
+});
+
+test.describe("settings: a way back out", () => {
+  test("links to the trips list", async ({ page }) => {
+    await login(page);
+    await gotoRoute(page, "/settings");
+
+    // The screen is reached from the header menu, so nothing else on it
+    // navigates anywhere - without this link it was a dead end.
+    const back = page.locator(".settings-page .back-link");
+    await expect(back).toBeVisible();
+    await back.click();
+    await expect(page).toHaveURL("/trips");
+  });
+});
+
 test.describe("language: switching to German", () => {
   // An English browser, so "Automatic" and "English" are two distinct rows that
   // happen to resolve to the same locale - the case the old setLocale's

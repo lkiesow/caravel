@@ -35,6 +35,7 @@
   "common.delete": "Löschen",
   "common.back": "Zurück",
   "common.home": "Start",
+  "common.backToTrips": "Deine Reisen",
   "common.remove": "Entfernen",
   "common.uploadFile": "Datei zum Hochladen auswählen",
   "trips.title": "Deine Reisen",

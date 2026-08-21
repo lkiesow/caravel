@@ -383,6 +383,22 @@ a:visited {
   display: none;
 }
 
+/* The settings screen's dropdown (components/language-field.js). Unlike the
+   app's other menus - all of them flex children, which shrink-wrap - this one
+   sits in a plain block card, so the `.menu` root spanned the whole card and
+   `right: 0` threw the popup against the card's far edge, half a screen from
+   the trigger it belongs to. Two fixes, both needed: shrink the root to its
+   trigger, and align the popup to the trigger's *left*, since that is the edge
+   the trigger is at. */
+.menu--setting {
+  display: inline-block;
+}
+
+.menu--setting .menu__dropdown {
+  left: 0;
+  right: auto;
+}
+
 /* The header sits flush against the dropdown otherwise: the trigger has no
    button border to separate them, so this keeps the gap the user menu had
    before it moved onto this component. */
@@ -1749,6 +1765,7 @@ button {
      the other sitting at its text width. */
   .menu--setting,
   .menu--setting .menu__trigger {
+    display: block;
     width: 100%;
   }
 

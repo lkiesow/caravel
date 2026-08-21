@@ -339,6 +339,28 @@ user menu's items, which live outside the router entirely. With the listener
 removed, that test now fails; the negative check also confirmed the restored
 "already active" guard fails exactly the Auto test.
 
+**Follow-up (checkpoint feedback), two fixes.**
+
+1. *The dropdown opened at the card's far edge on desktop.* `.menu__dropdown` is
+   `right: 0` inside a `position: relative` `.menu`, and every other caller
+   passes it a flex child, which shrink-wraps to its trigger. In a settings card
+   the root was a plain block spanning the whole card, so the popup docked to the
+   card's right edge — measured at x=884 with the trigger at x=193. Fixed in the
+   variant, not the component: `.menu--setting` is `inline-block`, and its
+   dropdown is `left: 0; right: auto` since the trigger sits at the left edge.
+   The ≤640px full-width rule needed `display: block` back for the same reason.
+2. *The screen was a dead end.* It is reached from the header menu, so unlike
+   every trip-scoped view there is no tab bar or trip header around it to
+   navigate back with — the same situation `not-found-page.js` is in, so it now
+   uses the same `.back-link`, pointing at `/trips` ("Your trips" /
+   "Deine Reisen", one new key per locale). An oversight in Milestone 2, not
+   something the plan had deferred.
+
+Verified: `make ci` green (146 keys in sync); `make test-ui` green, 27 tests.
+Two new tests — the dropdown's left edge within a pixel of its trigger's and
+directly below it, and the back link navigating to `/trips`. The first fails on
+the old CSS with exactly the geometry above.
+
 ---
 
 ## 5. Set my password

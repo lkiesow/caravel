@@ -35,6 +35,7 @@
   "common.delete": "Delete",
   "common.back": "Back",
   "common.home": "Home",
+  "common.backToTrips": "Your trips",
   "common.remove": "Remove",
   "common.uploadFile": "Choose a file to upload",
   "trips.title": "Your trips",

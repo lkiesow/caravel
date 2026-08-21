@@ -147,28 +147,54 @@ Not yet decided; each needs a call before it is work.
 - **Federation between self-hosted instances.** (Stage 01.) Real sync-protocol
   design still needed; v1 only avoided the integer-PK and local-only-ID mistakes
   that would have made it harder later.
+- **Is trip-visible the right default for an upload?** (Stage 14 Milestones 7
+  and 10.) A new file defaults to `visibility = trip` and a new checklist to
+  `shared`, with the choice offered at creation time and the control hidden
+  entirely on a solo trip. The argument for it: an invisible privacy default
+  produces "where did my upload go?" rather than safety, and the personal case
+  is announced by its own section in the list rather than a badge you have to
+  notice. The argument against is unchanged and real — the failure mode is
+  asymmetric, since over-sharing a boarding pass cannot be undone by later
+  fixing the default. Deliberately left as-is pending actual use rather than
+  re-argued from first principles; what would settle it is someone sharing a
+  trip and reporting which mistake they actually made.
+- **Per-visibility media assets** (location and trip cover images). Files and
+  checklists carry `owner_user_id` + `visibility` after Stage 14; media assets
+  do not. Probably correct rather than an omission: a trip cover photo is
+  inherently trip-wide, so "personal" has no meaning for it. Worth a second
+  look only if location *galleries* ever hold more than one image per location,
+  where a personal photo would start to make sense.
 
 ---
 
 ## Multi-user and sharing
 
-One cluster: the entries below depend on the first, so they want designing
-together rather than bolting a column onto an existing table.
+Stage 14 built this cluster: roles, membership, per-visibility files and
+checklists, and account administration. The entries left are the ones it
+deliberately left out, and they no longer depend on each other.
 
-- **Sharing / collaboration / permissions.** (Stage 01; the authorization half
-  landed in Stage 14 Milestone 1.) The role model exists: a `trip_members` table
-  (owner deliberately absent, `trips.owner_id` stays authoritative), `db.TripRole`
-  with owner > editor > viewer, and one seam in `internal/httpapi/authz.go` that
-  all 37 trip-scoped handlers go through with an explicit minimum role. What is
-  left after Milestone 4 shipped read-only mode: nothing in the roles themselves.
-  Owner/editor/viewer works end to end — the seam, the trips list, the members
-  API and UI, and a viewer's app that offers no write it cannot perform. What
-  the *cluster* still wants is the visibility work below (Stage 14 Milestones
-  7-8) and, separately, ownership transfer.
+- **Trip ownership transfer.** (Stage 14 Milestone 10.) `trips.owner_id` is the
+  only record of who owns a trip and `trip_members` cannot represent an owner by
+  construction, so a transfer is a single UPDATE plus a members row for the old
+  owner — the schema is ready. What is not decided: what happens to the previous
+  owner (demoted to editor, or removed outright), and what happens to their
+  personal files and checklists on a trip that is no longer theirs. Same question
+  the member-removal dialog answers today, so copy that decision rather than
+  invent a second one.
 - **Public shareable links.** An unauthenticated read-only trip view via a
   token. Needs a `share_links` table (token, trip_id, scope, expires_at) plus an
-  unauthenticated route variant. IDs are already non-guessable UUIDs, so this is
-  low-friction whenever it's picked up.
+  unauthenticated route variant. Cheaper now than when this was written: Stage 14
+  gave every trip-scoped handler a minimum role through one seam
+  (`internal/httpapi/authz.go`), so a link-holder is a synthetic `viewer`
+  resolved from a token instead of a session, and read-only mode already exists
+  in the frontend. The genuinely new part is the token lifecycle, not the
+  authorization. Note that `scope` has to answer the visibility question too: a
+  public link must never expose a `personal` file or checklist, whoever created
+  the link.
+- **Invite links / joining by token.** Adding a member needs their exact
+  username today (Stage 14 Milestone 3), which is fine on a self-hosted instance
+  where you know who you are inviting and worse than it needs to be otherwise.
+  Overlaps the share-link token model above, so the two want doing together.
 - **Expenses / cost-splitting.** (Stage 01.) A new `expenses` table referencing
   `trip_id` and optionally `item_id`, with no changes to existing tables. The
   *splitting* half only means anything once several people share a trip, which
@@ -281,7 +307,14 @@ step with itself.
   added through the same `imaging.DecodeAndResize` path a real upload takes), so
   `.image-field__preview`, `.itinerary-entry__thumb`, the trip card's thumbnail
   and the cover banner are all swept now — and deliberately only on that
-  scenario, so the no-image path stays covered too. What's left is the habit
+  scenario, so the no-image path stays covered too. Stage 14 Milestone 10 asked
+  the same question of the screens that stage added and found the gap again: the
+  `full` scenario seeded only trip-visible files and only `shared` checklists, so
+  the private-files section, its lock badge and the two non-shared checklist
+  states had never been drawn by any sweep. Fixed by seeding one of each — and by
+  making `visibility` a *required* parameter of the seeder's `addFile` and
+  `addChecklist`, so the next visibility-like column cannot be silently
+  defaulted past the sweeps by a new caller. What's left is the habit
   rather than a named gap: an element that only renders when data exists is
   invisible to the sweeps until some scenario creates that data, so anything new
   wants the question "which scenario renders this?" asked of it. The known
@@ -302,7 +335,15 @@ step with itself.
   else. A wrong column order, a dialect-specific NULL or timestamp difference, or
   an adapter that maps the wrong field would ship green. Noticed while changing
   `ListTripFiles` (`ListTripDocuments` at the time) in Stage 10 Milestone 7, but
-  it applies to every query in the app. Cheapest fix that would actually mean something: a CI job with a
+  it applies to every query in the app. **Stage 14 is the strongest argument yet
+  and Milestone 10 is restating it deliberately:** the stage added four migration
+  pairs (`0007`-`0010`) — the largest schema change since `0001` — a new
+  `trip_members` table, `owner_user_id` and `visibility` columns on two existing
+  tables, and new list predicates on every one of them, and *the only evidence
+  the Postgres half of any of it is correct is that it compiles*. Twice in this
+  stage a hand-written adapter silently dropped a field on read in **both**
+  dialects (Milestone 7, a wrong receiver name), which is exactly the class of
+  bug a compile cannot see and only the SQLite tests caught. Cheapest fix that would actually mean something: a CI job with a
   `postgres` service container running `go test ./...` against it, which needs
   the test harness (`newTestServerWithStore`) to take the driver from an env var
   instead of hard-coding `"sqlite"`.
@@ -440,15 +481,17 @@ step with itself.
 Nothing here is needed to keep developing; all of it is needed before anyone
 else runs this.
 
-- **Squash the migrations before the first real release.** There are now
-  **eight** files per dialect (`0001_init` through
-  `0008_add_admin_and_settings`, in both `internal/db/migrations/sqlite/` and
-  `.../postgres/`), and Stage 14 Milestones 7-8 will add two more. Since nobody
-  has deployed this yet, collapsing them into a single `0001_init` is safe — and
-  stops being safe the moment someone has. Worth doing at the end of Stage 14,
-  while it is still only a tidy-up: ten migration pairs of which nine exist
-  purely as history is a lot of files for a schema nobody has ever migrated
-  *from*.
+- **Squash the migrations before the first real release.** There are now **ten**
+  files per dialect (`0001_init` through `0010_add_checklist_visibility`, in both
+  `internal/db/migrations/sqlite/` and `.../postgres/`). Since nobody has
+  deployed this yet, collapsing them into a single `0001_init` is safe — and
+  stops being safe the moment someone has. Ten migration pairs of which nine
+  exist purely as history is a lot of files for a schema nobody has ever migrated
+  *from*. Not done at the end of Stage 14 as previously planned, on purpose: it
+  would rewrite the schema history of four migrations written in the same stage,
+  and it pairs naturally with the Postgres CI job above — squashing while
+  nothing ever runs the Postgres dialect means hand-writing one large untested
+  `0001_init` for it.
 - **Reverse geocoding.** (Stage 13 Milestone 5.) `/api/geocode` turns a name
   into coordinates; the opposite — clicking the map and getting a suggested
   address for the `address` field — is not built. Nominatim has a `/reverse`

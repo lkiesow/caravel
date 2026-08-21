@@ -361,7 +361,10 @@ func (s seedCtx) addEntry(scenarioName, dayID, itemID string, sortOrder int) err
 	return err
 }
 
-func (s seedCtx) addChecklist(scenarioName, tripID, title string, items []string) error {
+// Visibility is a required parameter rather than a defaulted one: the sweeps can
+// only see a visibility that some scenario actually seeds, so "which one?" is a
+// question every caller should have to answer out loud.
+func (s seedCtx) addChecklist(scenarioName, tripID, title string, vis db.ChecklistVisibility, items []string) error {
 	// Visibility and owner are explicit, not left to the column default: the
 	// store passes whatever the params carry, so an unset visibility inserts the
 	// empty string and trips the CHECK constraint. Which is how this was found —
@@ -373,7 +376,7 @@ func (s seedCtx) addChecklist(scenarioName, tripID, title string, items []string
 		Title:       title,
 		SortOrder:   0,
 		CreatedAt:   time.Now().UTC(),
-		Visibility:  db.ChecklistShared,
+		Visibility:  vis,
 		OwnerUserID: &s.ownerID,
 	})
 	if err != nil {
@@ -441,7 +444,8 @@ func (s seedCtx) addImage(scenarioName, tripID, filename string) (string, error)
 
 // addFile writes a real (tiny) file through the blob store as well as the
 // row, so the Files tab has something that actually downloads.
-func (s seedCtx) addFile(scenarioName, tripID string, itemID *string, filename, body string) error {
+// Visibility is a required parameter for the same reason as addChecklist above.
+func (s seedCtx) addFile(scenarioName, tripID string, itemID *string, filename, body string, vis db.FileVisibility) error {
 	id := seedID(scenarioName, "file", filename)
 	key := fmt.Sprintf("%s/%s", tripID, id)
 	size, err := s.blob.Put(s.ctx, key, strings.NewReader(body))
@@ -460,7 +464,7 @@ func (s seedCtx) addFile(scenarioName, tripID string, itemID *string, filename, 
 		Note:        ptr("Seeded file"),
 		// Same as the checklist above: explicit, because the params win over the
 		// column default.
-		Visibility:  db.FileVisibilityTrip,
+		Visibility:  vis,
 		OwnerUserID: &s.ownerID,
 	})
 	return err
@@ -557,16 +561,33 @@ func seedFull(s seedCtx) error {
 		return err
 	}
 
-	if err := s.addChecklist("full", trip.ID, "Packing", []string{
+	// One checklist per visibility, and one file per visibility. This is not
+	// padding: the route sweeps (overflow, tap targets, headings, accessible
+	// names, contrast) can only measure markup that some scenario renders, so
+	// until Stage 14 Milestone 10 seeded these, the personal-files section, its
+	// lock badge and the two non-shared checklist states had never once been
+	// drawn by any automated check.
+	if err := s.addChecklist("full", trip.ID, "Packing", db.ChecklistShared, []string{
 		"Passport", "Waterproof jacket", "Swimsuit", "Adapter"}); err != nil {
 		return err
 	}
-	if err := s.addFile("full", trip.ID, nil, "trip-notes.txt", "Seeded trip-level file.\n"); err != nil {
+	if err := s.addChecklist("full", trip.ID, "Route plan", db.ChecklistTrip, []string{
+		"Book the ferry", "Print the permits"}); err != nil {
+		return err
+	}
+	if err := s.addChecklist("full", trip.ID, "My own packing", db.ChecklistPersonal, []string{
+		"Contact lenses", "Camera charger"}); err != nil {
+		return err
+	}
+	if err := s.addFile("full", trip.ID, nil, "trip-notes.txt", "Seeded trip-level file.\n", db.FileVisibilityTrip); err != nil {
+		return err
+	}
+	if err := s.addFile("full", trip.ID, nil, "my-insurance.txt", "Seeded personal file.\n", db.FileVisibilityPersonal); err != nil {
 		return err
 	}
 	// Attached to a location, not the trip — the case the trip-level Files
 	// tab currently filters out (see todo.md).
-	return s.addFile("full", trip.ID, &items[1].ID, "hotel-booking.txt", "Seeded item-level file.\n")
+	return s.addFile("full", trip.ID, &items[1].ID, "hotel-booking.txt", "Seeded item-level file.\n", db.FileVisibilityTrip)
 }
 
 // seedOnePin has a single mappable location, so the map's bounds are a point
@@ -713,11 +734,11 @@ func seedCascade(s seedCtx) error {
 			return err
 		}
 	}
-	if err := s.addChecklist("cascade", trip.ID, "Cascade Checklist", []string{"First", "Second"}); err != nil {
+	if err := s.addChecklist("cascade", trip.ID, "Cascade Checklist", db.ChecklistShared, []string{"First", "Second"}); err != nil {
 		return err
 	}
-	if err := s.addFile("cascade", trip.ID, nil, "cascade-trip.txt", "Trip-level, should cascade.\n"); err != nil {
+	if err := s.addFile("cascade", trip.ID, nil, "cascade-trip.txt", "Trip-level, should cascade.\n", db.FileVisibilityTrip); err != nil {
 		return err
 	}
-	return s.addFile("cascade", trip.ID, &items[0].ID, "cascade-item.txt", "Item-level, should cascade.\n")
+	return s.addFile("cascade", trip.ID, &items[0].ID, "cascade-item.txt", "Item-level, should cascade.\n", db.FileVisibilityTrip)
 }

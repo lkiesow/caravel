@@ -1377,6 +1377,77 @@ share links (rewritten to reference the shipped role model), expenses, trip
 ownership transfer, invite-link joining, checklist duplication, and the
 file-visibility default that is worth re-examining in use.
 
+**Done.** The re-runs, one real gap the blind-spot question found, and the
+`todo.md` rewrite.
+
+*Everything re-run, all green.* `make ci` (build, vet, 41 JS modules, 264 i18n
+keys in sync, `go test ./...`), the full Playwright suite — 76 specs on the way
+in, 78 with the two added below — and
+`scripts/i18n.py unused` — which reports no unused keys, with ten flagged as
+matched only by a runtime-composed key (`trip.tabs.${...}`, `members.role.${...}`,
+`item.category.${...}`) and therefore not safe to delete. `tests/ui/contrast.js`
+was run over the four screens this stage added or reworked, in both schemes:
+`/admin`, the Members tab, Checklists and Files. Worst ratio anywhere is 4.70:1
+against a 4.5 threshold, so nothing regressed — the admin badge fixed in
+Milestone 6 is the only contrast problem this stage produced.
+
+*The blind-spot question found a real gap, and the same one twice.* `todo.md`
+records that an element only rendered when data exists is invisible to the route
+sweeps until some scenario creates that data. Asked of this stage's screens, the
+members list and the admin table were fine — `other` is a seeded member of `full`
+and there are three seeded accounts — but the visibility work was not. The seeder
+created **only** trip-visible files and **only** `shared` checklists, so the
+private-files section, its section title, and two of the three checklist states
+had never been rendered by any automated check: not by the overflow sweep, the
+tap-target sweep, the heading outline, the accessible-name sweep, or the contrast
+tool. Fixed by seeding one file and one checklist per visibility on `full`.
+
+The more useful half of that fix is structural: `visibility` is now a **required
+parameter** of the seeder's `addFile` and `addChecklist` rather than a constant
+inside them. A defaulted column is exactly how this gap opened — and how
+Milestone 8 broke `make dev-reset` — so the next visibility-like column cannot be
+quietly defaulted past the sweeps by whoever adds the next scenario.
+
+*Two specs now pin the newly-reachable markup*, because seeding it and never
+asserting it would only mean the sweeps stop being blind, not that anyone would
+notice if the grouping broke. A new `menu.spec.js` case drives the checklist
+card's ⋮ menu on a shared trip: all three groups render with their own titles,
+and each card offers only the two moves that do not lead back to its own state
+(asserted on two different cards, since a menu built from a constant list would
+pass on one of them). The file-row equivalent gained the assertion it previously
+had to skip — its comment said the private group's presence depended on whatever
+the person running it happened to have uploaded, which the seed now makes
+deterministic. Both were break-checked by reverting the three seeded visibilities
+and reseeding: all four locale variants fail, then pass again once restored.
+
+One bug of my own on the way, caught by Playwright's strict mode rather than by
+being clever: every checklist *item* carries a ⋮ too, so `.menu__trigger` scoped
+to a card matches five elements. Scoped to the header's actions slot.
+
+*`todo.md`, in both directions.* The multi-user cluster's framing was wrong now
+that the whole cluster shipped, so its preamble no longer says the entries depend
+on each other. Sharing/permissions, per-visibility files and checklists, admin
+tooling, the `NewServer` positional-parameter entry and the checklist ⋮-menu
+entry were all deleted as the milestones landed rather than at the end. Added
+here: trip ownership transfer (with the two open questions it needs answered),
+invite links, a rewritten public-share-links entry noting that Stage 14's seam
+makes a link-holder a synthetic `viewer` and that `scope` must also answer the
+visibility question, whether trip-visible is the right upload default, and why
+per-visibility media assets are probably a non-goal rather than an omission. The
+sweep blind-spot entry records this stage's instance of it and the required-
+parameter fix.
+
+Two existing entries were restated rather than left to slide. **The Postgres CI
+job**, because this stage added four migration pairs, a new table, two new
+columns on existing tables and new list predicates on all of them, and *the only
+evidence the Postgres half is correct is that it compiles* — while twice in this
+stage a hand-written adapter silently dropped a field on read in both dialects,
+which is precisely what a compile cannot see. **The migration squash** is now
+explicitly *not* being done at the end of Stage 14 as previously planned: it
+would rewrite the history of four migrations written in this same stage, and
+squashing while nothing runs Postgres means hand-writing one large untested
+`0001_init` for that dialect. It pairs with the CI job and should wait for it.
+
 ---
 
 ## Build order

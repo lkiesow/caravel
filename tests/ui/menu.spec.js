@@ -256,16 +256,20 @@ for (const locale of ["en", "de"]) {
       await expect(group.locator('[name="uploadNote"]')).toHaveCount(1);
       await expect(group.locator('[name="uploadVisibility"]')).toHaveCount(2);
 
-      // The trip-visible group, addressed by its own data attribute rather than
-      // by position. Deliberately not asserting the *number* of groups: whether
-      // a personal group appears depends on whether the person running this has
-      // any personal files on the trip, and a leftover manual upload in the dev
-      // database should not read as a broken component. The "an empty group
-      // renders nothing" claim is pinned on the solo trip above, where the data
-      // is known.
+      // Both groups, addressed by their own data attribute rather than by
+      // position. Milestone 10 seeded a personal file on this trip, so the
+      // second group is now deterministic — before that only the trip-visible
+      // one could be asserted, and the private section had never been rendered
+      // by anything in this suite. Still not asserting the *number* of
+      // `.file-section` elements: a leftover manual upload in the dev database
+      // should not read as a broken component, and "an empty group renders
+      // nothing" is pinned on the solo trip above, where the data is known.
       const shared = page.locator('.file-section[data-visibility="trip"]');
       await expect(shared).toHaveCount(1);
       await expect(shared.locator(".file-section__title")).toHaveText(copy.sections[0]);
+      const personal = page.locator('.file-section[data-visibility="personal"]');
+      await expect(personal, "the private files group should render").toHaveCount(1);
+      await expect(personal.locator(".file-section__title")).toHaveText(copy.sections[1]);
       // The list takes its name from that label rather than from a heading,
       // which would have put a hole in the page's outline.
       const labelId = await shared.locator(".file-section__title").getAttribute("id");
@@ -442,3 +446,76 @@ test.describe("header user menu label collapse", () => {
     await expect(label).toBeHidden();
   });
 });
+
+// The checklist card's ⋮ menu, and the three visibility groups it moves between
+// (Stage 14 Milestone 8, pinned in Milestone 10).
+//
+// Milestone 8 verified this by hand plus Go tests, which left the *grouping* —
+// the thing that carries the state now that no card wears a badge — with no
+// automated check at all. It could only be written once Milestone 10 seeded a
+// list in each state: before that the `full` scenario held one `shared` list, so
+// two of the three sections had never rendered anywhere, in this spec or in the
+// route sweeps.
+const CHECKLIST_LABELS = {
+  en: {
+    actions: "List actions",
+    sections: { shared: "Everyone can tick", trip: "Everyone can see", personal: "Only you" },
+    moves: { shared: ["Show to everyone", "Make private"], personal: ["Let everyone tick", "Show to everyone"] },
+    tail: ["Rename", "Delete"],
+  },
+  de: {
+    actions: "Listenaktionen",
+    sections: { shared: "Alle können abhaken", trip: "Alle können sehen", personal: "Nur du" },
+    moves: { shared: ["Für alle sichtbar machen", "Privat machen"], personal: ["Von allen abhakbar machen", "Für alle sichtbar machen"] },
+    tail: ["Umbenennen", "Löschen"],
+  },
+};
+
+for (const locale of ["en", "de"]) {
+  test.describe(`checklist card menu on a shared trip (${locale})`, () => {
+    test.use({ viewport: MOBILE, locale });
+
+    test(`groups by visibility and offers only the moves that apply (${locale})`, async ({ page }) => {
+      await login(page);
+      const trips = await resolveScenarioTrips(page);
+      await gotoRoute(page, `/trips/${trips.full}/checklists`);
+      const copy = CHECKLIST_LABELS[locale];
+
+      // All three groups render, each addressed by its data attribute rather
+      // than by position, and each titled. A missing group here means the seed
+      // stopped covering that state — which is exactly the regression this
+      // exists to catch.
+      for (const [key, title] of Object.entries(copy.sections)) {
+        const section = page.locator(`.checklist-section[data-visibility="${key}"]`);
+        await expect(section, `the ${key} checklist group should render`).toHaveCount(1);
+        await expect(section.locator(".checklist-section__title")).toHaveText(title);
+        await expect(section.locator(".checklist-card")).toHaveCount(1);
+      }
+
+      // The moves offered depend on where the card already is: a card never
+      // offers the state it is in. Asserting two different cards, because a
+      // menu built from a constant list would pass on one of them.
+      for (const key of ["shared", "personal"]) {
+        const card = page.locator(`.checklist-section[data-visibility="${key}"] .checklist-card`);
+        // The card's own menu, not its items': every checklist *item* carries a
+        // ⋮ too, so an unscoped `.menu__trigger` under the card matches all of
+        // them. Scoped to the header's actions slot.
+        const actions = card.locator(".checklist-card__actions");
+        const trigger = actions.locator(".menu__trigger");
+        await expect(trigger).toHaveAttribute("aria-label", copy.actions);
+        await trigger.click();
+        const dropdown = actions.locator(".menu__dropdown");
+        await expect(dropdown).toBeVisible();
+        // Silent trigger, no selection: the same rule the file row menu follows,
+        // and the same bug (renderMenu echoing an activeValue) it guards against.
+        await expect(actions.locator(".menu__label")).toHaveText("");
+        await expect(dropdown.locator('[role="menuitemradio"]')).toHaveCount(0);
+        await expect(dropdown.locator('[role="menuitem"]')).toHaveText([...copy.moves[key], ...copy.tail]);
+        // Nothing is clicked: a move would mutate the shared seed, which this
+        // spec has no isolation for. The Go tests cover the effect.
+        await page.keyboard.press("Escape");
+        await expect(dropdown).toBeHidden();
+      }
+    });
+  });
+}

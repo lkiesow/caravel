@@ -163,10 +163,11 @@ together rather than bolting a column onto an existing table.
   (owner deliberately absent, `trips.owner_id` stays authoritative), `db.TripRole`
   with owner > editor > viewer, and one seam in `internal/httpapi/authz.go` that
   all 37 trip-scoped handlers go through with an explicit minimum role. What is
-  left is everything above it: `ListTripsByOwner` is still owner-only so a member
-  cannot see a shared trip in their list, the trip payload carries no `role`, there
-  is no members API or UI, and no read-only mode — a viewer's app still renders
-  edit buttons that now 403 rather than 404. Stage 14 Milestones 2-4.
+  left, after Milestone 2 added `ListTripsForUser`, the `role`/`owner` fields on
+  every trip payload and `web/js/trip-role.js`: there is no members API or UI, so
+  a membership can only be created with SQL, and no read-only mode — a viewer's
+  app still renders edit buttons that now 403 rather than 404. Stage 14
+  Milestones 3-4.
 - **Public shareable links.** An unauthenticated read-only trip view via a
   token. Needs a `share_links` table (token, trip_id, scope, expires_at) plus an
   unauthenticated route variant. IDs are already non-guessable UUIDs, so this is

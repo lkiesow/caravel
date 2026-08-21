@@ -296,6 +296,64 @@ PATCH it, a stranger still cannot see or touch it. Playwright once the seeder
 change in Milestone 3 exists; until then, an API-level check is the honest
 evidence.
 
+**Done.** Landed as planned. Three things are worth recording.
+
+*One query, not N+1.* `ListTripsForUser` returns the role and the owner's name
+inline — `CAST(CASE WHEN t.owner_id = @user_id THEN 'owner' ELSE m.role END AS
+TEXT)`, a `JOIN users` for the owner, and a `LEFT JOIN trip_members` pinned to
+the one user. The LEFT JOIN cannot duplicate a trip because `(trip_id, user_id)`
+is the primary key and `user_id` is fixed, which is what makes selecting the role
+inline safe. The `CAST` is load-bearing: without it sqlc types the `CASE` as
+`interface{}` in *both* dialects, and the store adapter would have had to
+type-switch on whatever the driver handed back. Generated types were checked
+after `sqlc generate` rather than assumed — the same lesson as Milestone 1's
+`ON CONFLICT` gap.
+
+*`tripToResponse` now takes a role*, and every caller had one to give: the
+loaders return it, and `handleCreateTrip` passes `RoleOwner` because the creator
+is the owner by construction. `handleListTrips` builds its rows directly instead
+of going through the helper, which would have spent a `GetUserByID` per shared
+trip re-fetching what the join already returned.
+
+*`owner` is omitted on your own trips.* On a trip you own it would only tell you
+your own name, and its presence is what the client uses as "this was shared with
+me" — so `trips-page.js` tests `if (trip.owner)` rather than comparing roles. It
+also carries no user id: a display label is all the feature needs, and handing
+every collaborator the owner's id would disclose more than that.
+
+Frontend: new `web/js/trip-role.js` (`canEdit` / `canManageMembers` / `isViewer`
+/ `isOwner`), which ranks an unknown or absent role as 0 so a stale payload
+fails closed rather than reading as permissive. `<trip-card>` gained a
+`shared-label` attribute — pre-translated by the caller, the same way it already
+takes a pre-formatted date range rather than a formatter, so the element stays
+attribute-driven with no i18n import. New key `trips.sharedBy` in both locales.
+
+Note for later: `trip-role.js` has no consumers yet. Milestone 4 is what uses
+it; landing it here keeps the payload change and its interpretation in one
+reviewable commit.
+
+**Verified.** `make ci` green (177 keys in sync); all 59 Playwright specs pass
+unchanged. Four new Go tests: `TestTripListIncludesSharedTrips` (the shared trip
+appears, with role and owner; the actor's own trip does not carry an owner block;
+and the owner's own list has not grown a duplicate row from the join) and
+`TestTripPayloadCarriesReaderRole` across all three roles, including that the
+owner block leaks no user id.
+
+Break-checked, all three caught: reverting the list query to owner-only fails
+`TestTripListIncludesSharedTrips`; hardcoding the payload role to `owner` fails
+`TestTripPayloadCarriesReaderRole`; populating the owner block unconditionally
+fails the list test.
+
+Live check after `make dev-restart MARKER=ListTripsForUser`: `other`'s trip list
+was empty, then showed exactly `Demo: Iceland Ring Road` with `role=viewer` and
+`owner={demo, Demo User}` once a viewer row existed, while `demo` still saw 8
+trips with one Iceland row, `role=owner`, `owner=null`. In the browser at
+324×756 the card reads "Shared by Demo User" (12.8px, muted, 7.03:1 contrast on
+light) and "Geteilt von Demo User" in German on one line at 5.81:1 in dark, with
+no horizontal overflow; the marker is inside the card's shadow subtree so it
+joins the `role="button"` card's accessible name. Membership rows were deleted
+afterwards, so the seed is unchanged for the UI suite.
+
 ---
 
 ## 3. Members API and the Members tab

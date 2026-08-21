@@ -6,8 +6,23 @@ RETURNING *;
 -- name: GetTripByID :one
 SELECT * FROM trips WHERE id = sqlc.arg(id);
 
--- name: ListTripsByOwner :many
-SELECT * FROM trips WHERE owner_id = sqlc.arg(owner_id) ORDER BY created_at DESC;
+-- Every trip the user can reach, with their own role on each and the owner's
+-- name for the ones they don't own.
+--
+-- The LEFT JOIN cannot duplicate a trip: trip_members' primary key is
+-- (trip_id, user_id) and user_id is pinned to one value here, so it matches at
+-- most one row per trip. That is also why the role can be selected inline
+-- rather than needing a second query per trip.
+-- name: ListTripsForUser :many
+SELECT t.*,
+       CAST(CASE WHEN t.owner_id = sqlc.arg(user_id) THEN 'owner' ELSE m.role END AS TEXT) AS role,
+       u.username AS owner_username,
+       u.display_name AS owner_display_name
+FROM trips t
+JOIN users u ON u.id = t.owner_id
+LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = sqlc.arg(user_id)
+WHERE t.owner_id = sqlc.arg(user_id) OR m.user_id IS NOT NULL
+ORDER BY t.created_at DESC;
 
 -- name: UpdateTrip :one
 UPDATE trips

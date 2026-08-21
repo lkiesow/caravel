@@ -52,11 +52,19 @@ const styles = `
     color: var(--color-text-muted);
     font-size: 0.875rem;
   }
+  /* Only rendered for a trip the user doesn't own, so it is the card's way of
+     answering "why is this in my list?". Muted and small deliberately: it is
+     provenance, not a status the user has to act on. */
+  .shared {
+    margin-top: 0.25rem;
+    color: var(--color-text-muted);
+    font-size: 0.8rem;
+  }
 `;
 
 class TripCard extends HTMLElement {
   static get observedAttributes() {
-    return ["trip-id", "title", "start-date", "end-date", "image-url"];
+    return ["trip-id", "title", "start-date", "end-date", "image-url", "shared-label"];
   }
 
   connectedCallback() {
@@ -95,6 +103,10 @@ class TripCard extends HTMLElement {
     // handles a trip with only one bound set, which the previous inline
     // interpolation rendered as a dangling "2026-08-20 – ".
     const dateRange = formatDateRange(this.getAttribute("start-date"), this.getAttribute("end-date"));
+    // Already translated and interpolated by the caller: this element is
+    // attribute-driven and has no i18n import, the same way it takes a
+    // pre-formatted date range rather than two dates and a formatter.
+    const sharedLabel = this.getAttribute("shared-label");
 
     this.shadowRoot.innerHTML = `
       <style>${styles}</style>
@@ -103,6 +115,7 @@ class TripCard extends HTMLElement {
         <div class="body">
           <h2>${escapeHtml(title)}</h2>
           ${dateRange ? `<div class="dates">${escapeHtml(dateRange)}</div>` : ""}
+          ${sharedLabel ? `<div class="shared">${escapeHtml(sharedLabel)}</div>` : ""}
         </div>
       </div>
     `;

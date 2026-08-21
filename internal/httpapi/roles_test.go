@@ -352,3 +352,81 @@ func TestMediaAssetFromAnotherTripIsRejected(t *testing.T) {
 		t.Errorf("preview_image_id is %v, want null — the rejected write landed anyway", got)
 	}
 }
+
+// The trips list must include trips the user is a *member* of, not just the
+// ones they own. TestTripListIsScopedToOwner in ownership_test.go covers the
+// other half — a stranger sees nothing — and both matter: the list is the only
+// route where authorization lives in the SQL rather than in the seam.
+func TestTripListIncludesSharedTrips(t *testing.T) {
+	f := setupRole(t, db.RoleViewer)
+
+	// A trip of the actor's own, so the assertion distinguishes "the shared one
+	// appears" from "everything appears".
+	ownTripID := f.ts.createTrip(f.actor, "Actor's own trip")
+
+	trips := decode[[]map[string]any](t, f.ts.do(http.MethodGet, "/api/trips", f.actor, ""))
+	byID := map[string]map[string]any{}
+	for _, tr := range trips {
+		byID[tr["id"].(string)] = tr
+	}
+	if len(trips) != 2 {
+		t.Fatalf("actor sees %d trip(s), want 2 (own + shared): %v", len(trips), trips)
+	}
+
+	shared, ok := byID[f.tripID]
+	if !ok {
+		t.Fatalf("the shared trip is missing from the actor's list: %v", trips)
+	}
+	if shared["role"] != "viewer" {
+		t.Errorf("shared trip role is %v, want viewer", shared["role"])
+	}
+	owner, _ := shared["owner"].(map[string]any)
+	if owner == nil || owner["username"] != "owner" {
+		t.Errorf("shared trip owner is %v, want the owner's name so the card can say who shared it", shared["owner"])
+	}
+
+	own := byID[ownTripID]
+	if own["role"] != "owner" {
+		t.Errorf("own trip role is %v, want owner", own["role"])
+	}
+	// Omitted on your own trip: it would only tell you your own name, and the
+	// client uses its presence as "this was shared with me".
+	if own["owner"] != nil {
+		t.Errorf("own trip carries owner %v, want null", own["owner"])
+	}
+
+	// The owner's own list must not have grown a duplicate from the LEFT JOIN.
+	ownerTrips := decode[[]map[string]any](t, f.ts.do(http.MethodGet, "/api/trips", f.owner, ""))
+	if len(ownerTrips) != 1 {
+		t.Errorf("owner sees %d trip(s), want 1 — the membership join duplicated a row", len(ownerTrips))
+	}
+}
+
+// Every single-trip response carries the reading user's own role, so the client
+// can decide what to render instead of discovering it from a refused write.
+func TestTripPayloadCarriesReaderRole(t *testing.T) {
+	for _, role := range []db.TripRole{db.RoleViewer, db.RoleEditor, db.RoleOwner} {
+		t.Run(string(role), func(t *testing.T) {
+			f := setupRole(t, role)
+			trip := decode[map[string]any](t, f.ts.do(http.MethodGet, "/api/trips/"+f.tripID, f.actor, ""))
+			if trip["role"] != string(role) {
+				t.Errorf("GET trip as %s reports role %v", role, trip["role"])
+			}
+			if role == db.RoleOwner {
+				if trip["owner"] != nil {
+					t.Errorf("owner reading own trip gets owner=%v, want null", trip["owner"])
+				}
+				return
+			}
+			owner, _ := trip["owner"].(map[string]any)
+			if owner == nil || owner["username"] != "owner" {
+				t.Errorf("as %s, owner is %v, want the owner's name", role, trip["owner"])
+			}
+			// A label, not an identity: handing every collaborator the owner's
+			// user id would disclose more than the feature needs.
+			if _, leaked := owner["id"]; leaked {
+				t.Errorf("owner block leaks a user id: %v", owner)
+			}
+		})
+	}
+}

@@ -104,6 +104,17 @@ type TripMember struct {
 	DisplayName string
 }
 
+// TripForUser is a trip together with the reading user's own relationship to
+// it: their role, and who owns it. The trips list needs both for every row, and
+// getting them from the same query is what keeps that endpoint at one round
+// trip rather than one per trip.
+type TripForUser struct {
+	Trip
+	Role             TripRole
+	OwnerUsername    string
+	OwnerDisplayName string
+}
+
 // MapItem is a lightweight projection for the map view: items with a
 // resolvable location and show_on_map=true. Lat/Lng are always present here
 // (the query only returns items with non-null coordinates).

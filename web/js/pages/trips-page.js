@@ -1,5 +1,5 @@
 import { api } from "../api.js";
-import { translatePage } from "../i18n.js";
+import { translatePage, t } from "../i18n.js";
 import "../components/trip-card.js";
 import { navigate } from "../router.js";
 import { icon } from "../icon.js";
@@ -33,6 +33,11 @@ export async function renderTripsPage(container) {
       if (trip.start_date) card.setAttribute("start-date", trip.start_date);
       if (trip.end_date) card.setAttribute("end-date", trip.end_date);
       if (trip.preview_image_url) card.setAttribute("image-url", trip.preview_image_url);
+      // trip.owner is present only for trips the user doesn't own, so its
+      // presence is the test — no need to compare roles here.
+      if (trip.owner) {
+        card.setAttribute("shared-label", t("trips.sharedBy", { name: trip.owner.display_name }));
+      }
       grid.appendChild(card);
     }
   }

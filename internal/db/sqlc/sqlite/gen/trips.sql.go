@@ -94,19 +94,49 @@ func (q *Queries) GetTripByID(ctx context.Context, id string) (Trip, error) {
 	return i, err
 }
 
-const listTripsByOwner = `-- name: ListTripsByOwner :many
-SELECT id, owner_id, title, start_date, end_date, preview_image_id, created_at, updated_at, subtitle FROM trips WHERE owner_id = ?1 ORDER BY created_at DESC
+const listTripsForUser = `-- name: ListTripsForUser :many
+SELECT t.id, t.owner_id, t.title, t.start_date, t.end_date, t.preview_image_id, t.created_at, t.updated_at, t.subtitle,
+       CAST(CASE WHEN t.owner_id = ?1 THEN 'owner' ELSE m.role END AS TEXT) AS role,
+       u.username AS owner_username,
+       u.display_name AS owner_display_name
+FROM trips t
+JOIN users u ON u.id = t.owner_id
+LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ?1
+WHERE t.owner_id = ?1 OR m.user_id IS NOT NULL
+ORDER BY t.created_at DESC
 `
 
-func (q *Queries) ListTripsByOwner(ctx context.Context, ownerID string) ([]Trip, error) {
-	rows, err := q.db.QueryContext(ctx, listTripsByOwner, ownerID)
+type ListTripsForUserRow struct {
+	ID               string         `json:"id"`
+	OwnerID          string         `json:"owner_id"`
+	Title            string         `json:"title"`
+	StartDate        sql.NullString `json:"start_date"`
+	EndDate          sql.NullString `json:"end_date"`
+	PreviewImageID   sql.NullString `json:"preview_image_id"`
+	CreatedAt        string         `json:"created_at"`
+	UpdatedAt        string         `json:"updated_at"`
+	Subtitle         sql.NullString `json:"subtitle"`
+	Role             string         `json:"role"`
+	OwnerUsername    string         `json:"owner_username"`
+	OwnerDisplayName string         `json:"owner_display_name"`
+}
+
+// Every trip the user can reach, with their own role on each and the owner's
+// name for the ones they don't own.
+//
+// The LEFT JOIN cannot duplicate a trip: trip_members' primary key is
+// (trip_id, user_id) and user_id is pinned to one value here, so it matches at
+// most one row per trip. That is also why the role can be selected inline
+// rather than needing a second query per trip.
+func (q *Queries) ListTripsForUser(ctx context.Context, userID string) ([]ListTripsForUserRow, error) {
+	rows, err := q.db.QueryContext(ctx, listTripsForUser, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Trip
+	var items []ListTripsForUserRow
 	for rows.Next() {
-		var i Trip
+		var i ListTripsForUserRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.OwnerID,
@@ -117,6 +147,9 @@ func (q *Queries) ListTripsByOwner(ctx context.Context, ownerID string) ([]Trip,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Subtitle,
+			&i.Role,
+			&i.OwnerUsername,
+			&i.OwnerDisplayName,
 		); err != nil {
 			return nil, err
 		}

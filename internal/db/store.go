@@ -189,7 +189,9 @@ type Store interface {
 
 	CreateTrip(ctx context.Context, p CreateTripParams) (Trip, error)
 	GetTripByID(ctx context.Context, id string) (Trip, error)
-	ListTripsByOwner(ctx context.Context, ownerID string) ([]Trip, error)
+	// ListTripsForUser returns every trip the user owns or is a member of,
+	// each carrying their role on it and the owner's name.
+	ListTripsForUser(ctx context.Context, userID string) ([]TripForUser, error)
 	UpdateTrip(ctx context.Context, p UpdateTripParams) (Trip, error)
 	// DeleteTrip reports whether a matching (id, ownerID) trip was deleted.
 	DeleteTrip(ctx context.Context, id, ownerID string) (bool, error)

@@ -49,6 +49,7 @@
   "trips.title": "Your trips",
   "trips.new": "New trip",
   "trips.empty": "No trips yet — create your first one to start planning.",
+  "trips.sharedBy": "Shared by {name}",
   "trip.form.title": "Title",
   "trip.form.startDate": "Start date",
   "trip.form.endDate": "End date",

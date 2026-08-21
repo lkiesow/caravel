@@ -49,6 +49,7 @@
   "trips.title": "Deine Reisen",
   "trips.new": "Neue Reise",
   "trips.empty": "Noch keine Reisen – lege deine erste Reise an, um mit der Planung zu beginnen.",
+  "trips.sharedBy": "Geteilt von {name}",
   "trip.form.title": "Titel",
   "trip.form.startDate": "Startdatum",
   "trip.form.endDate": "Enddatum",

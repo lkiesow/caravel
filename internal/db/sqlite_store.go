@@ -171,14 +171,29 @@ func (s *sqliteStore) GetTripByID(ctx context.Context, id string) (Trip, error) 
 	return sqliteTripToDomain(row), nil
 }
 
-func (s *sqliteStore) ListTripsByOwner(ctx context.Context, ownerID string) ([]Trip, error) {
-	rows, err := s.q.ListTripsByOwner(ctx, ownerID)
+func (s *sqliteStore) ListTripsForUser(ctx context.Context, userID string) ([]TripForUser, error) {
+	rows, err := s.q.ListTripsForUser(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
-	trips := make([]Trip, len(rows))
+	trips := make([]TripForUser, len(rows))
 	for i, row := range rows {
-		trips[i] = sqliteTripToDomain(row)
+		trips[i] = TripForUser{
+			Trip: Trip{
+				ID:             row.ID,
+				OwnerID:        row.OwnerID,
+				Title:          row.Title,
+				StartDate:      strPtr(row.StartDate),
+				EndDate:        strPtr(row.EndDate),
+				PreviewImageID: strPtr(row.PreviewImageID),
+				Subtitle:       strPtr(row.Subtitle),
+				CreatedAt:      parseTime(row.CreatedAt),
+				UpdatedAt:      parseTime(row.UpdatedAt),
+			},
+			Role:             TripRole(row.Role),
+			OwnerUsername:    row.OwnerUsername,
+			OwnerDisplayName: row.OwnerDisplayName,
+		}
 	}
 	return trips, nil
 }

@@ -92,7 +92,14 @@ type Querier interface {
 	// Joined to users because the members list is a list of people, not of ids,
 	// and rendering it otherwise would be an N+1 lookup per row.
 	ListTripMembers(ctx context.Context, tripID string) ([]ListTripMembersRow, error)
-	ListTripsByOwner(ctx context.Context, ownerID string) ([]Trip, error)
+	// Every trip the user can reach, with their own role on each and the owner's
+	// name for the ones they don't own.
+	//
+	// The LEFT JOIN cannot duplicate a trip: trip_members' primary key is
+	// (trip_id, user_id) and user_id is pinned to one value here, so it matches at
+	// most one row per trip. That is also why the role can be selected inline
+	// rather than needing a second query per trip.
+	ListTripsForUser(ctx context.Context, userID string) ([]ListTripsForUserRow, error)
 	SetChecklistItemChecked(ctx context.Context, arg SetChecklistItemCheckedParams) (ChecklistItem, error)
 	SetItemImage(ctx context.Context, arg SetItemImageParams) (Item, error)
 	SetTripPreviewImage(ctx context.Context, arg SetTripPreviewImageParams) (Trip, error)

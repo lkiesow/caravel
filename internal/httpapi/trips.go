@@ -14,6 +14,15 @@ import (
 	"caravel/internal/markdown"
 )
 
+// tripOwnerResponse names a trip's owner to someone who is not the owner, so
+// the client can say who shared it. It carries no id: this is a label, and
+// handing every collaborator the owner's user id would be a wider disclosure
+// than the feature needs.
+type tripOwnerResponse struct {
+	Username    string `json:"username"`
+	DisplayName string `json:"display_name"`
+}
+
 type tripResponse struct {
 	ID              string  `json:"id"`
 	Title           string  `json:"title"`
@@ -24,9 +33,16 @@ type tripResponse struct {
 	PreviewImageURL *string `json:"preview_image_url"`
 	CreatedAt       string  `json:"created_at"`
 	UpdatedAt       string  `json:"updated_at"`
+	// Role is the *reading* user's role on this trip, so the client can decide
+	// what to render rather than discovering it from a 403.
+	Role string `json:"role"`
+	// Owner is present only when the reader is not the owner. On your own trip
+	// it would say what you already know, and omitting it keeps the common case
+	// free of an extra lookup.
+	Owner *tripOwnerResponse `json:"owner"`
 }
 
-func (s *Server) tripToResponse(ctx context.Context, t db.Trip) tripResponse {
+func (s *Server) tripToResponse(ctx context.Context, t db.Trip, role db.TripRole) tripResponse {
 	resp := tripResponse{
 		ID:             t.ID,
 		Title:          t.Title,
@@ -36,8 +52,18 @@ func (s *Server) tripToResponse(ctx context.Context, t db.Trip) tripResponse {
 		PreviewImageID: t.PreviewImageID,
 		CreatedAt:      t.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:      t.UpdatedAt.UTC().Format(time.RFC3339),
+		Role:           string(role),
 	}
 	resp.PreviewImageURL = s.resolveImageURL(ctx, t.PreviewImageID)
+	if role != db.RoleOwner {
+		// One extra lookup, on a single-trip response only — the list endpoint
+		// gets the owner's name from its own join instead. A failure here is
+		// not worth failing the whole response over: the trip is readable, it
+		// just renders without "shared by".
+		if owner, err := s.Store.GetUserByID(ctx, t.OwnerID); err == nil {
+			resp.Owner = &tripOwnerResponse{Username: owner.Username, DisplayName: owner.DisplayName}
+		}
+	}
 	return resp
 }
 
@@ -60,7 +86,7 @@ func renderNotesHTML(notes *string) *string {
 func (s *Server) handleListTrips(w http.ResponseWriter, r *http.Request) {
 	user, _ := auth.UserFromContext(r.Context())
 
-	trips, err := s.Store.ListTripsByOwner(r.Context(), user.ID)
+	trips, err := s.Store.ListTripsForUser(r.Context(), user.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not list trips")
 		return
@@ -68,7 +94,25 @@ func (s *Server) handleListTrips(w http.ResponseWriter, r *http.Request) {
 
 	resp := make([]tripResponse, len(trips))
 	for i, t := range trips {
-		resp[i] = s.tripToResponse(r.Context(), t)
+		// Built directly rather than through tripToResponse: the query already
+		// returned the role and the owner's name, and going through the helper
+		// would spend a GetUserByID per shared trip re-fetching what we have.
+		item := tripResponse{
+			ID:             t.ID,
+			Title:          t.Title,
+			StartDate:      t.StartDate,
+			EndDate:        t.EndDate,
+			Subtitle:       t.Subtitle,
+			PreviewImageID: t.PreviewImageID,
+			CreatedAt:      t.CreatedAt.UTC().Format(time.RFC3339),
+			UpdatedAt:      t.UpdatedAt.UTC().Format(time.RFC3339),
+			Role:           string(t.Role),
+		}
+		item.PreviewImageURL = s.resolveImageURL(r.Context(), t.PreviewImageID)
+		if t.Role != db.RoleOwner {
+			item.Owner = &tripOwnerResponse{Username: t.OwnerUsername, DisplayName: t.OwnerDisplayName}
+		}
+		resp[i] = item
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -142,19 +186,19 @@ func (s *Server) handleCreateTrip(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not create trip")
 		return
 	}
-	writeJSON(w, http.StatusCreated, s.tripToResponse(r.Context(), trip))
+	writeJSON(w, http.StatusCreated, s.tripToResponse(r.Context(), trip, db.RoleOwner))
 }
 
 func (s *Server) handleGetTrip(w http.ResponseWriter, r *http.Request) {
-	trip, _, ok := s.loadTrip(w, r, db.RoleViewer)
+	trip, role, ok := s.loadTrip(w, r, db.RoleViewer)
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, s.tripToResponse(r.Context(), trip))
+	writeJSON(w, http.StatusOK, s.tripToResponse(r.Context(), trip, role))
 }
 
 func (s *Server) handleUpdateTrip(w http.ResponseWriter, r *http.Request) {
-	trip, _, ok := s.loadTrip(w, r, db.RoleEditor)
+	trip, role, ok := s.loadTrip(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
@@ -181,7 +225,7 @@ func (s *Server) handleUpdateTrip(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not update trip")
 		return
 	}
-	writeJSON(w, http.StatusOK, s.tripToResponse(r.Context(), updated))
+	writeJSON(w, http.StatusOK, s.tripToResponse(r.Context(), updated, role))
 }
 
 type setPreviewImageRequest struct {
@@ -189,7 +233,7 @@ type setPreviewImageRequest struct {
 }
 
 func (s *Server) handleSetTripPreviewImage(w http.ResponseWriter, r *http.Request) {
-	trip, _, ok := s.loadTrip(w, r, db.RoleEditor)
+	trip, role, ok := s.loadTrip(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
@@ -223,7 +267,7 @@ func (s *Server) handleSetTripPreviewImage(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusInternalServerError, "could not set preview image")
 		return
 	}
-	writeJSON(w, http.StatusOK, s.tripToResponse(r.Context(), updated))
+	writeJSON(w, http.StatusOK, s.tripToResponse(r.Context(), updated, role))
 }
 
 func (s *Server) handleDeleteTrip(w http.ResponseWriter, r *http.Request) {

@@ -409,14 +409,29 @@ func (s *postgresStore) GetTripByID(ctx context.Context, id string) (Trip, error
 	return postgresTripToDomain(row), nil
 }
 
-func (s *postgresStore) ListTripsByOwner(ctx context.Context, ownerID string) ([]Trip, error) {
-	rows, err := s.q.ListTripsByOwner(ctx, ownerID)
+func (s *postgresStore) ListTripsForUser(ctx context.Context, userID string) ([]TripForUser, error) {
+	rows, err := s.q.ListTripsForUser(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
-	trips := make([]Trip, len(rows))
+	trips := make([]TripForUser, len(rows))
 	for i, row := range rows {
-		trips[i] = postgresTripToDomain(row)
+		trips[i] = TripForUser{
+			Trip: Trip{
+				ID:             row.ID,
+				OwnerID:        row.OwnerID,
+				Title:          row.Title,
+				StartDate:      datePtr(row.StartDate),
+				EndDate:        datePtr(row.EndDate),
+				PreviewImageID: strPtr(row.PreviewImageID),
+				Subtitle:       strPtr(row.Subtitle),
+				CreatedAt:      row.CreatedAt,
+				UpdatedAt:      row.UpdatedAt,
+			},
+			Role:             TripRole(row.Role),
+			OwnerUsername:    row.OwnerUsername,
+			OwnerDisplayName: row.OwnerDisplayName,
+		}
 	}
 	return trips, nil
 }

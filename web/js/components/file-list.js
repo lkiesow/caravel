@@ -63,6 +63,10 @@ export async function renderFileList(container, path, { staged, rows: given, rea
   // re-render that follows one — picking "personal" and then dropping three
   // files should not silently revert between them.
   let uploadVisibility = "trip";
+  // The note for the next upload. Survives the re-render the same way, but is
+  // cleared once it has been used: a note is about one document, so inheriting
+  // it silently on the next upload would be wrong.
+  let pendingNote = "";
   // Errors survive the re-render that shows them: render() rebuilds the whole
   // subtree, so the paragraph a handler wrote into is gone by the time the user
   // would read it.
@@ -102,6 +106,7 @@ export async function renderFileList(container, path, { staged, rows: given, rea
             ? ""
             : `
         <p class="file-list__error" role="alert" hidden></p>
+        <div class="file-upload">
         <label class="file-drop">
           <input type="file" name="file" multiple hidden data-i18n-aria-label="common.uploadFile" />
           <span class="file-drop__icon">${icon("upload")}</span>
@@ -113,23 +118,36 @@ export async function renderFileList(container, path, { staged, rows: given, rea
           </span>
           <span class="btn btn-secondary file-drop__browse" aria-hidden="true" data-i18n="files.browse"></span>
         </label>
-        ${
-          shared
-            ? `<div class="file-visibility">
-          <span class="file-visibility__label" id="file-visibility-label" data-i18n="files.visibility.label"></span>
-          <div class="setting-choices" role="radiogroup" aria-labelledby="file-visibility-label">
-            <label class="setting-choice">
-              <input type="radio" name="uploadVisibility" value="trip" />
-              <span data-i18n="files.visibility.trip"></span>
-            </label>
-            <label class="setting-choice">
-              <input type="radio" name="uploadVisibility" value="personal" />
-              <span data-i18n="files.visibility.personal"></span>
-            </label>
-          </div>
-        </div>`
-            : ""
-        }
+        <!-- Everything below applies to whatever is added next, which is what
+             the hint says once for the group rather than once per control. A
+             note typed here lands on every file in the batch: it is a title
+             for a document, so the usual case is one file, and per-file notes
+             are still editable from each row's menu afterwards. -->
+        <div class="file-upload__options">
+          <p class="file-upload__hint" data-i18n="files.uploadOptionsHint"></p>
+          <label class="file-upload__field">
+            <span data-i18n="files.noteLabel"></span>
+            <input type="text" name="uploadNote" autocomplete="off" data-i18n-placeholder="files.notePlaceholder" />
+          </label>
+          ${
+            shared
+              ? `<div class="file-upload__field">
+            <span id="file-visibility-label" data-i18n="files.visibility.label"></span>
+            <div class="setting-choices" role="radiogroup" aria-labelledby="file-visibility-label">
+              <label class="setting-choice">
+                <input type="radio" name="uploadVisibility" value="trip" />
+                <span data-i18n="files.visibility.trip"></span>
+              </label>
+              <label class="setting-choice">
+                <input type="radio" name="uploadVisibility" value="personal" />
+                <span data-i18n="files.visibility.personal"></span>
+              </label>
+            </div>
+          </div>`
+              : ""
+          }
+        </div>
+        </div>
         `
         }
       </div>
@@ -337,6 +355,15 @@ export async function renderFileList(container, path, { staged, rows: given, rea
     const fileInput = drop.querySelector('input[type="file"]');
     const errorEl = container.querySelector(".file-list__error");
 
+    // The note is read at upload time rather than tracked on every keystroke:
+    // unlike the visibility choice it has no state to reflect back, and it is
+    // cleared once consumed so the next upload does not inherit it.
+    const noteInput = container.querySelector('[name="uploadNote"]');
+    if (noteInput) noteInput.value = pendingNote;
+    noteInput?.addEventListener("input", () => {
+      pendingNote = noteInput.value;
+    });
+
     // The selector reflects the remembered choice and writes back to it. Not a
     // form field read at submit time: the drop zone has no submit, and a drop
     // gesture never touches this control.
@@ -392,6 +419,11 @@ export async function renderFileList(container, path, { staged, rows: given, rea
       drop.setAttribute("aria-busy", "true");
       drop.classList.add("file-drop--busy");
 
+      // Captured before the loop and cleared after it: the note belongs to this
+      // batch, and the re-render below rebuilds the input either way.
+      const batchNote = pendingNote.trim();
+      pendingNote = "";
+
       for (const file of picked) {
         // Checked here as well as by the server, which answers an oversized
         // upload with a 413 whose body is about multipart parsing rather than
@@ -405,13 +437,14 @@ export async function renderFileList(container, path, { staged, rows: given, rea
         // the next load moved it to the top. Found by the spec below, which
         // asserted the order before and after a reload.
         if (isStaging) {
-          staged.unshift({ file, note: null, visibility: uploadVisibility });
+          staged.unshift({ file, note: batchNote || null, visibility: uploadVisibility });
           continue;
         }
         try {
           const formData = new FormData();
           formData.append("file", file);
           formData.append("visibility", uploadVisibility);
+          if (batchNote) formData.append("note", batchNote);
           const res = await fetch(`/api${path}`, { method: "POST", body: formData, credentials: "same-origin" });
           const created = await res.json();
           if (!res.ok) throw new Error(created.error || t("common.error"));

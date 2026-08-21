@@ -221,6 +221,8 @@
   "itinerary.entryCount": "{count} Eintrag",
   "itinerary.entryCount_plural": "{count} Einträge",
   "files.notePlaceholder": "Notiz (optional)",
+  "files.uploadOptionsHint": "Gilt für die Dateien, die du als Nächstes hinzufügst.",
+  "files.noteLabel": "Notiz",
   "files.empty": "Noch keine Dateien.",
   "files.deleteConfirm": "Diese Datei löschen? Das kann nicht rückgängig gemacht werden.",
   "files.dropTitle": "Dateien hier ablegen",

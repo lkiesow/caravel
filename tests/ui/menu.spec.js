@@ -186,9 +186,12 @@ for (const locale of ["en", "de"]) {
       // No visibility UI at all on a solo trip: personal versus trip-visible is
       // a question with one possible answer there. One unlabelled group, no
       // upload selector, and no section titles.
-      await expect(page.locator(".file-visibility")).toHaveCount(0);
+      await expect(page.locator('[name="uploadVisibility"]')).toHaveCount(0);
       await expect(page.locator(".file-section__title")).toHaveCount(0);
       await expect(page.locator(".file-section")).toHaveCount(1);
+      // The note field is not about sharing, so it is there either way — an
+      // upload has always been able to carry one, it just had nowhere to type it.
+      await expect(page.locator('[name="uploadNote"]')).toHaveCount(1);
 
       const trigger = rows.first().locator(".menu__trigger");
       const dropdown = rows.first().locator(".menu__dropdown");
@@ -242,22 +245,33 @@ for (const locale of ["en", "de"]) {
 
       // The drop zone carries the choice for whatever is uploaded next, since
       // it is made before the file is sent rather than after.
-      const choices = page.locator(".file-visibility .setting-choice span");
+      const choices = page.locator(".file-upload__options .setting-choice span");
       await expect(choices).toHaveText(copy.uploadChoices);
       // Trip-visible by default, deliberately — see stage-14.md.
-      await expect(page.locator('.file-visibility input[value="trip"]')).toBeChecked();
+      await expect(page.locator('[name="uploadVisibility"][value="trip"]')).toBeChecked();
+      // Both upload options live in one group with the drop zone, so neither is
+      // loose under the list.
+      const group = page.locator(".file-upload");
+      await expect(group.locator(".file-drop")).toHaveCount(1);
+      await expect(group.locator('[name="uploadNote"]')).toHaveCount(1);
+      await expect(group.locator('[name="uploadVisibility"]')).toHaveCount(2);
 
-      // The seed puts two trip-visible files on this trip and no personal ones,
-      // so only the first group renders — an empty group shows no bare heading.
-      const sections = page.locator(".file-section");
-      await expect(sections).toHaveCount(1);
-      await expect(sections.first().locator(".file-section__title")).toHaveText(copy.sections[0]);
+      // The trip-visible group, addressed by its own data attribute rather than
+      // by position. Deliberately not asserting the *number* of groups: whether
+      // a personal group appears depends on whether the person running this has
+      // any personal files on the trip, and a leftover manual upload in the dev
+      // database should not read as a broken component. The "an empty group
+      // renders nothing" claim is pinned on the solo trip above, where the data
+      // is known.
+      const shared = page.locator('.file-section[data-visibility="trip"]');
+      await expect(shared).toHaveCount(1);
+      await expect(shared.locator(".file-section__title")).toHaveText(copy.sections[0]);
       // The list takes its name from that label rather than from a heading,
       // which would have put a hole in the page's outline.
-      const labelId = await sections.first().locator(".file-section__title").getAttribute("id");
-      await expect(sections.first().locator(".files")).toHaveAttribute("aria-labelledby", labelId);
+      const labelId = await shared.locator(".file-section__title").getAttribute("id");
+      await expect(shared.locator(".files")).toHaveAttribute("aria-labelledby", labelId);
 
-      const row = page.locator(".files > li").first();
+      const row = shared.locator(".files > li").first();
       const trigger = row.locator(".menu__trigger");
       await trigger.click();
       const dropdown = row.locator(".menu__dropdown");

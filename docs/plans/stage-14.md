@@ -1116,6 +1116,77 @@ menu items and no overflow.
 have caught the original bug — that `.menu__label` is empty and no `aria-checked`
 exists in the dropdown — plus the grouping and the `aria-labelledby` wiring.
 
+## 7b. Milestone 7 second follow-up: a stale count, a missing field, and the mobile layout
+
+Three more pieces of review feedback.
+
+**`trip.member_count` went stale, which is a real bug.** The trip is fetched once
+when its page opens, so adding the first member on the Members tab and then
+switching to Files still showed the solo view: no grouping, no upload choice,
+until a reload. `renderMembersTab` now reports the non-owner count back after
+every load and `trip-detail-page.js` updates the shared object in place. In place
+rather than re-rendering, deliberately: nothing visible on the Members tab
+depends on the count, and every tab that *does* read it reads it when it renders,
+which is on the next tab switch.
+
+Worth noting the general shape, since Milestone 8 will face it: `trip` is a
+mutable object shared between tabs, and any tab that changes something another
+tab reads has to say so. `settings-tab.js` already had `onTripUpdated` for
+exactly this; the Members tab simply did not have its equivalent.
+
+**An upload could not carry its note.** The server has always accepted a `note`
+form field — the staged path in the location editor used it — but the trip Files
+tab had nowhere to type one, so every upload meant uploading and then editing.
+There is now a note field in the upload group. It applies to the whole batch,
+which is documented rather than hidden: a note is a title for a document, so the
+usual case is one file, and per-file notes remain editable from each row's menu.
+The note is cleared after use while the visibility choice is remembered — a
+visibility is a standing preference for the next few uploads, a note is about one
+document.
+
+**The upload controls are one group now.** The visibility radios had been dropped
+loose under the drop zone, where at 324px they collided with it and belonged to
+nothing in particular. Drop zone, note and visibility now sit in one bordered
+`.file-upload` block with a single hint — "Applies to the files you add next" —
+covering both controls, since both modify the next upload rather than anything
+already in the list. The group's border is solid where the drop zone's is dashed,
+so the zone still reads as the target.
+
+**Verified.** `make ci` green (251 keys); full Playwright suite passing. The
+reported sequence was driven end to end on the solo `cascade` trip: no visibility
+inputs and no section titles before, two inputs and a section title after adding
+a member and switching tabs, without a reload. Uploading with a note and "Only me"
+in one gesture produced a row titled by its note, in the personal group, with the
+server holding both — and the note field cleared while the visibility choice
+stayed. At 324px in German every control in the group measures 266px inside a
+292px box, all at the 44px floor, nothing overflowing the group and no body
+overflow; the German hint fits on two lines.
+
+The specs moved off the removed `.file-visibility` class onto the control names
+themselves, and now also assert that both upload controls live inside
+`.file-upload` — the grouping being the thing this follow-up changed. The
+solo-trip spec additionally asserts the note field *is* present there, since it
+has nothing to do with sharing.
+
+Cleanup note: the manual pass added `other` to the `cascade` trip, which
+`menu.spec.js` depends on being solo. Removed afterwards, and the count verified
+back at zero before running the suite.
+
+**The suite then failed for a reason worth keeping.** The shared-trip spec
+asserted the Iceland trip renders exactly *one* group, which is true of the seed
+— and false in a dev database where somebody has uploaded a personal file by
+hand while trying the feature. Exactly what had happened. Rather than deleting
+that file, the spec now addresses the trip-visible group by its
+`data-visibility` attribute and asserts nothing about how many groups exist:
+whether a personal group appears depends on the person running the suite, and a
+leftover manual upload should not read as a broken component. The "an empty group
+renders nothing" claim stays pinned on the solo trip, where the data is known.
+
+That is the same class of fragility `todo.md` already records about the sweeps
+only measuring what the seed renders — the mirror image of it, in fact: an
+assertion that depends on data being *absent* is as brittle as one that depends
+on it being present.
+
 ## 8. Checklist visibility
 
 Same shape, three states.

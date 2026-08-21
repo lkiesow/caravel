@@ -19,12 +19,22 @@ import { canManageMembers } from "../trip-role.js";
 // The owner's own row is inert in both shapes. They have no trip_members row to
 // change (see migration 0007) and the server refuses to remove them, so
 // offering either control would be offering something that cannot work.
-export function renderMembersTab(content, trip) {
+// onMembersChanged reports the non-owner member count back to the caller after
+// every load, because `trip` is fetched once when the trip page opens and other
+// tabs read `member_count` off it. Without this, adding the first member and then
+// switching to Files showed the solo view — no visibility grouping, no upload
+// choice — until the page was reloaded. The Files tab reads the count when it
+// renders, which happens on tab switch, so updating the shared object in place is
+// enough; nothing on screen right now depends on it.
+export function renderMembersTab(content, trip, { onMembersChanged } = {}) {
   let members = [];
 
   async function load() {
     renderLoading(content);
     members = await api.get(`/trips/${trip.id}/members`);
+    // The list includes the owner, who is not a member row (see migration
+    // 0007), so the count the rest of the app means is one less.
+    onMembersChanged?.(Math.max(0, members.length - 1));
     render();
   }
 

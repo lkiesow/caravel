@@ -2194,25 +2194,76 @@ button {
    dropped next, so it belongs with the zone rather than with the list above it.
    Reuses .setting-choices from the appearance/language settings, which is the
    app's existing radio-row treatment. */
-.file-visibility {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem 0.75rem;
-  margin-top: 0.5rem;
+/* The upload block: the drop zone plus everything that modifies the next
+   upload, in one bordered group rather than three things loose under the list.
+   Its own border is solid where the drop zone's is dashed, so the zone still
+   reads as the target and the options read as attached to it rather than to the
+   list above.
+
+   Grouped on the user's suggestion after the first version put a visibility
+   radio row directly under the list, where at 324px it collided with the drop
+   zone above it and belonged to nothing in particular. */
+.file-upload {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
 }
 
-.file-visibility__label {
+/* The drop zone loses its own top margin inside the group: the group provides
+   the spacing now, and two stacked margins left it floating. */
+.file-upload > .file-drop {
+  margin-top: 0;
+}
+
+.file-upload__options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+/* One hint for the whole group, on its own line above the controls: both of
+   them apply to the next upload rather than to anything already in the list,
+   and saying that once is better than twice. */
+.file-upload__hint {
+  flex-basis: 100%;
+  margin: 0;
   color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.file-upload__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1 1 12rem;
+  min-width: 0;
   font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.file-upload__field input[type="text"] {
+  padding: 0.5rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  font: inherit;
+  background: var(--color-bg);
+  color: var(--color-text);
 }
 
 @media (max-width: 640px) {
-  /* The label takes its own line: at 324px it and two choices cannot share
-     one, and wrapping mid-choice reads worse than a stacked pair. */
-  .file-visibility__label {
+  /* Each option takes the full width at phone width: the note field and the
+     two-choice radio row cannot share a 324px line, and half-width controls
+     wrapping mid-phrase is what the first version did wrong. */
+  .file-upload__field {
     flex-basis: 100%;
   }
+
+  /* .setting-choices already stacks its choices full-width under this
+     breakpoint (see the appearance settings), so the radio pair inherits the
+     right layout rather than needing its own. */
 
   /* Note for whatever is added next: put a feature's mobile rules *here*,
      after its own base rules, not in the stylesheet's central mobile block

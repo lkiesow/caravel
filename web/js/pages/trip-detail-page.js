@@ -145,7 +145,15 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
     } else if (tab === "checklists") {
       renderChecklistList(content, trip.id, { readOnly: !canEdit(trip) });
     } else if (tab === "members") {
-      renderMembersTab(content, trip);
+      renderMembersTab(content, trip, {
+        // Keeps `trip.member_count` current for the other tabs. Mutated in
+        // place rather than triggering a re-render: nothing visible on this
+        // tab depends on the count, and the tabs that do read it when they
+        // render, which is on the next tab switch.
+        onMembersChanged: (count) => {
+          trip.member_count = count;
+        },
+      });
     } else if (tab === "settings") {
       renderSettingsTab(content, trip, {
         // Editing the trip and deleting it split here: an editor may rename a

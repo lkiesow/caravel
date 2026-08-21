@@ -1734,6 +1734,16 @@ button {
     width: 100%;
   }
 
+  /* Same rule for the settings radios, for the same reason: at 324px the three
+     Appearance pills are sized by their own text, so "Follow my device" took a
+     whole line and Light + Dark shared the next one - an accidental layout that
+     read as a grouping. One choice per full-width row instead, which also
+     makes all three the same size to aim at. */
+  .setting-choices {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   /* Column, not just stretched: these are row-direction flex containers, so
      align-items: stretch would only equalize heights. The URL form has to
      stack too - with its Set button going full width, a row would have left

@@ -238,6 +238,18 @@ inline script fails exactly the no-flash test, and removing the `matchMedia`
 listener fails exactly the Auto-follows-live test, with the other three still
 passing.
 
+**Follow-up (checkpoint feedback).** At 324px the three pills were sized by
+their own labels, so "Follow my device" took a whole line and Light + Dark
+shared the next one — an accidental grouping that read as meaningful. The
+≤640px block now stacks `.setting-choices` into one full-width row per choice,
+which is the same treatment (and the same reason) the editor's sub-resource
+rows already get there; all three are now identical targets. Equal-width thirds
+were the alternative and would have wrapped "Follow my device" / "Gerät folgen"
+onto three lines each, and shortening the copy to make it fit would have been
+worse in German. Covered by a new layout test — one shared row at 1280px, three
+equal full-width rows at 324px — which fails on the old CSS at exactly that
+assertion.
+
 ---
 
 ## 4. Language selector — the first caller of `setLocale()`

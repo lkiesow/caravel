@@ -80,6 +80,34 @@ test.describe("appearance: light chosen on a dark device", () => {
   });
 });
 
+test.describe("appearance: the choices lay out sanely at both widths", () => {
+  test("share one row on desktop and stack full-width on a phone", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await login(page);
+    await gotoRoute(page, "/settings");
+
+    const choices = page.locator(".setting-choice");
+    await expect(choices).toHaveCount(3);
+    const boxes = async () => Promise.all((await choices.all()).map((c) => c.boundingBox()));
+
+    // Desktop: one row - three different x positions, one shared y.
+    const wide = await boxes();
+    expect(new Set(wide.map((b) => Math.round(b.y))).size, "desktop rows").toBe(1);
+
+    // Phone: the reverse. Each choice gets its own line at full card width,
+    // rather than being sized by its own label - which is how this first
+    // rendered, with "Follow my device" alone on line one and Light + Dark
+    // sharing line two.
+    await page.setViewportSize({ width: 324, height: 756 });
+    const narrow = await boxes();
+    expect(new Set(narrow.map((b) => Math.round(b.y))).size, "phone rows").toBe(3);
+    const widths = narrow.map((b) => Math.round(b.width));
+    expect(new Set(widths).size, `phone widths ${widths.join("/")}`).toBe(1);
+    const group = await page.locator(".setting-choices").boundingBox();
+    expect(widths[0], "choice fills the group's width").toBe(Math.round(group.width));
+  });
+});
+
 test.describe("appearance: Auto follows the device live", () => {
   test.use({ colorScheme: "light" });
 

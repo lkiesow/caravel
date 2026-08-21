@@ -10,7 +10,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"caravel/internal/auth"
 	"caravel/internal/db"
 )
 
@@ -90,7 +89,7 @@ type itemDetailResponse struct {
 }
 
 func (s *Server) handleListItems(w http.ResponseWriter, r *http.Request) {
-	trip, ok := s.loadOwnedTrip(w, r)
+	trip, _, ok := s.loadTrip(w, r, db.RoleViewer)
 	if !ok {
 		return
 	}
@@ -259,7 +258,7 @@ func writeItemNested(ctx context.Context, store db.Store, itemID string, req ite
 }
 
 func (s *Server) handleCreateItem(w http.ResponseWriter, r *http.Request) {
-	trip, ok := s.loadOwnedTrip(w, r)
+	trip, _, ok := s.loadTrip(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
@@ -317,36 +316,8 @@ func (s *Server) handleCreateItem(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, s.buildItemDetail(r, item))
 }
 
-// loadOwnedItem fetches the item named by {itemId} and confirms the current
-// user owns the trip it belongs to.
-func (s *Server) loadOwnedItem(w http.ResponseWriter, r *http.Request) (db.Item, bool) {
-	itemID := chi.URLParam(r, "itemId")
-
-	item, err := s.Store.GetItemByID(r.Context(), itemID)
-	if err != nil {
-		if errors.Is(err, db.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "item not found")
-		} else {
-			writeError(w, http.StatusInternalServerError, "could not load item")
-		}
-		return db.Item{}, false
-	}
-
-	trip, err := s.Store.GetTripByID(r.Context(), item.TripID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load item")
-		return db.Item{}, false
-	}
-	user, _ := auth.UserFromContext(r.Context())
-	if trip.OwnerID != user.ID {
-		writeError(w, http.StatusNotFound, "item not found")
-		return db.Item{}, false
-	}
-	return item, true
-}
-
 func (s *Server) handleGetItem(w http.ResponseWriter, r *http.Request) {
-	item, ok := s.loadOwnedItem(w, r)
+	item, _, ok := s.loadItem(w, r, db.RoleViewer)
 	if !ok {
 		return
 	}
@@ -379,7 +350,7 @@ func (s *Server) buildItemDetail(r *http.Request, item db.Item) itemDetailRespon
 }
 
 func (s *Server) handleUpdateItem(w http.ResponseWriter, r *http.Request) {
-	item, ok := s.loadOwnedItem(w, r)
+	item, _, ok := s.loadItem(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
@@ -433,7 +404,7 @@ func (s *Server) handleUpdateItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteItem(w http.ResponseWriter, r *http.Request) {
-	item, ok := s.loadOwnedItem(w, r)
+	item, _, ok := s.loadItem(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
@@ -451,7 +422,7 @@ type itemLocationRequest struct {
 }
 
 func (s *Server) handlePutItemLocation(w http.ResponseWriter, r *http.Request) {
-	item, ok := s.loadOwnedItem(w, r)
+	item, _, ok := s.loadItem(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
@@ -482,7 +453,7 @@ type itemLinkRequest struct {
 }
 
 func (s *Server) handleCreateItemLink(w http.ResponseWriter, r *http.Request) {
-	item, ok := s.loadOwnedItem(w, r)
+	item, _, ok := s.loadItem(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
@@ -507,7 +478,7 @@ func (s *Server) handleCreateItemLink(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteItemLink(w http.ResponseWriter, r *http.Request) {
-	item, ok := s.loadOwnedItem(w, r)
+	item, _, ok := s.loadItem(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
@@ -534,7 +505,7 @@ type itemDateRequest struct {
 }
 
 func (s *Server) handleCreateItemDate(w http.ResponseWriter, r *http.Request) {
-	item, ok := s.loadOwnedItem(w, r)
+	item, _, ok := s.loadItem(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
@@ -579,7 +550,7 @@ func (s *Server) handleCreateItemDate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteItemDate(w http.ResponseWriter, r *http.Request) {
-	item, ok := s.loadOwnedItem(w, r)
+	item, _, ok := s.loadItem(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
@@ -597,7 +568,7 @@ func (s *Server) handleDeleteItemDate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSetItemImage(w http.ResponseWriter, r *http.Request) {
-	item, ok := s.loadOwnedItem(w, r)
+	item, _, ok := s.loadItem(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
@@ -606,6 +577,24 @@ func (s *Server) handleSetItemImage(w http.ResponseWriter, r *http.Request) {
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
+	}
+
+	// Same check as handleSetTripPreviewImage: the asset id arrives in the
+	// body, so the route authorized the *item*, not the asset. A nil id
+	// clears the image and names nothing to check.
+	if req.MediaAssetID != nil {
+		asset, err := s.Store.GetMediaAssetByID(r.Context(), *req.MediaAssetID)
+		if err != nil {
+			if errors.Is(err, db.ErrNotFound) {
+				writeError(w, http.StatusBadRequest, "media asset not found")
+			} else {
+				writeError(w, http.StatusInternalServerError, "could not load media asset")
+			}
+			return
+		}
+		if !s.requireSameTrip(w, asset.TripID, item.TripID, "media asset belongs to another trip") {
+			return
+		}
 	}
 
 	updated, err := s.Store.SetItemImage(r.Context(), item.ID, item.TripID, req.MediaAssetID, time.Now().UTC())

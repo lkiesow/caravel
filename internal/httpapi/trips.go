@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"caravel/internal/auth"
@@ -146,32 +145,8 @@ func (s *Server) handleCreateTrip(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, s.tripToResponse(r.Context(), trip))
 }
 
-// loadOwnedTrip fetches the trip named by the {tripId} route param and
-// confirms the current user owns it, writing an error response and
-// returning ok=false if not.
-func (s *Server) loadOwnedTrip(w http.ResponseWriter, r *http.Request) (db.Trip, bool) {
-	user, _ := auth.UserFromContext(r.Context())
-	tripID := chi.URLParam(r, "tripId")
-
-	trip, err := s.Store.GetTripByID(r.Context(), tripID)
-	if err != nil {
-		if errors.Is(err, db.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "trip not found")
-		} else {
-			writeError(w, http.StatusInternalServerError, "could not load trip")
-		}
-		return db.Trip{}, false
-	}
-	if trip.OwnerID != user.ID {
-		// Same response as "not found" so trip existence isn't leaked to non-owners.
-		writeError(w, http.StatusNotFound, "trip not found")
-		return db.Trip{}, false
-	}
-	return trip, true
-}
-
 func (s *Server) handleGetTrip(w http.ResponseWriter, r *http.Request) {
-	trip, ok := s.loadOwnedTrip(w, r)
+	trip, _, ok := s.loadTrip(w, r, db.RoleViewer)
 	if !ok {
 		return
 	}
@@ -179,7 +154,7 @@ func (s *Server) handleGetTrip(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUpdateTrip(w http.ResponseWriter, r *http.Request) {
-	trip, ok := s.loadOwnedTrip(w, r)
+	trip, _, ok := s.loadTrip(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
@@ -196,7 +171,6 @@ func (s *Server) handleUpdateTrip(w http.ResponseWriter, r *http.Request) {
 
 	updated, err := s.Store.UpdateTrip(r.Context(), db.UpdateTripParams{
 		ID:        trip.ID,
-		OwnerID:   trip.OwnerID,
 		Title:     req.Title,
 		StartDate: req.StartDate,
 		EndDate:   req.EndDate,
@@ -215,7 +189,7 @@ type setPreviewImageRequest struct {
 }
 
 func (s *Server) handleSetTripPreviewImage(w http.ResponseWriter, r *http.Request) {
-	trip, ok := s.loadOwnedTrip(w, r)
+	trip, _, ok := s.loadTrip(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
@@ -226,7 +200,25 @@ func (s *Server) handleSetTripPreviewImage(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	updated, err := s.Store.SetTripPreviewImage(r.Context(), trip.ID, trip.OwnerID, req.MediaAssetID, time.Now().UTC())
+	// The asset id comes from the request body, so no route param authorized
+	// it: confirm it belongs to *this* trip before pointing the trip at it.
+	// A nil id clears the cover photo and names no asset to check.
+	if req.MediaAssetID != nil {
+		asset, err := s.Store.GetMediaAssetByID(r.Context(), *req.MediaAssetID)
+		if err != nil {
+			if errors.Is(err, db.ErrNotFound) {
+				writeError(w, http.StatusBadRequest, "media asset not found")
+			} else {
+				writeError(w, http.StatusInternalServerError, "could not load media asset")
+			}
+			return
+		}
+		if !s.requireSameTrip(w, asset.TripID, trip.ID, "media asset belongs to another trip") {
+			return
+		}
+	}
+
+	updated, err := s.Store.SetTripPreviewImage(r.Context(), trip.ID, req.MediaAssetID, time.Now().UTC())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not set preview image")
 		return
@@ -235,7 +227,7 @@ func (s *Server) handleSetTripPreviewImage(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) handleDeleteTrip(w http.ResponseWriter, r *http.Request) {
-	trip, ok := s.loadOwnedTrip(w, r)
+	trip, _, ok := s.loadTrip(w, r, db.RoleOwner)
 	if !ok {
 		return
 	}

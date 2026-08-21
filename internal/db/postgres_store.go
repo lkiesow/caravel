@@ -424,7 +424,6 @@ func (s *postgresStore) ListTripsByOwner(ctx context.Context, ownerID string) ([
 func (s *postgresStore) UpdateTrip(ctx context.Context, p UpdateTripParams) (Trip, error) {
 	row, err := s.q.UpdateTrip(ctx, postgresgen.UpdateTripParams{
 		ID:        p.ID,
-		OwnerID:   p.OwnerID,
 		Title:     p.Title,
 		StartDate: nullDate(p.StartDate),
 		EndDate:   nullDate(p.EndDate),
@@ -445,10 +444,9 @@ func (s *postgresStore) DeleteTrip(ctx context.Context, id, ownerID string) (boo
 	return n > 0, nil
 }
 
-func (s *postgresStore) SetTripPreviewImage(ctx context.Context, id, ownerID string, imageID *string, updatedAt time.Time) (Trip, error) {
+func (s *postgresStore) SetTripPreviewImage(ctx context.Context, id string, imageID *string, updatedAt time.Time) (Trip, error) {
 	row, err := s.q.SetTripPreviewImage(ctx, postgresgen.SetTripPreviewImageParams{
 		ID:             id,
-		OwnerID:        ownerID,
 		PreviewImageID: nullString(imageID),
 		UpdatedAt:      updatedAt.UTC(),
 	})
@@ -456,6 +454,70 @@ func (s *postgresStore) SetTripPreviewImage(ctx context.Context, id, ownerID str
 		return Trip{}, mapNotFound(err)
 	}
 	return postgresTripToDomain(row), nil
+}
+
+func (s *postgresStore) GetTripMember(ctx context.Context, tripID, userID string) (TripMember, error) {
+	row, err := s.q.GetTripMember(ctx, postgresgen.GetTripMemberParams{TripID: tripID, UserID: userID})
+	if err != nil {
+		return TripMember{}, mapNotFound(err)
+	}
+	// GetTripMember does not join users, so the display fields stay empty here.
+	// Callers that need them are listing people, and use ListTripMembers.
+	return TripMember{
+		TripID:    row.TripID,
+		UserID:    row.UserID,
+		Role:      TripRole(row.Role),
+		CreatedAt: row.CreatedAt,
+	}, nil
+}
+
+func (s *postgresStore) ListTripMembers(ctx context.Context, tripID string) ([]TripMember, error) {
+	rows, err := s.q.ListTripMembers(ctx, tripID)
+	if err != nil {
+		return nil, err
+	}
+	members := make([]TripMember, len(rows))
+	for i, row := range rows {
+		members[i] = TripMember{
+			TripID:      row.TripID,
+			UserID:      row.UserID,
+			Role:        TripRole(row.Role),
+			CreatedAt:   row.CreatedAt,
+			Username:    row.Username,
+			DisplayName: row.DisplayName,
+		}
+	}
+	return members, nil
+}
+
+func (s *postgresStore) UpsertTripMember(ctx context.Context, tripID, userID string, role TripRole, createdAt time.Time) (TripMember, error) {
+	row, err := s.q.UpsertTripMember(ctx, postgresgen.UpsertTripMemberParams{
+		TripID:    tripID,
+		UserID:    userID,
+		Role:      string(role),
+		CreatedAt: createdAt.UTC(),
+	})
+	if err != nil {
+		return TripMember{}, err
+	}
+	return TripMember{
+		TripID:    row.TripID,
+		UserID:    row.UserID,
+		Role:      TripRole(row.Role),
+		CreatedAt: row.CreatedAt,
+	}, nil
+}
+
+func (s *postgresStore) DeleteTripMember(ctx context.Context, tripID, userID string) (bool, error) {
+	n, err := s.q.DeleteTripMember(ctx, postgresgen.DeleteTripMemberParams{TripID: tripID, UserID: userID})
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+func (s *postgresStore) CountTripMembers(ctx context.Context, tripID string) (int64, error) {
+	return s.q.CountTripMembers(ctx, tripID)
 }
 
 func (s *postgresStore) CreateMediaAsset(ctx context.Context, p CreateMediaAssetParams) (MediaAsset, error) {

@@ -51,9 +51,11 @@ type CreateTripParams struct {
 	UpdatedAt time.Time
 }
 
+// UpdateTripParams has no OwnerID: an editor may update a trip they do not
+// own, so the query no longer filters by owner and authorization is entirely
+// the caller's (see httpapi.Server.tripRole).
 type UpdateTripParams struct {
 	ID        string
-	OwnerID   string
 	Title     string
 	StartDate *string
 	EndDate   *string
@@ -191,8 +193,22 @@ type Store interface {
 	UpdateTrip(ctx context.Context, p UpdateTripParams) (Trip, error)
 	// DeleteTrip reports whether a matching (id, ownerID) trip was deleted.
 	DeleteTrip(ctx context.Context, id, ownerID string) (bool, error)
-	// SetTripPreviewImage sets (or clears, if imageID is nil) a trip's preview image.
-	SetTripPreviewImage(ctx context.Context, id, ownerID string, imageID *string, updatedAt time.Time) (Trip, error)
+	// SetTripPreviewImage sets (or clears, if imageID is nil) a trip's preview
+	// image. Not owner-scoped — an editor may change a trip's cover photo.
+	SetTripPreviewImage(ctx context.Context, id string, imageID *string, updatedAt time.Time) (Trip, error)
+
+	// Trip membership. The owner is not stored as a member (see migration
+	// 0007), so every one of these answers a question about non-owners only.
+	// GetTripMember returns ErrNotFound when the user is not a member —
+	// including when they are the owner.
+	GetTripMember(ctx context.Context, tripID, userID string) (TripMember, error)
+	ListTripMembers(ctx context.Context, tripID string) ([]TripMember, error)
+	// UpsertTripMember adds a member or changes an existing member's role;
+	// role must be Assignable (editor or viewer).
+	UpsertTripMember(ctx context.Context, tripID, userID string, role TripRole, createdAt time.Time) (TripMember, error)
+	// DeleteTripMember reports whether a membership was actually removed.
+	DeleteTripMember(ctx context.Context, tripID, userID string) (bool, error)
+	CountTripMembers(ctx context.Context, tripID string) (int64, error)
 
 	CreateItem(ctx context.Context, p CreateItemParams) (Item, error)
 	GetItemByID(ctx context.Context, id string) (Item, error)

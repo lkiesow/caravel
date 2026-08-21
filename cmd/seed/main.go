@@ -466,7 +466,7 @@ func seedFull(s seedCtx) error {
 	if err != nil {
 		return err
 	}
-	if _, err := s.store.SetTripPreviewImage(s.ctx, trip.ID, s.ownerID, &coverID, time.Now().UTC()); err != nil {
+	if _, err := s.store.SetTripPreviewImage(s.ctx, trip.ID, &coverID, time.Now().UTC()); err != nil {
 		return fmt.Errorf("set trip cover photo: %w", err)
 	}
 	itemImageID, err := s.addImage("full", trip.ID, "banff-moraine-lake.jpg")

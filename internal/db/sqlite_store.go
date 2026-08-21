@@ -186,7 +186,6 @@ func (s *sqliteStore) ListTripsByOwner(ctx context.Context, ownerID string) ([]T
 func (s *sqliteStore) UpdateTrip(ctx context.Context, p UpdateTripParams) (Trip, error) {
 	row, err := s.q.UpdateTrip(ctx, sqlitegen.UpdateTripParams{
 		ID:        p.ID,
-		OwnerID:   p.OwnerID,
 		Title:     p.Title,
 		StartDate: nullString(p.StartDate),
 		EndDate:   nullString(p.EndDate),
@@ -207,10 +206,9 @@ func (s *sqliteStore) DeleteTrip(ctx context.Context, id, ownerID string) (bool,
 	return n > 0, nil
 }
 
-func (s *sqliteStore) SetTripPreviewImage(ctx context.Context, id, ownerID string, imageID *string, updatedAt time.Time) (Trip, error) {
+func (s *sqliteStore) SetTripPreviewImage(ctx context.Context, id string, imageID *string, updatedAt time.Time) (Trip, error) {
 	row, err := s.q.SetTripPreviewImage(ctx, sqlitegen.SetTripPreviewImageParams{
 		ID:             id,
-		OwnerID:        ownerID,
 		PreviewImageID: nullString(imageID),
 		UpdatedAt:      formatTime(updatedAt),
 	})
@@ -218,6 +216,70 @@ func (s *sqliteStore) SetTripPreviewImage(ctx context.Context, id, ownerID strin
 		return Trip{}, mapNotFound(err)
 	}
 	return sqliteTripToDomain(row), nil
+}
+
+func (s *sqliteStore) GetTripMember(ctx context.Context, tripID, userID string) (TripMember, error) {
+	row, err := s.q.GetTripMember(ctx, sqlitegen.GetTripMemberParams{TripID: tripID, UserID: userID})
+	if err != nil {
+		return TripMember{}, mapNotFound(err)
+	}
+	// GetTripMember does not join users, so the display fields stay empty here.
+	// Callers that need them are listing people, and use ListTripMembers.
+	return TripMember{
+		TripID:    row.TripID,
+		UserID:    row.UserID,
+		Role:      TripRole(row.Role),
+		CreatedAt: parseTime(row.CreatedAt),
+	}, nil
+}
+
+func (s *sqliteStore) ListTripMembers(ctx context.Context, tripID string) ([]TripMember, error) {
+	rows, err := s.q.ListTripMembers(ctx, tripID)
+	if err != nil {
+		return nil, err
+	}
+	members := make([]TripMember, len(rows))
+	for i, row := range rows {
+		members[i] = TripMember{
+			TripID:      row.TripID,
+			UserID:      row.UserID,
+			Role:        TripRole(row.Role),
+			CreatedAt:   parseTime(row.CreatedAt),
+			Username:    row.Username,
+			DisplayName: row.DisplayName,
+		}
+	}
+	return members, nil
+}
+
+func (s *sqliteStore) UpsertTripMember(ctx context.Context, tripID, userID string, role TripRole, createdAt time.Time) (TripMember, error) {
+	row, err := s.q.UpsertTripMember(ctx, sqlitegen.UpsertTripMemberParams{
+		TripID:    tripID,
+		UserID:    userID,
+		Role:      string(role),
+		CreatedAt: formatTime(createdAt),
+	})
+	if err != nil {
+		return TripMember{}, err
+	}
+	return TripMember{
+		TripID:    row.TripID,
+		UserID:    row.UserID,
+		Role:      TripRole(row.Role),
+		CreatedAt: parseTime(row.CreatedAt),
+	}, nil
+}
+
+func (s *sqliteStore) DeleteTripMember(ctx context.Context, tripID, userID string) (bool, error) {
+	n, err := s.q.DeleteTripMember(ctx, sqlitegen.DeleteTripMemberParams{TripID: tripID, UserID: userID})
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+func (s *sqliteStore) CountTripMembers(ctx context.Context, tripID string) (int64, error) {
+	return s.q.CountTripMembers(ctx, tripID)
 }
 
 func boolToInt64(b bool) int64 {

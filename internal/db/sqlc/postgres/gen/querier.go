@@ -11,6 +11,7 @@ import (
 )
 
 type Querier interface {
+	CountTripMembers(ctx context.Context, tripID string) (int64, error)
 	CreateAuthIdentity(ctx context.Context, arg CreateAuthIdentityParams) (AuthIdentity, error)
 	CreateChecklist(ctx context.Context, arg CreateChecklistParams) (Checklist, error)
 	CreateChecklistItem(ctx context.Context, arg CreateChecklistItemParams) (ChecklistItem, error)
@@ -38,7 +39,11 @@ type Querier interface {
 	DeleteItineraryEntry(ctx context.Context, arg DeleteItineraryEntryParams) (int64, error)
 	DeleteSession(ctx context.Context, id string) error
 	DeleteSessionsByUserID(ctx context.Context, userID string) error
+	// Keeps its owner_id predicate where UpdateTrip and SetTripPreviewImage lost
+	// theirs: the role required to delete a trip is exactly 'owner', so the second
+	// belt costs nothing and guards the most destructive call in the app.
 	DeleteTrip(ctx context.Context, arg DeleteTripParams) (int64, error)
+	DeleteTripMember(ctx context.Context, arg DeleteTripMemberParams) (int64, error)
 	GetAuthIdentityByProvider(ctx context.Context, arg GetAuthIdentityByProviderParams) (AuthIdentity, error)
 	GetChecklistByID(ctx context.Context, id string) (Checklist, error)
 	GetFileByID(ctx context.Context, id string) (File, error)
@@ -49,6 +54,10 @@ type Querier interface {
 	GetMediaAssetByID(ctx context.Context, id string) (MediaAsset, error)
 	GetSessionByID(ctx context.Context, id string) (Session, error)
 	GetTripByID(ctx context.Context, id string) (Trip, error)
+	// The owner is deliberately absent from trip_members (see migration 0007), so
+	// every query here answers only "what does this *non-owner* have on this trip?"
+	// The owner's role is decided from trips.owner_id, by the caller.
+	GetTripMember(ctx context.Context, arg GetTripMemberParams) (TripMember, error)
 	GetUserByID(ctx context.Context, id string) (User, error)
 	GetUserByUsername(ctx context.Context, username string) (User, error)
 	InsertItemLocation(ctx context.Context, arg InsertItemLocationParams) (ItemLocation, error)
@@ -80,6 +89,9 @@ type Querier interface {
 	// is needed to find them - only to name the location for display. LEFT, not
 	// INNER: a trip-level row has a NULL item_id and must survive the join.
 	ListTripFiles(ctx context.Context, tripID string) ([]ListTripFilesRow, error)
+	// Joined to users because the members list is a list of people, not of ids,
+	// and rendering it otherwise would be an N+1 lookup per row.
+	ListTripMembers(ctx context.Context, tripID string) ([]ListTripMembersRow, error)
 	ListTripsByOwner(ctx context.Context, ownerID string) ([]Trip, error)
 	SetChecklistItemChecked(ctx context.Context, arg SetChecklistItemCheckedParams) (ChecklistItem, error)
 	SetItemImage(ctx context.Context, arg SetItemImageParams) (Item, error)
@@ -96,6 +108,10 @@ type Querier interface {
 	UpdateItemLocation(ctx context.Context, arg UpdateItemLocationParams) (int64, error)
 	UpdateItineraryDayNotes(ctx context.Context, arg UpdateItineraryDayNotesParams) (int64, error)
 	UpdateTrip(ctx context.Context, arg UpdateTripParams) (Trip, error)
+	// Upsert rather than insert: changing someone's role and adding them are the
+	// same intent expressed twice, and a conflict here is never an error worth
+	// reporting - the caller asked for a state, not for an event.
+	UpsertTripMember(ctx context.Context, arg UpsertTripMemberParams) (TripMember, error)
 }
 
 var _ Querier = (*Queries)(nil)

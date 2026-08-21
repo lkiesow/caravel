@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"errors"
 	"net/http"
 	"sort"
 	"time"
@@ -35,7 +34,7 @@ type itineraryDayResponse struct {
 // content), merging persisted itinerary_days with empty placeholders for
 // days that don't exist yet — see plan Section 5.
 func (s *Server) handleGetItinerary(w http.ResponseWriter, r *http.Request) {
-	trip, ok := s.loadOwnedTrip(w, r)
+	trip, _, ok := s.loadTrip(w, r, db.RoleViewer)
 	if !ok {
 		return
 	}
@@ -138,7 +137,7 @@ type setDayNotesRequest struct {
 // created, including implicitly so entries can be added to a day that
 // doesn't exist yet (the frontend calls this with notes=null first).
 func (s *Server) handleSetItineraryDayNotes(w http.ResponseWriter, r *http.Request) {
-	trip, ok := s.loadOwnedTrip(w, r)
+	trip, _, ok := s.loadTrip(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
@@ -163,32 +162,12 @@ func (s *Server) handleSetItineraryDayNotes(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, itineraryDayResponse{ID: &id, Date: day.Date, Notes: day.Notes, Entries: []itineraryEntryResponse{}})
 }
 
-// loadOwnedItineraryDay fetches the day named by {dayId} and confirms the
-// current user owns its trip.
-func (s *Server) loadOwnedItineraryDay(w http.ResponseWriter, r *http.Request) (db.ItineraryDay, bool) {
-	dayID := chi.URLParam(r, "dayId")
-	day, err := s.Store.GetItineraryDayByID(r.Context(), dayID)
-	if err != nil {
-		if errors.Is(err, db.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "day not found")
-		} else {
-			writeError(w, http.StatusInternalServerError, "could not load day")
-		}
-		return db.ItineraryDay{}, false
-	}
-	if !s.hasTripAccess(r, day.TripID) {
-		writeError(w, http.StatusNotFound, "day not found")
-		return db.ItineraryDay{}, false
-	}
-	return day, true
-}
-
 // handleDeleteItineraryDay removes a day and everything planned on it.
 // Only days the user added explicitly can reach this: days inside the
 // trip's date range are placeholders synthesized by handleGetItinerary and
 // have no row to delete (nor an id the frontend could send).
 func (s *Server) handleDeleteItineraryDay(w http.ResponseWriter, r *http.Request) {
-	day, ok := s.loadOwnedItineraryDay(w, r)
+	day, _, ok := s.loadItineraryDay(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
@@ -210,7 +189,7 @@ type createItineraryEntryRequest struct {
 }
 
 func (s *Server) handleCreateItineraryEntry(w http.ResponseWriter, r *http.Request) {
-	day, ok := s.loadOwnedItineraryDay(w, r)
+	day, _, ok := s.loadItineraryDay(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
@@ -246,7 +225,7 @@ func (s *Server) handleCreateItineraryEntry(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Server) handleDeleteItineraryEntry(w http.ResponseWriter, r *http.Request) {
-	day, ok := s.loadOwnedItineraryDay(w, r)
+	day, _, ok := s.loadItineraryDay(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}

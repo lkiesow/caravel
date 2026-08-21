@@ -212,6 +212,70 @@ matrix into a role matrix: stranger → 404 everywhere; viewer → 200 on reads 
 all. Plus a test that a cross-trip `media_asset_id` is now rejected. `make ci`
 green.
 
+**Done.** Landed as planned, with three deviations worth recording.
+
+*The seam.* New `internal/httpapi/authz.go` holds all of it: `tripRole`,
+`authorizeTrip` (which applies the 404-vs-403 policy in one place), the five
+loaders `loadTrip` / `loadItem` / `loadChecklist` / `loadFile` /
+`loadItineraryDay`, and `requireSameTrip`. `hasTripAccess` and all five
+`loadOwned*` helpers are gone; `loadOwnedItem`'s separate two-query owner check
+went with them, so there is now one seam rather than two. All 37 call sites
+carry an explicit `db.RoleViewer` / `RoleEditor` / `RoleOwner`, which makes the
+required role readable at each handler instead of implied by which loader it
+called.
+
+*Deviation 1 — the role matrix is its own file.* `roles_test.go` rather than an
+extension of `ownership_test.go`. The two pin different contracts (no role at
+all → 404, insufficient role → 403) and both are load-bearing, so keeping them
+apart says that more clearly than one file with two modes. `ownership_test.go`
+gained a header note pointing at the other.
+
+*Deviation 2 — the store signatures changed, not just the SQL.*
+`UpdateTripParams.OwnerID` and `SetTripPreviewImage`'s `ownerID` parameter were
+removed rather than left in place and ignored. A parameter the query no longer
+reads is a trap for the next caller.
+
+*Deviation 3 — an extra query fix.* `sqlc` does not substitute named arguments
+inside an `ON CONFLICT ... DO UPDATE` clause: `UpsertTripMember` generated
+literal `SET role = sqlc.arg(role)`, which would have failed at runtime rather
+than at build time. Rewritten as `SET role = excluded.role`, which both dialects
+accept. Worth remembering — the generated file is the only place that mistake is
+visible, so it wants reading after `sqlc generate`, not just diffing for churn.
+
+*Also fixed, as planned:* both `media_asset_id` handlers
+(`handleSetTripPreviewImage`, `handleSetItemImage`) now confirm the asset
+belongs to the trip being edited.
+
+**Verified.** `make ci` green. `roles_test.go` adds `TestRoleMatrix` (29 routes
+× 4 caller kinds, fresh fixture per row because half the routes are
+destructive), `TestRoleMatrixUploads` for the three multipart routes,
+`TestEditorWritesActuallyLand` and `TestMediaAssetFromAnotherTripIsRejected`.
+All pre-existing tests pass unchanged, which is the real evidence that the
+stranger → 404 contract survived the rewrite.
+
+Then the part that mattered most: each new test was checked against a
+deliberate break, because a passing assertion proves nothing on its own.
+
+- `AtLeast` forced to `return true` → `TestRoleMatrix` **passed**. The matrix
+  was asking `db.TripRole.AtLeast` which outcome to expect, so breaking the
+  production check flipped the expectation with it and every viewer write was
+  permitted silently. Only `TestRoleMatrixUploads`, which hardcodes its
+  statuses, caught it. Fixed by duplicating the role ordering in the test
+  (`testRank` / `permitted`) as an independent statement of the rule; the
+  matrix now fails on that break. This is the milestone's most useful finding
+  and the reason the break-check is not optional.
+- 404 changed to 403 for the no-role case → `TestTripRoutesRejectAnotherUser`,
+  `TestRoleMatrix` and `TestRoleMatrixUploads` all fail.
+- `requireSameTrip` neutered → `TestMediaAssetFromAnotherTripIsRejected` fails.
+
+Live check against `make dev-restart MARKER=trip_members` (migration applied on
+startup, confirmed in `data/caravel.db`): as a viewer on the seeded Iceland
+trip, `other` got 200 on the trip and its items, 403 on PATCH trip, 403 on
+create checklist, 403 on delete trip; promoted to editor, 200/201 on the two
+writes and still 403 on delete. The membership rows and the probe checklist were
+removed afterwards, so the seed is back as it was — a mutating manual test that
+leaves the seed changed poisons every later run.
+
 ---
 
 ## 2. Trips list, trip payload, and the client's notion of role

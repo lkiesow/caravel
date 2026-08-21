@@ -53,6 +53,57 @@ type Trip struct {
 	UpdatedAt      time.Time
 }
 
+// TripRole is what a user may do on one trip. The three values are ordered —
+// owner outranks editor outranks viewer — and AtLeast is the only comparison
+// callers should use, so the ordering lives here rather than being re-derived
+// at each authorization site.
+//
+// Only editor and viewer are ever *stored* (trip_members.role has a CHECK
+// constraint to that effect); owner is derived from trips.owner_id, so there is
+// exactly one owner per trip by construction and no row can claim to be one.
+type TripRole string
+
+const (
+	RoleViewer TripRole = "viewer"
+	RoleEditor TripRole = "editor"
+	RoleOwner  TripRole = "owner"
+)
+
+// roleRank orders the roles. A role absent from this map ranks 0, which
+// AtLeast treats as insufficient for everything — so a corrupted or
+// future-dialect value fails closed rather than being read as an owner.
+var roleRank = map[TripRole]int{
+	RoleViewer: 1,
+	RoleEditor: 2,
+	RoleOwner:  3,
+}
+
+// AtLeast reports whether r carries at least the authority of min.
+func (r TripRole) AtLeast(min TripRole) bool {
+	return roleRank[r] >= roleRank[min] && roleRank[r] > 0
+}
+
+// Valid reports whether r is one of the three known roles. Used when accepting
+// a role from a request body.
+func (r TripRole) Valid() bool { return roleRank[r] > 0 }
+
+// Assignable reports whether r is a role that can be *given* to someone on a
+// trip. Owner is not assignable: it belongs to trips.owner_id, and handing it
+// out here would create a second one.
+func (r TripRole) Assignable() bool { return r == RoleEditor || r == RoleViewer }
+
+// TripMember is one non-owner's membership of a trip, with the user's own
+// display fields joined in — the members list is a list of people, so the two
+// always travel together.
+type TripMember struct {
+	TripID      string
+	UserID      string
+	Role        TripRole
+	CreatedAt   time.Time
+	Username    string
+	DisplayName string
+}
+
 // MapItem is a lightweight projection for the map view: items with a
 // resolvable location and show_on_map=true. Lat/Lng are always present here
 // (the query only returns items with non-null coordinates).

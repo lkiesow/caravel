@@ -13,7 +13,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"caravel/internal/auth"
 	"caravel/internal/db"
 	"caravel/internal/imaging"
 )
@@ -63,7 +62,7 @@ func (s *Server) resolveImageURL(ctx context.Context, imageID *string) *string {
 
 // handleUploadMedia handles POST /api/trips/{tripId}/media (multipart, field "file").
 func (s *Server) handleUploadMedia(w http.ResponseWriter, r *http.Request) {
-	trip, ok := s.loadOwnedTrip(w, r)
+	trip, _, ok := s.loadTrip(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
@@ -118,7 +117,7 @@ type mediaURLRequest struct {
 
 // handleCreateMediaURL handles POST /api/trips/{tripId}/media/url.
 func (s *Server) handleCreateMediaURL(w http.ResponseWriter, r *http.Request) {
-	trip, ok := s.loadOwnedTrip(w, r)
+	trip, _, ok := s.loadTrip(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
@@ -217,8 +216,7 @@ func (s *Server) handleServeMedia(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if !s.hasTripAccess(r, asset.TripID) {
-		writeError(w, http.StatusNotFound, "media not found")
+	if _, _, ok := s.authorizeTrip(w, r, asset.TripID, db.RoleViewer, "media not found"); !ok {
 		return
 	}
 	if asset.StoragePath == nil {
@@ -238,21 +236,6 @@ func (s *Server) handleServeMedia(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
 	http.ServeContent(w, r, mediaID, asset.CreatedAt, f)
-}
-
-// hasTripAccess reports whether the current request's user owns tripID —
-// used by handlers keyed on a trip ID that isn't itself the {tripId} route
-// param (e.g. resolving a media asset's owning trip).
-func (s *Server) hasTripAccess(r *http.Request, tripID string) bool {
-	user, ok := auth.UserFromContext(r.Context())
-	if !ok {
-		return false
-	}
-	trip, err := s.Store.GetTripByID(r.Context(), tripID)
-	if err != nil {
-		return false
-	}
-	return trip.OwnerID == user.ID
 }
 
 func extensionForContentType(ct string) string {

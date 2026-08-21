@@ -45,7 +45,7 @@ func (s *Server) checklistToResponse(ctx context.Context, c db.Checklist) (check
 }
 
 func (s *Server) handleListChecklists(w http.ResponseWriter, r *http.Request) {
-	trip, ok := s.loadOwnedTrip(w, r)
+	trip, _, ok := s.loadTrip(w, r, db.RoleViewer)
 	if !ok {
 		return
 	}
@@ -71,7 +71,7 @@ type checklistRequest struct {
 }
 
 func (s *Server) handleCreateChecklist(w http.ResponseWriter, r *http.Request) {
-	trip, ok := s.loadOwnedTrip(w, r)
+	trip, _, ok := s.loadTrip(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
@@ -107,28 +107,8 @@ func (s *Server) handleCreateChecklist(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, resp)
 }
 
-// loadOwnedChecklist fetches the checklist named by {checklistId} and
-// confirms the current user owns its trip.
-func (s *Server) loadOwnedChecklist(w http.ResponseWriter, r *http.Request) (db.Checklist, bool) {
-	checklistID := chi.URLParam(r, "checklistId")
-	checklist, err := s.Store.GetChecklistByID(r.Context(), checklistID)
-	if err != nil {
-		if errors.Is(err, db.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "checklist not found")
-		} else {
-			writeError(w, http.StatusInternalServerError, "could not load checklist")
-		}
-		return db.Checklist{}, false
-	}
-	if !s.hasTripAccess(r, checklist.TripID) {
-		writeError(w, http.StatusNotFound, "checklist not found")
-		return db.Checklist{}, false
-	}
-	return checklist, true
-}
-
 func (s *Server) handleDeleteChecklist(w http.ResponseWriter, r *http.Request) {
-	checklist, ok := s.loadOwnedChecklist(w, r)
+	checklist, _, ok := s.loadChecklist(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
@@ -149,7 +129,7 @@ type checklistItemRequest struct {
 }
 
 func (s *Server) handleCreateChecklistItem(w http.ResponseWriter, r *http.Request) {
-	checklist, ok := s.loadOwnedChecklist(w, r)
+	checklist, _, ok := s.loadChecklist(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
@@ -185,7 +165,7 @@ type checklistItemCheckedRequest struct {
 }
 
 func (s *Server) handleSetChecklistItemChecked(w http.ResponseWriter, r *http.Request) {
-	checklist, ok := s.loadOwnedChecklist(w, r)
+	checklist, _, ok := s.loadChecklist(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
@@ -210,7 +190,7 @@ func (s *Server) handleSetChecklistItemChecked(w http.ResponseWriter, r *http.Re
 }
 
 func (s *Server) handleDeleteChecklistItem(w http.ResponseWriter, r *http.Request) {
-	checklist, ok := s.loadOwnedChecklist(w, r)
+	checklist, _, ok := s.loadChecklist(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}

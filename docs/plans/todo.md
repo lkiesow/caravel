@@ -158,10 +158,15 @@ Not yet decided; each needs a call before it is work.
 One cluster: the entries below depend on the first, so they want designing
 together rather than bolting a column onto an existing table.
 
-- **Sharing / collaboration / permissions.** (Stage 01.) Owner/participant/viewer
-  roles on a trip. Needs a `trip_collaborators` join table and a change from
-  "owner_id == current user" to "role >= X" checks — the latter touching every
-  handler that currently calls `loadOwnedTrip`/`loadOwnedItem`.
+- **Sharing / collaboration / permissions.** (Stage 01; the authorization half
+  landed in Stage 14 Milestone 1.) The role model exists: a `trip_members` table
+  (owner deliberately absent, `trips.owner_id` stays authoritative), `db.TripRole`
+  with owner > editor > viewer, and one seam in `internal/httpapi/authz.go` that
+  all 37 trip-scoped handlers go through with an explicit minimum role. What is
+  left is everything above it: `ListTripsByOwner` is still owner-only so a member
+  cannot see a shared trip in their list, the trip payload carries no `role`, there
+  is no members API or UI, and no read-only mode — a viewer's app still renders
+  edit buttons that now 403 rather than 404. Stage 14 Milestones 2-4.
 - **Public shareable links.** An unauthenticated read-only trip view via a
   token. Needs a `share_links` table (token, trip_id, scope, expires_at) plus an
   unauthenticated route variant. IDs are already non-guessable UUIDs, so this is
@@ -378,6 +383,18 @@ step with itself.
   maintainable — that would make the check a real gate instead of a report.
   (As of Stage 09 Milestone 7 it reports no unused keys at all, so wiring it up
   would start from green.)
+- **A test that asks the code under test what to expect proves nothing.**
+  (Stage 14 Milestone 1.) `TestRoleMatrix` originally derived each expected
+  status from `db.TripRole.AtLeast` — the function it was testing — so forcing
+  `AtLeast` to `return true` flipped the production check and the expectation
+  together and the test passed while every viewer write was being permitted.
+  Fixed there by restating the role ordering independently in the test file.
+  The general lesson has no home in the tree yet: nothing stops the next table
+  test from computing its expectations with a production helper, and the failure
+  is invisible precisely because the suite stays green. Worth a note in
+  `CLAUDE.md`'s verification guidance, or a habit of break-checking any test
+  whose expectation is computed rather than written down.
+
 - **`scripts/without.sh` only handles *uncommitted* changes.** By design (it
   works via `git stash push`), but "does this test actually cover the fix I
   landed last week?" needs the change staged as uncommitted first. A

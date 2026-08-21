@@ -63,6 +63,9 @@ type DeleteTripParams struct {
 	OwnerID string `json:"owner_id"`
 }
 
+// Keeps its owner_id predicate where UpdateTrip and SetTripPreviewImage lost
+// theirs: the role required to delete a trip is exactly 'owner', so the second
+// belt costs nothing and guards the most destructive call in the app.
 func (q *Queries) DeleteTrip(ctx context.Context, arg DeleteTripParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, deleteTrip, arg.ID, arg.OwnerID)
 	if err != nil {
@@ -132,7 +135,7 @@ func (q *Queries) ListTripsByOwner(ctx context.Context, ownerID string) ([]Trip,
 const setTripPreviewImage = `-- name: SetTripPreviewImage :one
 UPDATE trips
 SET preview_image_id = $1, updated_at = $2
-WHERE id = $3 AND owner_id = $4
+WHERE id = $3
 RETURNING id, owner_id, title, start_date, end_date, preview_image_id, created_at, updated_at, subtitle
 `
 
@@ -140,16 +143,10 @@ type SetTripPreviewImageParams struct {
 	PreviewImageID sql.NullString `json:"preview_image_id"`
 	UpdatedAt      time.Time      `json:"updated_at"`
 	ID             string         `json:"id"`
-	OwnerID        string         `json:"owner_id"`
 }
 
 func (q *Queries) SetTripPreviewImage(ctx context.Context, arg SetTripPreviewImageParams) (Trip, error) {
-	row := q.db.QueryRowContext(ctx, setTripPreviewImage,
-		arg.PreviewImageID,
-		arg.UpdatedAt,
-		arg.ID,
-		arg.OwnerID,
-	)
+	row := q.db.QueryRowContext(ctx, setTripPreviewImage, arg.PreviewImageID, arg.UpdatedAt, arg.ID)
 	var i Trip
 	err := row.Scan(
 		&i.ID,
@@ -172,7 +169,7 @@ SET title = $1,
     end_date = $3,
     subtitle = $4,
     updated_at = $5
-WHERE id = $6 AND owner_id = $7
+WHERE id = $6
 RETURNING id, owner_id, title, start_date, end_date, preview_image_id, created_at, updated_at, subtitle
 `
 
@@ -183,7 +180,6 @@ type UpdateTripParams struct {
 	Subtitle  sql.NullString `json:"subtitle"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	ID        string         `json:"id"`
-	OwnerID   string         `json:"owner_id"`
 }
 
 func (q *Queries) UpdateTrip(ctx context.Context, arg UpdateTripParams) (Trip, error) {
@@ -194,7 +190,6 @@ func (q *Queries) UpdateTrip(ctx context.Context, arg UpdateTripParams) (Trip, e
 		arg.Subtitle,
 		arg.UpdatedAt,
 		arg.ID,
-		arg.OwnerID,
 	)
 	var i Trip
 	err := row.Scan(

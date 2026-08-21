@@ -16,9 +16,15 @@ import (
 //
 // Every violation is expected to answer 404, not 403: the handlers deliberately
 // report "not found" for another user's resource rather than confirming it
-// exists (see loadOwnedTrip in trips.go). Asserting 404 therefore pins the
+// exists (see the note at the top of authz.go). Asserting 404 therefore pins the
 // information-disclosure behaviour as well as the access control — a change to
 // 403 would leak existence and fail here.
+//
+// Note what this file covers and roles_test.go does not: the caller here has no
+// role at all. Since Stage 14 a caller who *has* a role but not enough of one
+// gets 403 instead, which is the matrix in roles_test.go. Both are load-bearing
+// — collapsing them into one policy would either leak existence or lie to a
+// viewer.
 
 // owned is a trip belonging to `owner`, with a child of each kind, plus a
 // separate `intruder` session that must not be able to reach any of it.

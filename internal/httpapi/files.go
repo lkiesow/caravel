@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"caravel/internal/db"
@@ -158,7 +157,7 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request, tripID strin
 }
 
 func (s *Server) handleListTripFiles(w http.ResponseWriter, r *http.Request) {
-	trip, ok := s.loadOwnedTrip(w, r)
+	trip, _, ok := s.loadTrip(w, r, db.RoleViewer)
 	if !ok {
 		return
 	}
@@ -175,7 +174,7 @@ func (s *Server) handleListTripFiles(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUploadTripFile(w http.ResponseWriter, r *http.Request) {
-	trip, ok := s.loadOwnedTrip(w, r)
+	trip, _, ok := s.loadTrip(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
@@ -183,7 +182,7 @@ func (s *Server) handleUploadTripFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListItemFiles(w http.ResponseWriter, r *http.Request) {
-	item, ok := s.loadOwnedItem(w, r)
+	item, _, ok := s.loadItem(w, r, db.RoleViewer)
 	if !ok {
 		return
 	}
@@ -200,31 +199,11 @@ func (s *Server) handleListItemFiles(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUploadItemFile(w http.ResponseWriter, r *http.Request) {
-	item, ok := s.loadOwnedItem(w, r)
+	item, _, ok := s.loadItem(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
 	s.uploadFile(w, r, item.TripID, &item.ID)
-}
-
-// loadOwnedFile fetches the file named by {fileId} and confirms the
-// current user owns its trip.
-func (s *Server) loadOwnedFile(w http.ResponseWriter, r *http.Request) (db.File, bool) {
-	fileID := chi.URLParam(r, "fileId")
-	file, err := s.Store.GetFileByID(r.Context(), fileID)
-	if err != nil {
-		if errors.Is(err, db.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "file not found")
-		} else {
-			writeError(w, http.StatusInternalServerError, "could not load file")
-		}
-		return db.File{}, false
-	}
-	if !s.hasTripAccess(r, file.TripID) {
-		writeError(w, http.StatusNotFound, "file not found")
-		return db.File{}, false
-	}
-	return file, true
 }
 
 // A note is a pointer so the request can tell "leave it alone" apart from
@@ -237,7 +216,7 @@ type fileNoteRequest struct {
 }
 
 func (s *Server) handleUpdateFileNote(w http.ResponseWriter, r *http.Request) {
-	file, ok := s.loadOwnedFile(w, r)
+	file, _, ok := s.loadFile(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
@@ -268,7 +247,7 @@ func (s *Server) handleUpdateFileNote(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
-	file, ok := s.loadOwnedFile(w, r)
+	file, _, ok := s.loadFile(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
@@ -286,7 +265,7 @@ func (s *Server) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
-	file, ok := s.loadOwnedFile(w, r)
+	file, _, ok := s.loadFile(w, r, db.RoleViewer)
 	if !ok {
 		return
 	}

@@ -28,7 +28,7 @@ func mapItemToResponse(i db.MapItem) mapItemResponse {
 }
 
 func (s *Server) handleGetTripMap(w http.ResponseWriter, r *http.Request) {
-	trip, ok := s.loadOwnedTrip(w, r)
+	trip, _, ok := s.loadTrip(w, r, db.RoleViewer)
 	if !ok {
 		return
 	}

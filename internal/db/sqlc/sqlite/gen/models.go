@@ -136,6 +136,13 @@ type Trip struct {
 	Subtitle       sql.NullString `json:"subtitle"`
 }
 
+type TripMember struct {
+	TripID    string `json:"trip_id"`
+	UserID    string `json:"user_id"`
+	Role      string `json:"role"`
+	CreatedAt string `json:"created_at"`
+}
+
 type User struct {
 	ID          string         `json:"id"`
 	Username    string         `json:"username"`

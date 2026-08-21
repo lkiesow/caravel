@@ -33,8 +33,12 @@ function markerIcon(L, category) {
 }
 
 const styles = `
+  /* A column flex box, not a plain block: the map fills the height and the
+     two-finger hint below it takes its own, so adding that line can't push
+     the map past :host's height at any width. */
   :host {
-    display: block;
+    display: flex;
+    flex-direction: column;
     height: 60vh;
     min-height: 24rem;
   }
@@ -44,7 +48,10 @@ const styles = `
   }
   .map-wrap {
     position: relative;
-    height: 100%;
+    flex: 1;
+    /* A flex item's default min-height: auto would let the map's content
+       floor the box instead of the flex basis doing it. */
+    min-height: 0;
     /* Leaflet parks internal helpers (.leaflet-proxy, the zoom-animation
        panes) at very large offsets - measured at right=1825757 on a settled
        page. .leaflet-container clips them once it is initialised, but during
@@ -93,31 +100,49 @@ const styles = `
     padding: 1rem;
     color: var(--color-text-muted, #666);
   }
+  /* Rendered only on coarse pointers (see render()), where one-finger drag
+     deliberately no longer pans the map. */
+  .gesture-hint {
+    margin: 0.5rem 0 0;
+    font-size: 0.8rem;
+    color: var(--color-text-muted, #666);
+  }
 
   /* On narrow viewports the legend, absolutely positioned over the map's
      top-right corner at wider widths, covered over half the map's width. It
-     moves below the map instead, and the map itself shrinks a little so the
-     pair doesn't push the rest of the page too far down. :host([lat]) (the
+     comes out of the overlay and into the flow instead. :host([lat]) (the
      single-marker mode used on the location view page, no legend there) is
      more specific than a plain :host, so it's unaffected by this at any
-     width. */
+     width.
+     Two things here are the fix for Stage 07's "the map swallows the page
+     scroll" bug (stage-13.md Milestone 1), not styling preference:
+     - the map is capped rather than taking a flat 50vh. At 324x756 the old
+       rule left ~67px of page below a 424px map, so a drag starting anywhere
+       in the lower half had nowhere to go but the map;
+     - the legend sits *above* the map (order: -1) rather than after it. Below
+       it, it landed at y=769 - just past the fold, with nothing suggesting it
+       existed - and it doubles as a strip of non-map page to start a drag in. */
   @media (max-width: 640px) {
     :host {
       height: auto;
     }
     .map-wrap {
+      display: flex;
+      flex-direction: column;
       height: auto;
+      flex: none;
     }
     #map {
-      height: 50vh;
+      height: min(50vh, 20rem);
       min-height: 16rem;
     }
     .legend {
       position: static;
+      order: -1;
       flex-direction: row;
       flex-wrap: wrap;
       width: 100%;
-      margin-top: 0.5rem;
+      margin-bottom: 0.5rem;
     }
     /* The legend's category toggles are tap targets like any other, and at
        20px they were among the smallest in the app (Stage 09 Milestone 6).
@@ -212,6 +237,7 @@ class LeafletMap extends HTMLElement {
         </div>`
         }
       </div>
+      ${isCoarsePointer() ? `<p class="gesture-hint">${t("map.twoFingerHint")}</p>` : ""}
     `;
 
     if (!single && !this._items.length) {
@@ -228,7 +254,16 @@ class LeafletMap extends HTMLElement {
     this._L = L;
 
     const mapEl = this.shadowRoot.getElementById("map");
-    const map = L.map(mapEl, { attributionControl: true });
+    // dragging: false on touch is the other half of the "the map swallows the
+    // page scroll" fix. With Leaflet's drag handler off, a one-finger drag is
+    // not consumed by the map at all and scrolls the page; two fingers still
+    // pan *and* zoom, because Leaflet's touchZoom handler (left enabled)
+    // applies the pinch centre's delta even when the pinch scale is exactly 1
+    // - see TouchZoom._onTouchMove in the vendored leaflet.esm.js. So this
+    // needs no touchstart/touchend juggling of our own, which the Stage 13
+    // plan had budgeted for: enabling dragging mid-touchstart would have been
+    // too late for Leaflet's own listener to see that same gesture anyway.
+    const map = L.map(mapEl, { attributionControl: true, dragging: !isCoarsePointer() });
     this._map = map;
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -292,6 +327,13 @@ class LeafletMap extends HTMLElement {
       this._map.setView([20, 0], 2);
     }
   }
+}
+
+// Touch-first devices, where a one-finger drag has to belong to the page
+// rather than to the map. Guarded because matchMedia is absent in some
+// non-browser environments, and a missing match is the desktop answer.
+function isCoarsePointer() {
+  return window.matchMedia?.("(pointer: coarse)").matches ?? false;
 }
 
 function escapeHtml(s) {

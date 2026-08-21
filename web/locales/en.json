@@ -118,6 +118,7 @@
   "trip.editor.createButton": "Create trip",
   "map.empty": "No items with a location yet. Add a location to an item and it'll show up here.",
   "map.viewOnGoogleMaps": "View on Google Maps",
+  "map.twoFingerHint": "Use two fingers to move the map.",
   "itinerary.noDates": "Set a start and end date in this trip's settings to build a day-by-day itinerary, or add days manually below.",
   "itinerary.addDay": "Add a day",
   "itinerary.addDayDate": "Date to add",

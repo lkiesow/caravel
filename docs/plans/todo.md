@@ -22,14 +22,6 @@ scratch file removed, so there's only ever one list.
 
 Things that are wrong today, each confirmed against the current source.
 
-- **The mobile map page swallows vertical scrolling.** (Stage 07.) On the Map tab
-  at 324×756 the map is 424px tall starting at y=383, with only ~67px of page
-  below it — so a touch drag starting anywhere in the lower half of the screen
-  pans the map instead of scrolling the page. The category legend
-  (Site/Stay/Transport) ends up at y=769, just below the fold, with no
-  affordance suggesting it exists. Wants a deliberate decision about map height,
-  gesture handling (e.g. Leaflet's one-finger-pan opt-in) and legend placement
-  rather than a quick tweak.
 - **A cover photo set by URL on the *new trip* form is only validated
   server-side at Create time.** (Stage 07; half-fixed in Stage 09 Milestone 4.)
   The copy half is done: both the existing-trip card and the create form show
@@ -274,6 +266,19 @@ step with itself.
       the sweeps themselves (overflow, headings, names, tap targets) still run in
       one locale, and German copy is the longer of the two — the case most likely
       to overflow a box.
+- **Firefox-only Playwright cannot emulate a coarse pointer.** (Stage 13
+  Milestone 1.) `playwright.config.js` runs Firefox alone, deliberately, but
+  Playwright's `isMobile` — the option that flips `(pointer: coarse)` — is
+  Chromium-only, and `hasTouch: true` does not do it. So `tests/ui/map.spec.js`
+  emulates the touch device by stubbing `window.matchMedia` for that one query
+  through `addInitScript`. That is honest as far as it goes (the stub replaces
+  the *input*; the component's real response is what gets asserted), but it
+  means no spec exercises an actual touch gesture — the "one finger scrolls the
+  page, two fingers pan the map" claim is verified through Leaflet's handler
+  state, not by dragging. Any code that reads `(pointer: coarse)` from here on
+  inherits the same limit. A Chromium project added just for gesture specs
+  would close it, at the cost of the "one browser keeps CI cheap" decision.
+
 - **The suite still needs its in-flight-fetch counter, even now that routes show
   a loading state.** Stage 09 Milestone 5 gave every route a `common.loading`
   line, which fixes the user-facing half of the old "empty shell" problem but

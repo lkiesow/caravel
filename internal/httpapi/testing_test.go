@@ -168,6 +168,18 @@ func (ts *testServer) mustCreate(method, path string, cookie *http.Cookie, body 
 	return id
 }
 
+// mustCreateNoID is mustCreate for a response whose body has no "id" — the
+// member routes key on user_id, since the membership itself has no id of its
+// own (its primary key is the pair).
+func (ts *testServer) mustCreateNoID(method, path string, cookie *http.Cookie, body string, wantStatus int) {
+	ts.t.Helper()
+
+	w := ts.do(method, path, cookie, body)
+	if w.Code != wantStatus {
+		ts.t.Fatalf("%s %s: got %d, want %d, body %s", method, path, w.Code, wantStatus, w.Body.String())
+	}
+}
+
 // createTrip makes a trip owned by the cookie's user and returns its ID.
 func (ts *testServer) createTrip(cookie *http.Cookie, title string) string {
 	ts.t.Helper()

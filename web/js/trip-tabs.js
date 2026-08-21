@@ -26,6 +26,7 @@ export const TRIP_TABS = [
   { key: "itinerary", icon: "calendar" },
   { key: "files", icon: "file-text", overflow: true },
   { key: "checklists", icon: "list-checks" },
+  { key: "members", icon: "users", overflow: true },
   { key: "settings", icon: "settings", overflow: true },
 ];
 

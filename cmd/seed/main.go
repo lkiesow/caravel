@@ -469,6 +469,14 @@ func seedFull(s seedCtx) error {
 	if _, err := s.store.SetTripPreviewImage(s.ctx, trip.ID, &coverID, time.Now().UTC()); err != nil {
 		return fmt.Errorf("set trip cover photo: %w", err)
 	}
+	// `other` is an editor here and a viewer on one-pin, so both halves of the
+	// role model have a scenario: the sweeps see a trip with members, and the
+	// sharing spec has an editor case and a read-only case without creating
+	// either itself.
+	if err := s.addMember(trip.ID, db.RoleEditor); err != nil {
+		return err
+	}
+
 	itemImageID, err := s.addImage("full", trip.ID, "banff-moraine-lake.jpg")
 	if err != nil {
 		return err
@@ -510,6 +518,16 @@ func seedFull(s seedCtx) error {
 
 // seedOnePin has a single mappable location, so the map's bounds are a point
 // rather than a box — the degenerate-zoom case.
+// addMember puts `other` on a trip, so the UI suite has a real shared trip to
+// drive rather than having to create one itself — and so the trips list shows
+// both a shared card and owned ones side by side.
+func (s seedCtx) addMember(tripID string, role db.TripRole) error {
+	if _, err := s.store.UpsertTripMember(s.ctx, tripID, s.otherID, role, time.Now().UTC()); err != nil {
+		return fmt.Errorf("add member (%s): %w", role, err)
+	}
+	return nil
+}
+
 func seedOnePin(s seedCtx) error {
 	start, end := day(baseDate, 0), day(baseDate, 2)
 	trip, err := s.newTrip("one-pin", "Single Pin", &start, &end,
@@ -527,7 +545,11 @@ func seedOnePin(s seedCtx) error {
 			notes: "Has coordinates but show_on_map is false.",
 			lat:   ptr(52.2700), lng: ptr(8.0400), onMap: false},
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	// The read-only case: `other` can see this trip but change nothing on it.
+	return s.addMember(trip.ID, db.RoleViewer)
 }
 
 func seedStartOnly(s seedCtx) error {

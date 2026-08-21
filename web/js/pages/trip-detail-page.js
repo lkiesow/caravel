@@ -7,6 +7,7 @@ import { renderItineraryTab } from "./itinerary-tab.js";
 import { renderFileList } from "../components/file-list.js";
 import { renderChecklistList } from "../components/checklist-list.js";
 import { renderSettingsTab } from "./settings-tab.js";
+import { renderMembersTab } from "./members-tab.js";
 import { TRIP_TABS, OVERFLOW_TRIP_TABS } from "../trip-tabs.js";
 import { renderMenu } from "../components/menu.js";
 import { navigate } from "../router.js";
@@ -139,6 +140,8 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
       renderFileList(content, `/trips/${trip.id}/files`);
     } else if (tab === "checklists") {
       renderChecklistList(content, trip.id);
+    } else if (tab === "members") {
+      renderMembersTab(content, trip);
     } else if (tab === "settings") {
       renderSettingsTab(content, trip, {
         onTripUpdated: (updated) => {

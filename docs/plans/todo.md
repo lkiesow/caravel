@@ -163,11 +163,10 @@ together rather than bolting a column onto an existing table.
   (owner deliberately absent, `trips.owner_id` stays authoritative), `db.TripRole`
   with owner > editor > viewer, and one seam in `internal/httpapi/authz.go` that
   all 37 trip-scoped handlers go through with an explicit minimum role. What is
-  left, after Milestone 2 added `ListTripsForUser`, the `role`/`owner` fields on
-  every trip payload and `web/js/trip-role.js`: there is no members API or UI, so
-  a membership can only be created with SQL, and no read-only mode — a viewer's
-  app still renders edit buttons that now 403 rather than 404. Stage 14
-  Milestones 3-4.
+  left, after Milestone 3 shipped the members API and the Members tab: no
+  read-only mode. A viewer can be added and can see the trip, but their app still
+  renders every edit button, which now 403s rather than 404s. Stage 14
+  Milestone 4.
 - **Public shareable links.** An unauthenticated read-only trip view via a
   token. Needs a `share_links` table (token, trip_id, scope, expires_at) plus an
   unauthenticated route variant. IDs are already non-guessable UUIDs, so this is
@@ -395,6 +394,25 @@ step with itself.
   is invisible precisely because the suite stays green. Worth a note in
   `CLAUDE.md`'s verification guidance, or a habit of break-checking any test
   whose expectation is computed rather than written down.
+
+- **`confirmDialog` hardcodes a trash icon for every danger confirmation.**
+  (Stage 14 Milestone 3.) `components/dialog.js` picks the icon from `danger`
+  alone (`trash-2` when set, `check` when not), which is right for the delete
+  confirmations it was written for and wrong for "Leave trip" — an action that
+  removes no data and shows a bin anyway. The *label* half of the same problem
+  was fixed in that milestone (both member confirmations now pass their own
+  `confirmKey` instead of defaulting to `common.delete`), so what is left is one
+  optional `iconName` on `confirmDialog`, plus a decision about whether
+  `danger` should keep implying an icon at all.
+
+- **Trip ownership cannot be transferred.** (Stage 14 Milestone 3.) `trips.owner_id`
+  is authoritative and the owner has no `trip_members` row, which makes "exactly
+  one owner" true by construction — but also means the only ways out of owning a
+  trip are deleting it or leaving it in someone else's hands informally. The API
+  says so explicitly: removing the owner answers 409 `owner_cannot_leave`,
+  pointing at a transfer that does not exist yet. A transfer needs a decision
+  about what happens to the old owner (editor? removed?) and, once Milestone 7
+  lands, to their personal files on that trip.
 
 - **`scripts/without.sh` only handles *uncommitted* changes.** By design (it
   works via `git stash push`), but "does this test actually cover the fix I

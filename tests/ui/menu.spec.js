@@ -24,8 +24,8 @@ const MOBILE = { width: 324, height: 756 };
 // Hard-coded rather than read from web/js/trip-tabs.js so a wrong *translation*
 // is a failure and not just a mirror of the source.
 const OVERFLOW_LABELS = {
-  en: { more: "More", items: ["Files", "Settings"] },
-  de: { more: "Mehr", items: ["Dateien", "Einstellungen"] },
+  en: { more: "More", items: ["Files", "Members", "Settings"] },
+  de: { more: "Mehr", items: ["Dateien", "Mitreisende", "Einstellungen"] },
 };
 
 async function openTripLocations(page) {

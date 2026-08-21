@@ -39,6 +39,8 @@ ICONS = [
     "file",
     "ellipsis-vertical",
     "locate-fixed",
+    "users",
+    "user-plus",
 ]
 
 

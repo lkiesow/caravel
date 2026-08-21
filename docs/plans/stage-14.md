@@ -389,6 +389,83 @@ afterwards, so the seed is unchanged for the UI suite.
 324×756 in both locales: add, change role, remove, and the tab's own tap
 targets.
 
+**Done.** Landed as planned. Four things worth recording.
+
+*Error codes, not error messages.* `POST /members` can fail four ways the form
+must word differently, two of them sharing a 409, so `writeErrorCode` (new,
+beside `writeError`) adds a stable machine-readable `code` alongside the human
+message: `user_not_found`, `already_owner`, `already_member`. The client
+branches on the code and never on the prose. Recorded in `members.go`: the 404
+for an unknown username *is* a deliberate disclosure — the caller learns whether
+a username exists here — and it is the price of add-by-username, since otherwise
+a typo and a real refusal are indistinguishable. It reveals nothing that
+attempting a registration would not already reveal via `ErrUsernameTaken`.
+
+*POST and PUT are kept distinct even though the store call is an upsert.* Adding
+someone who is already on the trip is a 409 rather than a silent role change,
+and a PUT against a non-member is a 404 rather than a silent add. Both needed an
+explicit `GetTripMember` first, because `UpsertTripMember` would happily have
+performed the other operation — which is convenient for the store and wrong for
+the API.
+
+*Remove is the one route that cannot use `loadTrip`'s minimum role.* The owner
+may remove anyone; a member may remove exactly themselves ("leave trip"). So it
+loads at `RoleViewer` and spells out the two cases. Removing the owner is a 409
+with code `owner_cannot_leave` rather than the accidental 404 it would otherwise
+be — the owner has no membership row to delete — because it is also the request
+that would leave a trip with no owner if it ever worked.
+
+*One deviation:* `confirmDialog` gained a `message` option. `open()` already
+supported a ready-made interpolated string "for the rare caller that has to
+interpolate" and `alertDialog` already exposed it; `confirmDialog` simply never
+passed it through, and "Remove Anna from this trip?" has to name Anna. No new
+mechanism, one line.
+
+Everything else as planned: the `members` tab (necessarily `overflow: true` — a
+seventh tab has no chance in a phone's row), `members-tab.js` in two shapes
+decided by `canManageMembers` (owner: add form plus a per-row ⋮ holding the role
+radio group and a danger Remove; everyone else: the same list read-only plus
+Leave on their own row), `users` and `user-plus` added to the sprite, 24 new keys
+in both locales, and the seeder putting `other` on `full` as editor and `one-pin`
+as viewer. The UI-suite tab lists in `scenarios.js` and `menu.spec.js` were
+updated to match.
+
+**Verified.** `make ci` green (201 keys in sync); all Playwright specs pass,
+including `menu.spec.js` in both locales now that the More menu has three items.
+Six new Go tests cover the owner being synthesized into the list and coming
+first, list visibility across all four caller kinds, add-by-username including
+trimming, all eight add refusals with their codes, role changes proved by a
+viewer's 403 becoming an editor's 201 and back again, remove-vs-leave including
+that a member cannot remove someone else, and that the owner cannot be removed.
+
+Break-checked, six breaks, all caught — and two of them had to be rewritten
+first. `if false {` orphaned variables and made the package fail to *compile*,
+which `todo.md` warns reads exactly like a test failure; rewritten as
+`if false && <original> {` so the guard is still evaluated and the break is a
+real one. Breaks confirmed: any member removing anyone, the already-member check
+skipped, PUT-becomes-add, the owner being removable, role validation dropped,
+and the owner omitted from the list.
+
+Live at 324×756 and 1280: as owner, the owner row is inert and the member row
+has its ⋮; all four add-form failures show their own message (including a padded
+`  demo  ` resolving to "demo owns this trip", so the trim matches the server's);
+demoting through the radio group persisted. As `other`, the tab is read-only with
+no add form, no ⋮, and Leave only on their own row at exactly 44×44; the German
+More menu reads Dateien / Mitreisende / Einstellungen with no tab-bar overflow;
+leaving showed the interpolated German confirmation, landed on `/trips`, and the
+trip answered 404 afterwards.
+
+*Found and fixed during that pass:* the Leave confirmation's button said
+"Löschen" — `confirmDialog` defaults `confirmKey` to `common.delete`, which is
+right for "delete this trip" and misleading for an action that removes no data.
+Both confirmations now pass their own short label (`members.confirmLeave` /
+`members.confirmRemove`), verified as "Verlassen" at 44px with no overflow. The
+dialog still shows a trash icon for Leave, which `confirmDialog` hardcodes
+whenever `danger` is set; noted in `todo.md` rather than widening that API here.
+
+The seeded memberships the manual pass consumed were restored through the API,
+so `make dev-reset` state is intact.
+
 ---
 
 ## 4. Read-only mode for viewers

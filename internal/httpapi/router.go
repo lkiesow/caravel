@@ -124,6 +124,15 @@ func (s *Server) buildRouter() chi.Router {
 
 				r.Get("/checklists", s.handleListChecklists)
 				r.Post("/checklists", s.handleCreateChecklist)
+
+				// Reading the member list needs only viewer: everyone on a
+				// trip may see who else is on it. The writes are owner-only,
+				// except that handleRemoveMember also serves "leave trip" and
+				// so does its own check.
+				r.Get("/members", s.handleListMembers)
+				r.Post("/members", s.handleAddMember)
+				r.Put("/members/{userId}", s.handleSetMemberRole)
+				r.Delete("/members/{userId}", s.handleRemoveMember)
 			})
 		})
 

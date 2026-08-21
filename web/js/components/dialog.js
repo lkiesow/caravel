@@ -25,9 +25,14 @@ import { icon } from "../icon.js";
 // *.deleteConfirm strings are already self-contained sentences ("Delete this
 // trip? This cannot be undone."), so there's no separate title, and the
 // message doubles as the dialog's accessible name via aria-labelledby.
-export function confirmDialog({ messageKey, confirmKey = "common.delete", danger = true }) {
+// `message` is a ready-made string for the callers whose prompt has to name
+// something — "Remove Anna from this trip?" — and takes precedence over
+// messageKey exactly as it does in alertDialog. open() has always supported
+// this; confirmDialog simply never passed it through.
+export function confirmDialog({ messageKey, message, confirmKey = "common.delete", danger = true }) {
   return open({
     messageKey,
+    message,
     buttons: [
       // Cancel first, so it's what <dialog>'s autofocus lands on and what
       // Enter triggers. Deliberately the reverse of the app's usual

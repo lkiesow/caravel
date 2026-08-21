@@ -268,6 +268,7 @@ a:visited {
 .password-form__error,
 .item-form__error,
 .file-list__error,
+.members-add__error,
 .image-field__error {
   color: var(--color-text);
   font-size: 0.875rem;
@@ -2122,5 +2123,123 @@ button {
      cleanly with no floating "·" between them. */
   .trip-summary__dot {
     display: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Members tab (Stage 14 Milestone 3)
+
+   A row per person: initials avatar, name and @username, their role, and the
+   owner's ⋮ menu. The role stays visible as text rather than living only in
+   that menu, because a non-owner has no menu at all and would otherwise have
+   no way to see who may edit.
+   --------------------------------------------------------------------------- */
+
+.members {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.member-card {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  /* The row carries the tap floor itself rather than relying on its contents
+     happening to be tall enough — the same accident .file-card__body had. */
+  min-height: var(--tap-min);
+}
+
+.member-card__avatar {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: var(--color-accent-strong);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.member-card__who {
+  display: flex;
+  flex-direction: column;
+  /* min-width: 0 or the ellipsis below never happens: a flex item's automatic
+     minimum size is its content, so one long display name would push the role
+     and the ⋮ off the row instead of truncating. */
+  min-width: 0;
+  flex: 1;
+}
+
+.member-card__name,
+.member-card__username {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.member-card__you,
+.member-card__username {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.member-card__role {
+  flex: none;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.member-card__actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+}
+
+.members-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.members-add__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+
+
+
+@media (max-width: 640px) {
+  /* At 324px the four columns cannot share one line: name, role and the ⋮ all
+     want space and the username is the piece that would vanish first. The role
+     drops below the name instead, which keeps every element full-size and the
+     ⋮ where the thumb expects it. */
+  .member-card {
+    flex-wrap: wrap;
+  }
+
+  .member-card__role {
+    order: 4;
+    width: 100%;
+    /* Line up under the name rather than under the avatar. */
+    padding-left: calc(2rem + 0.625rem);
+  }
+
+  .members-add__field,
+  .members-add .btn {
+    flex-basis: 100%;
   }
 }

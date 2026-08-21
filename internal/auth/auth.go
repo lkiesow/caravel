@@ -32,6 +32,9 @@ const (
 var (
 	ErrInvalidCredentials = errors.New("invalid username or password")
 	ErrUsernameTaken      = errors.New("username already taken")
+	// ErrNoLocalPassword means the account authenticates some other way, so
+	// there is no password here to change.
+	ErrNoLocalPassword = errors.New("account has no local password")
 )
 
 type Service struct {
@@ -111,6 +114,66 @@ func (s *Service) Authenticate(ctx context.Context, username, password string) (
 	}
 
 	return s.store.GetUserByID(ctx, identity.UserID)
+}
+
+// HasPassword reports whether the user has a local password at all - which is
+// what decides whether a "change my password" control is meaningful. An account
+// that only ever authenticated through an external provider has no password
+// stored here to change, and the settings screen hides the card rather than
+// offering one that cannot work.
+func (s *Service) HasPassword(ctx context.Context, user db.User) (bool, error) {
+	identity, err := s.store.GetAuthIdentityByProvider(ctx, ProviderLocal, user.Username)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return identity.PasswordHash != nil, nil
+}
+
+// ChangePassword replaces a local account's password, requiring the current one.
+//
+// On success every session belonging to the user is deleted, this one included:
+// the point of changing a password is that a leaked one stops working
+// everywhere, and leaving other devices logged in would defeat it. The caller is
+// expected to start a fresh session for the request it is serving (see
+// httpapi.handleChangePassword), so the person doing the change is not logged
+// out of the browser they are doing it in.
+func (s *Service) ChangePassword(ctx context.Context, user db.User, currentPassword, newPassword string) error {
+	identity, err := s.store.GetAuthIdentityByProvider(ctx, ProviderLocal, user.Username)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			return ErrNoLocalPassword
+		}
+		return err
+	}
+	if identity.PasswordHash == nil {
+		return ErrNoLocalPassword
+	}
+	// The identity is looked up by username, and usernames are unique, so this
+	// should be the caller's own identity - checked rather than assumed, because
+	// the consequence of being wrong is changing someone else's password.
+	if identity.UserID != user.ID {
+		return ErrInvalidCredentials
+	}
+
+	match, err := argon2id.ComparePasswordAndHash(currentPassword, *identity.PasswordHash)
+	if err != nil {
+		return err
+	}
+	if !match {
+		return ErrInvalidCredentials
+	}
+
+	hash, err := argon2id.CreateHash(newPassword, argon2id.DefaultParams)
+	if err != nil {
+		return err
+	}
+	if err := s.store.UpdateAuthIdentityPassword(ctx, ProviderLocal, user.Username, hash); err != nil {
+		return err
+	}
+	return s.store.DeleteSessionsByUserID(ctx, user.ID)
 }
 
 // StartSession creates a new session and returns the raw token to set as a

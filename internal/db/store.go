@@ -173,11 +173,16 @@ type Store interface {
 
 	CreateAuthIdentity(ctx context.Context, p CreateAuthIdentityParams) (AuthIdentity, error)
 	GetAuthIdentityByProvider(ctx context.Context, provider, providerUserID string) (AuthIdentity, error)
+	// UpdateAuthIdentityPassword replaces the stored hash for one identity.
+	UpdateAuthIdentityPassword(ctx context.Context, provider, providerUserID, passwordHash string) error
 
 	CreateSession(ctx context.Context, p CreateSessionParams) (Session, error)
 	GetSessionByID(ctx context.Context, id string) (Session, error)
 	TouchSession(ctx context.Context, id string, lastSeenAt, expiresAt time.Time) error
 	DeleteSession(ctx context.Context, id string) error
+	// DeleteSessionsByUserID logs a user out everywhere, used when their
+	// password changes.
+	DeleteSessionsByUserID(ctx context.Context, userID string) error
 	DeleteExpiredSessions(ctx context.Context, now time.Time) error
 
 	CreateTrip(ctx context.Context, p CreateTripParams) (Trip, error)

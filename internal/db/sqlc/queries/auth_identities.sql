@@ -5,3 +5,7 @@ RETURNING *;
 
 -- name: GetAuthIdentityByProvider :one
 SELECT * FROM auth_identities WHERE provider = sqlc.arg(provider) AND provider_user_id = sqlc.arg(provider_user_id);
+
+-- name: UpdateAuthIdentityPassword :exec
+UPDATE auth_identities SET password_hash = sqlc.arg(password_hash)
+WHERE provider = sqlc.arg(provider) AND provider_user_id = sqlc.arg(provider_user_id);

@@ -403,6 +403,52 @@ device's session token stops validating while the caller's new cookie still
 does. Then one manual pass: change the password in a browser, confirm you are
 still logged in, reload, and log in fresh with the new password.
 
+**Done.** Two sqlc queries (`UpdateAuthIdentityPassword`,
+`DeleteSessionsByUserID`), regenerated for **both** dialects — the diff is
+additive only, nothing else moved — plus the two `Store` methods and both
+hand-written adapters. No migration, as planned.
+
+`auth.ChangePassword(ctx, user, current, next)` requires the current password,
+reuses `argon2id.ComparePasswordAndHash` / `CreateHash` exactly as Authenticate
+and Register do, and then deletes **every** session the user has. It also checks
+`identity.UserID == user.ID` rather than trusting the username lookup — the
+consequence of being wrong there is changing someone else's password.
+`auth.HasPassword` and a new `ErrNoLocalPassword` cover the account that
+authenticates some other way.
+
+`POST /api/auth/password` sits behind `RequireAuth` **and** `rateLimitLogin`
+(it takes a current password, so it is another place to guess one), enforces the
+same ≥8 floor as registration, and finishes with `startSessionAndRespond` — it
+just deleted its own caller's session, so without a fresh cookie the response
+would arrive logged out. `userResponse` gained `has_password`, which is why
+`userToResponse` became a method on `Server`; a failed lookup reports false
+rather than 500, since the worst case is one hidden card and failing
+`/auth/me` would log the user out of a working app.
+
+Frontend: `components/password-field.js` — current / new / **confirm**, the
+third field because there is no way back from a typo that just logged your other
+devices out. Client-side mismatch and length checks, a 401 rendered as "that's
+not your current password" (not as "you are logged out"), and the app's only
+success line, since a changed password looks exactly like an unchanged one. The
+card is hidden unless `/auth/me` reports `has_password`. Eight keys per locale;
+the form reuses `.trip-form`'s field styling rather than copying it.
+
+Verified: `make ci` green (154 keys in sync) with six new Go tests — wrong
+current password rejected (and the old one still works), short new password
+rejected, anonymous 401, the real change (old password dead, new one works, a
+*second* session invalidated, the caller's re-issued cookie still valid), plus
+`has_password` true for a local account and false — with a 400 from the
+endpoint — for a user with no local identity. `make test-ui` green, 28 tests,
+including a mutating UI flow that drives all four cases through the form.
+
+Two notes. The UI spec cannot use the demo user: the change deletes every
+session that user has, `auth.setup.js`'s shared one included, so it drives the
+*other* seeded account and restores its password in `afterEach` — the same
+"leave the seed as you found it" contract `files.spec.js` keeps. And the first
+run failed with the card missing for a reason worth remembering: the dev server
+was still running the pre-milestone binary. Backend changes need
+`make dev-restart`, which `MARKER=handleChangePassword` then confirmed.
+
 ---
 
 ## 6. Sweep-up

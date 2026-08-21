@@ -69,3 +69,19 @@ func (q *Queries) GetAuthIdentityByProvider(ctx context.Context, arg GetAuthIden
 	)
 	return i, err
 }
+
+const updateAuthIdentityPassword = `-- name: UpdateAuthIdentityPassword :exec
+UPDATE auth_identities SET password_hash = $1
+WHERE provider = $2 AND provider_user_id = $3
+`
+
+type UpdateAuthIdentityPasswordParams struct {
+	PasswordHash   sql.NullString `json:"password_hash"`
+	Provider       string         `json:"provider"`
+	ProviderUserID string         `json:"provider_user_id"`
+}
+
+func (q *Queries) UpdateAuthIdentityPassword(ctx context.Context, arg UpdateAuthIdentityPasswordParams) error {
+	_, err := q.db.ExecContext(ctx, updateAuthIdentityPassword, arg.PasswordHash, arg.Provider, arg.ProviderUserID)
+	return err
+}

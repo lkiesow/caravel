@@ -29,7 +29,7 @@ type owned struct {
 	tripID      string
 	itemID      string
 	checklistID string
-	fileID       string
+	fileID      string
 	mediaID     string
 }
 

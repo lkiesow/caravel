@@ -75,6 +75,14 @@ func (s *postgresStore) GetAuthIdentityByProvider(ctx context.Context, provider,
 	return postgresAuthIdentityToDomain(row), nil
 }
 
+func (s *postgresStore) UpdateAuthIdentityPassword(ctx context.Context, provider, providerUserID, passwordHash string) error {
+	return s.q.UpdateAuthIdentityPassword(ctx, postgresgen.UpdateAuthIdentityPasswordParams{
+		PasswordHash:   nullString(&passwordHash),
+		Provider:       provider,
+		ProviderUserID: providerUserID,
+	})
+}
+
 func (s *postgresStore) CreateSession(ctx context.Context, p CreateSessionParams) (Session, error) {
 	row, err := s.q.CreateSession(ctx, postgresgen.CreateSessionParams{
 		ID:         p.ID,
@@ -109,6 +117,10 @@ func (s *postgresStore) TouchSession(ctx context.Context, id string, lastSeenAt,
 
 func (s *postgresStore) DeleteSession(ctx context.Context, id string) error {
 	return s.q.DeleteSession(ctx, id)
+}
+
+func (s *postgresStore) DeleteSessionsByUserID(ctx context.Context, userID string) error {
+	return s.q.DeleteSessionsByUserID(ctx, userID)
 }
 
 func (s *postgresStore) DeleteExpiredSessions(ctx context.Context, now time.Time) error {

@@ -94,6 +94,14 @@ func (s *sqliteStore) GetAuthIdentityByProvider(ctx context.Context, provider, p
 	return sqliteAuthIdentityToDomain(row), nil
 }
 
+func (s *sqliteStore) UpdateAuthIdentityPassword(ctx context.Context, provider, providerUserID, passwordHash string) error {
+	return s.q.UpdateAuthIdentityPassword(ctx, sqlitegen.UpdateAuthIdentityPasswordParams{
+		PasswordHash:   nullString(&passwordHash),
+		Provider:       provider,
+		ProviderUserID: providerUserID,
+	})
+}
+
 func (s *sqliteStore) CreateSession(ctx context.Context, p CreateSessionParams) (Session, error) {
 	row, err := s.q.CreateSession(ctx, sqlitegen.CreateSessionParams{
 		ID:         p.ID,
@@ -128,6 +136,10 @@ func (s *sqliteStore) TouchSession(ctx context.Context, id string, lastSeenAt, e
 
 func (s *sqliteStore) DeleteSession(ctx context.Context, id string) error {
 	return s.q.DeleteSession(ctx, id)
+}
+
+func (s *sqliteStore) DeleteSessionsByUserID(ctx context.Context, userID string) error {
+	return s.q.DeleteSessionsByUserID(ctx, userID)
 }
 
 func (s *sqliteStore) DeleteExpiredSessions(ctx context.Context, now time.Time) error {

@@ -14,3 +14,6 @@ DELETE FROM sessions WHERE id = sqlc.arg(id);
 
 -- name: DeleteExpiredSessions :exec
 DELETE FROM sessions WHERE expires_at < sqlc.arg(now);
+
+-- name: DeleteSessionsByUserID :exec
+DELETE FROM sessions WHERE user_id = sqlc.arg(user_id);

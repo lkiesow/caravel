@@ -133,16 +133,9 @@ Direction already agreed or obviously wanted; none of it built.
   is manual, one day at a time, via each day's own dropdown.
 - **An account settings screen, reached from the user menu.** (From the user's
   notes; this decides the "where does it live?" question the entry below used to
-  carry.) Settings sits in the same menu as "Log out". The screen and its
-  appearance control landed in Stage 12 (Milestones 2-3); what it still wants,
-  in rough order of readiness:
-    - **set my password**, for local accounts only (`auth_identities.provider
-      = 'local'`; an OIDC identity has no password here to change). Nothing
-      exists for this yet: `internal/auth` has Register, Authenticate,
-      StartSession, ValidateSession and Logout and no password-change path, and
-      there is no route. Wants the usual decisions — require the current
-      password, and whether changing it invalidates the user's other sessions
-      (it should);
+  carry.) Settings sits in the same menu as "Log out". The screen, the appearance
+  and language controls and password changing all landed in Stage 12
+  (Milestones 2-5). What it still wants:
     - a **profile picture**. This one has a schema wrinkle: `media_assets.trip_id`
       is `NOT NULL` and cascades from `trips`, so a user-scoped image has no
       valid home today and deleting a trip would take an avatar with it. Needs a

@@ -10,7 +10,7 @@
 // screenshots: "the background actually changed" is the claim, and a matching
 // screenshot would prove it only for as long as nobody regenerates it.
 import { test, expect } from "@playwright/test";
-import { login, gotoRoute, resolveScenarioTrips } from "./helpers/scenarios.js";
+import { login, gotoRoute, resolveScenarioTrips, OTHER_USER } from "./helpers/scenarios.js";
 
 const STORAGE_KEY = "caravel.theme";
 
@@ -295,5 +295,112 @@ test.describe("language: back to Auto", () => {
     await expect(page.locator("html")).toHaveAttribute("lang", "de");
     await expect(page.locator("h1")).toHaveText("Kontoeinstellungen");
     expect(await storedLocale(page)).toBeNull();
+  });
+});
+
+// Changing a password, end to end (Stage 12 Milestone 5) - a genuinely mutating
+// flow, and the awkward kind: it cannot use the demo user, because the change
+// deletes every session that user has and auth.setup.js's shared session state
+// is one of them. So it drives the *other* seeded account and puts its password
+// back afterwards, the same "leave the seed as you found it" contract
+// files.spec.js keeps by deleting the trip it created.
+const TEMP_PASSWORD = "temporary-password-1";
+
+// Logs in as the other user in this context, by API rather than through the
+// login form - the form is not what is under test here.
+async function loginAs(page, password) {
+  const res = await page.request.post("/api/auth/login", {
+    data: { username: OTHER_USER.username, password },
+  });
+  return res.status();
+}
+
+test.describe("password change", () => {
+  test.afterEach(async ({ page }) => {
+    // Put the seed back whichever password the test left behind, so a failure
+    // half-way through doesn't leave the account needing `make dev-reset`.
+    for (const from of [TEMP_PASSWORD, OTHER_USER.password]) {
+      if ((await loginAs(page, from)) !== 200) continue;
+      await page.request.post("/api/auth/password", {
+        data: { current_password: from, new_password: OTHER_USER.password },
+      });
+      break;
+    }
+  });
+
+  test("rejects a wrong current password, then changes it and logs other devices out", async ({
+    page,
+    browser,
+  }) => {
+    await login(page, OTHER_USER);
+    await gotoRoute(page, "/settings");
+
+    // A second device for the same account, to prove the change reaches it.
+    const otherDevice = await browser.newContext();
+    const otherPage = await otherDevice.newPage();
+    expect(
+      (
+        await otherPage.request.post("/api/auth/login", {
+          data: { username: OTHER_USER.username, password: OTHER_USER.password },
+        })
+      ).status()
+    ).toBe(200);
+
+    const form = page.locator(".password-form");
+    // The card is only rendered for an account that has a password at all
+    // (/auth/me's has_password), so its presence is itself an assertion.
+    await expect(form).toBeVisible();
+    const error = page.locator(".password-form__error");
+    const success = page.locator(".password-form__success");
+
+    // 1. Mistyped confirmation: caught client-side, nothing sent.
+    await form.locator('input[name="current"]').fill(OTHER_USER.password);
+    await form.locator('input[name="next"]').fill(TEMP_PASSWORD);
+    await form.locator('input[name="confirm"]').fill("something-else-entirely");
+    await form.locator('button[type="submit"]').click();
+    await expect(error).toBeVisible();
+    await expect(success).toBeHidden();
+    expect(await loginAs(page, OTHER_USER.password), "password must be unchanged").toBe(200);
+
+    // 2. Too short, also client-side.
+    await form.locator('input[name="next"]').fill("short");
+    await form.locator('input[name="confirm"]').fill("short");
+    await form.locator('button[type="submit"]').click();
+    await expect(error).toBeVisible();
+    await expect(success).toBeHidden();
+
+    // 3. Wrong current password: this one reaches the server, which answers 401
+    // - and that must read as "wrong password", not as "you are logged out".
+    await form.locator('input[name="current"]').fill("not-my-password");
+    await form.locator('input[name="next"]').fill(TEMP_PASSWORD);
+    await form.locator('input[name="confirm"]').fill(TEMP_PASSWORD);
+    await form.locator('button[type="submit"]').click();
+    await expect(error).toBeVisible();
+    await expect(success).toBeHidden();
+    await expect(page).toHaveURL("/settings");
+    expect(await loginAs(page, OTHER_USER.password), "password must be unchanged").toBe(200);
+
+    // 4. The real thing.
+    await form.locator('input[name="current"]').fill(OTHER_USER.password);
+    await form.locator('input[name="next"]').fill(TEMP_PASSWORD);
+    await form.locator('input[name="confirm"]').fill(TEMP_PASSWORD);
+    await form.locator('button[type="submit"]').click();
+    await expect(success).toBeVisible();
+    await expect(error).toBeHidden();
+    // The form clears, so the old value can't be resubmitted by accident.
+    await expect(form.locator('input[name="current"]')).toHaveValue("");
+
+    // The browser that made the change is still logged in - the endpoint
+    // re-issues its session, which is the whole reason it has to.
+    await gotoRoute(page, "/trips");
+    await expect(page.locator("h1")).toBeVisible();
+
+    // The other device is not.
+    expect((await otherPage.request.get("/api/auth/me")).status()).toBe(401);
+    await otherDevice.close();
+
+    // Old password gone, new one works.
+    expect(await loginAs(page, OTHER_USER.password)).toBe(401);
+    expect(await loginAs(page, TEMP_PASSWORD)).toBe(200);
   });
 });

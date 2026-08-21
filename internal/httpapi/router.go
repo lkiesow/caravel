@@ -78,6 +78,9 @@ func (s *Server) buildRouter() chi.Router {
 			r.With(s.rateLimitLogin).Post("/login", s.handleLogin)
 			r.Post("/logout", s.handleLogout)
 			r.With(auth.RequireAuth).Get("/me", s.handleMe)
+			// Rate limited like login for the same reason: it takes the current
+			// password, so it is another place to guess one.
+			r.With(auth.RequireAuth, s.rateLimitLogin).Post("/password", s.handleChangePassword)
 		})
 
 		r.Route("/trips", func(r chi.Router) {

@@ -36,6 +36,7 @@ type Querier interface {
 	DeleteItineraryDay(ctx context.Context, arg DeleteItineraryDayParams) (int64, error)
 	DeleteItineraryEntry(ctx context.Context, arg DeleteItineraryEntryParams) (int64, error)
 	DeleteSession(ctx context.Context, id string) error
+	DeleteSessionsByUserID(ctx context.Context, userID string) error
 	DeleteTrip(ctx context.Context, arg DeleteTripParams) (int64, error)
 	GetAuthIdentityByProvider(ctx context.Context, arg GetAuthIdentityByProviderParams) (AuthIdentity, error)
 	GetChecklistByID(ctx context.Context, id string) (Checklist, error)
@@ -72,6 +73,7 @@ type Querier interface {
 	SetItemImage(ctx context.Context, arg SetItemImageParams) (Item, error)
 	SetTripPreviewImage(ctx context.Context, arg SetTripPreviewImageParams) (Trip, error)
 	TouchSession(ctx context.Context, arg TouchSessionParams) error
+	UpdateAuthIdentityPassword(ctx context.Context, arg UpdateAuthIdentityPasswordParams) error
 	// A note is the only thing about a file that can change after upload: it is
 	// the readable name a file gets when its own filename is a storage blob, so
 	// write-once was the wrong lifetime for it. Scoped by (id, trip_id) exactly

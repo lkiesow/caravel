@@ -14,10 +14,22 @@ type userResponse struct {
 	ID          string `json:"id"`
 	Username    string `json:"username"`
 	DisplayName string `json:"display_name"`
+	// HasPassword tells the client whether a password-change control makes
+	// sense for this account. Every account is local today, but the settings
+	// screen asks rather than assuming, so it is already right when an external
+	// provider arrives.
+	HasPassword bool `json:"has_password"`
 }
 
-func userToResponse(u db.User) userResponse {
-	return userResponse{ID: u.ID, Username: u.Username, DisplayName: u.DisplayName}
+func (s *Server) userToResponse(r *http.Request, u db.User) userResponse {
+	// A failed lookup is reported as "no password" rather than as a 500: the
+	// worst case is one hidden card on the settings screen, and failing the
+	// whole /auth/me call over it would log the user out of a working app.
+	hasPassword, err := s.Auth.HasPassword(r.Context(), u)
+	if err != nil {
+		hasPassword = false
+	}
+	return userResponse{ID: u.ID, Username: u.Username, DisplayName: u.DisplayName, HasPassword: hasPassword}
 }
 
 type registerRequest struct {
@@ -97,7 +109,7 @@ func (s *Server) startSessionAndRespond(w http.ResponseWriter, r *http.Request, 
 		Expires:  session.ExpiresAt,
 	})
 
-	writeJSON(w, http.StatusOK, userToResponse(user))
+	writeJSON(w, http.StatusOK, s.userToResponse(r, user))
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
@@ -123,7 +135,53 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	writeJSON(w, http.StatusOK, userToResponse(user))
+	writeJSON(w, http.StatusOK, s.userToResponse(r, user))
+}
+
+type changePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
+// handleChangePassword changes a local account's password and then re-issues the
+// caller's own session.
+//
+// The re-issue is not optional: auth.ChangePassword deletes every session the
+// user has, which includes the one making this request, so without a fresh
+// cookie the response would arrive already logged out. Other devices stay
+// logged out, which is the point.
+func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req changePasswordRequest
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	// Same floor as registration: one place deciding what a password may be,
+	// or the two drift and the weaker one wins.
+	if len(req.NewPassword) < 8 {
+		writeError(w, http.StatusBadRequest, "password must be at least 8 characters")
+		return
+	}
+
+	if err := s.Auth.ChangePassword(r.Context(), user, req.CurrentPassword, req.NewPassword); err != nil {
+		switch {
+		case errors.Is(err, auth.ErrInvalidCredentials):
+			writeError(w, http.StatusUnauthorized, "current password is incorrect")
+		case errors.Is(err, auth.ErrNoLocalPassword):
+			writeError(w, http.StatusBadRequest, "this account has no password to change")
+		default:
+			writeError(w, http.StatusInternalServerError, "could not change password")
+		}
+		return
+	}
+
+	s.startSessionAndRespond(w, r, user)
 }
 
 func clientIP(r *http.Request) string {

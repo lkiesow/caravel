@@ -1,6 +1,8 @@
+import { api } from "../api.js";
 import { translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
 import { renderLanguageField } from "../components/language-field.js";
+import { renderPasswordField } from "../components/password-field.js";
 import { renderThemeField } from "../components/theme-field.js";
 
 // The account settings screen, reached from the header's user menu.
@@ -35,7 +37,7 @@ export async function renderSettingsPage(container) {
         <p class="editor-card__hint" data-i18n="settings.appearanceHint"></p>
         <div class="appearance-slot"></div>
       </div>
-      <div class="editor-card">
+      <div class="editor-card password-card" hidden>
         <h2 data-i18n="settings.password"></h2>
         <p class="editor-card__hint" data-i18n="settings.passwordHint"></p>
         <div class="password-slot"></div>
@@ -46,4 +48,15 @@ export async function renderSettingsPage(container) {
 
   renderLanguageField(container.querySelector(".language-slot"));
   renderThemeField(container.querySelector(".appearance-slot"));
+
+  // The Password card starts hidden and is shown only for an account that has
+  // one: /auth/me reports has_password, which is false for an identity that
+  // authenticates some other way (no OIDC provider exists yet, but the card
+  // asks instead of assuming). Hidden rather than disabled - a control that
+  // could never work is not worth explaining.
+  const user = await api.get("/auth/me");
+  if (user.has_password) {
+    renderPasswordField(container.querySelector(".password-slot"));
+    container.querySelector(".password-card").hidden = false;
+  }
 }

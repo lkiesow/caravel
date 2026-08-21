@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -172,6 +173,10 @@ type Store interface {
 	CreateUser(ctx context.Context, p CreateUserParams) (User, error)
 	GetUserByID(ctx context.Context, id string) (User, error)
 	GetUserByUsername(ctx context.Context, username string) (User, error)
+	// SearchUsers finds users whose username or display name contains `query`,
+	// case-insensitively, capped at limit. Matching is done on a lowercased
+	// pattern built here, so callers pass the raw text.
+	SearchUsers(ctx context.Context, query string, limit int) ([]UserSummary, error)
 
 	CreateAuthIdentity(ctx context.Context, p CreateAuthIdentityParams) (AuthIdentity, error)
 	GetAuthIdentityByProvider(ctx context.Context, provider, providerUserID string) (AuthIdentity, error)
@@ -286,6 +291,18 @@ type Store interface {
 	// WithTx runs fn with a Store bound to a single transaction, committing
 	// on success and rolling back if fn returns an error.
 	WithTx(ctx context.Context, fn func(Store) error) error
+}
+
+// likeContains builds the LIKE pattern for a case-insensitive "contains"
+// search. Lowercased to match the LOWER() on the column side.
+//
+// LIKE's own wildcards are *not* escaped: see the note on SearchUsers in
+// queries/users.sql — sqlc's sqlite grammar rejects the ESCAPE clause that
+// would make escaping mean the same thing in both dialects, and escaping
+// without it would work in one and silently not in the other. So a typed % or
+// _ behaves as a wildcard here, which for a search box is a feature at worst.
+func likeContains(query string) string {
+	return "%" + strings.ToLower(query) + "%"
 }
 
 // NewStore builds the Store implementation for the given driver, wrapping an

@@ -146,6 +146,21 @@ func (s *sqliteStore) DeleteExpiredSessions(ctx context.Context, now time.Time) 
 	return s.q.DeleteExpiredSessions(ctx, formatTime(now))
 }
 
+func (s *sqliteStore) SearchUsers(ctx context.Context, query string, limit int) ([]UserSummary, error) {
+	rows, err := s.q.SearchUsers(ctx, sqlitegen.SearchUsersParams{
+		Pattern:    likeContains(query),
+		MaxResults: int64(limit),
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]UserSummary, len(rows))
+	for i, row := range rows {
+		out[i] = UserSummary{ID: row.ID, Username: row.Username, DisplayName: row.DisplayName}
+	}
+	return out, nil
+}
+
 func (s *sqliteStore) CreateTrip(ctx context.Context, p CreateTripParams) (Trip, error) {
 	row, err := s.q.CreateTrip(ctx, sqlitegen.CreateTripParams{
 		ID:        p.ID,

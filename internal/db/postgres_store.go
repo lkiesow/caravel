@@ -384,6 +384,24 @@ func datePtr(nt sql.NullTime) *string {
 	return &v
 }
 
+func (s *postgresStore) SearchUsers(ctx context.Context, query string, limit int) ([]UserSummary, error) {
+	rows, err := s.q.SearchUsers(ctx, postgresgen.SearchUsersParams{
+		Pattern: likeContains(query),
+		// int32 here where sqlite's generated params say int64 — the two
+		// dialects genuinely disagree, which is why the conversion lives at
+		// each call site rather than in the shared signature.
+		MaxResults: int32(limit),
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]UserSummary, len(rows))
+	for i, row := range rows {
+		out[i] = UserSummary{ID: row.ID, Username: row.Username, DisplayName: row.DisplayName}
+	}
+	return out, nil
+}
+
 func (s *postgresStore) CreateTrip(ctx context.Context, p CreateTripParams) (Trip, error) {
 	row, err := s.q.CreateTrip(ctx, postgresgen.CreateTripParams{
 		ID:        p.ID,

@@ -94,6 +94,11 @@ func (s *Server) buildRouter() chi.Router {
 			r.With(auth.RequireAuth, s.rateLimitLogin).Post("/password", s.handleChangePassword)
 		})
 
+		// Not trip-scoped: the Members tab searches for someone who is by
+		// definition not on the trip yet. Filtering out people already on it
+		// happens on the client, which already has the member list.
+		r.With(auth.RequireAuth).Get("/users/search", s.handleSearchUsers)
+
 		// Behind RequireAuth as well as its own limiter: this endpoint spends
 		// an external service's quota, so it is not for anonymous callers.
 		r.With(auth.RequireAuth, s.rateLimitGeocode).Get("/geocode", s.handleGeocode)

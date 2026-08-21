@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -255,5 +256,95 @@ func TestOwnerCannotBeRemoved(t *testing.T) {
 	}
 	if w := f.ts.do(http.MethodGet, "/api/trips/"+f.tripID, f.owner, ""); w.Code != http.StatusOK {
 		t.Error("the owner lost access to their own trip")
+	}
+}
+
+// The Members tab's username field searches every account on the instance —
+// a scope chosen deliberately (see handleSearchUsers). These tests pin the
+// parts that keep it bounded, because "search all users" is the kind of
+// endpoint that quietly grows an email field later.
+func TestSearchUsers(t *testing.T) {
+	ts := newTestServer(t)
+	me := ts.login("searcher")
+	for _, u := range []string{"anna", "annabel", "bertram", "carla"} {
+		ts.login(u)
+	}
+
+	search := func(q string) []map[string]any {
+		t.Helper()
+		w := ts.do(http.MethodGet, "/api/users/search?q="+q, me, "")
+		if w.Code != http.StatusOK {
+			t.Fatalf("search %q: got %d, body %s", q, w.Code, w.Body.String())
+		}
+		return decode[[]map[string]any](t, w)
+	}
+
+	names := func(rows []map[string]any) []string {
+		out := []string{}
+		for _, r := range rows {
+			out = append(out, r["username"].(string))
+		}
+		return out
+	}
+
+	// Prefix, and the substring case that a prefix-only query would miss.
+	if got := names(search("ann")); len(got) != 2 {
+		t.Errorf("search \"ann\" returned %v, want anna and annabel", got)
+	}
+	if got := names(search("ertra")); len(got) != 1 || got[0] != "bertram" {
+		t.Errorf("search \"ertra\" returned %v — substring matching is what makes display names findable", got)
+	}
+	// Case-insensitive. Read this assertion for what it is: on sqlite it passes
+	// whether or not the LOWER() normalisation works, because sqlite's LIKE is
+	// already case-insensitive for ASCII. Measured, not assumed — dropping the
+	// lowercasing in likeContains leaves this test green. So it documents the
+	// contract and would catch a regression on postgres, where LIKE *is* case
+	// sensitive, but it is not evidence that the normalisation does anything
+	// today. Nothing in this project runs the postgres dialect (see todo.md),
+	// and this is a concrete example of what that gap costs.
+	if got := names(search("ANNA")); len(got) != 2 {
+		t.Errorf("search \"ANNA\" returned %v, want the same as \"anna\"", got)
+	}
+
+	// Below the minimum this is an empty list, not an error: the field calls it
+	// on every keystroke and a 400 en route to a valid query is just noise.
+	for _, q := range []string{"", "a"} {
+		w := ts.do(http.MethodGet, "/api/users/search?q="+q, me, "")
+		if w.Code != http.StatusOK {
+			t.Errorf("search %q: got %d, want 200", q, w.Code)
+		}
+		if got := decode[[]map[string]any](t, w); len(got) != 0 {
+			t.Errorf("search %q returned %v, want nothing below the %d-character floor", q, got, userSearchMinQuery)
+		}
+	}
+
+	// The response is a recognisable person and nothing more. An id or an email
+	// creeping in here would hand every authenticated caller a directory.
+	rows := search("anna")
+	for _, row := range rows {
+		for _, forbidden := range []string{"id", "email", "created_at", "is_admin"} {
+			if _, leaked := row[forbidden]; leaked {
+				t.Errorf("search result carries %q: %v", forbidden, row)
+			}
+		}
+		if len(row) != 2 {
+			t.Errorf("search result has %d fields, want exactly username and display_name: %v", len(row), row)
+		}
+	}
+
+	// Capped. Without the limit a two-letter query returns the instance.
+	ts2 := newTestServer(t)
+	admin := ts2.login("zz-searcher")
+	for i := 0; i < userSearchLimit+5; i++ {
+		ts2.login(fmt.Sprintf("crowd%02d", i))
+	}
+	w := ts2.do(http.MethodGet, "/api/users/search?q=crowd", admin, "")
+	if got := decode[[]map[string]any](t, w); len(got) != userSearchLimit {
+		t.Errorf("search returned %d rows, want the cap of %d", len(got), userSearchLimit)
+	}
+
+	// Authentication is the only gate, but it is a gate.
+	if w := ts.do(http.MethodGet, "/api/users/search?q=anna", nil, ""); w.Code != http.StatusUnauthorized {
+		t.Errorf("search without a session: got %d, want 401", w.Code)
 	}
 }

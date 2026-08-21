@@ -104,6 +104,15 @@ type TripMember struct {
 	DisplayName string
 }
 
+// UserSummary is the subset of a user safe to hand to anyone searching for
+// someone to share a trip with: enough to recognise a person, and nothing else.
+// Notably no email and no timestamps.
+type UserSummary struct {
+	ID          string
+	Username    string
+	DisplayName string
+}
+
 // TripForUser is a trip together with the reading user's own relationship to
 // it: their role, and who owns it. The trips list needs both for every row, and
 // getting them from the same query is what keeps that endpoint at one round

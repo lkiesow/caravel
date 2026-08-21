@@ -45,7 +45,9 @@ export function renderMembersTab(content, trip) {
         <form class="members-add">
           <label class="members-add__field">
             <span data-i18n="members.username"></span>
-            <input type="text" name="username" autocomplete="off" autocapitalize="none" spellcheck="false" required />
+            <input type="text" name="username" list="member-suggestions" autocomplete="off"
+                   autocapitalize="none" spellcheck="false" required />
+            <datalist id="member-suggestions"></datalist>
           </label>
           <label class="members-add__field">
             <span data-i18n="members.role"></span>
@@ -115,6 +117,14 @@ export function renderMembersTab(content, trip) {
     renderMenu(slot, {
       iconName: "ellipsis-vertical",
       chevron: false,
+      triggerClass: "member-card__trigger",
+      // An empty string, not omitted: renderMenu falls back to the *selected
+      // item's* label when `label` is nullish, which made every row show its
+      // role twice — once as .member-card__role and again on the button beside
+      // it. "" pins the trigger to no text at all, which is what a per-row ⋮
+      // is everywhere else in the app. The current role is still marked inside
+      // the open menu, by aria-checked and the check mark.
+      label: "",
       // renderMenu takes an i18n *key* here and translates it declaratively,
       // so this cannot name the person. A static label is honest; the row it
       // sits in already says who it belongs to.
@@ -153,6 +163,7 @@ export function renderMembersTab(content, trip) {
   function bindAddForm() {
     const form = content.querySelector(".members-add");
     const error = content.querySelector(".members-add__error");
+    bindSuggestions(form);
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -177,6 +188,61 @@ export function renderMembersTab(content, trip) {
         error.textContent = t(key, { username });
         error.hidden = false;
       }
+    });
+  }
+
+  // Suggestions come from GET /users/search, which searches every account on
+  // the instance (see handleSearchUsers for why that scope was chosen).
+  //
+  // A native <datalist> rather than a custom popup: it gets keyboard handling,
+  // screen-reader announcement and mobile behaviour from the browser, none of
+  // which a hand-rolled combobox gets for free — and this is a convenience on
+  // top of a field that already works when typed in full.
+  function bindSuggestions(form) {
+    const input = form.username;
+    const datalist = form.querySelector("#member-suggestions");
+    let timer = null;
+    let lastQuery = null;
+
+    input.addEventListener("input", () => {
+      const query = input.value.trim();
+      // Debounced, because this fires per keystroke and each one is a query.
+      clearTimeout(timer);
+      if (query.length < 2) {
+        datalist.innerHTML = "";
+        lastQuery = null;
+        return;
+      }
+      if (query === lastQuery) return;
+      timer = setTimeout(async () => {
+        lastQuery = query;
+        let found;
+        try {
+          found = await api.get(`/users/search?q=${encodeURIComponent(query)}`);
+        } catch {
+          // A failed lookup leaves the last suggestions in place and stays
+          // silent: the field is fully usable by typing a username out, so an
+          // error banner here would report a problem the user does not have.
+          return;
+        }
+        // Stale response guard — a slower earlier request must not overwrite a
+        // newer one's results.
+        if (input.value.trim() !== query) return;
+        // People already on the trip are filtered out client-side: we have the
+        // member list right here, and suggesting someone whose only outcome is
+        // an "already on this trip" error is a worse hint than no hint.
+        const onTrip = new Set(members.map((m) => m.username));
+        datalist.innerHTML = "";
+        for (const u of found) {
+          if (onTrip.has(u.username)) continue;
+          const option = document.createElement("option");
+          // value is what lands in the field; the text is what the browser
+          // shows beside it, so the list reads as people rather than handles.
+          option.value = u.username;
+          option.textContent = u.display_name;
+          datalist.appendChild(option);
+        }
+      }, 200);
     });
   }
 

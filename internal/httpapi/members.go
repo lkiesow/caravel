@@ -76,6 +76,54 @@ func (s *Server) handleListMembers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// User search, behind RequireAuth, for the Members tab's username field.
+//
+// Scope, decided with the user: any authenticated caller can search every
+// account on the instance. That is a real widening — usernames become
+// enumerable by walking two-letter prefixes rather than one guess at a time —
+// and it was chosen knowingly for a self-hosted instance whose users know each
+// other. Two things keep it from being worse than the add-member 404 already
+// is: the response carries only what is needed to recognise a person (no email,
+// no timestamps, see db.UserSummary), and it is capped.
+const (
+	// Two characters, because one matches most of the instance and makes the
+	// suggestion list noise rather than help.
+	userSearchMinQuery = 2
+	// Ten is a list you can scan. Past that the right answer is to type more,
+	// not to scroll.
+	userSearchLimit = 10
+)
+
+func (s *Server) handleSearchUsers(w http.ResponseWriter, r *http.Request) {
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	// Below the floor this is an empty result, not an error: the field calls
+	// this on every keystroke, and a 400 on the way to a valid query is noise
+	// in the console for something that is working correctly.
+	if len([]rune(query)) < userSearchMinQuery {
+		writeJSON(w, http.StatusOK, []db.UserSummary{})
+		return
+	}
+
+	users, err := s.Store.SearchUsers(r.Context(), query, userSearchLimit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not search users")
+		return
+	}
+	resp := make([]memberSuggestion, 0, len(users))
+	for _, u := range users {
+		resp = append(resp, memberSuggestion{Username: u.Username, DisplayName: u.DisplayName})
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// memberSuggestion deliberately omits the user id. The Members tab adds people
+// by username, so an id would be unused here — and handing every authenticated
+// caller a map of ids to names is a bigger disclosure than the feature needs.
+type memberSuggestion struct {
+	Username    string `json:"username"`
+	DisplayName string `json:"display_name"`
+}
+
 type addMemberRequest struct {
 	Username string `json:"username"`
 	Role     string `json:"role"`

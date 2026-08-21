@@ -466,6 +466,89 @@ whenever `danger` is set; noted in `todo.md` rather than widening that API here.
 The seeded memberships the manual pass consumed were restored through the API,
 so `make dev-reset` state is intact.
 
+### 3a. Milestone 3 follow-up: three pieces of review feedback
+
+Raised on looking at the shipped tab, all three fixed before Milestone 4.
+
+**The role was shown twice per row** — once as `.member-card__role` text and
+again as the ⋮ button's label, which sat right beside it reading "Editor
+Editor". Cause: `renderMenu` falls back to the *selected item's* label when
+`label` is nullish, and this menu has an `activeValue`. Fixed by passing
+`label: ""`, which pins the trigger to no text, plus a `member-card__trigger`
+class for the bare-⋮ treatment. Decided with the user in preference to dropping
+the text: the role then sits in the same place for an owner and for a viewer
+(who has no menu at all), so the column lines up in both shapes, and a per-row
+⋮ with no label is what the Files row already is. The current role is still
+marked inside the open menu by `aria-checked` and the check mark.
+
+**The username and role fields didn't look like any other input in the app** —
+they were browser defaults, because `.members-add__field` styled the layout and
+nothing styled the controls. Fixed by joining the canonical
+`.trip-form`/`.password-form` label and input rules rather than adding a fourth
+copy of them, which is the same consolidation this stylesheet's error-callout
+comment records doing for five error paragraphs. `.members-add__field` now
+carries only its own sizing. Worth noting the app still has three near-identical
+input rules (`.auth-form`, `.trip-form`/`.password-form`, `.item-form`) with
+small drift between them — `.auth-form` uses `var(--radius)` and `font-size:
+1rem` where the others use `0.375rem` and `font: inherit`. Not touched here;
+consolidating all of them is its own change.
+
+**Username autocomplete.** New `GET /api/users/search?q=`, min 2 characters,
+capped at 10, behind `RequireAuth`. Scope decided with the user: any
+authenticated caller searches every account on the instance. That is a real
+widening — usernames become enumerable by walking prefixes rather than one guess
+at a time — accepted knowingly for a self-hosted instance whose users know each
+other. Bounded by returning only username and display name (no id, no email —
+`memberSuggestion` and `db.UserSummary` both exist to make that explicit), by
+the cap, and by the 2-character floor. The field uses a native `<datalist>`
+rather than a hand-rolled combobox, so keyboard, screen-reader and mobile
+behaviour come from the browser; requests are debounced 200ms, guarded against
+out-of-order responses, silent on failure (the field works fully when typed
+out), and people already on the trip are filtered client-side from the already
+loaded member list.
+
+**Three tooling findings, all now recorded in `queries/users.sql`:**
+
+1. sqlc's sqlite grammar rejects `LOWER(a) LIKE @p OR LOWER(b) LIKE @p` and
+   accepts the same thing with each comparison parenthesised. The parentheses
+   are load-bearing for the generator, not the SQL.
+2. It also rejects `LIKE ... ESCAPE`. So `%` and `_` deliberately pass through
+   as wildcards: escaping *without* an ESCAPE clause works in postgres
+   (backslash is its default) and silently does not in sqlite (no default), and
+   one documented behaviour beats two dialects disagreeing. Nothing is at risk —
+   the query is parameterised, and the widest a lone `%` reaches is the same
+   first ten rows any two-letter query returns.
+3. **Do not put backticks in a comment in that file.** sqlc's sqlite lexer
+   reads them as identifier quotes even inside a `--` comment, swallows the line
+   boundary, and reports a syntax error pointing at the SQL *below* the comment.
+   This cost the most time of anything in the milestone, because the error
+   points at correct code.
+
+**Verified.** `make ci` green; full Playwright suite passing. `TestSearchUsers`
+covers prefix and substring matching, the 2-character floor returning an empty
+list rather than a 400, the result cap, that the payload has exactly two fields,
+and that anonymous callers get 401. Break-checked: removing the floor, removing
+the cap and switching substring to prefix each fail it.
+
+**One break did *not* fail it, and that is the interesting result.** Dropping the
+lowercasing in `likeContains` entirely leaves the suite green, because sqlite's
+`LIKE` is already case-insensitive for ASCII — the normalisation only does
+anything on postgres, which nothing here ever runs. Rather than leave an
+assertion that looks like coverage, the test now says so in a comment and
+`todo.md`'s postgres entry cites it as the first *measured* example of what that
+gap costs.
+
+Live at 1280 and 324×756: role appears exactly once per row, the ⋮ carries no
+label and an accessible name of "Member actions"; the members input, select and
+label have computed styles byte-identical to the trip form's; typing suggests
+`anna`/`annabel` at two characters, nothing at one, matches `klein` by display
+name, matches case-insensitively, and omits `other` who is already on the trip;
+adding from a suggestion worked, and at phone width the ⋮ is 44×44, the fields
+44 tall and full width, and the role wraps below the name with no overflow. The
+three accounts registered for the search test were deleted afterwards, leaving
+`demo` and `other` and the two seeded memberships exactly as `make dev-reset`
+produces them.
+
 ---
 
 ## 4. Read-only mode for viewers

@@ -319,7 +319,14 @@ step with itself.
   wants the question "which scenario renders this?" asked of it. The known
   remaining blind spot is anything behind an interaction (menus opened, dialogs,
   forms submitted), which the first entry in this section already covers.
-- **Nothing ever runs the Postgres dialect.** `sqlc generate` emits both
+- **Nothing ever runs the Postgres dialect.** *(Stage 14 Milestone 3's follow-up
+  produced the first measured example of this costing something, rather than
+  being a theoretical risk: `SearchUsers` lowercases its pattern to match a
+  `LOWER()` on the column, which is the only thing making the search
+  case-insensitive **on Postgres** — sqlite's `LIKE` is already
+  case-insensitive for ASCII, so removing the normalisation entirely leaves
+  `TestSearchUsers` green. The assertion is still worth keeping, but it is
+  documentation, not coverage.)* `sqlc generate` emits both
   dialects and `internal/db` has a hand-written adapter for each, but every test,
   the seeder and the dev server run SQLite: there is no local Postgres, no
   compose file, and no Postgres job in CI. So the Postgres half of any query
@@ -394,6 +401,19 @@ step with itself.
   is invisible precisely because the suite stays green. Worth a note in
   `CLAUDE.md`'s verification guidance, or a habit of break-checking any test
   whose expectation is computed rather than written down.
+
+- **Three near-identical input rules in `base.css`, with drift.**
+  (Stage 14 Milestone 3 follow-up.) `.auth-form`, `.trip-form`/`.password-form`
+  and `.item-form` each declare their own label-and-input styling, and they do
+  not quite agree: `.auth-form` uses `border-radius: var(--radius)` and
+  `font-size: 1rem` where the other two use `0.375rem` and `font: inherit`. The
+  Members form was joined onto the `.trip-form` group rather than becoming a
+  fourth copy, which is the right move for one form and not a fix for the
+  pattern — the next form added has three plausible rules to pick from and no
+  reason to prefer one. Consolidating means picking the canonical values (which
+  changes how the auth pages look, slightly) and is its own change. Precedent
+  for how: the same file's error-callout rule already collapsed five copies into
+  one.
 
 - **`confirmDialog` hardcodes a trash icon for every danger confirmation.**
   (Stage 14 Milestone 3.) `components/dialog.js` picks the icon from `danger`

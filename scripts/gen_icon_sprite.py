@@ -44,6 +44,7 @@ ICONS = [
     "shield-user",
     "key-round",
     "lock",
+    "eye",
 ]
 
 

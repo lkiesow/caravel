@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"caravel/internal/auth"
 	"caravel/internal/db"
 )
 
@@ -26,13 +27,25 @@ type checklistResponse struct {
 	Title     string                  `json:"title"`
 	SortOrder int                     `json:"sort_order"`
 	Items     []checklistItemResponse `json:"items"`
+	// Visibility is personal, trip or shared. Always sent, so the client never
+	// infers a default.
+	Visibility string `json:"visibility"`
+	// IsMine says whether the reading user created this list, which is what
+	// decides who may change its visibility. No owner id is sent: the client
+	// only ever asks whether it may act.
+	IsMine bool `json:"is_mine"`
+	// CanTick is the one permission the client cannot work out from the other
+	// two: a trip-visible list is readable by everyone and tickable only by its
+	// author, so somebody looking at another person's list has to be told
+	// rather than left to deduce it.
+	CanTick bool `json:"can_tick"`
 }
 
 func checklistItemToResponse(i db.ChecklistItem) checklistItemResponse {
 	return checklistItemResponse{ID: i.ID, Text: i.Text, Checked: i.Checked, SortOrder: i.SortOrder}
 }
 
-func (s *Server) checklistToResponse(ctx context.Context, c db.Checklist) (checklistResponse, error) {
+func (s *Server) checklistToResponse(ctx context.Context, c db.Checklist, readerID string, role db.TripRole) (checklistResponse, error) {
 	items, err := s.Store.ListChecklistItemsByChecklist(ctx, c.ID)
 	if err != nil {
 		return checklistResponse{}, err
@@ -41,22 +54,55 @@ func (s *Server) checklistToResponse(ctx context.Context, c db.Checklist) (check
 	for i, item := range items {
 		itemResponses[i] = checklistItemToResponse(item)
 	}
-	return checklistResponse{ID: c.ID, TripID: c.TripID, Title: c.Title, SortOrder: c.SortOrder, Items: itemResponses}, nil
+	return checklistResponse{
+		ID:         c.ID,
+		TripID:     c.TripID,
+		Title:      c.Title,
+		SortOrder:  c.SortOrder,
+		Items:      itemResponses,
+		Visibility: string(c.Visibility),
+		IsMine:     c.OwnerUserID != nil && *c.OwnerUserID == readerID,
+		CanTick:    canModifyChecklist(c, readerID, role),
+	}, nil
+}
+
+// canModifyChecklist decides who may tick, add and remove items, rename the
+// list, and delete it. Not who may *see* it: that is the list predicate and
+// loadChecklist.
+//
+// The three visibilities differ exactly here:
+//
+//	personal  its author only, and nobody else can see it anyway
+//	trip      its author only; everyone else reads it
+//	shared    any editor on the trip
+//
+// Changing the visibility itself is author-only in every case and is checked
+// separately, because a shared list is still somebody's decision to have
+// shared.
+func canModifyChecklist(c db.Checklist, userID string, role db.TripRole) bool {
+	if !role.AtLeast(db.RoleEditor) {
+		return false
+	}
+	if c.Visibility == db.ChecklistShared {
+		return true
+	}
+	return c.OwnerUserID != nil && *c.OwnerUserID == userID
 }
 
 func (s *Server) handleListChecklists(w http.ResponseWriter, r *http.Request) {
-	trip, _, ok := s.loadTrip(w, r, db.RoleViewer)
+	trip, role, ok := s.loadTrip(w, r, db.RoleViewer)
 	if !ok {
 		return
 	}
-	checklists, err := s.Store.ListChecklistsByTrip(r.Context(), trip.ID)
+	me, _ := auth.UserFromContext(r.Context())
+	checklists, err := s.Store.ListChecklistsByTrip(r.Context(), trip.ID, me.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not list checklists")
 		return
 	}
 	resp := make([]checklistResponse, len(checklists))
 	for i, c := range checklists {
-		cr, err := s.checklistToResponse(r.Context(), c)
+		cr, err := s.checklistToResponse(r.Context(), c, me.ID, role)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "could not list checklists")
 			return
@@ -68,38 +114,48 @@ func (s *Server) handleListChecklists(w http.ResponseWriter, r *http.Request) {
 
 type checklistRequest struct {
 	Title string `json:"title"`
+	// Absent or unrecognised means shared, which is the direction that produces
+	// a list everyone can use rather than one silently hidden from them.
+	Visibility string `json:"visibility"`
 }
 
 func (s *Server) handleCreateChecklist(w http.ResponseWriter, r *http.Request) {
-	trip, _, ok := s.loadTrip(w, r, db.RoleEditor)
+	trip, role, ok := s.loadTrip(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
+	me, _ := auth.UserFromContext(r.Context())
 
 	var req checklistRequest
 	if err := readJSON(r, &req); err != nil || strings.TrimSpace(req.Title) == "" {
 		writeError(w, http.StatusBadRequest, "title is required")
 		return
 	}
+	visibility := db.ChecklistVisibility(req.Visibility)
+	if !visibility.Valid() {
+		visibility = db.ChecklistShared
+	}
 
-	existing, err := s.Store.ListChecklistsByTrip(r.Context(), trip.ID)
+	existing, err := s.Store.ListChecklistsByTrip(r.Context(), trip.ID, me.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not create checklist")
 		return
 	}
 
 	checklist, err := s.Store.CreateChecklist(r.Context(), db.CreateChecklistParams{
-		ID:        uuid.NewString(),
-		TripID:    trip.ID,
-		Title:     req.Title,
-		SortOrder: len(existing),
-		CreatedAt: time.Now().UTC(),
+		ID:          uuid.NewString(),
+		TripID:      trip.ID,
+		Title:       req.Title,
+		SortOrder:   len(existing),
+		CreatedAt:   time.Now().UTC(),
+		Visibility:  visibility,
+		OwnerUserID: &me.ID,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not create checklist")
 		return
 	}
-	resp, err := s.checklistToResponse(r.Context(), checklist)
+	resp, err := s.checklistToResponse(r.Context(), checklist, me.ID, role)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not create checklist")
 		return
@@ -107,9 +163,26 @@ func (s *Server) handleCreateChecklist(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, resp)
 }
 
+// requireChecklistWrite is the write half of the visibility rule: loadChecklist
+// already refused a list the caller cannot see, and this refuses one they can
+// see but not change — somebody else's trip-visible list. 403 rather than 404,
+// because they can read it and know perfectly well it is there.
+func (s *Server) requireChecklistWrite(w http.ResponseWriter, r *http.Request, c db.Checklist, role db.TripRole) bool {
+	me, _ := auth.UserFromContext(r.Context())
+	if canModifyChecklist(c, me.ID, role) {
+		return true
+	}
+	writeErrorCode(w, http.StatusForbidden, "not_checklist_owner",
+		"only the person who made this list can change it")
+	return false
+}
+
 func (s *Server) handleDeleteChecklist(w http.ResponseWriter, r *http.Request) {
-	checklist, _, ok := s.loadChecklist(w, r, db.RoleEditor)
+	checklist, role, ok := s.loadChecklist(w, r, db.RoleEditor)
 	if !ok {
+		return
+	}
+	if !s.requireChecklistWrite(w, r, checklist, role) {
 		return
 	}
 	deleted, err := s.Store.DeleteChecklist(r.Context(), checklist.ID, checklist.TripID)
@@ -124,13 +197,99 @@ func (s *Server) handleDeleteChecklist(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+type checklistVisibilityRequest struct {
+	Visibility string `json:"visibility"`
+}
+
+// handleSetChecklistVisibility is author-only even for a shared list. An editor
+// may tick and rename a shared list — that is what sharing it meant — but
+// deciding who sees it at all stays with whoever made that decision.
+func (s *Server) handleSetChecklistVisibility(w http.ResponseWriter, r *http.Request) {
+	checklist, _, ok := s.loadChecklist(w, r, db.RoleEditor)
+	if !ok {
+		return
+	}
+	me, _ := auth.UserFromContext(r.Context())
+	if checklist.OwnerUserID == nil || *checklist.OwnerUserID != me.ID {
+		writeErrorCode(w, http.StatusForbidden, "not_checklist_owner",
+			"only the person who made this list can change who sees it")
+		return
+	}
+
+	var req checklistVisibilityRequest
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	visibility := db.ChecklistVisibility(req.Visibility)
+	if !visibility.Valid() {
+		writeError(w, http.StatusBadRequest, "visibility must be personal, trip or shared")
+		return
+	}
+
+	updated, err := s.Store.SetChecklistVisibility(r.Context(), checklist.ID, checklist.TripID, visibility)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "checklist not found")
+		} else {
+			writeError(w, http.StatusInternalServerError, "could not update checklist")
+		}
+		return
+	}
+	s.writeChecklist(w, r, updated, me.ID, db.RoleEditor)
+}
+
+// handleRenameChecklist: a title was write-once until Stage 14 Milestone 8, so
+// fixing a typo meant deleting the list and its items.
+func (s *Server) handleRenameChecklist(w http.ResponseWriter, r *http.Request) {
+	checklist, role, ok := s.loadChecklist(w, r, db.RoleEditor)
+	if !ok {
+		return
+	}
+	if !s.requireChecklistWrite(w, r, checklist, role) {
+		return
+	}
+
+	var req checklistRequest
+	if err := readJSON(r, &req); err != nil || strings.TrimSpace(req.Title) == "" {
+		writeError(w, http.StatusBadRequest, "title is required")
+		return
+	}
+	updated, err := s.Store.UpdateChecklistTitle(r.Context(), checklist.ID, checklist.TripID, strings.TrimSpace(req.Title))
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "checklist not found")
+		} else {
+			writeError(w, http.StatusInternalServerError, "could not rename checklist")
+		}
+		return
+	}
+	me, _ := auth.UserFromContext(r.Context())
+	s.writeChecklist(w, r, updated, me.ID, role)
+}
+
+// writeChecklist is the shared tail of the handlers that return a whole list:
+// building the response needs a second query for its items, and doing that in
+// four places invited one of them to drift.
+func (s *Server) writeChecklist(w http.ResponseWriter, r *http.Request, c db.Checklist, readerID string, role db.TripRole) {
+	resp, err := s.checklistToResponse(r.Context(), c, readerID, role)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load checklist")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
 type checklistItemRequest struct {
 	Text string `json:"text"`
 }
 
 func (s *Server) handleCreateChecklistItem(w http.ResponseWriter, r *http.Request) {
-	checklist, _, ok := s.loadChecklist(w, r, db.RoleEditor)
+	checklist, role, ok := s.loadChecklist(w, r, db.RoleEditor)
 	if !ok {
+		return
+	}
+	if !s.requireChecklistWrite(w, r, checklist, role) {
 		return
 	}
 
@@ -164,9 +323,15 @@ type checklistItemCheckedRequest struct {
 	Checked bool `json:"checked"`
 }
 
+// Ticking is the write the middle visibility exists to distinguish: on a
+// trip-visible list everyone reads and only its author ticks, which is what
+// makes it different from a shared one.
 func (s *Server) handleSetChecklistItemChecked(w http.ResponseWriter, r *http.Request) {
-	checklist, _, ok := s.loadChecklist(w, r, db.RoleEditor)
+	checklist, role, ok := s.loadChecklist(w, r, db.RoleEditor)
 	if !ok {
+		return
+	}
+	if !s.requireChecklistWrite(w, r, checklist, role) {
 		return
 	}
 
@@ -189,9 +354,40 @@ func (s *Server) handleSetChecklistItemChecked(w http.ResponseWriter, r *http.Re
 	writeJSON(w, http.StatusOK, checklistItemToResponse(item))
 }
 
-func (s *Server) handleDeleteChecklistItem(w http.ResponseWriter, r *http.Request) {
-	checklist, _, ok := s.loadChecklist(w, r, db.RoleEditor)
+// handleUpdateChecklistItemText: the other half of the write-once problem. An
+// item was a line of text you could only delete and retype.
+func (s *Server) handleUpdateChecklistItemText(w http.ResponseWriter, r *http.Request) {
+	checklist, role, ok := s.loadChecklist(w, r, db.RoleEditor)
 	if !ok {
+		return
+	}
+	if !s.requireChecklistWrite(w, r, checklist, role) {
+		return
+	}
+
+	var req checklistItemRequest
+	if err := readJSON(r, &req); err != nil || strings.TrimSpace(req.Text) == "" {
+		writeError(w, http.StatusBadRequest, "text is required")
+		return
+	}
+	item, err := s.Store.UpdateChecklistItemText(r.Context(), chi.URLParam(r, "itemId"), checklist.ID, strings.TrimSpace(req.Text))
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "checklist item not found")
+		} else {
+			writeError(w, http.StatusInternalServerError, "could not update checklist item")
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, checklistItemToResponse(item))
+}
+
+func (s *Server) handleDeleteChecklistItem(w http.ResponseWriter, r *http.Request) {
+	checklist, role, ok := s.loadChecklist(w, r, db.RoleEditor)
+	if !ok {
+		return
+	}
+	if !s.requireChecklistWrite(w, r, checklist, role) {
 		return
 	}
 	itemID := chi.URLParam(r, "itemId")

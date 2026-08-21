@@ -24,11 +24,13 @@ type AuthIdentity struct {
 }
 
 type Checklist struct {
-	ID        string    `json:"id"`
-	TripID    string    `json:"trip_id"`
-	Title     string    `json:"title"`
-	SortOrder int32     `json:"sort_order"`
-	CreatedAt time.Time `json:"created_at"`
+	ID          string         `json:"id"`
+	TripID      string         `json:"trip_id"`
+	Title       string         `json:"title"`
+	SortOrder   int32          `json:"sort_order"`
+	CreatedAt   time.Time      `json:"created_at"`
+	Visibility  string         `json:"visibility"`
+	OwnerUserID sql.NullString `json:"owner_user_id"`
 }
 
 type ChecklistItem struct {

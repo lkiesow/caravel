@@ -136,6 +136,18 @@ func (s *Server) loadChecklist(w http.ResponseWriter, r *http.Request, min db.Tr
 	if !ok {
 		return db.Checklist{}, "", false
 	}
+	// A personal list belongs to whoever made it, and having its id is not
+	// access. 404 rather than 403 for the same reason as a personal file: the
+	// point of a personal list is that other people on the trip do not know it
+	// exists. Duplicates the predicate in ListChecklistsByTrip on purpose —
+	// that hides it from a listing, this stops a remembered id reaching it.
+	if checklist.Visibility == db.ChecklistPersonal {
+		me, _ := auth.UserFromContext(r.Context())
+		if checklist.OwnerUserID == nil || *checklist.OwnerUserID != me.ID {
+			writeError(w, http.StatusNotFound, "checklist not found")
+			return db.Checklist{}, "", false
+		}
+	}
 	return checklist, role, true
 }
 

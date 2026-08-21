@@ -189,9 +189,15 @@ func (s *Server) buildRouter() chi.Router {
 
 		r.Route("/checklists/{checklistId}", func(r chi.Router) {
 			r.Use(auth.RequireAuth)
+			r.Patch("/", s.handleRenameChecklist)
 			r.Delete("/", s.handleDeleteChecklist)
+			r.Put("/visibility", s.handleSetChecklistVisibility)
 			r.Post("/items", s.handleCreateChecklistItem)
 			r.Patch("/items/{itemId}", s.handleSetChecklistItemChecked)
+			// Separate from the PATCH above, which carries `checked`: ticking is
+			// a different action from rewording, and one endpoint taking either
+			// would make an absent field ambiguous.
+			r.Put("/items/{itemId}/text", s.handleUpdateChecklistItemText)
 			r.Delete("/items/{itemId}", s.handleDeleteChecklistItem)
 		})
 

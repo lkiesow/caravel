@@ -1209,6 +1209,76 @@ Same shape, three states.
 the menu and for a `trip`-visibility list being visible-but-not-tickable to a
 second user.
 
+**Done.** Migration 0010, the three-state rule, and the ⋮-menu work the
+long-standing `todo.md` entry asked for.
+
+*Three states, and the middle one is the point.* `personal` is invisible to
+everyone else; `trip` is readable by everyone and writable only by its author;
+`shared` is readable and writable by any editor. Seeing a list and being able to
+change it are genuinely different permissions once more than one person is
+looking, which is why this is not the files model with a third name attached.
+
+*The default is `shared`, the opposite of the files default*, and deliberately: a
+file is one person's document, so trip-visible-but-not-editable is its resting
+state, while a checklist is a job being done together and the packing list
+everyone ticks is the case that made anyone want checklists. Existing rows became
+shared, which is what they effectively were.
+
+*One rule covers every write except the visibility.* `canModifyChecklist` decides
+ticking, adding, rewording, renaming and deleting together — they are all "change
+this list" — and the response carries it as `can_tick` so the client never
+re-derives it. Changing the visibility is author-only even on a shared list: an
+editor may tick and rename what was shared with them, but the decision to share
+it stays with whoever made it.
+
+*Folded in from `todo.md`, as the plan said:* renaming a list and rewording an
+item. Both were write-once, so fixing a typo meant deleting and retyping. They
+are separate routes from the tick (`PUT .../items/{id}/text` beside
+`PATCH .../items/{id}`) because one endpoint taking either would make an absent
+field ambiguous — and there is a test that rewording does not clear the checked
+state. The per-item bare remove icon became a ⋮ holding Edit and Remove, the same
+swap the file row made, and the reason the item text stays inside its label:
+tapping the text still ticks, which is the thing you do a hundred times more
+often than editing.
+
+*Grouping follows the files rework* rather than repeating its mistake: three
+labelled sections carry the state, no card wears a badge, no menu holds a
+selection, and each card offers the two moves available to it as plain actions —
+so both triggers stay silent.
+
+Duplication is still deferred; it needs a call on whether a copy keeps checked
+state.
+
+**Verified.** `make ci` green (264 keys in sync); full Playwright suite passing.
+New `checklist_visibility_test.go` covers the shared default across three
+inputs, personal lists being invisible to the trip owner including by direct id
+on all seven routes, the trip-visible list being readable and 403 on every write
+for a non-author while its author can do everything, shared lists being writable
+by any editor but re-visible only by their author, all six transitions between
+the three states with their effects, rename and reword including trimming and
+that rewording preserves `checked`, and removal deleting a member's personal
+lists while sparing their shared ones.
+
+Break-checked with six breaks, all caught. One needed the compiling form again
+(`if false {` orphaning a loop variable — the fourth time this stage), and the
+weak version of the removal break only neutered the error check rather than the
+deletion.
+
+Live at 1280 and 324×756. As the author: three sections titled "Everyone can
+tick" / "Everyone can see" / "Only you", both triggers silent, the card menu
+holding two moves plus Rename and Delete, the item menu holding Edit and Remove.
+As the other person on the trip: the personal list absent entirely (two sections
+only), the trip-visible list present with no menu, no add form, no enabled
+checkbox and no item menus, and the shared list tickable with Rename and Delete
+but **no** visibility moves — and ticking it actually persisted. Rename and
+reword both drove through their dialogs, prefilled, with the checked state
+surviving. German at 324px: all four card-menu items at 44px inside the viewport,
+three stacked choices at 44px, no overflow.
+
+Worth recording from the cleanup: deleting `other`'s trip-visible list as the
+trip owner answered 403, which is the guard doing its job — the tidy-up had to be
+done as its author. That is the middle state being real rather than decorative.
+
 ---
 
 ## 9. UI suite: the multi-user flows

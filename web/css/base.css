@@ -2162,6 +2162,89 @@ button {
 }
 
 /* ---------------------------------------------------------------------------
+   Checklist visibility (Stage 14 Milestone 8)
+
+   Same treatment as the file sections: labelled groups carry the state, so no
+   card wears a badge. Three groups here rather than two, because a list can be
+   ticked and a file cannot.
+   --------------------------------------------------------------------------- */
+
+.checklist-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.checklist-section__title {
+  margin: 0 0 0.5rem;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* Both per-row triggers: the bare ellipsis the file row and the members row
+   already use. Not sharing .file-actions__trigger's selector because that one
+   turns red on hover, which suits a menu whose main item is Delete and misreads
+   on one whose first items move a list between groups. */
+.checklist-card__trigger,
+.checklist-item__trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: var(--radius);
+}
+
+.checklist-card__trigger:hover,
+.checklist-item__trigger:hover {
+  color: var(--color-text);
+}
+
+.checklist-item__actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+}
+
+/* The create form and its visibility choice, grouped the way the file upload
+   block is: both belong to the list being made next rather than to anything
+   above them. */
+.checklist-new {
+  margin-top: 1rem;
+}
+
+.checklist-new__visibility {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-top: 0.75rem;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+@media (max-width: 640px) {
+  /* The label takes its own line, and .setting-choices already stacks its
+     choices full width at this breakpoint. Three choices cannot share 324px
+     with a label. */
+  .checklist-new__visibility > span {
+    flex-basis: 100%;
+  }
+
+  .checklist-card__trigger,
+  .checklist-item__trigger {
+    min-width: var(--tap-min);
+  }
+}
+
+/* ---------------------------------------------------------------------------
    File visibility (Stage 14 Milestone 7, reworked in its follow-up)
 
    Files split into two labelled groups on a shared trip — everyone's, and

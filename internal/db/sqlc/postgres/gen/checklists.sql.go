@@ -7,21 +7,24 @@ package postgresgen
 
 import (
 	"context"
+	"database/sql"
 	"time"
 )
 
 const createChecklist = `-- name: CreateChecklist :one
-INSERT INTO checklists (id, trip_id, title, sort_order, created_at)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, trip_id, title, sort_order, created_at
+INSERT INTO checklists (id, trip_id, title, sort_order, created_at, visibility, owner_user_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, trip_id, title, sort_order, created_at, visibility, owner_user_id
 `
 
 type CreateChecklistParams struct {
-	ID        string    `json:"id"`
-	TripID    string    `json:"trip_id"`
-	Title     string    `json:"title"`
-	SortOrder int32     `json:"sort_order"`
-	CreatedAt time.Time `json:"created_at"`
+	ID          string         `json:"id"`
+	TripID      string         `json:"trip_id"`
+	Title       string         `json:"title"`
+	SortOrder   int32          `json:"sort_order"`
+	CreatedAt   time.Time      `json:"created_at"`
+	Visibility  string         `json:"visibility"`
+	OwnerUserID sql.NullString `json:"owner_user_id"`
 }
 
 func (q *Queries) CreateChecklist(ctx context.Context, arg CreateChecklistParams) (Checklist, error) {
@@ -31,6 +34,8 @@ func (q *Queries) CreateChecklist(ctx context.Context, arg CreateChecklistParams
 		arg.Title,
 		arg.SortOrder,
 		arg.CreatedAt,
+		arg.Visibility,
+		arg.OwnerUserID,
 	)
 	var i Checklist
 	err := row.Scan(
@@ -39,6 +44,8 @@ func (q *Queries) CreateChecklist(ctx context.Context, arg CreateChecklistParams
 		&i.Title,
 		&i.SortOrder,
 		&i.CreatedAt,
+		&i.Visibility,
+		&i.OwnerUserID,
 	)
 	return i, err
 }
@@ -114,7 +121,7 @@ func (q *Queries) DeleteChecklistItem(ctx context.Context, arg DeleteChecklistIt
 }
 
 const getChecklistByID = `-- name: GetChecklistByID :one
-SELECT id, trip_id, title, sort_order, created_at FROM checklists WHERE id = $1
+SELECT id, trip_id, title, sort_order, created_at, visibility, owner_user_id FROM checklists WHERE id = $1
 `
 
 func (q *Queries) GetChecklistByID(ctx context.Context, id string) (Checklist, error) {
@@ -126,6 +133,8 @@ func (q *Queries) GetChecklistByID(ctx context.Context, id string) (Checklist, e
 		&i.Title,
 		&i.SortOrder,
 		&i.CreatedAt,
+		&i.Visibility,
+		&i.OwnerUserID,
 	)
 	return i, err
 }
@@ -165,11 +174,26 @@ func (q *Queries) ListChecklistItemsByChecklist(ctx context.Context, checklistID
 }
 
 const listChecklistsByTrip = `-- name: ListChecklistsByTrip :many
-SELECT id, trip_id, title, sort_order, created_at FROM checklists WHERE trip_id = $1 ORDER BY sort_order
+SELECT id, trip_id, title, sort_order, created_at, visibility, owner_user_id FROM checklists
+WHERE trip_id = $1
+  AND (visibility <> 'personal' OR owner_user_id = $2)
+ORDER BY sort_order
 `
 
-func (q *Queries) ListChecklistsByTrip(ctx context.Context, tripID string) ([]Checklist, error) {
-	rows, err := q.db.QueryContext(ctx, listChecklistsByTrip, tripID)
+type ListChecklistsByTripParams struct {
+	TripID string         `json:"trip_id"`
+	UserID sql.NullString `json:"user_id"`
+}
+
+// A personal list belongs to whoever created it and never appears in anyone
+// other listing. The same predicate guards loadChecklist, for the reason the
+// files one is written twice: this hides a list, that stops a remembered id from
+// reaching it.
+//
+// A NULL owner_user_id matches nobody, which is the intended failure. See
+// migration 0010.
+func (q *Queries) ListChecklistsByTrip(ctx context.Context, arg ListChecklistsByTripParams) ([]Checklist, error) {
+	rows, err := q.db.QueryContext(ctx, listChecklistsByTrip, arg.TripID, arg.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -183,6 +207,51 @@ func (q *Queries) ListChecklistsByTrip(ctx context.Context, tripID string) ([]Ch
 			&i.Title,
 			&i.SortOrder,
 			&i.CreatedAt,
+			&i.Visibility,
+			&i.OwnerUserID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPersonalChecklistsForUser = `-- name: ListPersonalChecklistsForUser :many
+SELECT id, trip_id, title, sort_order, created_at, visibility, owner_user_id FROM checklists
+WHERE trip_id = $1 AND owner_user_id = $2 AND visibility = 'personal'
+`
+
+type ListPersonalChecklistsForUserParams struct {
+	TripID string         `json:"trip_id"`
+	UserID sql.NullString `json:"user_id"`
+}
+
+// Every personal list belonging to one user on one trip, for the moment they
+// stop being a member. Same treatment as their personal files.
+func (q *Queries) ListPersonalChecklistsForUser(ctx context.Context, arg ListPersonalChecklistsForUserParams) ([]Checklist, error) {
+	rows, err := q.db.QueryContext(ctx, listPersonalChecklistsForUser, arg.TripID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Checklist
+	for rows.Next() {
+		var i Checklist
+		if err := rows.Scan(
+			&i.ID,
+			&i.TripID,
+			&i.Title,
+			&i.SortOrder,
+			&i.CreatedAt,
+			&i.Visibility,
+			&i.OwnerUserID,
 		); err != nil {
 			return nil, err
 		}
@@ -218,6 +287,93 @@ func (q *Queries) SetChecklistItemChecked(ctx context.Context, arg SetChecklistI
 		&i.Checked,
 		&i.SortOrder,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const setChecklistVisibility = `-- name: SetChecklistVisibility :one
+UPDATE checklists SET visibility = $1
+WHERE id = $2 AND trip_id = $3
+RETURNING id, trip_id, title, sort_order, created_at, visibility, owner_user_id
+`
+
+type SetChecklistVisibilityParams struct {
+	Visibility string `json:"visibility"`
+	ID         string `json:"id"`
+	TripID     string `json:"trip_id"`
+}
+
+// Separate from the title update below, and from anything about items: only the
+// author of a list may change who sees it, where an editor may rename or tick a
+// shared one. Two authorization rules should not share one statement.
+func (q *Queries) SetChecklistVisibility(ctx context.Context, arg SetChecklistVisibilityParams) (Checklist, error) {
+	row := q.db.QueryRowContext(ctx, setChecklistVisibility, arg.Visibility, arg.ID, arg.TripID)
+	var i Checklist
+	err := row.Scan(
+		&i.ID,
+		&i.TripID,
+		&i.Title,
+		&i.SortOrder,
+		&i.CreatedAt,
+		&i.Visibility,
+		&i.OwnerUserID,
+	)
+	return i, err
+}
+
+const updateChecklistItemText = `-- name: UpdateChecklistItemText :one
+UPDATE checklist_items SET text = $1
+WHERE id = $2 AND checklist_id = $3
+RETURNING id, checklist_id, text, checked, sort_order, created_at
+`
+
+type UpdateChecklistItemTextParams struct {
+	Text        string `json:"text"`
+	ID          string `json:"id"`
+	ChecklistID string `json:"checklist_id"`
+}
+
+// Editing an item after the fact. Write-once was the wrong lifetime here too,
+// for a line of text you are going to re-read all week.
+func (q *Queries) UpdateChecklistItemText(ctx context.Context, arg UpdateChecklistItemTextParams) (ChecklistItem, error) {
+	row := q.db.QueryRowContext(ctx, updateChecklistItemText, arg.Text, arg.ID, arg.ChecklistID)
+	var i ChecklistItem
+	err := row.Scan(
+		&i.ID,
+		&i.ChecklistID,
+		&i.Text,
+		&i.Checked,
+		&i.SortOrder,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const updateChecklistTitle = `-- name: UpdateChecklistTitle :one
+UPDATE checklists SET title = $1
+WHERE id = $2 AND trip_id = $3
+RETURNING id, trip_id, title, sort_order, created_at, visibility, owner_user_id
+`
+
+type UpdateChecklistTitleParams struct {
+	Title  string `json:"title"`
+	ID     string `json:"id"`
+	TripID string `json:"trip_id"`
+}
+
+// Renaming a list, which had no endpoint at all before Stage 14 Milestone 8: a
+// title was write-once, so fixing a typo meant deleting the list and its items.
+func (q *Queries) UpdateChecklistTitle(ctx context.Context, arg UpdateChecklistTitleParams) (Checklist, error) {
+	row := q.db.QueryRowContext(ctx, updateChecklistTitle, arg.Title, arg.ID, arg.TripID)
+	var i Checklist
+	err := row.Scan(
+		&i.ID,
+		&i.TripID,
+		&i.Title,
+		&i.SortOrder,
+		&i.CreatedAt,
+		&i.Visibility,
+		&i.OwnerUserID,
 	)
 	return i, err
 }

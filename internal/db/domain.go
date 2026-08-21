@@ -215,12 +215,37 @@ type FileDetail struct {
 	ItemTitle *string
 }
 
+// ChecklistVisibility is who can see and who can tick a checklist. Three
+// values where a file has two, because a checklist has a second axis a file
+// does not: being able to *change* it is separate from being able to read it
+// once more than one person is looking.
+type ChecklistVisibility string
+
+const (
+	// ChecklistPersonal: only its author sees it at all.
+	ChecklistPersonal ChecklistVisibility = "personal"
+	// ChecklistTrip: everyone on the trip sees it, only its author changes it.
+	ChecklistTrip ChecklistVisibility = "trip"
+	// ChecklistShared: everyone on the trip sees it and ticks it. The default,
+	// because a checklist is usually a job being done together — which is the
+	// opposite of the files default, where a document is usually one person's.
+	ChecklistShared ChecklistVisibility = "shared"
+)
+
+func (v ChecklistVisibility) Valid() bool {
+	return v == ChecklistPersonal || v == ChecklistTrip || v == ChecklistShared
+}
+
 type Checklist struct {
-	ID        string
-	TripID    string
-	Title     string
-	SortOrder int
-	CreatedAt time.Time
+	ID         string
+	TripID     string
+	Title      string
+	SortOrder  int
+	CreatedAt  time.Time
+	Visibility ChecklistVisibility
+	// OwnerUserID is who created it. Nullable in the schema (see migration
+	// 0010); in practice every row has one.
+	OwnerUserID *string
 }
 
 type ChecklistItem struct {

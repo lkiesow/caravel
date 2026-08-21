@@ -90,15 +90,22 @@ check, i18n key parity, `go test`. Don't rely on CI to catch it first.
 - **`sqlc`'s SQLite parser has three traps, all of which report the error in
   the wrong place.** Learned the hard way in Stage 14; each cost real time
   because the reported line points at correct SQL.
-  - **No quote characters of any kind in comments** in
-    `internal/db/sqlc/queries/*.sql` — not backticks, not double quotes. The
-    lexer reads both as identifier quotes *even inside a `--` comment*,
-    swallows the line boundary, and then blames a statement below the comment.
-    Single quotes are string delimiters and will do the same. Write comment
-    prose with no quoting at all; if you must set a term apart, use -- dashes
-    -- or CAPITALS. (An earlier version of this note said to use double quotes
-    instead of backticks. That is wrong, and following it cost another half
-    hour in Stage 14 Milestone 6.)
+  - **Keep comment prose in `internal/db/sqlc/queries/*.sql` plain**: no
+    backticks, no double quotes, and avoid apostrophes (write "the trip owner",
+    not "the trip's owner"). Some combination of these makes the lexer
+    misparse, and it then blames a *statement*, usually the wrong one — the
+    reported line points at correct SQL, which is what makes this expensive.
+    Backticks alone reproduce it (Stage 14 Milestone 3); a comment full of
+    apostrophes and quoted terms reproduced it again in Milestone 8, where
+    rewriting the same comments in plain prose fixed it while the SQL was
+    unchanged.
+    Note what is *not* established: single apostrophes, single em dashes and
+    apostrophe pairs each parse fine in isolation, so the exact trigger is
+    unknown. Do not trust a theory about it. If `sqlc generate` reports a
+    syntax error on SQL that looks correct, **bisect the comments**, not the
+    SQL: append the queries one at a time with no comments to confirm the SQL
+    is fine, then add the comment blocks back. That sequence found it twice.
+    If you must set a term apart, use -- dashes -- or CAPITALS.
   - **Parenthesise OR-ed `LIKE` comparisons.** `LOWER(a) LIKE @p OR LOWER(b)
     LIKE @p` is rejected; wrapping each comparison in parens is accepted.
   - **`LIKE ... ESCAPE` is rejected outright**, and named args are *not*

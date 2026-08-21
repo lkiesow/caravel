@@ -80,7 +80,14 @@ type Querier interface {
 	InsertItemLocation(ctx context.Context, arg InsertItemLocationParams) (ItemLocation, error)
 	InsertItineraryDay(ctx context.Context, arg InsertItineraryDayParams) (ItineraryDay, error)
 	ListChecklistItemsByChecklist(ctx context.Context, checklistID string) ([]ChecklistItem, error)
-	ListChecklistsByTrip(ctx context.Context, tripID string) ([]Checklist, error)
+	// A personal list belongs to whoever created it and never appears in anyone
+	// other listing. The same predicate guards loadChecklist, for the reason the
+	// files one is written twice: this hides a list, that stops a remembered id from
+	// reaching it.
+	//
+	// A NULL owner_user_id matches nobody, which is the intended failure. See
+	// migration 0010.
+	ListChecklistsByTrip(ctx context.Context, arg ListChecklistsByTripParams) ([]Checklist, error)
 	ListItemDatesByItem(ctx context.Context, itemID string) ([]ItemDate, error)
 	ListItemFiles(ctx context.Context, arg ListItemFilesParams) ([]File, error)
 	ListItemLinksByItem(ctx context.Context, itemID string) ([]ItemLink, error)
@@ -101,6 +108,9 @@ type Querier interface {
 	// ListMapItemsByTrip: show_on_map is filtered in the store layer, not here,
 	// since its Go type (int64 vs bool) diverges by dialect (plan Section 2.1).
 	ListMapItemsByTrip(ctx context.Context, tripID string) ([]ListMapItemsByTripRow, error)
+	// Every personal list belonging to one user on one trip, for the moment they
+	// stop being a member. Same treatment as their personal files.
+	ListPersonalChecklistsForUser(ctx context.Context, arg ListPersonalChecklistsForUserParams) ([]Checklist, error)
 	// Every personal file belonging to one user on one trip, for the moment they
 	// stop being a member. The rows are found first so their blobs can be deleted
 	// too: a row removed without its blob leaks bytes nobody can reach.
@@ -172,6 +182,10 @@ type Querier interface {
 	// write a special case.
 	SetAppSetting(ctx context.Context, arg SetAppSettingParams) error
 	SetChecklistItemChecked(ctx context.Context, arg SetChecklistItemCheckedParams) (ChecklistItem, error)
+	// Separate from the title update below, and from anything about items: only the
+	// author of a list may change who sees it, where an editor may rename or tick a
+	// shared one. Two authorization rules should not share one statement.
+	SetChecklistVisibility(ctx context.Context, arg SetChecklistVisibilityParams) (Checklist, error)
 	// Separate from UpdateFileNote rather than folded into it: changing a note is
 	// an editor-level edit of shared content, while changing visibility is a
 	// decision only the file's own uploader may make. Two different authorization
@@ -181,6 +195,12 @@ type Querier interface {
 	SetTripPreviewImage(ctx context.Context, arg SetTripPreviewImageParams) (Trip, error)
 	TouchSession(ctx context.Context, arg TouchSessionParams) error
 	UpdateAuthIdentityPassword(ctx context.Context, arg UpdateAuthIdentityPasswordParams) error
+	// Editing an item after the fact. Write-once was the wrong lifetime here too,
+	// for a line of text you are going to re-read all week.
+	UpdateChecklistItemText(ctx context.Context, arg UpdateChecklistItemTextParams) (ChecklistItem, error)
+	// Renaming a list, which had no endpoint at all before Stage 14 Milestone 8: a
+	// title was write-once, so fixing a typo meant deleting the list and its items.
+	UpdateChecklistTitle(ctx context.Context, arg UpdateChecklistTitleParams) (Checklist, error)
 	// A note is the only thing about a file that can change after upload: it is
 	// the readable name a file gets when its own filename is a storage blob, so
 	// write-once was the wrong lifetime for it. Scoped by (id, trip_id) exactly

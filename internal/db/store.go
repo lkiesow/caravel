@@ -87,11 +87,13 @@ type CreateFileParams struct {
 }
 
 type CreateChecklistParams struct {
-	ID        string
-	TripID    string
-	Title     string
-	SortOrder int
-	CreatedAt time.Time
+	ID          string
+	TripID      string
+	Title       string
+	SortOrder   int
+	CreatedAt   time.Time
+	Visibility  ChecklistVisibility
+	OwnerUserID *string
 }
 
 type CreateChecklistItemParams struct {
@@ -322,12 +324,22 @@ type Store interface {
 
 	CreateChecklist(ctx context.Context, p CreateChecklistParams) (Checklist, error)
 	GetChecklistByID(ctx context.Context, id string) (Checklist, error)
-	ListChecklistsByTrip(ctx context.Context, tripID string) ([]Checklist, error)
+	// ListChecklistsByTrip takes the reading user: a personal list belongs to
+	// whoever created it and must not appear in anyone else's list.
+	ListChecklistsByTrip(ctx context.Context, tripID, userID string) ([]Checklist, error)
+	// SetChecklistVisibility is author-only; UpdateChecklistTitle follows the
+	// list's own write rule (see httpapi.canModifyChecklist).
+	SetChecklistVisibility(ctx context.Context, id, tripID string, visibility ChecklistVisibility) (Checklist, error)
+	UpdateChecklistTitle(ctx context.Context, id, tripID, title string) (Checklist, error)
+	// ListPersonalChecklistsForUser finds what to remove when someone stops
+	// being a member of a trip.
+	ListPersonalChecklistsForUser(ctx context.Context, tripID, userID string) ([]Checklist, error)
 	DeleteChecklist(ctx context.Context, id, tripID string) (bool, error)
 
 	CreateChecklistItem(ctx context.Context, p CreateChecklistItemParams) (ChecklistItem, error)
 	ListChecklistItemsByChecklist(ctx context.Context, checklistID string) ([]ChecklistItem, error)
 	SetChecklistItemChecked(ctx context.Context, id, checklistID string, checked bool) (ChecklistItem, error)
+	UpdateChecklistItemText(ctx context.Context, id, checklistID, text string) (ChecklistItem, error)
 	DeleteChecklistItem(ctx context.Context, id, checklistID string) (bool, error)
 
 	// WithTx runs fn with a Store bound to a single transaction, committing

@@ -143,7 +143,7 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
       // by the location view); a viewer is simply the second caller for it.
       renderFileList(content, `/trips/${trip.id}/files`, { readOnly: !canEdit(trip), shared: isShared(trip) });
     } else if (tab === "checklists") {
-      renderChecklistList(content, trip.id, { readOnly: !canEdit(trip) });
+      renderChecklistList(content, trip.id, { readOnly: !canEdit(trip), shared: isShared(trip) });
     } else if (tab === "members") {
       renderMembersTab(content, trip, {
         // Keeps `trip.member_count` current for the other tabs. Mutated in

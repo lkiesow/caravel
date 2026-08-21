@@ -889,11 +889,13 @@ func (s *sqliteStore) DeleteFile(ctx context.Context, id, tripID string) (bool, 
 
 func (s *sqliteStore) CreateChecklist(ctx context.Context, p CreateChecklistParams) (Checklist, error) {
 	row, err := s.q.CreateChecklist(ctx, sqlitegen.CreateChecklistParams{
-		ID:        p.ID,
-		TripID:    p.TripID,
-		Title:     p.Title,
-		SortOrder: int64(p.SortOrder),
-		CreatedAt: formatTime(p.CreatedAt),
+		ID:          p.ID,
+		TripID:      p.TripID,
+		Title:       p.Title,
+		SortOrder:   int64(p.SortOrder),
+		Visibility:  string(p.Visibility),
+		OwnerUserID: nullString(p.OwnerUserID),
+		CreatedAt:   formatTime(p.CreatedAt),
 	})
 	if err != nil {
 		return Checklist{}, err
@@ -909,8 +911,8 @@ func (s *sqliteStore) GetChecklistByID(ctx context.Context, id string) (Checklis
 	return sqliteChecklistToDomain(row), nil
 }
 
-func (s *sqliteStore) ListChecklistsByTrip(ctx context.Context, tripID string) ([]Checklist, error) {
-	rows, err := s.q.ListChecklistsByTrip(ctx, tripID)
+func (s *sqliteStore) ListChecklistsByTrip(ctx context.Context, tripID, userID string) ([]Checklist, error) {
+	rows, err := s.q.ListChecklistsByTrip(ctx, sqlitegen.ListChecklistsByTripParams{TripID: tripID, UserID: nullString(&userID)})
 	if err != nil {
 		return nil, err
 	}
@@ -919,6 +921,45 @@ func (s *sqliteStore) ListChecklistsByTrip(ctx context.Context, tripID string) (
 		checklists[i] = sqliteChecklistToDomain(row)
 	}
 	return checklists, nil
+}
+
+func (s *sqliteStore) SetChecklistVisibility(ctx context.Context, id, tripID string, visibility ChecklistVisibility) (Checklist, error) {
+	row, err := s.q.SetChecklistVisibility(ctx, sqlitegen.SetChecklistVisibilityParams{
+		Visibility: string(visibility),
+		ID:         id,
+		TripID:     tripID,
+	})
+	if err != nil {
+		return Checklist{}, mapNotFound(err)
+	}
+	return sqliteChecklistToDomain(row), nil
+}
+
+func (s *sqliteStore) UpdateChecklistTitle(ctx context.Context, id, tripID, title string) (Checklist, error) {
+	row, err := s.q.UpdateChecklistTitle(ctx, sqlitegen.UpdateChecklistTitleParams{
+		Title:  title,
+		ID:     id,
+		TripID: tripID,
+	})
+	if err != nil {
+		return Checklist{}, mapNotFound(err)
+	}
+	return sqliteChecklistToDomain(row), nil
+}
+
+func (s *sqliteStore) ListPersonalChecklistsForUser(ctx context.Context, tripID, userID string) ([]Checklist, error) {
+	rows, err := s.q.ListPersonalChecklistsForUser(ctx, sqlitegen.ListPersonalChecklistsForUserParams{
+		TripID: tripID,
+		UserID: nullString(&userID),
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Checklist, len(rows))
+	for i, row := range rows {
+		out[i] = sqliteChecklistToDomain(row)
+	}
+	return out, nil
 }
 
 func (s *sqliteStore) DeleteChecklist(ctx context.Context, id, tripID string) (bool, error) {
@@ -968,6 +1009,18 @@ func (s *sqliteStore) SetChecklistItemChecked(ctx context.Context, id, checklist
 	return sqliteChecklistItemToDomain(row), nil
 }
 
+func (s *sqliteStore) UpdateChecklistItemText(ctx context.Context, id, checklistID, text string) (ChecklistItem, error) {
+	row, err := s.q.UpdateChecklistItemText(ctx, sqlitegen.UpdateChecklistItemTextParams{
+		Text:        text,
+		ID:          id,
+		ChecklistID: checklistID,
+	})
+	if err != nil {
+		return ChecklistItem{}, mapNotFound(err)
+	}
+	return sqliteChecklistItemToDomain(row), nil
+}
+
 func (s *sqliteStore) DeleteChecklistItem(ctx context.Context, id, checklistID string) (bool, error) {
 	n, err := s.q.DeleteChecklistItem(ctx, sqlitegen.DeleteChecklistItemParams{ID: id, ChecklistID: checklistID})
 	if err != nil {
@@ -978,11 +1031,13 @@ func (s *sqliteStore) DeleteChecklistItem(ctx context.Context, id, checklistID s
 
 func sqliteChecklistToDomain(c sqlitegen.Checklist) Checklist {
 	return Checklist{
-		ID:        c.ID,
-		TripID:    c.TripID,
-		Title:     c.Title,
-		SortOrder: int(c.SortOrder),
-		CreatedAt: parseTime(c.CreatedAt),
+		ID:          c.ID,
+		TripID:      c.TripID,
+		Title:       c.Title,
+		SortOrder:   int(c.SortOrder),
+		CreatedAt:   parseTime(c.CreatedAt),
+		Visibility:  ChecklistVisibility(c.Visibility),
+		OwnerUserID: strPtr(c.OwnerUserID),
 	}
 }
 

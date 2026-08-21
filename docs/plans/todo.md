@@ -71,16 +71,13 @@ Direction already agreed or obviously wanted; none of it built.
   below the fold — the disclosure changed how much there is to scroll, not where
   you land. Wants either scrolling the first open day into view on render
   (`scrollIntoView`, cheap) or a "Today" control in the itinerary header.
-- **Checklist editing and duplication, and a ⋮-menu to hold them.** (Stage 05.)
-  `checklist-list.js` supports only creating and deleting a checklist/item —
-  no renaming a checklist, no editing an item's text after creation, no
-  duplicating a list (useful for reusing a packing list across trips).
-  Suggested UI: replace the bare delete icon with a vertical-ellipsis button
-  opening a small dropdown (Edit / Duplicate / Delete). Needs concept work
-  first — how in-place editing should look, whether duplication copies
-  checked-state or resets it. No longer blocked: `renderMenu` grew its
-  action-item mode in Stage 11 Milestone 3, and the Files row's ⋮ (Edit note /
-  Delete) is the working example to copy, `promptDialog` included.
+- **Checklist duplication.** (Stage 05; everything else in this entry landed in
+  Stage 14 Milestone 8, which added renaming, in-place item editing and the
+  ⋮-menus to hold them.) What is left is copying a list, which is useful for
+  reusing a packing list across trips — and which still needs the call that kept
+  it out of Milestone 8: does a copy keep the checked state or reset it? Both
+  answers are defensible (reusing last year's list wants a reset; splitting one
+  list in two wants it kept), so it probably wants asking, or two menu items.
 - **No progress while a large file uploads.** (Stage 11.) The drop zone accepts
   up to 50 MB per file and several files per gesture, and while a batch is in
   flight the only feedback is the zone dimming (`.file-drop--busy`) — no per-file
@@ -172,11 +169,6 @@ together rather than bolting a column onto an existing table.
   token. Needs a `share_links` table (token, trip_id, scope, expires_at) plus an
   unauthenticated route variant. IDs are already non-guessable UUIDs, so this is
   low-friction whenever it's picked up.
-- **Per-visibility checklists: personal / trip-visible / shared.** Personal
-  (only the author sees them), public (everyone on the trip can see them) and
-  shared (everyone can see *and* tick them). Explicitly for after real
-  multi-user support exists; the visibility column wants designing alongside the
-  roles above.
 - **Expenses / cost-splitting.** (Stage 01.) A new `expenses` table referencing
   `trip_id` and optionally `item_id`, with no changes to existing tables. The
   *splitting* half only means anything once several people share a trip, which

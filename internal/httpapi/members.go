@@ -32,10 +32,11 @@ type memberResponse struct {
 	// IsSelf lets the client mark "you" and offer Leave instead of Remove
 	// without having to compare against /auth/me itself.
 	IsSelf bool `json:"is_self"`
-	// PersonalFileCount is how many of their own personal files removing them
-	// would delete, so the confirmation can say so. Only meaningful to whoever
-	// can act on it: it is filled in for the owner reading the list, and left
-	// at zero otherwise — the count of someone's private files is itself
+	// PersonalFileCount is how much of their own private content removing them
+	// would delete — files and checklists together, since the confirmation asks
+	// one question. Only meaningful to whoever can act on it: filled in for the
+	// owner reading the list and for the person themselves, left at zero
+	// otherwise, because the count of someone's private things is itself
 	// information about them.
 	PersonalFileCount int `json:"personal_file_count"`
 }
@@ -85,6 +86,9 @@ func (s *Server) handleListMembers(w http.ResponseWriter, r *http.Request) {
 		if canManage || m.UserID == me.ID {
 			if personal, err := s.Store.ListPersonalFilesForUser(r.Context(), trip.ID, m.UserID); err == nil {
 				row.PersonalFileCount = len(personal)
+			}
+			if lists, err := s.Store.ListPersonalChecklistsForUser(r.Context(), trip.ID, m.UserID); err == nil {
+				row.PersonalFileCount += len(lists)
 			}
 		}
 		resp = append(resp, row)
@@ -294,10 +298,10 @@ func (s *Server) handleRemoveMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Their personal files on this trip go with the membership. Bytes that
-	// nobody can ever reach again are worse than a removal that says what it
-	// will take: the file is invisible to everyone else by definition, and its
-	// owner has just lost the trip it lives on. The Members tab's confirmation
+	// Their personal files and lists on this trip go with the membership.
+	// Content nobody can ever reach again is worse than a removal that says
+	// what it will take: it is invisible to everyone else by definition, and its
+	// owner has just lost the trip it lives on. The Members tab confirmation
 	// names the count for exactly this reason.
 	//
 	// Done before the membership row so a failure leaves the person still on
@@ -317,6 +321,21 @@ func (s *Server) handleRemoveMember(w http.ResponseWriter, r *http.Request) {
 		// gone, and a leaked blob is a disk-space problem rather than a
 		// correctness one.
 		_ = s.Blob.Delete(r.Context(), f.StoragePath)
+	}
+
+	// Same for their personal checklists. Their trip-visible and shared lists
+	// stay: a shared packing list is the trip's, and a trip-visible one is
+	// content everyone can already read.
+	personalLists, err := s.Store.ListPersonalChecklistsForUser(r.Context(), trip.ID, userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not check for personal checklists")
+		return
+	}
+	for _, c := range personalLists {
+		if _, err := s.Store.DeleteChecklist(r.Context(), c.ID, trip.ID); err != nil {
+			writeError(w, http.StatusInternalServerError, "could not remove personal checklists")
+			return
+		}
 	}
 
 	removed, err := s.Store.DeleteTripMember(r.Context(), trip.ID, userID)

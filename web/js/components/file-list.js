@@ -1,5 +1,6 @@
 import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
+import { formatBytes } from "../format.js";
 import { icon } from "../icon.js";
 import { confirmDialog, promptDialog } from "./dialog.js";
 import { renderMenu } from "./menu.js";
@@ -102,7 +103,7 @@ export async function renderFileList(container, path, { staged, rows: given, rea
     summary.hidden = rows.length === 0;
     if (rows.length) {
       const total = rows.reduce((sum, row) => sum + (isStaging ? row.file.size : row.size_bytes), 0);
-      summary.textContent = t("files.summary", { total: formatSize(total) }, rows.length);
+      summary.textContent = t("files.summary", { total: formatBytes(total) }, rows.length);
     }
 
     rows.forEach((row, i) => {
@@ -131,7 +132,7 @@ export async function renderFileList(container, path, { staged, rows: given, rea
       // where the standalone size column takes over) - otherwise desktop showed
       // a stray leading dot in front of the filename.
       const metaHead =
-        `<span class="file-card__size file-card__size--inline">${formatSize(view.size)}</span>` + (view.note ? `${sep("size")}${filenameHtml(view.filename)}` : "");
+        `<span class="file-card__size file-card__size--inline">${formatBytes(view.size)}</span>` + (view.note ? `${sep("size")}${filenameHtml(view.filename)}` : "");
 
       // Then the desktop-only "No note" hint, and the location this file is
       // attached to (trip-level lists only). Order matters for the punctuation:
@@ -161,7 +162,7 @@ export async function renderFileList(container, path, { staged, rows: given, rea
       // download yet, so there its body is a plain span.
       li.innerHTML = `
         ${view.href ? `<a class="file-card__body" href="${view.href}" target="_blank" rel="noopener">${body}</a>` : `<span class="file-card__body">${body}</span>`}
-        <span class="file-card__size">${formatSize(view.size)}</span>
+        <span class="file-card__size">${formatBytes(view.size)}</span>
         ${readOnly ? "" : `<span class="file-actions"></span>`}
       `;
 
@@ -276,7 +277,7 @@ export async function renderFileList(container, path, { staged, rows: given, rea
         // upload with a 413 whose body is about multipart parsing rather than
         // about this file - see maxFileUploadBytes in internal/httpapi/files.go.
         if (file.size > MAX_UPLOAD_BYTES) {
-          errors.push(t("files.tooLarge", { name: file.name, limit: formatSize(MAX_UPLOAD_BYTES) }));
+          errors.push(t("files.tooLarge", { name: file.name, limit: formatBytes(MAX_UPLOAD_BYTES) }));
           continue;
         }
         // unshift, not push: the list is newest-first (the API sorts by
@@ -337,12 +338,6 @@ function filenameHtml(filename) {
   const stem = hasExt ? filename.slice(0, dot) : filename;
   const ext = hasExt ? filename.slice(dot) : "";
   return `<span class="file-card__filename"><span class="file-card__stem">${escapeHtml(stem)}</span>${ext ? `<span class="file-card__ext">${escapeHtml(ext)}</span>` : ""}</span>`;
-}
-
-function formatSize(bytes) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function escapeHtml(s) {

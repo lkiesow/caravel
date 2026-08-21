@@ -148,7 +148,10 @@ for (const locale of ["en", "de"]) {
       // The `full` scenario seeds two files: one on the trip, one on a
       // location. Both rows carry their own menu.
       const rows = page.locator(".files > li");
-      await expect(rows).toHaveCount(2);
+      await expect(
+        rows,
+        "the full trip should show exactly its two seeded files — a different count means the dev database has drifted from the seed (leftover manual test data; run `make dev-reset FORCE=1`)"
+      ).toHaveCount(2);
 
       const trigger = rows.first().locator(".menu__trigger");
       const dropdown = rows.first().locator(".menu__dropdown");

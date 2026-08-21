@@ -24,3 +24,15 @@ export function formatDateRange(start, end) {
   }
   return full(start || end);
 }
+
+// Byte count as a short human string: "28 B", "55.2 KB", "1.4 MB". One decimal
+// above a kilobyte, none below - "1024.0 B" would be both wrong-looking and
+// longer than the number it replaces.
+//
+// Lived in two copies (the file list and the location view page) until Stage 11,
+// which is how they were free to disagree. Anything showing a size uses this.
+export function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}

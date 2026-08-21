@@ -554,6 +554,38 @@ both arriving on the new location, which was deleted afterwards along with them.
 1280×800 on all three surfaces — trip Files tab, location view, location editor
 (both create and edit, so staging is exercised).
 
+**Done.** Most of this milestone had already been absorbed by 4 and 5, so what
+was left is small and the account is short.
+
+`formatBytes` now lives in [format.js](web/js/format.js) and is the only copy —
+the location view page's went with its markup in Milestone 4, and the file
+list's was the last one. The dead `.files .empty` selector is gone (the file
+list has never rendered `<li class="empty">`; the link and date lists still do,
+so they keep the rule). The i18n sweep happened in Milestone 5 where the keys
+actually changed: four retired, six added, both locales, and `i18n.py unused`
+clean.
+
+A dead-class audit over `base.css` against the JS and HTML found nothing else
+outstanding — every `.file*` rule has a user and every class the component emits
+has a rule, with the two apparent exceptions being separator variants built from
+a template variable. All the ≤640px overrides for the old row are long gone,
+replaced by the card's own.
+
+**The suite caught something better than dead CSS: the dev database had drifted
+from the seed.** `menu.spec.js` failed with "expected 2, received 3" on the
+seeded trip — a leftover file from Milestone 4's manual probing, which I had
+believed I cleaned up. That is exactly the hazard `todo.md` already records
+("leftover manual test data happened to be in the database that run"), so the
+count assertion now carries a message naming the cause and pointing at
+`make dev-reset FORCE=1`, rather than leaving the next person to work out why a
+seeded trip has three files.
+
+**Verified.** `make ci` green, `make test-ui` **15/15** after the stray row was
+removed, and the rendered sizes and summary re-checked in the browser after the
+helper swap (a shared formatter that silently formatted differently would be an
+easy thing to miss, since nothing else asserts those strings outside the new
+spec).
+
 ---
 
 ## Build order

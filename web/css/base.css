@@ -1102,8 +1102,7 @@ button {
 }
 
 .link-list .empty,
-.date-list .empty,
-.files .empty {
+.date-list .empty {
   color: var(--color-text-muted);
 }
 

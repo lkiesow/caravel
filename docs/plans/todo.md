@@ -111,6 +111,14 @@ Direction already agreed or obviously wanted; none of it built.
   checked-state or resets it. No longer blocked: `renderMenu` grew its
   action-item mode in Stage 11 Milestone 3, and the Files row's ⋮ (Edit note /
   Delete) is the working example to copy, `promptDialog` included.
+- **No progress while a large file uploads.** (Stage 11.) The drop zone accepts
+  up to 50 MB per file and several files per gesture, and while a batch is in
+  flight the only feedback is the zone dimming (`.file-drop--busy`) — no per-file
+  progress, no "3 of 5", and on a slow connection a 40 MB upload looks like
+  nothing is happening for a minute. `fetch()` cannot report request progress, so
+  this means either `XMLHttpRequest` for its `upload.onprogress` or a
+  `ReadableStream` request body, and a decision about what to show for a batch
+  versus for one file.
 - **A markdown preview for location notes.** Notes are authored in a plain
   `<textarea>` (`location-form.js`) and only rendered after saving, on the view
   page — so formatting is written blind. Wants a preview (side-by-side, or a

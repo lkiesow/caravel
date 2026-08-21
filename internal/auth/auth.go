@@ -176,6 +176,26 @@ func (s *Service) ChangePassword(ctx context.Context, user db.User, currentPassw
 	return s.store.DeleteSessionsByUserID(ctx, user.ID)
 }
 
+// SetPassword replaces a local account's password *without* asking for the
+// current one, and without touching the user's sessions.
+//
+// This is deliberately not reachable from any HTTP route - ChangePassword is
+// the one users go through, and it requires the current password and logs every
+// device out. SetPassword exists for cmd/seed, whose whole contract is "these
+// are the dev credentials": before this existed, ensureUser silently left an
+// existing user's password alone, so once Stage 12 made passwords changeable, a
+// changed dev password could not be reset by re-seeding and the documented
+// credentials quietly stopped being true. Sessions are left alone on purpose -
+// re-seeding should not log the developer out of the browser they are testing
+// in.
+func (s *Service) SetPassword(ctx context.Context, username, newPassword string) error {
+	hash, err := argon2id.CreateHash(newPassword, argon2id.DefaultParams)
+	if err != nil {
+		return err
+	}
+	return s.store.UpdateAuthIdentityPassword(ctx, ProviderLocal, username, hash)
+}
+
 // StartSession creates a new session and returns the raw token to set as a
 // cookie. Only its hash is persisted.
 func (s *Service) StartSession(ctx context.Context, userID, userAgent, ip string) (rawToken string, session db.Session, err error) {

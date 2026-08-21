@@ -175,6 +175,16 @@ func findScenario(name string) *scenario {
 	return nil
 }
 
+// ensureUser makes the documented dev credentials true, whether or not the user
+// already exists.
+//
+// The password reset on the existing-user path is not redundant: since Stage 12
+// a password can be changed from the settings screen (and the UI suite changes
+// the "other" account's on purpose), so a user whose password had drifted could
+// not be recovered by re-seeding - the seeder printed credentials that no longer
+// worked and the only fix was wiping the database. Resetting is idempotent and
+// leaves sessions alone, so re-seeding doesn't log you out of the browser you
+// are testing in.
 func ensureUser(ctx context.Context, store db.Store, authService *auth.Service, username, password, displayName string) (db.User, error) {
 	user, err := authService.Register(ctx, username, password, displayName)
 	if err == nil {
@@ -184,6 +194,10 @@ func ensureUser(ctx context.Context, store db.Store, authService *auth.Service, 
 	if err != auth.ErrUsernameTaken {
 		return db.User{}, err
 	}
+	if err := authService.SetPassword(ctx, username, password); err != nil {
+		return db.User{}, fmt.Errorf("reset password for %q: %w", username, err)
+	}
+	log.Printf("user %q already exists — password reset to %s", username, password)
 	return store.GetUserByUsername(ctx, username)
 }
 

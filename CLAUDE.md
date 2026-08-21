@@ -106,7 +106,12 @@ check, i18n key parity, `go test`. Don't rely on CI to catch it first.
   `web/css`, and `web/locales` are served live from disk; no restart
   needed after frontend edits. Backend (`internal/`, `cmd/`) changes do
   need a restart — migrations run automatically on startup.
-- `make dev-seed` — seeds a demo user/trip for manual testing.
+- `make dev-seed` — seeds a demo user/trip for manual testing. It also
+  **resets both seeded users' passwords** (`demo`/`demo1234`,
+  `other`/`other1234`), so it is the fix when a password has drifted — the
+  settings screen can change one, and the UI suite changes `other`'s on
+  purpose. Sessions survive, so re-seeding won't log you out of the browser
+  you're testing in.
 - `make ci` — the same checks CI runs: build, vet, JS syntax, i18n parity,
   `go test`.
 - Mobile testing convention: 324×756 (the user's phone's native

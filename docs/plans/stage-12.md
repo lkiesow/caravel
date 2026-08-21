@@ -464,6 +464,51 @@ was still running the pre-milestone binary. Backend changes need
   down to what is genuinely left (profile picture + the per-account vs.
   per-browser question for both preferences); add anything this stage surfaced.
 
+**Done.** The planned items, plus two the milestone itself turned up.
+
+- **German at 324px** is now a spec rather than a manual pass:
+  `tests/ui/settings.spec.js` renders the screen with `locale: "de-DE"` at
+  324×756, unhides the success line (the longest string in the app —
+  "Passwort geändert. Deine anderen Geräte wurden abgemeldet." — and otherwise
+  invisible until a change succeeds), then asserts nothing sticks past the right
+  edge and no control in the page falls under 44px. The suite-wide "German
+  beyond the menu" sweep stays a `todo.md` entry; this covers the stage's own
+  surface.
+- **`scripts/i18n.py unused` is clean**: 154 keys, 143 referenced, the same 9
+  runtime-composed ones it has always reported, no unused keys.
+- **Contrast measured** on `/settings` in both schemes via
+  `tests/ui/contrast.js --min 4.5`: worst 4.70:1 light, 5.81:1 dark, everything
+  above its threshold.
+
+**The seeder now resets an existing user's password.** This milestone started by
+finding the `other` account on neither its seeded password nor this spec's
+temporary one, and `make dev-seed` could not fix it: `ensureUser` only ever
+*created* users, so for an existing one it printed credentials it had not
+actually set. Harmless before this stage, because nothing could change a
+password; now the settings screen can, and the UI spec does so deliberately. So
+`auth.SetPassword` was added — no current password required, sessions
+deliberately left alone (re-seeding must not log the developer out of the
+browser they are testing in), and **not reachable from any route**;
+`ChangePassword` remains the only user-facing path. `internal/auth/auth_test.go`
+is new and pins exactly that difference: `SetPassword` keeps sessions,
+`ChangePassword` ends them.
+
+**And the UI spec's cleanup no longer fails silently.** Its `afterEach`
+restored the seeded password without checking the result — and
+`/api/auth/password` shares login's limiter (10/minute/IP, `router.go:46`), so
+under a full run the restore got a 429, said nothing, and left the account on
+the temporary password. That is what cost the debugging session above. Two
+changes: the restore now asserts its own success (with a message naming
+`make dev-seed`), and the spec spends far fewer login attempts — the
+"password is unchanged after a rejected attempt" checks moved to
+`internal/httpapi/password_test.go`, where they cost nothing against the
+limiter, and a module-scoped flag tells `afterEach` what to restore instead of
+probing for it.
+
+Verified: `make ci` green (154 keys in sync, `internal/auth` now has tests);
+`make test-ui` green, 29 tests; `make dev-seed` reports both users' passwords
+reset and both log in.
+
 ---
 
 ## Build order

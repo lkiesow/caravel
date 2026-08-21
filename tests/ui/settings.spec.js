@@ -306,6 +306,16 @@ test.describe("language: back to Auto", () => {
 // files.spec.js keeps by deleting the trip it created.
 const TEMP_PASSWORD = "temporary-password-1";
 
+// Whether the test got as far as actually changing the password, so afterEach
+// knows what to restore without spending a login probing for it.
+//
+// Login attempts are a budget here, not free: /api/auth/login and
+// /api/auth/password share one limiter (10 per minute per IP, router.go), and
+// this spec, its cleanup and auth.setup.js all draw on it. Overspending shows
+// up as a 429 - which is how the first version of this cleanup failed silently
+// and left the seeded password wrong.
+let leftTempPassword = false;
+
 // Logs in as the other user in this context, by API rather than through the
 // login form - the form is not what is under test here.
 async function loginAs(page, password) {
@@ -317,15 +327,28 @@ async function loginAs(page, password) {
 
 test.describe("password change", () => {
   test.afterEach(async ({ page }) => {
-    // Put the seed back whichever password the test left behind, so a failure
-    // half-way through doesn't leave the account needing `make dev-reset`.
-    for (const from of [TEMP_PASSWORD, OTHER_USER.password]) {
-      if ((await loginAs(page, from)) !== 200) continue;
-      await page.request.post("/api/auth/password", {
-        data: { current_password: from, new_password: OTHER_USER.password },
-      });
-      break;
-    }
+    // Put the seed back from whichever password the test left behind, so a
+    // failure half-way through doesn't leave the account broken for the next
+    // run - and *assert* that it worked. The first version of this restored
+    // silently, so when it didn't work (the change POST is rate limited like
+    // login, and nothing checked its status) the seed's documented password
+    // quietly stopped being true, which cost a debugging session. A noisy
+    // failure here points straight at `make dev-seed`, which since Stage 12
+    // Milestone 6 resets passwords instead of leaving an existing user's alone.
+    if (!leftTempPassword) return;
+
+    expect(
+      await loginAs(page, TEMP_PASSWORD),
+      `${OTHER_USER.username} should still be on this spec's temporary password — run \`make dev-seed\``
+    ).toBe(200);
+    const res = await page.request.post("/api/auth/password", {
+      data: { current_password: TEMP_PASSWORD, new_password: OTHER_USER.password },
+    });
+    expect(
+      res.status(),
+      `could not restore the seeded password for ${OTHER_USER.username} (HTTP ${res.status()}) — run \`make dev-seed\``
+    ).toBe(200);
+    leftTempPassword = false;
   });
 
   test("rejects a wrong current password, then changes it and logs other devices out", async ({
@@ -360,7 +383,6 @@ test.describe("password change", () => {
     await form.locator('button[type="submit"]').click();
     await expect(error).toBeVisible();
     await expect(success).toBeHidden();
-    expect(await loginAs(page, OTHER_USER.password), "password must be unchanged").toBe(200);
 
     // 2. Too short, also client-side.
     await form.locator('input[name="next"]').fill("short");
@@ -378,7 +400,9 @@ test.describe("password change", () => {
     await expect(error).toBeVisible();
     await expect(success).toBeHidden();
     await expect(page).toHaveURL("/settings");
-    expect(await loginAs(page, OTHER_USER.password), "password must be unchanged").toBe(200);
+    // That the password is *unchanged* after each rejected attempt is asserted
+    // server-side in internal/httpapi/password_test.go, where it costs no
+    // login attempts against the limiter.
 
     // 4. The real thing.
     await form.locator('input[name="current"]').fill(OTHER_USER.password);
@@ -389,6 +413,7 @@ test.describe("password change", () => {
     await expect(error).toBeHidden();
     // The form clears, so the old value can't be resubmitted by accident.
     await expect(form.locator('input[name="current"]')).toHaveValue("");
+    leftTempPassword = true;
 
     // The browser that made the change is still logged in - the endpoint
     // re-issues its session, which is the whole reason it has to.
@@ -399,8 +424,57 @@ test.describe("password change", () => {
     expect((await otherPage.request.get("/api/auth/me")).status()).toBe(401);
     await otherDevice.close();
 
-    // Old password gone, new one works.
+    // The old password is gone. That the new one works is asserted by
+    // afterEach, which has to log in with it anyway to put the seed back.
     expect(await loginAs(page, OTHER_USER.password)).toBe(401);
-    expect(await loginAs(page, TEMP_PASSWORD)).toBe(200);
+  });
+});
+
+// The settings screen in German at phone width.
+//
+// The suite's route sweeps (routes.spec.js) run in one locale, and German is the
+// longer language - the case most likely to overflow a box or shrink a control.
+// This screen is the stage's new surface and its copy is the longest in the app
+// ("Passwort geändert. Deine anderen Geräte wurden abgemeldet."), so it gets the
+// sweep in the other locale rather than waiting on the suite-wide version
+// todo.md still asks for.
+test.describe("settings in German at 324px", () => {
+  test.use({ locale: "de-DE", viewport: { width: 324, height: 756 } });
+
+  test("neither overflows nor shrinks a control below the tap floor", async ({ page }) => {
+    await login(page, OTHER_USER);
+    await gotoRoute(page, "/settings");
+    await expect(page.locator("h1")).toHaveText("Kontoeinstellungen");
+    // The longest string on the screen only renders once a change succeeds, so
+    // it is unhidden here rather than left unmeasured - the box has to hold it.
+    await page.locator(".password-form__success").evaluate((el) => {
+      el.hidden = false;
+    });
+
+    const result = await page.evaluate(() => {
+      const doc = document.documentElement;
+      const controls = [...document.querySelectorAll(".settings-page button, .settings-page a, .settings-page input, .settings-page label")];
+      const small = [];
+      for (const el of controls) {
+        // Same exclusion the sweep makes: a native radio is ~14px and the
+        // label around it is the real target (see routes.spec.js).
+        if (el.localName === "input" && el.type === "radio") continue;
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) continue;
+        if (r.height < 44 || r.width < 44) {
+          small.push(`${el.localName}.${el.className} ${Math.round(r.width)}x${Math.round(r.height)}`);
+        }
+      }
+      // Anything sticking out past the viewport, measured per element so the
+      // failure names the offender rather than just the page.
+      const wide = [...document.querySelectorAll(".settings-page *")]
+        .filter((el) => el.getBoundingClientRect().right > window.innerWidth + 1)
+        .map((el) => `${el.localName}.${el.className}`);
+      return { overflow: doc.scrollWidth - window.innerWidth, small, wide };
+    });
+
+    expect(result.overflow, "document overflow in px").toBeLessThanOrEqual(0);
+    expect(result.wide, "elements past the right edge").toEqual([]);
+    expect(result.small, "controls under 44px").toEqual([]);
   });
 });

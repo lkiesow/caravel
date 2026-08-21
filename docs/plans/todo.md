@@ -250,14 +250,20 @@ step with itself.
   statements. Stage 11 Milestone 3 added the Files row's ⋮ menu to the same spec,
   and Milestone 5 answered the isolation question below. What remains from the
   original list:
-    - **Mutating flows: the pattern now exists, and one flow uses it.**
+    - **Mutating flows: the pattern exists, and two flows use it.**
       `tests/ui/files.spec.js` (Stage 11 Milestone 5) creates its own trip in
       `beforeEach`, uploads/edits/deletes inside it, and deletes it in
       `afterEach` — so a write can't leak into the shared seed, which was the
-      blocker. It covers the Files lifecycle end to end, dialogs included. Every
-      *other* mutating flow is still uncovered and should copy that shape: Stage
-      09 Milestone 2's single-Save check (still not checked in as a spec), the
-      location and trip editors, checklists, and the itinerary.
+      blocker. Stage 12 Milestone 5 added `settings.spec.js`'s password change,
+      which had a harder isolation problem: it cannot use the demo user at all,
+      since changing a password deletes `auth.setup.js`'s shared session, so it
+      drives the seeded `other` account and restores its password afterwards.
+      Note what that exposed — a *silently* failing cleanup leaves the seed
+      wrong for every later run, so a restore step has to assert its own
+      success. Every other mutating flow is still uncovered and should copy one
+      of those two shapes: Stage 09 Milestone 2's single-Save check (still not
+      checked in as a spec), the location and trip editors, checklists, and the
+      itinerary.
     - **The login and register pages**, which no spec renders: the suite arrives
       already authenticated (`auth.setup.js`), so those two routes get no
       overflow, heading, accessible-name or tap-target coverage at all. They are

@@ -11,7 +11,7 @@
 // It covers the popup behaviour that `components/menu.js` owns for all three of
 // its callers: open, toggle shut, outside click, Escape, select-and-close, and
 // which row is marked current. If this component regresses, the tab bar, the
-// locations filter and (once it is folded onto the component) the user menu all
+// locations filter, the file row's actions and the header's user menu all
 // regress together.
 import { test, expect } from "@playwright/test";
 import { login, resolveScenarioTrips, gotoRoute } from "./helpers/scenarios.js";
@@ -192,3 +192,82 @@ for (const locale of ["en", "de"]) {
     });
   });
 }
+
+// The header's user menu, third mode of the same component: one action item
+// like the file row above, but with a pinned label and an avatar in the
+// trigger (Stage 12 Milestone 1 folded it onto menu.js; before that it was a
+// second, hand-rolled popup implementation).
+//
+// Nothing here clicks Log out: it would end the session the whole suite shares
+// from auth.setup.js. Everything up to the click is covered — the roles, both
+// locales, the avatar, and that the old markup really is gone.
+const USER_MENU_LABELS = {
+  en: { menu: "User menu", items: ["Log out"] },
+  de: { menu: "Benutzermenü", items: ["Abmelden"] },
+};
+
+for (const locale of ["en", "de"]) {
+  test.describe(`header user menu (${locale})`, () => {
+    test.use({ viewport: MOBILE, locale });
+
+    test(`is one action item on the shared popup component (${locale})`, async ({ page }) => {
+      await login(page);
+      await gotoRoute(page, "/trips");
+      const copy = USER_MENU_LABELS[locale];
+
+      const slot = page.locator(".user-menu-slot");
+      const trigger = slot.locator(".menu__trigger");
+      const dropdown = slot.locator(".menu__dropdown");
+
+      // The migration's actual claim: this menu is now the shared component,
+      // and the old hand-rolled markup is not merely unused but absent.
+      await expect(page.locator(".user-menu__dropdown")).toHaveCount(0);
+      await expect(slot.locator(".menu--user")).toHaveCount(1);
+
+      // The trigger names itself (the display name beside the avatar is
+      // hidden at this width) and clears the tap floor.
+      await expect(trigger).toHaveAttribute("aria-label", copy.menu);
+      await expect(trigger).toHaveAttribute("aria-expanded", "false");
+      await expect(dropdown).toBeHidden();
+      await expect(slot.locator(".user-menu__avatar")).toHaveText(/^[A-Z?]$/);
+      const box = await trigger.boundingBox();
+      expect(box.height, "user menu trigger height").toBeGreaterThanOrEqual(44);
+      expect(box.width, "user menu trigger width").toBeGreaterThanOrEqual(44);
+
+      // Log out is something the menu does, so: menuitem, nothing checked.
+      await trigger.click();
+      await expect(dropdown).toBeVisible();
+      await expect(trigger).toHaveClass(/menu__trigger--open/);
+      await expect(dropdown.locator('[role="menuitem"]')).toHaveText(copy.items);
+      await expect(dropdown.locator("[aria-checked]")).toHaveCount(0);
+
+      // Popup behaviour, inherited rather than reimplemented: toggle shut,
+      // outside click, Escape.
+      await trigger.click();
+      await expect(dropdown).toBeHidden();
+      await trigger.click();
+      await page.locator(".page__header h1").click();
+      await expect(dropdown).toBeHidden();
+      await trigger.click();
+      await page.keyboard.press("Escape");
+      await expect(dropdown).toBeHidden();
+      await expect(trigger).toHaveAttribute("aria-expanded", "false");
+    });
+  });
+}
+
+// The display name is part of the trigger on a wide screen and drops out under
+// 640px — a rule that used to hang off .user-menu__name and now has to keep
+// working against menu.js's own .menu__label.
+test.describe("header user menu label collapse", () => {
+  test("shows the display name at desktop width and hides it on a phone", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await login(page);
+    await gotoRoute(page, "/trips");
+    const label = page.locator(".user-menu-slot .menu__label");
+    await expect(label).toBeVisible();
+    await expect(label).not.toBeEmpty();
+    await page.setViewportSize(MOBILE);
+    await expect(label).toBeHidden();
+  });
+});

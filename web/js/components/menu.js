@@ -8,8 +8,9 @@ import { icon } from "../icon.js";
 // only existed inline in user-menu.js - `hidden`-attribute visibility,
 // aria-expanded kept in sync with it, and outside-click/Escape listeners
 // added on open and removed again on close (so a closed menu leaves
-// nothing attached to `document`). user-menu.js still has its own copy;
-// folding it onto this component is a todo.md item.
+// nothing attached to `document`). As of Stage 12 Milestone 1 user-menu.js
+// is a caller rather than a second copy, so this is the only popup
+// implementation in the tree.
 //
 // By default the trigger label is owned by this component: it re-renders to
 // the selected option's label on every selection, which is why `items`
@@ -56,13 +57,19 @@ import { icon } from "../icon.js";
 // - `className` lands on the `.menu` root for variant styling (positioning
 //   the dropdown, and how the current row is marked).
 //
+// `triggerPrefixHtml` is trusted markup placed at the head of the trigger,
+// before the label. It exists for the header's user menu, whose trigger leads
+// with an initials avatar rather than with an icon - `iconName` can only name
+// something in the sprite. Trusted means what it says: the caller escapes
+// anything user-supplied (see user-menu.js) before handing it over.
+//
 // Whenever the popup is open the trigger also carries
 // `menu__trigger--open`, so an engaged menu reads as engaged. That applies
 // to every caller, not just the tab bar - a menu you've just opened looking
 // inert was never deliberate.
 export function renderMenu(
   container,
-  { iconName, items, activeValue, neutralValue, ariaLabel, onSelect, label, chevron = true, triggerClass = "btn btn-secondary btn-collapse", className = "" }
+  { iconName, items, activeValue, neutralValue, ariaLabel, onSelect, label, chevron = true, triggerClass = "btn btn-secondary btn-collapse", className = "", triggerPrefixHtml = "" }
 ) {
   let active = activeValue;
 
@@ -70,6 +77,7 @@ export function renderMenu(
     <div class="menu${className ? ` ${className}` : ""}">
       <button type="button" class="menu__trigger${triggerClass ? ` ${triggerClass}` : ""}" data-action="toggle" aria-haspopup="menu" aria-expanded="false"${ariaLabel ? ` data-i18n-aria-label="${ariaLabel}"` : ""}>
         ${iconName ? icon(iconName) : ""}
+        ${triggerPrefixHtml}
         <span class="menu__label"></span>
         ${chevron ? icon("chevron-down", { className: "menu__chevron" }) : ""}
       </button>

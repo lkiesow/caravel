@@ -285,10 +285,9 @@ a:visited {
   margin-left: auto;
 }
 
-.user-menu {
-  position: relative;
-}
-
+/* The user menu is components/menu.js with an avatar in its trigger (see
+   user-menu.js); the root `.menu` already carries `position: relative`, so
+   only the trigger's own look lives here. */
 .user-menu__trigger {
   display: inline-flex;
   align-items: center;
@@ -314,55 +313,19 @@ a:visited {
   flex-shrink: 0;
 }
 
+/* Phone header: the avatar alone identifies the menu, and the display name
+   is the first thing worth dropping when the header gets tight. The element
+   is menu.js's own `.menu__label` now that the trigger comes from there. */
 @media (max-width: 640px) {
-  .user-menu__name {
+  .menu--user .menu__label {
     display: none;
   }
 }
 
-.user-menu__dropdown {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  margin-top: 0.5rem;
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: 0.375rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  list-style: none;
-  padding: 0.25rem;
-  margin-block: 0;
-  min-width: 9rem;
-  z-index: 1000;
-}
-
-.user-menu__dropdown[hidden] {
-  display: none;
-}
-
-.user-menu__dropdown button {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  background: none;
-  border: none;
-  text-align: left;
-  color: var(--color-text);
-  font: inherit;
-  border-radius: 0.25rem;
-  cursor: pointer;
-}
-
-.user-menu__dropdown button:hover {
-  background: var(--color-surface);
-}
-
-/* Generic single-select dropdown (components/menu.js) - the same popup
-   shape as .user-menu__dropdown above, but reusable and with a checkmark
-   column for the selected option. The trigger is a plain .btn, so it lines
-   up with the other buttons in whatever row it sits in. */
+/* Generic single-select dropdown (components/menu.js) - every popup in the
+   app, the header's user menu included, with a checkmark column for the
+   selected option. The trigger is a plain .btn by default, so it lines up
+   with the other buttons in whatever row it sits in. */
 .menu {
   position: relative;
   flex-shrink: 0;
@@ -405,6 +368,13 @@ a:visited {
 
 .menu__dropdown[hidden] {
   display: none;
+}
+
+/* The header sits flush against the dropdown otherwise: the trigger has no
+   button border to separate them, so this keeps the gap the user menu had
+   before it moved onto this component. */
+.menu--user .menu__dropdown {
+  margin-top: 0.5rem;
 }
 
 .menu__dropdown button {
@@ -1646,7 +1616,7 @@ button {
 
 /* ---------------------------------------------------------------------------
    Narrow viewports (phones). 640px is the app's single "mobile" breakpoint —
-   the same one used by .user-menu__name above and by .trip-grid's first
+   the same one used by the user menu's label above and by .trip-grid's first
    column bump.
 
    Everything here is about touch ergonomics: the default control sizes are

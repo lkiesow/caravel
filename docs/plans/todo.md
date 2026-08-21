@@ -151,9 +151,9 @@ Direction already agreed or obviously wanted; none of it built.
       valid home today and deleting a trip would take an avatar with it. Needs a
       migration — nullable `trip_id`, or a `user_id` column, or a separate table —
       before the existing upload pipeline can be reused.
-  The screen is also what finally forces the `user-menu.js` → `menu.js` refactor
-  in the cleanup section: a second item in that menu, and an action item rather
-  than a selection, which is precisely the mode that component still lacks.
+  The screen is being built as Stage 12; the `user-menu.js` → `menu.js` refactor
+  it was waiting on landed as that stage's Milestone 1, so the menu it hangs off
+  is now the shared component.
 - **An in-app language switcher.** `i18n.js` has a working `setLocale()` and a
   `localStorage` cache for it, but nothing calls it — confirmed again during
   Stage 09 that `setLocale` has no caller outside `i18n.js`. German is reachable
@@ -259,26 +259,6 @@ step with itself.
   Milestone 1 — which went all the way down to a `0006` table rename, dropped
   the `/trips/:id/documents` URL outright rather than redirecting it, and is the
   precedent to copy here.)
-- **Refactor `user-menu.js` onto `components/menu.js`.** Stage 06 Milestone 1
-  extracted the popup pattern (hidden-attribute visibility, `aria-expanded`
-  sync, outside-click and Escape listeners attached on open and removed on
-  close) into `renderMenu`, but `user-menu.js` still carries its own copy of
-  that behaviour plus `.user-menu__dropdown` CSS that `.menu__dropdown`
-  duplicates. Two popup implementations in one tree is exactly the half-migrated
-  state worth avoiding.
-  *Nothing is missing from the component any more.* Stage 09 Milestone 6 gave it
-  `label` (a pinned trigger label), `chevron: false`, `triggerClass`, `className`
-  and `items[].iconName`, and Stage 11 Milestone 3 added the last piece the user
-  menu needed: the non-select **action item** mode (`role="menuitem"`, no
-  `aria-checked`, fires on every click, optional `danger` tint). Log out is an
-  action, so that was the blocker; the Files row's ⋮ is the example to follow.
-  What is left is purely the migration itself, plus deleting the duplicated
-  `.user-menu__dropdown` CSS.
-  Related: the user menu still has only "Log out" in it (Stage 02 built it
-  "structured so more items can be added later"). The settings screen in Planned
-  features goes in that menu, giving it a second item — also an action, so both
-  entries fit the mode that now exists.
-
 ---
 
 ## Testing, CI and dev tooling

@@ -45,6 +45,9 @@ ICONS = [
     "key-round",
     "lock",
     "eye",
+    "copy",
+    "arrow-down-up",
+    "chevron-up",
 ]
 
 

@@ -60,17 +60,12 @@ Direction already agreed or obviously wanted; none of it built.
 
 - **Search, filter and sort on the trips list.** Confirmed absent:
   `trips-page.js` has no search input, filter or sort control, and
-  `ListTripsByOwner` (`internal/db/sqlc/queries/trips.sql`) has a fixed
-  `ORDER BY created_at DESC` with no parameters for sort field/direction or a
-  title predicate. Needs both a frontend control and backend query changes —
-  not just a client-side reorder, since the API returns every trip
-  unconditionally today.
-- **A way to jump to "today" in a long itinerary.** (Stage 04; the collapse half
-  was built in Stage 10 Milestone 4.) Past and empty days now start collapsed, so
-  the scroll is much shorter, but on a 3-week trip the open day can still be well
-  below the fold — the disclosure changed how much there is to scroll, not where
-  you land. Wants either scrolling the first open day into view on render
-  (`scrollIntoView`, cheap) or a "Today" control in the itinerary header.
+  `ListTripsForUser` (`internal/db/sqlc/queries/trips.sql:16` — Stage 14
+  replaced `ListTripsByOwner` with it) has a fixed `ORDER BY t.created_at DESC`
+  with no parameters for sort field/direction or a title predicate. Needs a
+  frontend control, and a decision about whether the filtering happens in the
+  browser (the API returns every trip unconditionally today, which is what
+  `locations-tab.js` relies on) or in the query.
 - **Checklist duplication.** (Stage 05; everything else in this entry landed in
   Stage 14 Milestone 8, which added renaming, in-place item editing and the
   ⋮-menus to hold them.) What is left is copying a list, which is useful for
@@ -78,14 +73,6 @@ Direction already agreed or obviously wanted; none of it built.
   it out of Milestone 8: does a copy keep the checked state or reset it? Both
   answers are defensible (reusing last year's list wants a reset; splitting one
   list in two wants it kept), so it probably wants asking, or two menu items.
-- **No progress while a large file uploads.** (Stage 11.) The drop zone accepts
-  up to 50 MB per file and several files per gesture, and while a batch is in
-  flight the only feedback is the zone dimming (`.file-drop--busy`) — no per-file
-  progress, no "3 of 5", and on a slow connection a 40 MB upload looks like
-  nothing is happening for a minute. `fetch()` cannot report request progress, so
-  this means either `XMLHttpRequest` for its `upload.onprogress` or a
-  `ReadableStream` request body, and a decision about what to show for a batch
-  versus for one file.
 - **A markdown preview for location notes.** Notes are authored in a plain
   `<textarea>` (`location-form.js`) and only rendered after saving, on the view
   page — so formatting is written blind. Wants a preview (side-by-side, or a

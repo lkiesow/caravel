@@ -202,8 +202,8 @@ for (const locale of ["en", "de"]) {
 // from auth.setup.js. Everything up to the click is covered — the roles, both
 // locales, the avatar, and that the old markup really is gone.
 const USER_MENU_LABELS = {
-  en: { menu: "User menu", items: ["Log out"] },
-  de: { menu: "Benutzermenü", items: ["Abmelden"] },
+  en: { menu: "User menu", items: ["Account settings", "Log out"] },
+  de: { menu: "Benutzermenü", items: ["Kontoeinstellungen", "Abmelden"] },
 };
 
 for (const locale of ["en", "de"]) {
@@ -246,12 +246,26 @@ for (const locale of ["en", "de"]) {
       await trigger.click();
       await expect(dropdown).toBeHidden();
       await trigger.click();
-      await page.locator(".page__header h1").click();
+      // Clicked at the heading's left edge, not its centre: this dropdown is
+      // right-aligned under the header, and at 324px the German label makes it
+      // wide enough to cover the middle of the h1 - a centre click then lands
+      // on the menu instead of outside it, which is how this first failed.
+      await page.locator(".page__header h1").click({ position: { x: 2, y: 2 } });
       await expect(dropdown).toBeHidden();
       await trigger.click();
       await page.keyboard.press("Escape");
       await expect(dropdown).toBeHidden();
       await expect(trigger).toHaveAttribute("aria-expanded", "false");
+
+      // The item that has somewhere to go, goes there — and the menu closes
+      // behind it. This is the only clickable item in here (Log out would end
+      // the shared session), so it is also the proof that action items in this
+      // menu fire at all.
+      await trigger.click();
+      await dropdown.locator('[role="menuitem"]').first().click();
+      await expect(dropdown).toBeHidden();
+      await expect(page).toHaveURL("/settings");
+      await expect(page.locator("h1")).toHaveText(copy.items[0]);
     });
   });
 }

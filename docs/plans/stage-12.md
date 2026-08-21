@@ -139,6 +139,34 @@ Milestones 3–5, so each control is reviewable on its own.
 tests/ui/headings.spec.js tests/ui/a11y-names.spec.js` green with the new route
 in the matrix — one `h1`, no level skips, no overflow at 324×756.
 
+**Done.** `web/js/pages/settings-page.js` renders the three `editor-card`
+sections (Language / Appearance / Password), each with an `h2`, a
+`.editor-card__hint` line and an empty slot for the control that lands in
+Milestones 3–5. Route `{ pattern: "/settings" }` sits right after `/trips` in
+`app.js`, and the user menu gained a Settings item above Log out, navigating
+via `navigate("/settings")`.
+
+Two deviations from the plan. The `settings` icon **was already in the sprite**
+(the trip tab bar uses it), so no `gen_icon_sprite.py` run was needed. And the
+page is titled **"Account settings"** / "Kontoeinstellungen" rather than
+"Settings": a trip already has a Settings tab, and a menu item reading
+"Settings" two clicks from it would name the wrong thing. Seven keys landed in
+both locales (`settings.title`, and `.language` / `.appearance` / `.password`
+each with a `…Hint`); `check_i18n.py` reports 141 keys in sync.
+
+Verified: `make ci` green; `make test-ui` green (18 tests). `/settings` is
+registered in `scenarios.js`'s `buildRoutes`, so the sweeps now cover 20 routes
+(a11y-names checked 348 controls) across desktop/mobile × light/dark with no
+overflow, a valid heading outline and no unnamed controls. `menu.spec.js` also
+clicks the new item now — the only clickable one in that menu, since Log out
+would end the shared session — asserting the URL becomes `/settings` and the
+`h1` reads the localized title.
+
+One real bug the German run caught: the outside-click step clicked the
+heading's *centre*, and at 324px the wider German label ("Kontoeinstellungen")
+makes the right-aligned dropdown overlap it, so the click landed on the menu
+instead of outside it. Now clicked at the heading's left edge.
+
 ---
 
 ## 3. Appearance: light / dark / auto

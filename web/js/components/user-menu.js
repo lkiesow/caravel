@@ -1,8 +1,10 @@
 import { t } from "../i18n.js";
+import { navigate } from "../router.js";
 import { renderMenu } from "./menu.js";
 
 // Renders an initials-avatar user menu into `container`, at the far right of
-// the header. Clicking the avatar opens a small dropdown - "Log out" for now.
+// the header. Clicking the avatar opens a small dropdown: account settings and
+// Log out.
 //
 // This is a thin wrapper over components/menu.js: until Stage 12 Milestone 1
 // it carried its own copy of the popup behaviour (hidden-attribute
@@ -25,8 +27,14 @@ export function renderUserMenu(container, user, { onLogout }) {
     // label is pinned rather than tracking a selection.
     label: user.display_name,
     ariaLabel: "auth.userMenu",
-    items: [{ value: "logout", label: t("auth.logout"), iconName: "log-out", action: true }],
+    // Both are actions, not a selection: neither is a state the menu is now
+    // in. Settings leads because it is the one you might use twice.
+    items: [
+      { value: "settings", label: t("settings.title"), iconName: "settings", action: true },
+      { value: "logout", label: t("auth.logout"), iconName: "log-out", action: true },
+    ],
     onSelect: (value) => {
+      if (value === "settings") navigate("/settings");
       if (value === "logout") onLogout?.();
     },
   });

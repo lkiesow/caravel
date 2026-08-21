@@ -6,6 +6,7 @@ import { renderTripDetailPage } from "./pages/trip-detail-page.js";
 import { renderTripEditorPage } from "./pages/trip-editor-page.js";
 import { renderLocationEditorPage } from "./pages/location-editor-page.js";
 import { renderLocationViewPage } from "./pages/location-view-page.js";
+import { renderSettingsPage } from "./pages/settings-page.js";
 import { renderNotFoundPage } from "./pages/not-found-page.js";
 import { renderUserMenu } from "./components/user-menu.js";
 import { createRouter, navigate } from "./router.js";
@@ -30,6 +31,8 @@ const routes = [
   // the catch-all below and report the app's own entry point as not found.
   { pattern: "/", render: () => navigate("/trips") },
   { pattern: "/trips", render: renderTripsPage },
+  // Account settings (not a trip's Settings tab - see pages/settings-page.js).
+  { pattern: "/settings", render: renderSettingsPage },
   // "/trips/new" must precede "/trips/:tripId", and "/trips/:tripId/locations/new"
   // must precede "/trips/:tripId/locations/:itemId" - same segment counts, and
   // the router's match() takes the first pattern that fits, so the literal

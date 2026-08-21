@@ -10,6 +10,7 @@ import { renderSettingsPage } from "./pages/settings-page.js";
 import { renderNotFoundPage } from "./pages/not-found-page.js";
 import { renderUserMenu } from "./components/user-menu.js";
 import { createRouter, navigate } from "./router.js";
+import { initTheme } from "./theme.js";
 import { TRIP_TABS } from "./trip-tabs.js";
 
 const app = document.getElementById("app");
@@ -79,6 +80,11 @@ async function boot() {
     await renderAuthenticated(user);
   }
 }
+
+// The theme is already on <html> from index.html's inline script; this hooks up
+// the part that needs a live listener - following the OS while the preference is
+// "auto" and the tab stays open.
+initTheme();
 
 initI18n().then(boot);
 

@@ -32,20 +32,35 @@
   --tap-min: 2.75rem;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-bg: #18181b;
-    --color-surface: #27272a;
-    --color-text: #fafafa;
-    --color-text-muted: #a1a1aa;
-    --color-accent: #60a5fa;
-    --color-accent-strong: #1d4ed8;
-    --color-border: #3f3f46;
-    --color-danger-fg: #f87171;
-    /* Slightly stronger than the light-mode tint: the same alpha over a dark
-       surface reads as almost nothing. */
-    --color-danger-tint: rgba(248, 113, 113, 0.14);
-  }
+/* Dark mode is keyed on `data-theme` alone, not on `prefers-color-scheme`.
+   web/js/theme.js resolves the user's choice (light / dark / auto) and stamps
+   `data-theme="light"` or `"dark"` on <html> before first paint - so "auto"
+   arrives here already resolved to one of the two, and there is exactly one
+   dark palette in this file instead of the OS copy plus an override copy.
+
+   Reading the OS preference in CSS as well would buy a no-JS fallback, and
+   this app has no no-JS audience to fall back to: every screen is rendered by
+   the router, so with scripting off there is nothing to theme. */
+:root[data-theme="dark"] {
+  --color-bg: #18181b;
+  --color-surface: #27272a;
+  --color-text: #fafafa;
+  --color-text-muted: #a1a1aa;
+  --color-accent: #60a5fa;
+  --color-accent-strong: #1d4ed8;
+  --color-border: #3f3f46;
+  --color-danger-fg: #f87171;
+  /* Slightly stronger than the light-mode tint: the same alpha over a dark
+     surface reads as almost nothing. */
+  --color-danger-tint: rgba(248, 113, 113, 0.14);
+  /* Native widgets the app doesn't paint itself - scrollbars, date pickers,
+     the file-input button - follow this rather than the OS, which is the whole
+     point of an in-app override. */
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
 }
 
 * {
@@ -110,14 +125,12 @@ a:visited {
   filter: brightness(0.9);
 }
 
-@media (prefers-color-scheme: dark) {
-  .btn:hover {
-    filter: brightness(1.15);
-  }
+:root[data-theme="dark"] .btn:hover {
+  filter: brightness(1.15);
+}
 
-  .btn:active {
-    filter: brightness(1.25);
-  }
+:root[data-theme="dark"] .btn:active {
+  filter: brightness(1.25);
 }
 
 .btn:focus-visible {
@@ -425,6 +438,41 @@ a:visited {
    red silently didn't apply until this was written the longer way. */
 .menu__dropdown .menu__action--danger {
   color: var(--color-danger);
+}
+
+/* Settings screen: a row of radio choices (Appearance today, see
+   components/theme-field.js). Each choice is a <label> wrapping its radio, so
+   the whole pill is the tap target and tests/ui/routes.spec.js measures the
+   label rather than the ~14px input. */
+.setting-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.setting-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  cursor: pointer;
+}
+
+/* :has() rather than a class toggled from JS: the checked state already lives
+   on the input, and mirroring it into a class is one more thing to keep in
+   sync. The accent matches the checked row in a dropdown, so "this is the one
+   that's on" looks the same everywhere. */
+.setting-choice:has(input:checked) {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.setting-choice:focus-within {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 /* Modal dialogs (components/dialog.js), replacing window.confirm/alert.
@@ -1646,7 +1694,8 @@ button {
   .link-list li a,
   .location-view__maps-link,
   .checklist-item label,
-  .location-form label.location-form__checkbox {
+  .location-form label.location-form__checkbox,
+  .setting-choice {
     min-height: var(--tap-min);
   }
 

@@ -202,6 +202,42 @@ Auto removes the attribute and restores the emulated scheme's background. Plus
 a reload asserting the choice survived and that no light flash occurs
 (`data-theme` present on the first `document.documentElement` read).
 
+**Done, with one deliberate change of approach.** The plan kept
+`prefers-color-scheme` in CSS and added `data-theme` beside it, which means two
+copies of the dark palette — an OS copy and an override copy — that can drift.
+Instead **`data-theme` is now the only thing base.css keys on**, and
+`web/js/theme.js` resolves the preference (light / dark / **auto**) to one of
+light/dark and stamps it on `<html>`. So `[data-theme]` is never the word
+"auto": auto is resolved, not represented. That is only safe because Caravel is
+entirely client-rendered — with scripting off there is no app to theme, so a
+CSS-only dark fallback would protect nobody. The result is one dark palette in
+the file (plus a two-line `color-scheme` pair so scrollbars and native widgets
+follow the app rather than the OS), and the `.btn:hover` / `:active` brightness
+inversion became two ordinary `:root[data-theme="dark"]` rules.
+
+`theme.js` exports `getTheme` (the stored *preference*), `resolveTheme`,
+`setTheme`, `applyTheme` and `initTheme`; every `localStorage` access is
+guarded, and "auto" is stored as the *absence* of a key so "never chose" and
+"chose auto" are one state. `initTheme()` (called from `app.js` before
+`initI18n`) adds the `matchMedia` listener that keeps Auto following the OS
+while the tab is open — the one thing CSS used to do for free. The pre-paint
+copy is an inline `<script>` in `web/index.html`; `sw.js`'s `CACHE_VERSION` went
+to `v2` since both shell files changed. The control itself is
+`components/theme-field.js`: three radios, each wrapped in a `.setting-choice`
+label so the pill (not the ~14px input) is the tap target, with
+`:has(input:checked)` for the accent — no JS-toggled class to keep in sync.
+
+Verified: `make ci` green (144 i18n keys in sync); `make test-ui` green, 22
+tests. `tests/ui/settings.spec.js` covers dark-on-a-light-device (attribute,
+computed `body` background, stored value), the mirror case plus the theme
+holding on a different route, Auto following `emulateMedia` live *and* an
+explicit choice not being undone by the OS, and — with `**/js/**` aborted so no
+app module can run — that `index.html` alone applies a stored dark theme, which
+is the no-flash claim. Both new mechanisms were checked negatively: deleting the
+inline script fails exactly the no-flash test, and removing the `matchMedia`
+listener fails exactly the Auto-follows-live test, with the other three still
+passing.
+
 ---
 
 ## 4. Language selector — the first caller of `setLocale()`

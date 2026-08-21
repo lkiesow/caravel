@@ -1,4 +1,5 @@
 import { translatePage } from "../i18n.js";
+import { renderThemeField } from "../components/theme-field.js";
 
 // The account settings screen, reached from the header's user menu.
 //
@@ -7,9 +8,9 @@ import { translatePage } from "../i18n.js";
 // top-level route and not another tab next to the trip's own Settings - the
 // two are different things that happen to share a word.
 //
-// Stage 12 Milestone 2 builds the shell only; the controls arrive one
-// milestone at a time (appearance, then language, then password) so each is
-// reviewable on its own. Each card's slot is where its control lands.
+// The controls arrive one milestone at a time (appearance in Milestone 3, then
+// language, then password) so each is reviewable on its own; each card's slot
+// is where its control lands.
 export async function renderSettingsPage(container) {
   container.innerHTML = `
     <div class="page settings-page">
@@ -34,4 +35,6 @@ export async function renderSettingsPage(container) {
     </div>
   `;
   translatePage(container);
+
+  renderThemeField(container.querySelector(".appearance-slot"));
 }

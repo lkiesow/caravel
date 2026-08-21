@@ -11,6 +11,23 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16.png" />
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
   <link rel="stylesheet" href="/css/base.css" />
+  <!-- Applied here, before the first paint, so a dark-themed app never flashes
+       white while /js/app.js loads. web/js/theme.js owns the same rule and is
+       the only place that writes the key; this is deliberately a duplicate of
+       its resolve step, because a module import is too late to matter. -->
+  <script>
+    try {
+      var pref = localStorage.getItem("caravel.theme");
+      document.documentElement.dataset.theme =
+        pref === "light" || pref === "dark"
+          ? pref
+          : matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "light";
+    } catch (e) {
+      /* Storage blocked: fall through to the OS preference at boot. */
+    }
+  </script>
 </head>
 <body>
   <div id="app">Caravel is starting up&hellip;</div>

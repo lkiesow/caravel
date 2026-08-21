@@ -5,7 +5,7 @@
 //
 // Bump this on any static-asset change you want clients to pick up
 // immediately; old caches are dropped on activate.
-const CACHE_VERSION = "caravel-shell-v1";
+const CACHE_VERSION = "caravel-shell-v2";
 
 const SHELL_URLS = ["/", "/index.html", "/css/base.css", "/manifest.webmanifest"];
 

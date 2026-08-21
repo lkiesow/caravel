@@ -132,13 +132,11 @@ Direction already agreed or obviously wanted; none of it built.
   3-night hotel, driven by the item's date range. Today adding an item to a day
   is manual, one day at a time, via each day's own dropdown.
 - **An account settings screen, reached from the user menu.** (From the user's
-  notes; this decides the "where does it live?" question the two entries below
-  used to carry.) Settings sits in the same menu as "Log out" and holds four
-  things, in rough order of readiness:
+  notes; this decides the "where does it live?" question the entry below used to
+  carry.) Settings sits in the same menu as "Log out". The screen and its
+  appearance control landed in Stage 12 (Milestones 2-3); what it still wants,
+  in rough order of readiness:
     - a **language selector** — see below, the mechanism already exists;
-    - an **appearance selector** with three states, light / dark / **auto** —
-      "auto" being the current behaviour, so the control has to represent
-      "follow the OS" as a real choice rather than as the absence of one;
     - **set my password**, for local accounts only (`auth_identities.provider
       = 'local'`; an OIDC identity has no password here to change). Nothing
       exists for this yet: `internal/auth` has Register, Authenticate,
@@ -151,9 +149,11 @@ Direction already agreed or obviously wanted; none of it built.
       valid home today and deleting a trip would take an avatar with it. Needs a
       migration — nullable `trip_id`, or a `user_id` column, or a separate table —
       before the existing upload pipeline can be reused.
-  The screen is being built as Stage 12; the `user-menu.js` → `menu.js` refactor
-  it was waiting on landed as that stage's Milestone 1, so the menu it hangs off
-  is now the shared component.
+  Also still open, now that a preference exists to have the argument about:
+  appearance is stored **per browser** (`localStorage["caravel.theme"]`), which
+  was the deliberate Stage 12 decision. Making it follow the account instead
+  means a column on `users` and an endpoint — the same question the language
+  entry below carries, and worth answering once for both.
 - **An in-app language switcher.** `i18n.js` has a working `setLocale()` and a
   `localStorage` cache for it, but nothing calls it — confirmed again during
   Stage 09 that `setLocale` has no caller outside `i18n.js`. German is reachable
@@ -161,13 +161,6 @@ Direction already agreed or obviously wanted; none of it built.
   It belongs in the settings screen above. Still open: whether the choice
   persists per account (a column on `users`, so it follows you between browsers)
   or stays per browser as the `localStorage` cache implies.
-- **A manual light/dark theme toggle.** Theming is purely
-  `prefers-color-scheme`-driven. Stage 01 deliberately structured it "so a manual
-  `data-theme` override can be added later"; nothing in the tree sets
-  `data-theme` today, so there's still no way to override the OS setting from
-  inside the app. Belongs in the settings screen above, as the three-state
-  light/dark/auto control described there — and the same per-account vs.
-  per-browser question applies as for the language.
 - **A trip journal with photos.** (Stage 01.) A `journal_entries` table
   (trip_id, date, body markdown) reusing the existing `media_assets` pipeline
   for photos.

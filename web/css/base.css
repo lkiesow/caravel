@@ -253,7 +253,7 @@ a:visited {
 .auth-form__error,
 .trip-form__error,
 .item-form__error,
-.file-form__error,
+.file-list__error,
 .image-field__error {
   color: var(--color-text);
   font-size: 0.875rem;
@@ -1033,8 +1033,7 @@ button {
 
 .location-form,
 .link-form,
-.date-form,
-.file-form {
+.date-form {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
@@ -1051,9 +1050,7 @@ button {
    (same reason .trip-form__dates needs it). */
 .location-form label,
 .link-form input,
-.date-form input,
-.file-form input[type="text"],
-.file-form .image-field__upload {
+.date-form input {
   flex: 1 1 8rem;
   min-width: 0;
 }
@@ -1071,7 +1068,6 @@ button {
 .location-form input,
 .link-form input,
 .date-form input,
-.file-form input[type="text"],
 .dialog__input {
   padding: 0.5rem;
   border-radius: 0.375rem;
@@ -1498,6 +1494,95 @@ button {
   flex: none;
 }
 
+/* Upload is a drop zone rather than a row of controls (Stage 11 Milestone 5).
+   It was a file picker + a note field + an Upload button - three controls to
+   add one file, and on a phone three full-width rows of them under the list.
+   Now the whole box is the label for a hidden multi-file input, so tapping it
+   anywhere browses and dropping onto it uploads; the note moved to the card's
+   ⋮ menu, which is also the only way to change one after the fact.
+
+   Dashed, because a drop target that looks like a solid card looks like
+   content. */
+.file-drop {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  padding: 0.875rem 1rem;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.file-drop:hover,
+.file-drop:focus-within {
+  border-color: var(--color-accent);
+}
+
+/* Mid-drag. Same accent as focus, plus a faint fill, so "let go here" is
+   unmistakable while the pointer is carrying something. */
+.file-drop--over {
+  border-color: var(--color-accent);
+  border-style: solid;
+  background: var(--color-surface);
+}
+
+/* Mid-upload: no second pick until the batch finishes, since each file is sent
+   in turn and a fresh pick would re-render the list under the loop. */
+.file-drop--busy {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.file-drop__icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--color-accent);
+}
+
+.file-drop__icon .icon {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.file-drop__text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.file-drop__title {
+  font-weight: 500;
+}
+
+.file-drop__hint {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+/* Two titles and two hints in the markup, one pair shown at each width: drag
+   does not exist on a phone, so "Drop files here" would be instructions for
+   something the device cannot do, and "tap to browse" is noise on a desktop
+   that has a Browse button right there. Same one-of-two-nodes arrangement as
+   the card's size, and for the same reason - CSS can hide a box but cannot
+   rewrite its text. */
+.file-drop__title--narrow,
+.file-drop__hint--narrow {
+  display: none;
+}
+
+/* Not a button: the whole zone is already the label, so a real button inside it
+   would be a second control for the same action (and a nested one at that).
+   It is aria-hidden for the same reason - the input's own label is what names
+   the control. */
+.file-drop__browse {
+  flex: none;
+  pointer-events: none;
+}
+
 .file-list-empty {
   color: var(--color-text-muted);
   font-size: 0.875rem;
@@ -1625,8 +1710,6 @@ button {
   .location-form label,
   .link-form input,
   .date-form input,
-  .file-form input[type="text"],
-  .file-form .image-field__upload,
   .image-field__url-form,
   .btn-row {
     flex-basis: 100%;
@@ -1675,6 +1758,31 @@ button {
 
   .file-card__sep--source {
     display: none;
+  }
+
+  /* Centred column, and the copy swaps to the pair that makes sense on a
+     phone. Browse goes: the whole box is the tap target and the hint says so,
+     where a button inside a tappable box invites the question of what the rest
+     of the box does. */
+  .file-drop {
+    flex-direction: column;
+    text-align: center;
+    padding: 1.25rem 1rem;
+  }
+
+  .file-drop__text {
+    align-items: center;
+  }
+
+  .file-drop__title--wide,
+  .file-drop__hint--wide,
+  .file-drop__browse {
+    display: none;
+  }
+
+  .file-drop__title--narrow,
+  .file-drop__hint--narrow {
+    display: block;
   }
 
   .image-field__upload {

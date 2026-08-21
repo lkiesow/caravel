@@ -280,15 +280,17 @@ step with itself.
   drives the tab bar's More menu (open, toggle, outside click, Escape,
   select-and-navigate, checked row) in **both locales**, so "anything behind an
   interaction" and "German copy is only eyeballed" are no longer true as blanket
-  statements. Stage 11 Milestone 3 added the Files row's ⋮ menu to the same spec
-  — but only up to the click, since Edit note and Delete both write. What
-  remains from the original list:
-    - **Mutating flows.** Stage 09 Milestone 2's single-Save check was a
-      20-assertion script and is still not checked in, because every spec runs
-      against the shared seed and a write would leak into the others. Needs an
-      isolation decision first — its own trip created and deleted per spec is
-      probably the cheapest, since `full`'s fixtures are the only ones other
-      specs depend on. Dialogs and submitted forms sit behind the same decision.
+  statements. Stage 11 Milestone 3 added the Files row's ⋮ menu to the same spec,
+  and Milestone 5 answered the isolation question below. What remains from the
+  original list:
+    - **Mutating flows: the pattern now exists, and one flow uses it.**
+      `tests/ui/files.spec.js` (Stage 11 Milestone 5) creates its own trip in
+      `beforeEach`, uploads/edits/deletes inside it, and deletes it in
+      `afterEach` — so a write can't leak into the shared seed, which was the
+      blocker. It covers the Files lifecycle end to end, dialogs included. Every
+      *other* mutating flow is still uncovered and should copy that shape: Stage
+      09 Milestone 2's single-Save check (still not checked in as a spec), the
+      location and trip editors, checklists, and the itinerary.
     - **The login and register pages**, which no spec renders: the suite arrives
       already authenticated (`auth.setup.js`), so those two routes get no
       overflow, heading, accessible-name or tap-target coverage at all. They are

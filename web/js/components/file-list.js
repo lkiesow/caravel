@@ -5,17 +5,15 @@ import { confirmDialog, promptDialog } from "./dialog.js";
 import { renderMenu } from "./menu.js";
 import { renderLoading } from "./loading.js";
 
-// Renders a file list (filename, size, source, note, download link, and a
-// per-row overflow menu holding Edit note / Delete) plus an inline
-// single-file add row (file picker + optional note + Upload button) - the same file+note+button shape as the Links/
-// Dates forms in the location editor, rather than the multi-file dialog
-// this used to be. Selecting several files is still possible, just one
-// upload at a time. `path` is either `/trips/{id}/files` or
-// `/items/{id}/files` - both share the same list/upload/delete shape.
+// Renders a file list as cards (type tile, name, meta line, size, and a
+// per-row overflow menu holding Edit note / Delete) plus a drop zone that
+// accepts several files at once, dropped or browsed, and uploads them one at a
+// time. `path` is either `/trips/{id}/files` or `/items/{id}/files` - both
+// share the same list/upload/delete shape.
 //
 // The trip-level list mixes trip files with files attached to a location, so a
-// row carrying `item_title` shows it (".file-source"): one flat list sorted
-// by upload date, where only the location-attached rows are labelled. The API
+// row carrying `item_title` shows it (".file-card__source"): one flat list
+// sorted by upload date, where only the location-attached rows are labelled. The API
 // leaves item_title null on the item-level list, so the same template renders
 // there unlabelled without needing a mode - on a location's own page every file
 // belongs to that location and saying so on each row would be noise.
@@ -35,6 +33,10 @@ import { renderLoading } from "./loading.js";
 // request, so post-create is the only option regardless (see todo.md).
 export async function renderFileList(container, path, { staged, rows: given, readOnly = false } = {}) {
   const isStaging = !path;
+  // Errors survive the re-render that shows them: render() rebuilds the whole
+  // subtree, so the paragraph a handler wrote into is gone by the time the user
+  // would read it.
+  let errors = [];
   // Nothing is fetched in staging mode, and nothing when the caller already
   // has the rows (the location view page fetches them itself to decide whether
   // to render its card at all - refetching here would be a second request for
@@ -69,15 +71,18 @@ export async function renderFileList(container, path, { staged, rows: given, rea
           readOnly
             ? ""
             : `
-        <p class="file-form__error" role="alert" hidden></p>
-        <form class="file-form">
-          <label class="image-field__upload">
-            <span data-i18n="files.chooseFile"></span>
-            <input type="file" name="file" hidden data-i18n-aria-label="common.uploadFile" />
-          </label>
-          <input type="text" name="note" data-i18n-placeholder="files.notePlaceholder" />
-          <button type="submit" class="btn btn-primary btn-row">${isStaging ? `${icon("plus")} <span data-i18n="files.stage"></span>` : `${icon("upload")} <span data-i18n="files.upload"></span>`}</button>
-        </form>
+        <p class="file-list__error" role="alert" hidden></p>
+        <label class="file-drop">
+          <input type="file" name="file" multiple hidden data-i18n-aria-label="common.uploadFile" />
+          <span class="file-drop__icon">${icon("upload")}</span>
+          <span class="file-drop__text">
+            <span class="file-drop__title file-drop__title--wide" data-i18n="files.dropTitle"></span>
+            <span class="file-drop__title file-drop__title--narrow" data-i18n="files.dropTitleNarrow"></span>
+            <span class="file-drop__hint file-drop__hint--wide" data-i18n="files.dropHint"></span>
+            <span class="file-drop__hint file-drop__hint--narrow" data-i18n="files.dropHintNarrow"></span>
+          </span>
+          <span class="btn btn-secondary file-drop__browse" aria-hidden="true" data-i18n="files.browse"></span>
+        </label>
         `
         }
       </div>
@@ -220,54 +225,95 @@ export async function renderFileList(container, path, { staged, rows: given, rea
     // node to bind to.
     if (readOnly) return;
 
-    const form = container.querySelector(".file-form");
-    const fileInput = form.file;
-    const fileLabelText = form.querySelector(".image-field__upload span");
-    const defaultFileLabel = fileLabelText.textContent;
-    const errorEl = container.querySelector(".file-form__error");
+    const drop = container.querySelector(".file-drop");
+    const fileInput = drop.querySelector('input[type="file"]');
+    const errorEl = container.querySelector(".file-list__error");
 
-    // Echoes the picked filename in place of the generic "Choose a file"
-    // label, so there's feedback before hitting Upload - same idea as
-    // image-field.js's preview, just text instead of an image.
-    fileInput.addEventListener("change", () => {
-      fileLabelText.textContent = fileInput.files[0]?.name || defaultFileLabel;
+    if (errors.length) {
+      // One line per file that failed, so a batch reports which of its members
+      // was the problem instead of failing anonymously.
+      errorEl.textContent = errors.join(" ");
+      errorEl.hidden = false;
+      errors = [];
+    }
+
+    // Picking is the trigger now - there is no Upload button left to press, so
+    // the old "Choose a file first." case can't happen.
+    fileInput.addEventListener("change", () => add(fileInput.files));
+
+    // The drag half. dragover has to preventDefault on every event or the
+    // browser navigates to the dropped file instead of handing it over, and
+    // dragleave fires when the pointer crosses onto a *child* of the zone too,
+    // hence the contains() guard - without it the highlight flickers off as
+    // soon as the pointer reaches the icon or the label text.
+    drop.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      drop.classList.add("file-drop--over");
+    });
+    drop.addEventListener("dragleave", (e) => {
+      if (!drop.contains(e.relatedTarget)) drop.classList.remove("file-drop--over");
+    });
+    drop.addEventListener("drop", (e) => {
+      e.preventDefault();
+      drop.classList.remove("file-drop--over");
+      add(e.dataTransfer?.files);
     });
 
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
+    // Everything a pick can be: one file or several, dropped or browsed,
+    // staged locally or uploaded one at a time. Sequential rather than
+    // parallel so a failure belongs to a named file, and so a dozen dropped
+    // files don't open a dozen simultaneous requests.
+    async function add(fileList) {
+      const picked = [...(fileList || [])];
+      if (!picked.length) return;
       errorEl.hidden = true;
 
-      const file = fileInput.files[0];
-      if (!file) {
-        errorEl.textContent = t("files.noFile");
-        errorEl.hidden = false;
-        return;
+      drop.setAttribute("aria-busy", "true");
+      drop.classList.add("file-drop--busy");
+
+      for (const file of picked) {
+        // Checked here as well as by the server, which answers an oversized
+        // upload with a 413 whose body is about multipart parsing rather than
+        // about this file - see maxFileUploadBytes in internal/httpapi/files.go.
+        if (file.size > MAX_UPLOAD_BYTES) {
+          errors.push(t("files.tooLarge", { name: file.name, limit: formatSize(MAX_UPLOAD_BYTES) }));
+          continue;
+        }
+        // unshift, not push: the list is newest-first (the API sorts by
+        // uploaded_at DESC), so appending put a new file at the *bottom* until
+        // the next load moved it to the top. Found by the spec below, which
+        // asserted the order before and after a reload.
+        if (isStaging) {
+          staged.unshift({ file, note: null });
+          continue;
+        }
+        try {
+          const formData = new FormData();
+          formData.append("file", file);
+          const res = await fetch(`/api${path}`, { method: "POST", body: formData, credentials: "same-origin" });
+          const created = await res.json();
+          if (!res.ok) throw new Error(created.error || t("common.error"));
+          files.unshift(created);
+        } catch (err) {
+          errors.push(`${file.name}: ${err.message || t("common.error")}`);
+        }
       }
 
-      if (isStaging) {
-        staged.push({ file, note: form.note.value || null });
-        render();
-        return;
-      }
-
-      try {
-        const formData = new FormData();
-        formData.append("file", file);
-        if (form.note.value) formData.append("note", form.note.value);
-        const res = await fetch(`/api${path}`, { method: "POST", body: formData, credentials: "same-origin" });
-        const created = await res.json();
-        if (!res.ok) throw new Error(created.error || t("common.error"));
-        files.push(created);
-        render();
-      } catch (err) {
-        errorEl.textContent = err.message || t("common.error");
-        errorEl.hidden = false;
-      }
-    });
+      // One re-render for the whole batch, which also replaces the file input -
+      // so picking the same file twice in a row still fires `change` the second
+      // time, and any errors collected above are printed by the next render().
+      render();
+    }
   }
 
   render();
 }
+
+// The server's own limit (maxFileUploadBytes in internal/httpapi/files.go).
+// Duplicated deliberately: the alternative is asking the API for it, and a
+// number that has to match on both sides is better as a named constant with a
+// pointer at the other one than as an extra round trip.
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 // Which tile a file gets, from the content type the server sniffed on upload
 // (never the client-declared one - see internal/httpapi/files.go). Three

@@ -467,6 +467,65 @@ isolation decision — do the cheap version it already suggests: the spec create
 its own trip and deletes it afterwards, leaving the shared `full` fixtures the
 other specs depend on untouched.
 
+**Done.** Upload is a drop zone: the whole box is the label for a hidden
+`multiple` file input, so tapping it anywhere browses and dropping onto it
+uploads, and picking is the trigger — there is no Upload button left, which also
+retires the old "Choose a file first." case. Three controls became one. Copy
+follows the mockup with two title/hint pairs, one shown at each width (drag does
+not exist on a phone, and "tap to browse" is noise beside a Browse button); the
+Browse control is a styled `span`, not a button, because the whole zone is
+already the label and a real button inside it would be a second control for the
+same action. Four i18n keys retired (`chooseFile`, `noFile`, `upload`, `stage`),
+six added, both locales, and `scripts/i18n.py unused` still reports clean.
+
+Drag needed two details that are easy to get wrong: `dragover` must
+`preventDefault` on *every* event or the browser navigates to the dropped file
+instead of handing it over, and `dragleave` fires when the pointer crosses onto
+a *child* of the zone — so the highlight flickered off as soon as the pointer
+reached the icon, until a `contains(e.relatedTarget)` guard went in.
+
+Multi-file uploads run sequentially, and errors accumulate per file, so an
+oversized member of a batch is named and the rest still land. The 50 MB check is
+client-side against a `MAX_UPLOAD_BYTES` constant that points at
+`maxFileUploadBytes`, because the server's own answer is a 413 whose body talks
+about multipart parsing rather than about the file. Errors are held in a closure
+variable and printed by the next `render()`, since `render()` replaces the
+paragraph a handler would have written into.
+
+**The spec found a real bug.** A freshly uploaded file was appended to the local
+list while the API returns newest-first, so it appeared at the *bottom* and then
+jumped to the top on the next load. `unshift`, both for uploads and for staged
+picks.
+
+**And the first version of the size assertion was vacuous** — worth recording,
+because it looked fine. With the client-side guard deleted the server answers
+413 and the catch reports `huge-map.pdf: file too large or invalid multipart
+form`, which *also* contains the filename, so `toContainText("huge-map.pdf")`
+passed either way. It now asserts the exact client-side copy, and with the guard
+removed it fails with the two strings side by side.
+
+**Verified.** `make ci` green, `make test-ui` **15/15**, the new one being
+`tests/ui/files.spec.js` — the suite's first *writing* spec. It creates its own
+trip, does everything there and deletes it in `afterEach` (which runs on failure
+too), so the shared seed the other specs depend on is untouched: confirmed by
+counting rows before and after, still 7 trips and 4 files. It drives the whole
+lifecycle at 324px: empty state → two files in one gesture → the summary's
+plural form → newest-first order → the filename as title with "No note" →
+the card body being the download link and clearing 44px → the oversized batch →
+⋮ → Edit note, with the field focused, the note becoming the title, the filename
+moving to the meta line, and the change surviving a reload → ⋮ → Delete, Cancel
+first (a destructive action that fires on Cancel being the bug worth catching)
+then confirm.
+
+By hand against `make dev`: the desktop zone reads "Drop files here / or browse"
+with its Browse button, the mobile one is a centred "Add a file / Drop here or
+tap to browse" with no button; a real two-file drag-drop uploaded both; an
+oversized file was refused by name while its batch-mate landed. Staging was
+driven too, and it is the case a spec cannot reach: two files dropped onto a new
+location's card were staged with **no request at all**, rendered as spans rather
+than links with a "Remove" action, and then flushed to the server by Create —
+both arriving on the new location, which was deleted afterwards along with them.
+
 ---
 
 ## 6. Sweep-up

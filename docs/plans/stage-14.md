@@ -894,6 +894,44 @@ per submit showed all three error paths working. Same shape of mistake as
 Milestone 4's all-zeros sweep: a probe that silently measures nothing looks
 exactly like a feature that silently does nothing.
 
+### 6a. Milestone 6 follow-up: messages belong to the card that caused them
+
+Two pieces of review feedback, both about where an outcome is reported.
+
+**Row outcomes were reported in the wrong card.** Refusing to demote or delete
+the last administrator wrote its message into `.admin-new-user__error`, which
+lives in the *Add an account* card — so a last-admin refusal appeared under a
+heading about creating accounts. This was in `todo.md` as a deferred item, which
+was the wrong call: it is the first thing anyone hits, and "deferred" is not the
+right shelf for a message appearing under the wrong heading.
+
+The Accounts card now owns its own pair of regions, and the Add card's error
+moved from the bottom of its card to the top. Both sit **directly beneath their
+card's `h2`**, above the hint paragraph, as the user asked: the row that caused
+an outcome can be anywhere down the list, including below the fold, so the top
+of the card the action was taken in is the only placement that is right for
+every row.
+
+**A success was being rendered as an error.** Fixing the placement made this
+obvious: "Password for X has been reset" was going into an element styled as a
+red-bordered error callout. Split into an alert region and a status region
+following `password-field.js`'s existing pattern exactly — `role="alert"` on the
+error, `role="status"` on the success, one visible at a time so an old success
+above a fresh failure cannot read as both having just happened. The status
+region joins the one "it worked" CSS rule the app already has, which is
+accent-bordered rather than red.
+
+**Verified.** `make ci` green; full Playwright suite passing. Measured in the
+browser at 1280 and 324×756: both refusals (demotion and deletion of the last
+admin) now render in the Accounts card, above the first account row, with the
+Add card's error staying hidden; the password-reset success renders in the status
+region with an accent left border (`rgb(37, 99, 235)`, not the danger red) and
+clears the error region; and a duplicate-username error renders in the Add card
+above its form without disturbing the Accounts status. In German at 324px the
+refusal wraps inside the viewport with no horizontal overflow and stays above
+the rows. Element positions were asserted with `compareDocumentPosition` and
+bounding boxes rather than eyeballed.
+
 ---
 
 ## 7. File visibility

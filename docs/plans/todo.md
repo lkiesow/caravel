@@ -396,15 +396,6 @@ step with itself.
   rather than on purpose. Worth either an explicit `type` option on
   `promptDialog` or a note in the copy saying the visibility is deliberate.
 
-- **The admin screen reports row-level outcomes in the create form's error
-  line.** (Stage 14 Milestone 6.) Promote, reset and delete all report success
-  and failure into `.admin-new-user__error`, which lives under the *next* card.
-  It works and it is scrolled into view, but the message appears a long way
-  from the row that caused it, and a success ("Password for X has been reset")
-  rendered in an element styled as an error callout is the wrong shape. Wants
-  either a per-row status line or one status region belonging to the accounts
-  card rather than to the form below it.
-
 - **Three near-identical input rules in `base.css`, with drift.**
   (Stage 14 Milestone 3 follow-up.) `.auth-form`, `.trip-form`/`.password-form`
   and `.item-form` each declare their own label-and-input styling, and they do

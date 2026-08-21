@@ -277,6 +277,7 @@ a:visited {
 .file-list__error,
 .members-add__error,
 .admin-new-user__error,
+.admin-users__error,
 .image-field__error {
   color: var(--color-text);
   font-size: 0.875rem;
@@ -291,7 +292,8 @@ a:visited {
    otherwise invisible: a changed password looks exactly like an unchanged one.
    Same shape as the error paragraph above, in the accent rather than the
    danger colour. */
-.password-form__success {
+.password-form__success,
+.admin-users__status {
   color: var(--color-text);
   font-size: 0.875rem;
   margin: 0.5rem 0;

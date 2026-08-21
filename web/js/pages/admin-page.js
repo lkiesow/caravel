@@ -49,12 +49,23 @@ export async function renderAdminPage(container) {
 
         <div class="editor-card">
           <h2 data-i18n="admin.users"></h2>
+          <!-- Directly under the heading, before the hint: a refusal or a
+               confirmation belongs to this card, and the row that caused it can
+               be anywhere down the list — including below the fold. Reporting it
+               at the top of the card the action was taken in is the only
+               placement that is right for every row. (It used to land in the
+               *next* card's error line, which is where the Add-an-account form
+               reports, and reading a last-admin refusal under "Add an account"
+               is nonsense.) -->
+          <p class="admin-users__error" role="alert" hidden></p>
+          <p class="admin-users__status" role="status" hidden></p>
           <p class="editor-card__hint" data-i18n="admin.usersHint"></p>
           <ul class="admin-users"></ul>
         </div>
 
         <div class="editor-card">
           <h2 data-i18n="admin.newUser"></h2>
+          <p class="admin-new-user__error" role="alert" hidden></p>
           <p class="editor-card__hint" data-i18n="admin.newUserHint"></p>
           <form class="admin-new-user">
             <label class="admin-new-user__field">
@@ -75,7 +86,6 @@ export async function renderAdminPage(container) {
             </label>
             <button type="submit" class="btn btn-primary">${icon("user-plus")} <span data-i18n="admin.create"></span></button>
           </form>
-          <p class="admin-new-user__error" role="alert" hidden></p>
         </div>
 
         <div class="editor-card">
@@ -155,7 +165,8 @@ export async function renderAdminPage(container) {
     try {
       await api.patch(`/admin/users/${u.id}`, { is_admin: !u.is_admin });
     } catch (err) {
-      return reportRowError(err);
+      reportRowError(err);
+      return;
     }
     // Demoting yourself removes your own access to this screen, so there is
     // nothing here to re-render into.
@@ -173,15 +184,16 @@ export async function renderAdminPage(container) {
     });
     if (password === null) return;
     if (password.length < 8) {
-      await reportRowMessage(t("admin.passwordTooShort"));
+      showAccountsMessage(".admin-users__error", t("admin.passwordTooShort"));
       return;
     }
     try {
       await api.post(`/admin/users/${u.id}/password`, { password });
     } catch (err) {
-      return reportRowError(err);
+      reportRowError(err);
+      return;
     }
-    await reportRowMessage(t("admin.passwordReset", { name: u.display_name }));
+    reportRowMessage(t("admin.passwordReset", { name: u.display_name }));
   }
 
   async function deleteUser(u) {
@@ -195,7 +207,8 @@ export async function renderAdminPage(container) {
     try {
       await api.delete(`/admin/users/${u.id}`);
     } catch (err) {
-      return reportRowError(err);
+      reportRowError(err);
+      return;
     }
     if (u.is_self) {
       // You have just deleted your own account; the session is gone with it.
@@ -258,25 +271,38 @@ export async function renderAdminPage(container) {
     });
   }
 
-  // Row-level outcomes land in the same place as the create form's errors:
-  // there is one of them, it is near the list, and inventing a second error
-  // slot per row for something that is nearly always transient is not worth
-  // the layout.
-  async function reportRowError(err) {
+  // Row outcomes report in the Accounts card, split into an alert and a status
+  // region the way password-field.js does — a success rendered in something
+  // styled as an error callout was the other half of the same mistake.
+  //
+  // Elements are looked up per call rather than captured: render() rebuilds the
+  // card, so a reference taken at bind time would be detached.
+  function reportRowError(err) {
     const code = err instanceof ApiError ? err.body?.code : null;
     const message =
       {
         last_admin: t("admin.lastAdmin"),
         no_local_password: t("admin.noLocalPassword"),
       }[code] || t("admin.actionFailed");
-    await reportRowMessage(message);
+    showAccountsMessage(".admin-users__error", message);
   }
 
-  async function reportRowMessage(message) {
-    const error = container.querySelector(".admin-new-user__error");
-    error.textContent = message;
-    error.hidden = false;
-    error.scrollIntoView({ block: "nearest" });
+  function reportRowMessage(message) {
+    showAccountsMessage(".admin-users__status", message);
+  }
+
+  function showAccountsMessage(selector, message) {
+    // Only one at a time: an old success sitting above a fresh failure would
+    // read as both having just happened.
+    for (const sel of [".admin-users__error", ".admin-users__status"]) {
+      const el = container.querySelector(sel);
+      if (el) el.hidden = true;
+    }
+    const el = container.querySelector(selector);
+    if (!el) return;
+    el.textContent = message;
+    el.hidden = false;
+    el.scrollIntoView({ block: "nearest" });
   }
 
   await load();

@@ -135,11 +135,14 @@ func main() {
 	ctx := context.Background()
 	authService := auth.NewService(store)
 
-	owner, err := ensureUser(ctx, store, authService, demoUsername, demoPassword, demoDisplayName)
+	// demo is the administrator, so the admin screen has somebody to be reached
+	// by; other deliberately is not, so the "a non-admin sees no admin entry"
+	// case has somebody to be checked with.
+	owner, err := ensureUser(ctx, store, authService, demoUsername, demoPassword, demoDisplayName, true)
 	if err != nil {
 		log.Fatalf("demo user: %v", err)
 	}
-	other, err := ensureUser(ctx, store, authService, otherUsername, otherPassword, otherDisplayName)
+	other, err := ensureUser(ctx, store, authService, otherUsername, otherPassword, otherDisplayName, false)
 	if err != nil {
 		log.Fatalf("other user: %v", err)
 	}
@@ -185,20 +188,43 @@ func findScenario(name string) *scenario {
 // worked and the only fix was wiping the database. Resetting is idempotent and
 // leaves sessions alone, so re-seeding doesn't log you out of the browser you
 // are testing in.
-func ensureUser(ctx context.Context, store db.Store, authService *auth.Service, username, password, displayName string) (db.User, error) {
+func ensureUser(ctx context.Context, store db.Store, authService *auth.Service, username, password, displayName string, admin bool) (db.User, error) {
 	user, err := authService.Register(ctx, username, password, displayName)
-	if err == nil {
+	if err != nil {
+		if err != auth.ErrUsernameTaken {
+			return db.User{}, err
+		}
+		if err := authService.SetPassword(ctx, username, password); err != nil {
+			return db.User{}, fmt.Errorf("reset password for %q: %w", username, err)
+		}
+		log.Printf("user %q already exists — password reset to %s", username, password)
+		if user, err = store.GetUserByUsername(ctx, username); err != nil {
+			return db.User{}, err
+		}
+	} else {
 		log.Printf("created user %q (password: %s)", username, password)
-		return user, nil
 	}
-	if err != auth.ErrUsernameTaken {
-		return db.User{}, err
+
+	// The admin flag is set explicitly rather than relied on. Register makes
+	// the *first* account on an instance an admin, which happens to give demo
+	// the flag on a fresh database — but not on a database seeded before
+	// migration 0008 existed, where the column simply defaulted to false. A
+	// dev environment whose admin-ness depends on how old its database is would
+	// be a confusing thing to debug.
+	if user.IsAdmin != admin {
+		if user, err = store.UpdateUser(ctx, db.UpdateUserParams{
+			ID:          user.ID,
+			DisplayName: user.DisplayName,
+			IsAdmin:     admin,
+			UpdatedAt:   time.Now().UTC(),
+		}); err != nil {
+			return db.User{}, fmt.Errorf("set admin flag for %q: %w", username, err)
+		}
 	}
-	if err := authService.SetPassword(ctx, username, password); err != nil {
-		return db.User{}, fmt.Errorf("reset password for %q: %w", username, err)
+	if admin {
+		log.Printf("user %q is an administrator", username)
 	}
-	log.Printf("user %q already exists — password reset to %s", username, password)
-	return store.GetUserByUsername(ctx, username)
+	return user, nil
 }
 
 // newTrip deletes any previous incarnation of this scenario's trip before

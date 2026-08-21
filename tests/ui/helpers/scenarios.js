@@ -163,6 +163,9 @@ export async function buildRoutes(page) {
   const routes = [
     { path: "/trips", label: "trips list" },
     { path: "/settings", label: "account settings" },
+    // Swept as the seeded demo user, who is an administrator — so this route
+    // renders the real screen rather than its not-found fallback.
+    { path: "/admin", label: "administration" },
     { path: "/trips/new", label: "new trip" },
     { path: `/trips/${fullTrip}/locations/new`, label: "new location" },
     { path: `/trips/${fullTrip}/locations/${itemId}/edit`, label: "edit location" },

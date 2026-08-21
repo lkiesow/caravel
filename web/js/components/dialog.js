@@ -52,9 +52,12 @@ export function confirmDialog({ messageKey, message, confirmKey = "common.delete
 // This exists because there is no window.prompt() equivalent worth using: the
 // native one is the same disconnected system sheet confirm() was, and it can't
 // carry a placeholder or a starting value.
-export function promptDialog({ messageKey, value = "", placeholderKey, confirmKey = "common.save" }) {
+export function promptDialog({ messageKey, message, value = "", placeholderKey, confirmKey = "common.save" }) {
   return open({
     messageKey,
+    // Same as confirmDialog's: a ready-made string for a prompt that has to
+    // name something ("New password for Anna").
+    message,
     input: { value, placeholderKey },
     buttons: [
       { labelKey: "common.cancel", value: "cancel", className: "btn-secondary", iconName: "x" },

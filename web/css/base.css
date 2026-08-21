@@ -23,6 +23,11 @@
   /* Backdrop for danger callouts. Kept faint enough that --color-text stays
      comfortably readable on it, so the tint signals without carrying meaning. */
   --color-danger-tint: rgba(220, 38, 38, 0.08);
+  /* Same idea for the accent, added in Stage 14 Milestone 6 for the admin
+     badge — the one label in the app that marks a capability rather than
+     describing a thing. Same alpha as the danger tint for the same reason:
+     faint enough that the text on it carries the meaning. */
+  --color-accent-tint: rgba(37, 99, 235, 0.08);
 
   --radius: 0.375rem;
   --radius-lg: 0.5rem;
@@ -53,6 +58,8 @@
   /* Slightly stronger than the light-mode tint: the same alpha over a dark
      surface reads as almost nothing. */
   --color-danger-tint: rgba(248, 113, 113, 0.14);
+  /* Stronger than light mode's, for the same reason as the danger tint. */
+  --color-accent-tint: rgba(96, 165, 250, 0.14);
   /* Native widgets the app doesn't paint itself - scrollbars, date pickers,
      the file-input button - follow this rather than the OS, which is the whole
      point of an in-app override. */
@@ -269,6 +276,7 @@ a:visited {
 .item-form__error,
 .file-list__error,
 .members-add__error,
+.admin-new-user__error,
 .image-field__error {
   color: var(--color-text);
   font-size: 0.875rem;
@@ -648,7 +656,8 @@ button {
 
 .trip-form label,
 .password-form label,
-.members-add__field {
+.members-add__field,
+.admin-new-user__field {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
@@ -660,7 +669,8 @@ button {
 .trip-form textarea,
 .password-form input,
 .members-add input,
-.members-add select {
+.members-add select,
+.admin-new-user input:not([type="checkbox"]) {
   padding: 0.5rem;
   border-radius: 0.375rem;
   border: 1px solid var(--color-border);
@@ -2147,6 +2157,170 @@ button {
   color: var(--color-text-muted);
   font-size: 0.8rem;
   white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------------
+   Admin screen (Stage 14 Milestone 6)
+
+   Rows share the members list's shape deliberately — same avatar, same
+   name-over-username stack, same bare per-row ellipsis — because they are the
+   same kind of object seen in a different context, and two different-looking
+   lists of people would be a worse instance than a repeated one. The selectors
+   are separate rather than shared: the members list belongs to a trip and this
+   one to the instance, and joining them would mean a change to one silently
+   restyling the other.
+   --------------------------------------------------------------------------- */
+
+.admin-users {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.admin-user {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  min-height: var(--tap-min);
+}
+
+.admin-user__avatar {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: var(--color-accent-strong);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.admin-user__who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.admin-user__name,
+.admin-user__username {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-user__you,
+.admin-user__username,
+.admin-user__trips {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.admin-user__meta {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Which accounts can administer the instance is the fact this screen exists to
+   make visible, so it gets a tinted pill rather than the muted text the
+   trip-role marker uses.
+
+   The label itself is --color-text, not --color-accent, for the same reason the
+   error callouts above use it: the accent as 12px text on its own tint measures
+   4.23:1 in light mode, under AA's 4.5:1, and 4.61:1 in dark — measured, and
+   the light figure is a fail I nearly shipped by checking only the dark theme.
+   So the accent moves to the border and the background tint, which are
+   decoration held to the 3:1 non-text bar, and the text uses the token that is
+   legible on both themes by construction. */
+.admin-user__badge {
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  background: var(--color-accent-tint);
+  border: 1px solid var(--color-accent);
+  color: var(--color-text);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.admin-user__trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: var(--radius);
+}
+
+.admin-user__trigger:hover {
+  color: var(--color-text);
+}
+
+.admin-new-user {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.admin-new-user__field {
+  flex: 1 1 9rem;
+  min-width: 0;
+}
+
+/* A checkbox row rather than a stacked label: it is a yes/no about the account
+   being created, not a value to fill in, and the label is the tap target (see
+   the mobile block's note about native checkbox sizes). */
+.admin-new-user__checkbox,
+.admin-signup-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 100%;
+  min-height: var(--tap-min);
+  cursor: pointer;
+}
+
+.admin-signup-toggle__status {
+  margin: 0.5rem 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+@media (max-width: 640px) {
+  /* Same treatment as .member-card: four columns do not share one line at
+     324px, so the badge and trip count drop below the name. */
+  .admin-user {
+    flex-wrap: wrap;
+  }
+
+  .admin-user__meta {
+    order: 4;
+    width: 100%;
+    padding-left: calc(2rem + 0.625rem);
+  }
+
+  .admin-new-user__field,
+  .admin-new-user .btn {
+    flex-basis: 100%;
+  }
+
+  .admin-user__trigger {
+    min-width: var(--tap-min);
+  }
 }
 
 /* ---------------------------------------------------------------------------

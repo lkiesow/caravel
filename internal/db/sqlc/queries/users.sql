@@ -51,3 +51,35 @@ SELECT id, username, display_name FROM users
 WHERE (LOWER(username) LIKE sqlc.arg(pattern)) OR (LOWER(display_name) LIKE sqlc.arg(pattern))
 ORDER BY username
 LIMIT sqlc.arg(max_results);
+
+-- The admin user list. The trip count comes from a correlated subquery rather
+-- than a LEFT JOIN with GROUP BY: it cannot duplicate a user row, and it counts
+-- only trips they own -- trips shared with them belong to someone else and
+-- would be misleading in a what-will-deleting-this-account-destroy column.
+-- name: ListUsers :many
+SELECT u.id, u.username, u.display_name, u.is_admin, u.created_at,
+       (SELECT COUNT(*) FROM trips t WHERE t.owner_id = u.id) AS trip_count
+FROM users u
+ORDER BY u.username;
+
+-- Compared against a bound parameter rather than against a literal: the column
+-- is INTEGER in sqlite and BOOLEAN in postgres, so the comparison value has to
+-- come from the store layer, which is the only place that knows which dialect
+-- it is talking to.
+-- name: CountAdmins :one
+SELECT COUNT(*) FROM users WHERE is_admin = sqlc.arg(flag);
+
+-- Username is deliberately not updatable. It is the handle people are added to
+-- trips by, so renaming one silently breaks the mental model of everyone who
+-- knows them by it, and there is no rename flow anywhere in the UI to make that
+-- visible.
+-- name: UpdateUser :one
+UPDATE users
+SET display_name = sqlc.arg(display_name),
+    is_admin = sqlc.arg(is_admin),
+    updated_at = sqlc.arg(updated_at)
+WHERE id = sqlc.arg(id)
+RETURNING *;
+
+-- name: DeleteUser :execrows
+DELETE FROM users WHERE id = sqlc.arg(id);

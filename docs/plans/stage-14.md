@@ -804,6 +804,96 @@ create → reset password → delete drives end to end. Isolate the way
 a password destroys the shared session, and its lesson that a *silently*
 failing cleanup poisons every later run applies directly here.
 
+**Done.** All six routes, the screen, and the guard rails.
+
+*403, not 404, for a non-admin* — the opposite of the trip routes, on purpose.
+Those answer 404 to hide *which trips exist*; `/api/admin` has no such secret,
+its existence is in the shipped JavaScript, and there is no resource whose
+existence could leak. `requireAdmin` sits inside `RequireAuth` so anonymous
+still gets 401, which is a different situation for a client to act on.
+
+*The guard rails all protect one thing:* an instance must never reach a state
+where nobody can administer it, because there is no recovery short of editing
+the database. So the last admin cannot be demoted or deleted — checked for any
+target, not just self, since demoting the *other* admin is the same hole — while
+self-deletion and self-demotion are otherwise allowed, because an admin leaving
+should be able to remove themselves. `isLastAdmin` is a pure predicate and each
+caller writes its own refusal; the first version claimed in its comment to write
+the refusal itself and did not, which would have returned an empty 200 from the
+demotion path.
+
+*`is_admin` is a `*bool` on the wire*, so a rename cannot silently clear it.
+There is a test for that specifically, because omitted-means-false is the
+natural bug here and it would quietly strip someone's access.
+
+*A password reset leaves sessions alone.* `auth.SetPassword` differs from
+`ChangePassword` exactly there, and it is the right choice — restoring access to
+someone locked out should not sign them out of the device in their hand — but it
+does mean a reset is not a way to evict somebody. Deleting the account is. Also
+guarded: an account with no local password now gets a 409 rather than a 204 that
+changed nothing, which matters the moment an external provider exists.
+
+*Trip counts are trips owned, not reachable*, because the number appears in the
+delete confirmation and it has to mean "this is what will be destroyed". A trip
+merely shared with someone belongs to somebody else. Tested by sharing a trip
+with the user and asserting their count does not move.
+
+The seeder now sets the admin flag explicitly rather than relying on `demo`
+happening to be the first account: that is true on a fresh database and false on
+one seeded before 0008 existed, and a dev environment whose admin-ness depends
+on its database's age is a miserable thing to debug.
+
+**Verified.** `make ci` green (239 keys in sync); full Playwright suite passing,
+with `/admin` added to the route sweep. `admin_test.go` covers every route
+against a non-admin (403) and anonymously (401), trip counts, creation including
+that the created account can actually log in, all three creation refusals, the
+password reset with the old password rejected *and* the session surviving,
+deletion cascading trips and sessions, both last-admin guard rails plus the case
+where a second admin makes them let go, omitted-field handling, and the signup
+toggle agreeing with `/auth/config`.
+
+Break-checked with seven breaks, all caught: `requireAdmin` letting everyone
+through, both last-admin guards removed, PATCH treating an omitted `is_admin` as
+false, the reset silently doing nothing, `is_admin: true` on create being
+ignored, and the trip count counting every trip on the instance.
+
+Live at 1280 and 324×756. As `other`: the not-found page, no Administration
+entry in the user menu, 403 from all three probed routes. As `demo`: the screen
+lists both accounts with the right badge and counts, and create → login-as-new →
+duplicate-username error → promote → demote → last-admin refusal → password
+reset (new password works, old one 401s) → delete-with-trip-count → signup
+toggle all behaved. The delete confirmation read "Delete Temp User's account and
+the 1 trip they own?", so the pluralisation is right in the singular case too.
+
+**One real bug caught by the manual pass, in my own new CSS.** The admin badge
+started as accent-coloured 12px text on its own accent tint. Flattening the
+translucent background over the row surface — the caveat `tests/ui/contrast.js`
+records — it measured **4.23:1 in light mode**, under AA's 4.5:1 for text that
+size, and 4.61:1 in dark. I would have shipped it by checking only the dark
+theme, where it passes. Fixed the way this stylesheet already documents for the
+error callouts: the accent moves to the border and the tint (decoration, held to
+the 3:1 non-text bar, measured at 4.23/4.61) and the label uses
+`--color-text`, now 14.49:1 light and 11.24:1 dark. New `--color-accent-tint`
+tokens were added for both themes, mirroring `--color-danger-tint`.
+
+**The suite caught the change too**, which is the part worth keeping:
+`menu.spec.js` asserts the user menu's items as a hardcoded list in both
+locales, so making `demo` an administrator turned it red — three items where it
+expected two. Updated to expect Administration / Verwaltung. Note *why* that was
+a failure rather than a silent pass: the spec's header comment says the labels
+are spelled out deliberately instead of read from `user-menu.js`, so a wrong
+translation fails. That decision is also what caught a changed menu. Had `demo`
+stayed a non-admin, the spec would have stayed green and the admin entry would
+have gone untested entirely.
+
+Also worth recording: two of my first browser probes reported nothing because
+they held a stale DOM reference — a successful create re-renders the page, so a
+`form` captured beforehand is detached and its listener is gone. The
+"errors don't appear" result was the test's fault, not the app's, and re-querying
+per submit showed all three error paths working. Same shape of mistake as
+Milestone 4's all-zeros sweep: a probe that silently measures nothing looks
+exactly like a feature that silently does nothing.
+
 ---
 
 ## 7. File visibility

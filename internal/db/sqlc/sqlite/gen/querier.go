@@ -10,6 +10,11 @@ import (
 )
 
 type Querier interface {
+	// Compared against a bound parameter rather than against a literal: the column
+	// is INTEGER in sqlite and BOOLEAN in postgres, so the comparison value has to
+	// come from the store layer, which is the only place that knows which dialect
+	// it is talking to.
+	CountAdmins(ctx context.Context, flag int64) (int64, error)
 	CountTripMembers(ctx context.Context, tripID string) (int64, error)
 	// Used for exactly one decision, in two places: whether this is the first
 	// account on the instance, which both makes it an admin and is the one case
@@ -47,6 +52,7 @@ type Querier interface {
 	// belt costs nothing and guards the most destructive call in the app.
 	DeleteTrip(ctx context.Context, arg DeleteTripParams) (int64, error)
 	DeleteTripMember(ctx context.Context, arg DeleteTripMemberParams) (int64, error)
+	DeleteUser(ctx context.Context, id string) (int64, error)
 	// Instance-wide settings an admin changes at runtime. See migration 0008 for
 	// why this is a key/value table rather than one column per setting, and why the
 	// column is called "name" rather than "key".
@@ -112,6 +118,11 @@ type Querier interface {
 	// most one row per trip. That is also why the role can be selected inline
 	// rather than needing a second query per trip.
 	ListTripsForUser(ctx context.Context, userID string) ([]ListTripsForUserRow, error)
+	// The admin user list. The trip count comes from a correlated subquery rather
+	// than a LEFT JOIN with GROUP BY: it cannot duplicate a user row, and it counts
+	// only trips they own -- trips shared with them belong to someone else and
+	// would be misleading in a what-will-deleting-this-account-destroy column.
+	ListUsers(ctx context.Context) ([]ListUsersRow, error)
 	// Substring match rather than prefix: people look for "user" in "Other User"
 	// as readily as they type the start of a username, and on an instance this size
 	// the difference in selectivity does not matter.
@@ -163,6 +174,11 @@ type Querier interface {
 	UpdateItemLocation(ctx context.Context, arg UpdateItemLocationParams) (int64, error)
 	UpdateItineraryDayNotes(ctx context.Context, arg UpdateItineraryDayNotesParams) (int64, error)
 	UpdateTrip(ctx context.Context, arg UpdateTripParams) (Trip, error)
+	// Username is deliberately not updatable. It is the handle people are added to
+	// trips by, so renaming one silently breaks the mental model of everyone who
+	// knows them by it, and there is no rename flow anywhere in the UI to make that
+	// visible.
+	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
 	// Upsert rather than insert: changing someone's role and adding them are the
 	// same intent expressed twice, and a conflict here is never an error worth
 	// reporting - the caller asked for a state, not for an event.

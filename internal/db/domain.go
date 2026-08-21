@@ -118,6 +118,15 @@ type UserSummary struct {
 	DisplayName string
 }
 
+// UserWithTripCount is a user as the admin screen lists them, with the number
+// of trips they own. Owned, not accessible: the count exists to answer what
+// deleting this account would destroy, and trips merely shared with them belong
+// to somebody else.
+type UserWithTripCount struct {
+	User
+	TripCount int64
+}
+
 // TripForUser is a trip together with the reading user's own relationship to
 // it: their role, and who owns it. The trips list needs both for every row, and
 // getting them from the same query is what keeps that endpoint at one round

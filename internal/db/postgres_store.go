@@ -389,6 +389,52 @@ func (s *postgresStore) CountUsers(ctx context.Context) (int64, error) {
 	return s.q.CountUsers(ctx)
 }
 
+func (s *postgresStore) ListUsers(ctx context.Context) ([]UserWithTripCount, error) {
+	rows, err := s.q.ListUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	users := make([]UserWithTripCount, len(rows))
+	for i, row := range rows {
+		users[i] = UserWithTripCount{
+			User: User{
+				ID:          row.ID,
+				Username:    row.Username,
+				DisplayName: row.DisplayName,
+				IsAdmin:     row.IsAdmin,
+				CreatedAt:   row.CreatedAt,
+			},
+			TripCount: row.TripCount,
+		}
+	}
+	return users, nil
+}
+
+func (s *postgresStore) CountAdmins(ctx context.Context) (int64, error) {
+	return s.q.CountAdmins(ctx, true)
+}
+
+func (s *postgresStore) UpdateUser(ctx context.Context, p UpdateUserParams) (User, error) {
+	row, err := s.q.UpdateUser(ctx, postgresgen.UpdateUserParams{
+		ID:          p.ID,
+		DisplayName: p.DisplayName,
+		IsAdmin:     p.IsAdmin,
+		UpdatedAt:   p.UpdatedAt.UTC(),
+	})
+	if err != nil {
+		return User{}, mapNotFound(err)
+	}
+	return postgresUserToDomain(row), nil
+}
+
+func (s *postgresStore) DeleteUser(ctx context.Context, id string) (bool, error) {
+	n, err := s.q.DeleteUser(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
 func (s *postgresStore) GetAppSetting(ctx context.Context, name string) (string, error) {
 	value, err := s.q.GetAppSetting(ctx, name)
 	if err != nil {

@@ -41,6 +41,8 @@ ICONS = [
     "locate-fixed",
     "users",
     "user-plus",
+    "shield-user",
+    "key-round",
 ]
 
 

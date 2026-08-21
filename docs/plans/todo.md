@@ -189,21 +189,6 @@ together rather than bolting a column onto an existing table.
   visibility column plus a predicate in `ListTripFiles`/`ListItemFiles`.
   The interesting parts are who counts as the owner of a file and what a public
   share link (see above) is allowed to expose.
-- **Administrative tooling.** (From the user's notes.) Real multi-user use
-  needs accounts to be manageable, which today they are not: registration is
-  open by default (`CARAVEL_OPEN_SIGNUP`, `internal/config/config.go`) and
-  never closes, and there is no notion of an administrator anywhere in
-  `internal/`, `cmd/` or `web/`. Wanted:
-    - **Open registration optional, and off by default** once the first user
-      has registered or an OIDC provider is configured — the first account
-      bootstraps the instance, everyone after that is created deliberately.
-    - **An admin flag on users.** Note this is *account* administration, not
-      data access: an admin should get no automatic view of other people's
-      trips, or "personal" anything stops meaning what it says.
-    - **An admin user-management view**: add users, remove users, reset
-      passwords. `auth.SetPassword` (`internal/auth/auth.go`) is already
-      exactly the reset primitive — it skips the current-password check and
-      keeps sessions — and is currently reachable only from the seeder.
 - **Expenses / cost-splitting.** (Stage 01.) A new `expenses` table referencing
   `trip_id` and optionally `item_id`, with no changes to existing tables. The
   *splitting* half only means anything once several people share a trip, which
@@ -402,6 +387,23 @@ step with itself.
   is invisible precisely because the suite stays green. Worth a note in
   `CLAUDE.md`'s verification guidance, or a habit of break-checking any test
   whose expectation is computed rather than written down.
+
+- **An admin password reset shows the new password in a plain text field.**
+  (Stage 14 Milestone 6.) The reset uses `promptDialog`, whose input is
+  `type="text"`, so the temporary password the admin types is visible on screen.
+  Arguably correct — they have to read it back to the person they are resetting
+  it for — but it is a decision that was made by reusing the nearest component
+  rather than on purpose. Worth either an explicit `type` option on
+  `promptDialog` or a note in the copy saying the visibility is deliberate.
+
+- **The admin screen reports row-level outcomes in the create form's error
+  line.** (Stage 14 Milestone 6.) Promote, reset and delete all report success
+  and failure into `.admin-new-user__error`, which lives under the *next* card.
+  It works and it is scrolled into view, but the message appears a long way
+  from the row that caused it, and a success ("Password for X has been reset")
+  rendered in an element styled as an error callout is the wrong shape. Wants
+  either a per-row status line or one status region belonging to the accounts
+  card rather than to the form below it.
 
 - **Three near-identical input rules in `base.css`, with drift.**
   (Stage 14 Milestone 3 follow-up.) `.auth-form`, `.trip-form`/`.password-form`

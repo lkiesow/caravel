@@ -201,9 +201,15 @@ for (const locale of ["en", "de"]) {
 // Nothing here clicks Log out: it would end the session the whole suite shares
 // from auth.setup.js. Everything up to the click is covered — the roles, both
 // locales, the avatar, and that the old markup really is gone.
+//
+// Three items, not two: the seeded demo user is an administrator (Stage 14
+// Milestone 6), so the menu carries Administration between Settings and Log
+// out. That the list is spelled out here rather than read from user-menu.js is
+// what turned the seeder change into a failure instead of a silent pass — worth
+// keeping in mind before "fixing" this by generating it.
 const USER_MENU_LABELS = {
-  en: { menu: "User menu", items: ["Account settings", "Log out"] },
-  de: { menu: "Benutzermenü", items: ["Kontoeinstellungen", "Abmelden"] },
+  en: { menu: "User menu", items: ["Account settings", "Administration", "Log out"] },
+  de: { menu: "Benutzermenü", items: ["Kontoeinstellungen", "Verwaltung", "Abmelden"] },
 };
 
 for (const locale of ["en", "de"]) {

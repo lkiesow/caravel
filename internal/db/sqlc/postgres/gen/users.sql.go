@@ -11,6 +11,21 @@ import (
 	"time"
 )
 
+const countAdmins = `-- name: CountAdmins :one
+SELECT COUNT(*) FROM users WHERE is_admin = $1
+`
+
+// Compared against a bound parameter rather than against a literal: the column
+// is INTEGER in sqlite and BOOLEAN in postgres, so the comparison value has to
+// come from the store layer, which is the only place that knows which dialect
+// it is talking to.
+func (q *Queries) CountAdmins(ctx context.Context, flag bool) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countAdmins, flag)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countUsers = `-- name: CountUsers :one
 SELECT COUNT(*) FROM users
 `
@@ -64,6 +79,18 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 	return i, err
 }
 
+const deleteUser = `-- name: DeleteUser :execrows
+DELETE FROM users WHERE id = $1
+`
+
+func (q *Queries) DeleteUser(ctx context.Context, id string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteUser, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const getUserByID = `-- name: GetUserByID :one
 SELECT id, username, display_name, email, created_at, updated_at, is_admin FROM users WHERE id = $1
 `
@@ -100,6 +127,56 @@ func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User,
 		&i.IsAdmin,
 	)
 	return i, err
+}
+
+const listUsers = `-- name: ListUsers :many
+SELECT u.id, u.username, u.display_name, u.is_admin, u.created_at,
+       (SELECT COUNT(*) FROM trips t WHERE t.owner_id = u.id) AS trip_count
+FROM users u
+ORDER BY u.username
+`
+
+type ListUsersRow struct {
+	ID          string    `json:"id"`
+	Username    string    `json:"username"`
+	DisplayName string    `json:"display_name"`
+	IsAdmin     bool      `json:"is_admin"`
+	CreatedAt   time.Time `json:"created_at"`
+	TripCount   int64     `json:"trip_count"`
+}
+
+// The admin user list. The trip count comes from a correlated subquery rather
+// than a LEFT JOIN with GROUP BY: it cannot duplicate a user row, and it counts
+// only trips they own -- trips shared with them belong to someone else and
+// would be misleading in a what-will-deleting-this-account-destroy column.
+func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
+	rows, err := q.db.QueryContext(ctx, listUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListUsersRow
+	for rows.Next() {
+		var i ListUsersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Username,
+			&i.DisplayName,
+			&i.IsAdmin,
+			&i.CreatedAt,
+			&i.TripCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const searchUsers = `-- name: SearchUsers :many
@@ -172,4 +249,44 @@ func (q *Queries) SearchUsers(ctx context.Context, arg SearchUsersParams) ([]Sea
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateUser = `-- name: UpdateUser :one
+UPDATE users
+SET display_name = $1,
+    is_admin = $2,
+    updated_at = $3
+WHERE id = $4
+RETURNING id, username, display_name, email, created_at, updated_at, is_admin
+`
+
+type UpdateUserParams struct {
+	DisplayName string    `json:"display_name"`
+	IsAdmin     bool      `json:"is_admin"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	ID          string    `json:"id"`
+}
+
+// Username is deliberately not updatable. It is the handle people are added to
+// trips by, so renaming one silently breaks the mental model of everyone who
+// knows them by it, and there is no rename flow anywhere in the UI to make that
+// visible.
+func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error) {
+	row := q.db.QueryRowContext(ctx, updateUser,
+		arg.DisplayName,
+		arg.IsAdmin,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.DisplayName,
+		&i.Email,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.IsAdmin,
+	)
+	return i, err
 }

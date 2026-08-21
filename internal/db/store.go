@@ -23,6 +23,13 @@ type CreateUserParams struct {
 	UpdatedAt   time.Time
 }
 
+type UpdateUserParams struct {
+	ID          string
+	DisplayName string
+	IsAdmin     bool
+	UpdatedAt   time.Time
+}
+
 type CreateAuthIdentityParams struct {
 	ID             string
 	UserID         string
@@ -182,6 +189,17 @@ type Store interface {
 	// account on the instance? That decides both whether it becomes an admin
 	// and whether a closed registration accepts it anyway.
 	CountUsers(ctx context.Context) (int64, error)
+	// ListUsers is the admin screen's list, ordered by username.
+	ListUsers(ctx context.Context) ([]UserWithTripCount, error)
+	// CountAdmins backs the last-admin guard rails: an instance must never end
+	// up with nobody who can administer it.
+	CountAdmins(ctx context.Context) (int64, error)
+	// UpdateUser changes a user's display name and admin flag. Username is not
+	// updatable on purpose — see the query.
+	UpdateUser(ctx context.Context, p UpdateUserParams) (User, error)
+	// DeleteUser reports whether a user was actually removed. Their trips,
+	// sessions, identities and memberships go with them by cascade.
+	DeleteUser(ctx context.Context, id string) (bool, error)
 
 	// Instance settings. GetAppSetting returns ErrNotFound for an unset name,
 	// so callers decide their own default rather than being handed a zero

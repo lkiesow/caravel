@@ -31,10 +31,15 @@ export function renderUserMenu(container, user, { onLogout }) {
     // in. Settings leads because it is the one you might use twice.
     items: [
       { value: "settings", label: t("settings.title"), iconName: "settings", action: true },
+      // Only for an admin, and only as a convenience: the page re-checks and
+      // the server checks again on every /api/admin route. A menu item is not
+      // a permission.
+      ...(user.is_admin ? [{ value: "admin", label: t("admin.title"), iconName: "shield-user", action: true }] : []),
       { value: "logout", label: t("auth.logout"), iconName: "log-out", action: true },
     ],
     onSelect: (value) => {
       if (value === "settings") navigate("/settings");
+      if (value === "admin") navigate("/admin");
       if (value === "logout") onLogout?.();
     },
   });

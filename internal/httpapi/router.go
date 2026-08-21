@@ -128,6 +128,19 @@ func (s *Server) buildRouter() chi.Router {
 		// an external service's quota, so it is not for anonymous callers.
 		r.With(auth.RequireAuth, s.rateLimitGeocode).Get("/geocode", s.handleGeocode)
 
+		// Account administration. requireAdmin sits inside RequireAuth: an
+		// anonymous caller gets 401 and a logged-in non-admin 403, which are
+		// genuinely different situations for a client to react to.
+		r.Route("/admin", func(r chi.Router) {
+			r.Use(auth.RequireAuth, requireAdmin)
+			r.Get("/users", s.handleAdminListUsers)
+			r.Post("/users", s.handleAdminCreateUser)
+			r.Patch("/users/{userId}", s.handleAdminUpdateUser)
+			r.Post("/users/{userId}/password", s.handleAdminResetPassword)
+			r.Delete("/users/{userId}", s.handleAdminDeleteUser)
+			r.Put("/settings/open-signup", s.handleAdminSetOpenSignup)
+		})
+
 		r.Route("/trips", func(r chi.Router) {
 			r.Use(auth.RequireAuth)
 			r.Get("/", s.handleListTrips)

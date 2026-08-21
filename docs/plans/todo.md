@@ -170,18 +170,6 @@ together rather than bolting a column onto an existing table.
   visibility column plus a predicate in `ListTripFiles`/`ListItemFiles`.
   The interesting parts are who counts as the owner of a file and what a public
   share link (see above) is allowed to expose.
-- **Per-visibility files, on the same model as the checklists above.** (From the
-  user's notes.) The motivating case is a private one: uploading an identity card
-  or a boarding pass to a shared trip without everyone else on it seeing the
-  file. So this is not merely symmetry with checklists — for documents, "personal"
-  is the *default* people will expect for anything with their own details on it,
-  which makes the default itself a design question rather than a column value.
-  Same dependency: it wants designing with the roles above, not bolted on
-  afterwards. Note the storage side is already indifferent — every document row
-  carries `trip_id` and an optional `item_id` and nothing else, so a visibility
-  column plus a filter in `ListTripFiles`/`ListItemFiles` is the shape,
-  with the interesting work being who counts as the author and what a shared link
-  (see above) is allowed to expose.
 - **Expenses / cost-splitting.** (Stage 01.) A new `expenses` table referencing
   `trip_id` and optionally `item_id`, with no changes to existing tables. The
   *splitting* half only means anything once several people share a trip, which
@@ -274,7 +262,13 @@ step with itself.
   an injected `window.fetch` wrapper (`tests/ui/helpers/scenarios.js`) rather
   than anything the app exposes. A `data-loading` attribute on `#app`, or a
   "ready" event, would let the suite wait on the app's own state instead of on
-  monkey-patched plumbing.
+  monkey-patched plumbing. One component now does exactly that on its own
+  account: Stage 13 Milestone 3 gave `leaflet-map.js` a `data-ready` attribute,
+  set once the map has laid out and cleared while it rebuilds, and `gotoRoute`
+  waits for every `<leaflet-map>` to carry it — Leaflet is lazily imported
+  *after* a route's fetches settle, so "fetches quiet plus two frames" did not
+  mean the map was up. That is the shape the app-wide version wants; it is one
+  component rather than the shell.
 - **The UI sweeps only measure what the seed actually renders.** Two 22px tap
   targets — a location's external-link row and its "View on Google Maps" link —
   survived every sweep until Stage 09 Milestone 6, because the `full` scenario
@@ -334,6 +328,19 @@ step with itself.
   small — but if the map becomes a primary interaction surface on phones, the
   zoom buttons are worth revisiting. (The legend, which *is* ours, was fixed in
   that milestone via `leaflet-map.js`'s own shadow styles.)
+- **`scripts/i18n.py`'s dynamic-prefix rule only fires inside a `t()` call.**
+  (Stage 13 Milestone 8.) `DYNAMIC_CALL_RE` matches a template literal as the
+  argument of `t(`, so a key composed anywhere else is invisible: Milestone 6's
+  `locateErrorKey()` returned `` `map.locate.${reason}` `` from a helper, and
+  all five real reason keys were reported as unused. They were not deleted —
+  the report's own warning did its job — but the next person might, and the
+  fix that milestone applied (spell the keys out in a lookup object, which the
+  bare-string pass *does* see) is a workaround at the call site rather than in
+  the tool. Teaching the scan to follow a function that returns a composed key
+  is hard; recognising a template literal assigned to a `const` whose name
+  ends in `Key`, or an explicit allowlist comment, would cover the realistic
+  cases.
+
 - **`scripts/i18n.py unused` is not wired into `make ci`.** It has a `--strict`
   flag that exits non-zero, but 9 keys (the `trip.tabs.*` and `item.category.*`
   families) are only reachable via runtime-composed keys and so are unprovable

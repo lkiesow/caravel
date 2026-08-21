@@ -941,3 +941,136 @@ test.describe("distance filter when the position cannot be had", () => {
     await expect(page.locator(".locations-filter-slot .menu")).toHaveCount(1);
   });
 });
+
+
+// Milestone 8 (sweep-up). German at 324x756 over everything this stage added.
+//
+// German is the longer language and these are the stage's own surfaces, so
+// this is the case most likely to overflow a box or shrink a control. Several
+// of the lines involved are invisible until something happens - a search
+// returns nothing, locating fails, a radius hides something - so they are
+// forced visible here rather than left unmeasured. That is the same trick
+// settings.spec.js uses on its success line, and it exists because a sweep
+// only measures what is actually rendered.
+const LONGEST_LOCATE_MESSAGE_DE =
+  "Für den Standort ist eine sichere Verbindung nötig. Diese Seite wird über einfaches HTTP ausgeliefert, daher gibt der Browser ihn nicht heraus.";
+
+// Everything visible must fit, and every control must stay tappable.
+async function assertFitsAndTappable(page, root) {
+  const result = await page.evaluate((rootSelector) => {
+    const scope = document.querySelector(rootSelector);
+    const wide = [];
+    const small = [];
+    const walk = (node) => {
+      for (const el of node.querySelectorAll("*")) {
+        const style = getComputedStyle(el);
+        if (style.display === "none" || style.visibility === "hidden") continue;
+        // Leaflet's own markup, skipped for both checks exactly as
+        // routes.spec.js skips it. Its tiles and panes are *supposed* to
+        // extend past the map - .leaflet-container and .map-wrap clip them -
+        // so measuring their raw boxes reports the library's internals as our
+        // overflow. Measuring the first version of this test without the
+        // exclusion is how that got noticed: two leaflet-tile images.
+        if (el.closest('[class*="leaflet-"]')) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) continue;
+        if (r.right > window.innerWidth + 1) wide.push(`${el.localName}.${el.className}`);
+        const isControl = ["button", "a", "input", "select", "textarea"].includes(el.localName);
+        // A native checkbox/radio is ~14px and its label is the real target.
+        const nativeTick = el.localName === "input" && (el.type === "checkbox" || el.type === "radio");
+        if (isControl && !nativeTick && (r.height < 44 || r.width < 44)) {
+          small.push(`${el.localName}.${el.className} ${Math.round(r.width)}x${Math.round(r.height)}`);
+        }
+        if (el.shadowRoot) walk(el.shadowRoot);
+      }
+    };
+    walk(scope);
+    return { wide, small, docOverflow: document.documentElement.scrollWidth - window.innerWidth };
+  }, root);
+
+  expect(result.docOverflow, "document overflow in px").toBeLessThanOrEqual(0);
+  expect(result.wide, "elements past the right edge").toEqual([]);
+  expect(result.small, "controls under 44px").toEqual([]);
+}
+
+test.describe("Stage 13's surfaces in German at 324px", () => {
+  test.use({ locale: "de-DE", viewport: MOBILE });
+
+  test("the location editor: picker, address search and its results", async ({ page }) => {
+    await page.route("**/api/geocode?*", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        // A long real display_name, which is what a formatted address is.
+        body: JSON.stringify([
+          { display_name: "Kirkjufell, Grundarfjarðarbær, Vesturland, 350, Ísland", lat: 64.9399, lng: -23.3075 },
+          { display_name: "Reykjavík, Höfuðborgarsvæðið, Ísland", lat: 64.1466, lng: -21.9426 },
+        ]),
+      })
+    );
+    await login(page);
+    const res = await page.request.post("/api/trips", { data: { title: "UI suite: de sweep" } });
+    const tripId = (await res.json()).id;
+    try {
+      await gotoRoute(page, `/trips/${tripId}/locations/new`);
+      await page.waitForFunction(() => document.querySelector(".location-form__map")?.hasAttribute("data-ready"));
+
+      await page.locator('.location-search input[name="placeQuery"]').fill("Kirkjufell");
+      await page.locator('[data-action="search-place"]').click();
+      await expect(page.locator(".location-search__result")).toHaveCount(2);
+
+      // ...and the failure line, which no successful search ever shows.
+      await page.locator(".location-search__status").evaluate((el, text) => {
+        el.hidden = false;
+        el.textContent = text;
+      }, "Die Adresssuche ist gerade nicht verfügbar. Du kannst den Punkt weiterhin auf der Karte setzen.");
+
+      // The picker's own locate line, at its longest.
+      await page.evaluate((text) => {
+        const status = document.querySelector(".location-form__map").shadowRoot.querySelector(".locate-status");
+        status.hidden = false;
+        status.textContent = text;
+      }, LONGEST_LOCATE_MESSAGE_DE);
+
+      await assertFitsAndTappable(page, ".location-editor");
+    } finally {
+      await page.request.delete(`/api/trips/${tripId}`);
+    }
+  });
+
+  test("the trip map: legend, locate control and its longest message", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+    await page.evaluate((text) => {
+      const status = document.querySelector("leaflet-map").shadowRoot.querySelector(".locate-status");
+      status.hidden = false;
+      status.textContent = text;
+    }, LONGEST_LOCATE_MESSAGE_DE);
+
+    await assertFitsAndTappable(page, ".trip-detail");
+  });
+
+  test("the locations toolbar: three controls, the distance menu and its notes", async ({ page }) => {
+    await login(page);
+    const routes = await buildRoutes(page);
+    await gotoRoute(page, routes.find((r) => r.label === "trip locations").path);
+
+    // Open the dropdown so its rows are measured too - "Beliebige Entfernung"
+    // is the longest label in it.
+    await page.locator('.locations-distance-slot [data-action="toggle"]').click();
+    await expect(page.locator(".locations-distance-slot .menu__dropdown")).toBeVisible();
+
+    await page.evaluate(() => {
+      for (const [sel, text] of [
+        [".locations-distance-status", "Die Standortermittlung hat zu lange gedauert. Falls dein Browser nach Erlaubnis gefragt hat, beantworte das zuerst und versuche es dann erneut."],
+        [".locations-distance-note", "3 Orte ohne Koordinaten werden weiterhin angezeigt."],
+      ]) {
+        const el = document.querySelector(sel);
+        el.hidden = false;
+        el.textContent = text;
+      }
+    });
+
+    await assertFitsAndTappable(page, ".items-tab");
+  });
+});

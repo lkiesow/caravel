@@ -715,6 +715,64 @@ icon buttons inside 292px.
   "becomes a concern if" to "is now a concern, because", since the feature now
   exists; add whatever this stage defers.
 
+**Done, and three of the four checks found something.**
+
+- **German at 324×756 is a spec, not a manual pass**, following Stage 12
+  Milestone 6's precedent: three tests in `map.spec.js` covering the editor
+  (search row, a populated result list, the failure line and the picker's
+  locate line), the trip map (legend, locate control, its longest message) and
+  the locations toolbar (three controls, the dropdown open, both notes). Lines
+  that are invisible until something goes wrong are forced visible first —
+  a sweep only measures what is actually rendered. Checked for vacuousness:
+  forcing `white-space: nowrap` on a result row fails the editor test and only
+  that one.
+  The first version of the helper *did* fail, on two `leaflet-tile` images.
+  Correctly so on its own terms and wrongly in substance: Leaflet's tiles are
+  meant to extend past the map and the container clips them, which is why
+  `routes.spec.js` skips `leaflet-*` for both its checks. Mine skipped it only
+  for tap targets. Now skipped for both, as it should have been.
+- **`scripts/i18n.py unused` reports clean** — but only after a fix, and the
+  finding matters more than the result. It listed **five real keys as
+  unused**: `map.locate.denied`, `.unavailable`, `.timeout`, `.insecure`,
+  `.unsupported`. Milestone 6's `locateErrorKey()` composed them as
+  `` `map.locate.${reason}` ``, and the scan's dynamic-prefix rule only fires
+  for a template literal *inside* a `t()` call. Deleting them on that report
+  would have silently replaced five messages with raw key strings. The keys are
+  now spelled out in a lookup object, which the scan's bare-string pass does
+  see and which is better code anyway — a new reason cannot be added without a
+  string, and the fallback is explicit. The tool's gap is recorded in
+  `todo.md`; this is a workaround at the call site, not a fix in the scan.
+- **Contrast** via `tests/ui/contrast.js --min 4.5` on the map tab and the
+  location editor in both schemes: worst **7.03:1** light and **5.81:1** dark
+  (`.location-form__pick-hint`), with the locate control at 16.12/14.27. The
+  measurement also turned up a phantom token: `.location-search__result:hover`
+  said `var(--color-surface-muted, rgba(127,127,127,.08))`, and
+  `--color-surface-muted` **exists nowhere in `base.css`** — so the `var()`
+  read as though there were a token for it while always falling through to a
+  translucent grey, which is exactly the case that file's own header warns
+  produces meaningless contrast readings. Now `--color-bg`, defined in both
+  themes, which is the inverse of what `.menu__dropdown`'s rows do.
+  Stated rather than glossed: the result rows and the three status lines cannot
+  be reached by the tool at all, since they only exist after an interaction.
+  They are covered by proxy — the rows use `--color-text` on the card, the same
+  pair the measured Search button uses, and the status lines use
+  `--color-text-muted` on the card, the same pair as the measured pick hint —
+  and the standing `todo.md` entry about interaction-only elements is where
+  that gap lives.
+- **`todo.md`, both directions.** The four entries this stage implemented are
+  gone (the mobile map bug, click-to-pick, address search, device location +
+  distance filter), the HTTPS entry now says the concern is real rather than
+  hypothetical, and five new entries were added across the stage: the
+  coarse-pointer emulation limit, the once-seen headings failure,
+  `NewServer`'s eight positional parameters, reverse geocoding, and the
+  `i18n.py` gap above. One thing not from this stage also went: the
+  **per-visibility files entry was duplicated**, two near-identical copies of
+  the same note, which a list whose whole purpose is being accurate should not
+  carry.
+
+Verified: `make ci` green (176 keys in sync); `make test-ui` green, **59
+tests**, three consecutive full runs.
+
 ---
 
 ## Build order

@@ -1137,9 +1137,18 @@ button {
   cursor: pointer;
 }
 
+/* --color-bg, not a new token and not a translucent grey. The first version
+   of this said `var(--color-surface-muted, rgba(127,127,127,.08))`, and
+   --color-surface-muted does not exist anywhere in this file - so the var()
+   read as though there were a token for it while always falling through to a
+   translucent fallback, which is precisely the case tests/ui/contrast.js
+   warns produces meaningless contrast readings. These rows sit on an
+   .editor-card, which is --color-surface, so --color-bg is the available
+   contrast in the other direction - the inverse of what .menu__dropdown's
+   rows do on a --color-bg popup. Both themes define both tokens. */
 .location-search__result:hover,
 .location-search__result:focus-visible {
-  background: var(--color-surface-muted, rgba(127, 127, 127, 0.08));
+  background: var(--color-bg);
 }
 
 .item-form input,

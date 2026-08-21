@@ -11,9 +11,24 @@ export const LOCATE_UNAVAILABLE = "unavailable";
 export const LOCATE_TIMEOUT = "timeout";
 
 // i18n key for a reason, so a caller renders a message without a switch of
-// its own and a new reason cannot be added without a string to go with it.
+// its own.
+//
+// Spelled out rather than composed as `map.locate.${reason}`: a new reason
+// then cannot be added without a string to go with it, the fallback is
+// explicit rather than an accidental miss, and - the practical reason -
+// scripts/i18n.py's unused-key scan can see these. Its dynamic-prefix rule
+// only fires for a template literal *inside* a t() call, so composing the key
+// in this module made all five look unreferenced.
+const LOCATE_ERROR_KEYS = {
+  [LOCATE_UNSUPPORTED]: "map.locate.unsupported",
+  [LOCATE_INSECURE]: "map.locate.insecure",
+  [LOCATE_DENIED]: "map.locate.denied",
+  [LOCATE_UNAVAILABLE]: "map.locate.unavailable",
+  [LOCATE_TIMEOUT]: "map.locate.timeout",
+};
+
 export function locateErrorKey(reason) {
-  return `map.locate.${reason}`;
+  return LOCATE_ERROR_KEYS[reason] ?? LOCATE_ERROR_KEYS[LOCATE_UNAVAILABLE];
 }
 
 // Why the device's position cannot be asked for at all, or null if it can.

@@ -1062,6 +1062,20 @@ button {
   display: none;
 }
 
+/* The coordinate picker and the line introducing it. Both are full-width
+   flex items so they take their own rows under the fields they belong to;
+   the map's own height comes from :host([pick]) inside the component. */
+.location-form__pick-hint {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.location-form__map {
+  flex: 1 1 100%;
+}
+
 .item-form input,
 .item-form select,
 .item-form textarea {

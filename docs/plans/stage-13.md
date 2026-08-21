@@ -362,6 +362,44 @@ delete it in `afterEach` — that opens a new location, clicks the picker map,
 asserts both number inputs became non-empty, saves, and asserts the persisted
 item's `location.lat`/`lng` match what the inputs showed.
 
+**Done.** The Location card keeps its two number inputs — pasting coordinates
+had to stay possible — and gains a `<leaflet-map pick>` under them with a
+`location.form.pickHint` line (158 keys in sync). `readLocationForm()` is
+untouched: it still reads the fields and nothing else, so the map cannot
+contribute to a save except by writing into them first. That is what makes the
+fields authoritative rather than there being two copies of the value.
+
+One deviation, and it removes a race rather than being cosmetic: the initial
+coordinates are rendered **onto the element in the page template**, not pushed
+from `renderLocationForm()` after mount. Pushing them afterwards would have the
+map open on the world view and then jump to the point, and would also collide
+with the component's own `connectedCallback` load — survivable, since
+`leaflet-map.js`'s generation counter discards the losing render, but pointless
+when the attribute can simply be there from the start. There is a test for the
+resulting behaviour ("opens on its own point, not the world view").
+
+The fields→map direction removes the attribute for a blank field rather than
+setting an empty one, matching `readCoordinate()` on the other side: "no
+coordinate" and "the coordinate 0" have to stay different answers. No loop
+between the two directions — setting the attributes only moves the marker, and
+`location-picked` is only ever emitted by a click or a drag.
+
+Verified: `make ci` green; `make test-ui` green, 43 tests (was 40), three
+consecutive full runs. Three new tests, in the mutating-flow shape
+`files.spec.js` established (own trip created in `beforeEach`, deleted in
+`afterEach`): a map click filling both fields and the **saved item** carrying
+those exact coordinates, typing moving the marker and clearing removing it, and
+an existing location opening zoomed on its own point. `scripts/without.sh`
+fails all three on the pre-change page.
+
+Two things worth recording. The persistence assertion first read
+`/trips/{id}/items`, which returns a summary **without** the nested location —
+so it read `undefined.lat` rather than a wrong coordinate; it now reads the
+item's own route, which is where `location` actually lives. And the editor's
+two routes were already in the sweeps, so the picker has been swept from this
+milestone on: measured in German at 324×756, no document overflow, the hint
+wrapping to three lines inside 258px and the map 258×320.
+
 ---
 
 ## 5. Address search, through a backend geocode proxy

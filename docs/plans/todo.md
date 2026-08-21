@@ -73,13 +73,14 @@ Direction already agreed or obviously wanted; none of it built.
   needs no backend change — but it does need a second control next to the
   existing category menu, and a decision about what to do with locations that
   have no coordinates (hide, or always show).
-- **Click-to-pick coordinates on a map.** (Stage 06.) Both create and edit take
-  latitude/longitude as raw number inputs — fine for pasting from elsewhere,
-  unpleasant on a phone. `leaflet-map.js` is read-only (attribute-driven, no
-  click handler), so a picker means teaching it a pick mode (click or drag a
-  marker, feed the coordinates back to the form), ideally with an address search
-  via a geocoder. Stage 09 Milestone 2 removed the split-save trap that made
-  hand-entry actively lossy, so this is now purely about convenience.
+- **Address search for the coordinate picker.** (Stage 06; the picking half was
+  built in Stage 13 Milestones 3–4.) The location editor now has a
+  `<leaflet-map pick>` under its coordinate fields — click to place, drag to
+  adjust, two-way bound to the number inputs, which stay authoritative. What
+  the original entry also asked for and is still missing is finding a place by
+  *name*: typing an address instead of knowing roughly where to click. That is
+  a geocoder, and the decision already taken is Nominatim behind our own
+  endpoint rather than called from the browser.
 - **Search, filter and sort on the trips list.** Confirmed absent:
   `trips-page.js` has no search input, filter or sort control, and
   `ListTripsByOwner` (`internal/db/sqlc/queries/trips.sql`) has a fixed

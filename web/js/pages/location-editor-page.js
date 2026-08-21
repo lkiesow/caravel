@@ -8,6 +8,7 @@ import { icon } from "../icon.js";
 import { confirmDialog } from "../components/dialog.js";
 import { renderLoading } from "../components/loading.js";
 import { renderNotFoundPage } from "./not-found-page.js";
+import "../components/leaflet-map.js";
 
 // Both modes render the same cards, in the same order - Basic info, Cover
 // photo, Location, Links, Dates, Files - matching the read view's
@@ -98,6 +99,12 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
               <span data-i18n="location.form.showOnMap"></span>
             </label>
             <p class="location-form__hint" data-i18n="location.form.showOnMapHint" hidden></p>
+            <p class="location-form__pick-hint" data-i18n="location.form.pickHint"></p>
+            <leaflet-map pick class="location-form__map"${
+              item?.location?.lat != null && item?.location?.lng != null
+                ? ` lat="${escapeAttr(item.location.lat)}" lng="${escapeAttr(item.location.lng)}"`
+                : ""
+            }></leaflet-map>
           </form>
         </div>
 
@@ -310,9 +317,45 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       const hasCoordinates = Boolean(form.lat.value && form.lng.value);
       hint.hidden = hasCoordinates || !form.showOnMap.checked;
     };
-    form.lat.addEventListener("input", syncHint);
-    form.lng.addEventListener("input", syncHint);
     form.showOnMap.addEventListener("change", syncHint);
+
+    // The picker and the number fields are two views of one value, and the
+    // fields are the authoritative one: readLocationForm() still reads them
+    // and nothing else, so the map cannot contribute to a save except by
+    // writing here first.
+    //
+    // The initial coordinates are rendered straight onto the element in
+    // render() rather than pushed from here, so an existing location's map
+    // opens on its point instead of on the world view and then jumping.
+    const picker = container.querySelector(".location-form__map");
+
+    // Fields -> map. A blank field removes the attribute rather than setting
+    // an empty one, because "no coordinate" and "the coordinate 0" have to
+    // stay distinguishable (leaflet-map.js's readCoordinate makes the same
+    // distinction on the other side).
+    const syncMapFromFields = () => {
+      for (const name of ["lat", "lng"]) {
+        const value = form[name].value.trim();
+        if (value === "") picker.removeAttribute(name);
+        else picker.setAttribute(name, value);
+      }
+    };
+
+    // Map -> fields. No loop: setting the attributes above only moves the
+    // marker, and location-picked is only ever emitted by a click or a drag.
+    picker.addEventListener("location-picked", (e) => {
+      form.lat.value = e.detail.lat;
+      form.lng.value = e.detail.lng;
+      syncMapFromFields();
+      syncHint();
+    });
+
+    for (const name of ["lat", "lng"]) {
+      form[name].addEventListener("input", () => {
+        syncHint();
+        syncMapFromFields();
+      });
+    }
     syncHint();
     // The card has no button of its own any more - these values are read
     // back by save(). Enter in a coordinate field saves the page, via the

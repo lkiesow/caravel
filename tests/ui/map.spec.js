@@ -254,10 +254,10 @@ async function mountPicker(page, attrs = {}) {
 
 // A real DOM click at a point inside the map, which is what Leaflet turns into
 // a latlng. Going through map.fire("click") instead would test nothing.
-async function clickPickerAt(page, fractionX, fractionY) {
+async function clickPickerAt(page, fractionX, fractionY, selector = "[data-test-picker]") {
   await page.evaluate(
-    ({ fx, fy }) => {
-      const host = document.querySelector("[data-test-picker]");
+    ({ fx, fy, sel }) => {
+      const host = document.querySelector(sel);
       const mapEl = host.shadowRoot.getElementById("map");
       const r = mapEl.getBoundingClientRect();
       const clientX = r.left + r.width * fx;
@@ -267,7 +267,7 @@ async function clickPickerAt(page, fractionX, fractionY) {
         mapEl.dispatchEvent(new MouseEvent(type, opts));
       }
     },
-    { fx: fractionX, fy: fractionY }
+    { fx: fractionX, fy: fractionY, sel: selector }
   );
 }
 
@@ -419,5 +419,117 @@ test.describe("pick mode", () => {
     // are none; a picker has neither concept.
     expect(chrome.legend, "a picker has no categories to filter").toBe(0);
     expect(chrome.empty, "a picker is not an empty trip map").toBe(0);
+  });
+});
+
+
+// Milestone 4. The picker in the location editor - the first page to mount
+// pick mode, and the reason it exists. A mutating flow, so it takes the
+// isolation route files.spec.js and settings.spec.js established: its own
+// trip, created and deleted around each test, so the shared seed is never
+// touched.
+test.describe("the location editor's coordinate picker", () => {
+  let tripId;
+
+  test.beforeEach(async ({ page }) => {
+    await login(page);
+    const res = await page.request.post("/api/trips", { data: { title: "UI suite: map picker spec" } });
+    expect(res.status(), "create the spec's own trip").toBe(201);
+    tripId = (await res.json()).id;
+  });
+
+  test.afterEach(async ({ page }) => {
+    if (tripId) await page.request.delete(`/api/trips/${tripId}`);
+    tripId = null;
+  });
+
+  async function openNewLocation(page) {
+    await gotoRoute(page, `/trips/${tripId}/locations/new`);
+    await page.waitForFunction(() => document.querySelector(".location-form__map")?.hasAttribute("data-ready"));
+  }
+
+  test("a click fills both coordinate fields, and Save persists them", async ({ page }) => {
+    await openNewLocation(page);
+
+    const lat = page.locator('.location-form input[name="lat"]');
+    const lng = page.locator('.location-form input[name="lng"]');
+    await expect(lat, "a new location starts with no coordinates").toHaveValue("");
+    await expect(lng).toHaveValue("");
+
+    // The "Show on map" hint is shown precisely while the box is ticked and
+    // the coordinates are empty, so it doubles as a check that picking on the
+    // map runs the same sync typing does.
+    await expect(page.locator(".location-form__hint")).toBeVisible();
+
+    await page.locator('.item-form input[name="title"]').fill("Picked by map");
+    await clickPickerAt(page, 0.5, 0.4, ".location-form__map");
+
+    await expect(lat, "a map click should fill the latitude field").not.toHaveValue("");
+    await expect(lng, "a map click should fill the longitude field").not.toHaveValue("");
+    await expect(page.locator(".location-form__hint"), "the coordinates are no longer missing").toBeHidden();
+
+    const typed = { lat: await lat.inputValue(), lng: await lng.inputValue() };
+
+    await page.locator('[data-action="save"]').click();
+    await page.waitForFunction(() => !window.location.pathname.endsWith("/new"));
+
+    // The fields are the source of truth, so what the server stored has to
+    // match what they showed - not merely "something was saved". The list
+    // endpoint returns a summary with no nested location, so this reads the
+    // item's own route.
+    const items = await (await page.request.get(`/api/trips/${tripId}/items`)).json();
+    expect(items.length, "the location should have been created").toBe(1);
+    const detail = await (await page.request.get(`/api/items/${items[0].id}`)).json();
+    expect(detail.location, "the picked coordinates should have been saved with it").toBeTruthy();
+    expect(detail.location.lat).toBeCloseTo(Number(typed.lat), 6);
+    expect(detail.location.lng).toBeCloseTo(Number(typed.lng), 6);
+  });
+
+  test("typing a coordinate moves the marker, and clearing it removes it", async ({ page }) => {
+    await openNewLocation(page);
+
+    const picker = page.locator(".location-form__map");
+    await page.locator('.location-form input[name="lat"]').fill("48.8584");
+    await page.locator('.location-form input[name="lng"]').fill("2.2945");
+
+    await expect(picker).toHaveAttribute("lat", "48.8584");
+    await expect(picker).toHaveAttribute("lng", "2.2945");
+    await expect
+      .poll(() => page.evaluate(() => document.querySelector(".location-form__map").shadowRoot.querySelectorAll(".leaflet-marker-icon").length))
+      .toBe(1);
+
+    // A cleared field must remove the attribute, not set it blank: "no
+    // coordinate" and "the coordinate 0" are different answers.
+    await page.locator('.location-form input[name="lat"]').fill("");
+    await expect(picker).not.toHaveAttribute("lat", /.*/);
+    await expect
+      .poll(() => page.evaluate(() => document.querySelector(".location-form__map").shadowRoot.querySelectorAll(".leaflet-marker-icon").length))
+      .toBe(0);
+  });
+
+  test("an existing location opens on its own point, not the world view", async ({ page }) => {
+    const created = await page.request.post(`/api/trips/${tripId}/items`, {
+      data: {
+        title: "Already placed",
+        category: "site",
+        location: { lat: 64.9631, lng: -19.0208, address: null },
+      },
+    });
+    expect(created.status(), "create a located item to edit").toBe(201);
+    const itemId = (await created.json()).id;
+
+    await gotoRoute(page, `/trips/${tripId}/locations/${itemId}/edit`);
+    await page.waitForFunction(() => document.querySelector(".location-form__map")?.hasAttribute("data-ready"));
+
+    // Rendered onto the element in the page template rather than pushed after
+    // mount, so the map never shows the world view and then jumps.
+    const view = await page.evaluate(() => {
+      const el = document.querySelector(".location-form__map");
+      const c = el._map.getCenter();
+      return { zoom: el._map.getZoom(), lat: c.lat, lng: c.lng };
+    });
+    expect(view.zoom, "an existing point should open zoomed in, not at world view").toBeGreaterThan(5);
+    expect(view.lat).toBeCloseTo(64.9631, 1);
+    expect(view.lng).toBeCloseTo(-19.0208, 1);
   });
 });

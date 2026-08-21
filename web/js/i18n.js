@@ -1,21 +1,70 @@
 import { eventBus } from "./eventbus.js";
 
-const SUPPORTED_LOCALES = ["en", "de"];
+export const SUPPORTED_LOCALES = ["en", "de"];
+
+// Each language named in its own language, so the settings control is readable
+// to someone who can't read the language the app is currently in. Deliberately
+// not in the locale files: "Deutsch" is not a string to translate. Adding a
+// language is a new entry here plus web/locales/xx.json plus the code in
+// SUPPORTED_LOCALES - nothing in the settings screen changes.
+export const LOCALE_NAMES = { en: "English", de: "Deutsch" };
+
 const FALLBACK_LOCALE = "en";
 const STORAGE_KEY = "caravel.locale";
+
+// The preference value meaning "follow the browser" - the app's default, and a
+// real selectable choice rather than the absence of one (see theme.js, which
+// stores its own "auto" the same way: as no stored value at all).
+export const AUTO_LOCALE = "auto";
 
 let activeLocale = FALLBACK_LOCALE;
 let messages = {};
 
-function detectLocale() {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (stored && SUPPORTED_LOCALES.includes(stored)) return stored;
+// The stored preference: a locale code, or AUTO_LOCALE when nothing is stored.
+// This is what the settings control binds to, and it is *not* getLocale() -
+// "auto" is a preference, never an active locale.
+//
+// localStorage throws in a few real configurations (storage blocked in a
+// private window, some embedded webviews). initI18n is the first thing boot
+// does, so an unguarded read here took the whole app down with it.
+export function getLocalePreference() {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored && SUPPORTED_LOCALES.includes(stored)) return stored;
+  } catch {
+    // Fall through: no stored preference we can see means "follow the browser".
+  }
+  return AUTO_LOCALE;
+}
 
+// What "auto" resolves to right now, from the browser's own language list.
+// Exported because the settings control names it ("Automatic (English)"):
+// a row that resolves to something invisible gives no feedback about what the
+// browser actually asked for.
+export function detectBrowserLocale() {
   for (const tag of navigator.languages || [navigator.language]) {
     const short = tag.slice(0, 2).toLowerCase();
     if (SUPPORTED_LOCALES.includes(short)) return short;
   }
   return FALLBACK_LOCALE;
+}
+
+function detectLocale() {
+  const preference = getLocalePreference();
+  return preference === AUTO_LOCALE ? detectBrowserLocale() : preference;
+}
+
+function storePreference(preference) {
+  try {
+    // "auto" is stored as the absence of a value, so "never chose" and "chose
+    // to follow the browser" are one state. A leftover key would make Auto
+    // silently sticky.
+    if (preference === AUTO_LOCALE) localStorage.removeItem(STORAGE_KEY);
+    else localStorage.setItem(STORAGE_KEY, preference);
+  } catch {
+    // Unpersisted, but still applied for this page load: a control that
+    // visibly does nothing is worse than one that forgets.
+  }
 }
 
 async function loadLocale(locale) {
@@ -31,14 +80,29 @@ export async function initI18n() {
   translatePage(document.body);
 }
 
-export async function setLocale(locale) {
-  if (!SUPPORTED_LOCALES.includes(locale) || locale === activeLocale) return;
-  messages = await loadLocale(locale);
-  activeLocale = locale;
-  localStorage.setItem(STORAGE_KEY, locale);
-  document.documentElement.lang = activeLocale;
-  translatePage(document.body);
-  eventBus.dispatchEvent(new CustomEvent("locale-changed", { detail: { locale } }));
+// Takes a locale code or AUTO_LOCALE. Note what is *not* guarded any more:
+// this used to bail out when the requested locale was already active, which
+// made "back to Auto" unreachable in the common case - an English browser with
+// "English" explicitly chosen resolves to the same active locale, so the
+// preference would never have been cleared.
+export async function setLocale(preference) {
+  if (preference !== AUTO_LOCALE && !SUPPORTED_LOCALES.includes(preference)) return;
+  storePreference(preference);
+
+  const next = preference === AUTO_LOCALE ? detectBrowserLocale() : preference;
+  if (next !== activeLocale) {
+    messages = await loadLocale(next);
+    activeLocale = next;
+    document.documentElement.lang = activeLocale;
+    translatePage(document.body);
+  }
+
+  // Dispatched even when the active locale didn't move: the *preference* did,
+  // and the control showing it has to catch up (Auto and English are two rows
+  // on an English browser, not one).
+  eventBus.dispatchEvent(
+    new CustomEvent("locale-changed", { detail: { locale: activeLocale, preference } })
+  );
 }
 
 export function getLocale() {

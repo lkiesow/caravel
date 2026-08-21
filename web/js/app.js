@@ -1,4 +1,5 @@
 import { initI18n, t, translatePage } from "./i18n.js";
+import { eventBus } from "./eventbus.js";
 import { api } from "./api.js";
 import { renderLoginPage } from "./pages/login-page.js";
 import { renderTripsPage } from "./pages/trips-page.js";
@@ -49,6 +50,11 @@ const routes = [
   { pattern: "*", render: renderNotFoundPage },
 ];
 
+// The listener that re-renders the app when the language changes, kept at module
+// scope so a re-mount (logging out and back in) replaces it instead of stacking
+// a second copy that renders into a detached header.
+let onLocaleChanged = null;
+
 async function renderAuthenticated(user) {
   app.innerHTML = `
     <header class="app-header">
@@ -59,14 +65,26 @@ async function renderAuthenticated(user) {
   `;
   translatePage(app);
 
-  renderUserMenu(app.querySelector(".user-menu-slot"), user, {
-    onLogout: async () => {
-      await api.post("/auth/logout");
-      boot();
-    },
-  });
+  async function onLogout() {
+    await api.post("/auth/logout");
+    boot();
+  }
+
+  renderUserMenu(app.querySelector(".user-menu-slot"), user, { onLogout });
 
   const router = createRouter(routes, document.getElementById("main"));
+
+  // i18n.js's setLocale re-runs translatePage, which only rewrites declarative
+  // data-i18n attributes - every string built through t() in JS (menu labels,
+  // category filters, day headings) would keep the old language until the next
+  // navigation. So a locale change re-renders the header and the current route.
+  if (onLocaleChanged) eventBus.removeEventListener("locale-changed", onLocaleChanged);
+  onLocaleChanged = () => {
+    renderUserMenu(app.querySelector(".user-menu-slot"), user, { onLogout });
+    router.render();
+  };
+  eventBus.addEventListener("locale-changed", onLocaleChanged);
+
   router.render();
 }
 

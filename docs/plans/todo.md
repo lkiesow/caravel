@@ -136,7 +136,6 @@ Direction already agreed or obviously wanted; none of it built.
   carry.) Settings sits in the same menu as "Log out". The screen and its
   appearance control landed in Stage 12 (Milestones 2-3); what it still wants,
   in rough order of readiness:
-    - a **language selector** — see below, the mechanism already exists;
     - **set my password**, for local accounts only (`auth_identities.provider
       = 'local'`; an OIDC identity has no password here to change). Nothing
       exists for this yet: `internal/auth` has Register, Authenticate,
@@ -149,18 +148,12 @@ Direction already agreed or obviously wanted; none of it built.
       valid home today and deleting a trip would take an avatar with it. Needs a
       migration — nullable `trip_id`, or a `user_id` column, or a separate table —
       before the existing upload pipeline can be reused.
-  Also still open, now that a preference exists to have the argument about:
-  appearance is stored **per browser** (`localStorage["caravel.theme"]`), which
-  was the deliberate Stage 12 decision. Making it follow the account instead
-  means a column on `users` and an endpoint — the same question the language
-  entry below carries, and worth answering once for both.
-- **An in-app language switcher.** `i18n.js` has a working `setLocale()` and a
-  `localStorage` cache for it, but nothing calls it — confirmed again during
-  Stage 09 that `setLocale` has no caller outside `i18n.js`. German is reachable
-  only by changing the browser's language, and it renders cleanly when you do.
-  It belongs in the settings screen above. Still open: whether the choice
-  persists per account (a column on `users`, so it follows you between browsers)
-  or stays per browser as the `localStorage` cache implies.
+  Also still open, now that two preferences exist to have the argument about:
+  appearance and language are both stored **per browser**
+  (`localStorage["caravel.theme"]` / `["caravel.locale"]`), which was the
+  deliberate Stage 12 decision. Making either follow the account means a column
+  on `users` and an endpoint to write it — worth answering once for both, not
+  twice.
 - **A trip journal with photos.** (Stage 01.) A `journal_entries` table
   (trip_id, date, body markdown) reusing the existing `media_assets` pipeline
   for photos.

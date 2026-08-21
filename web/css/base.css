@@ -1744,6 +1744,14 @@ button {
     align-items: stretch;
   }
 
+  /* And the same again for the Language dropdown's trigger, so the two cards'
+     controls line up at the same width instead of one spanning the card and
+     the other sitting at its text width. */
+  .menu--setting,
+  .menu--setting .menu__trigger {
+    width: 100%;
+  }
+
   /* Column, not just stretched: these are row-direction flex containers, so
      align-items: stretch would only equalize heights. The URL form has to
      stack too - with its Set button going full width, a row would have left

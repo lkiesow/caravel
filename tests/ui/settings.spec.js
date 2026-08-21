@@ -10,7 +10,7 @@
 // screenshots: "the background actually changed" is the claim, and a matching
 // screenshot would prove it only for as long as nobody regenerates it.
 import { test, expect } from "@playwright/test";
-import { login, gotoRoute } from "./helpers/scenarios.js";
+import { login, gotoRoute, resolveScenarioTrips } from "./helpers/scenarios.js";
 
 const STORAGE_KEY = "caravel.theme";
 
@@ -152,5 +152,109 @@ test.describe("appearance: no flash of the wrong theme", () => {
 
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
     expect(await bodyBackground(page)).toBe(DARK_BG);
+  });
+});
+
+// The Language control (Stage 12 Milestone 4), and the app-wide re-render it
+// needs. setLocale() has existed since Stage 01 with no callers; translatePage
+// only rewrites declarative data-i18n attributes, so everything built through
+// t() in JS would keep the old language until the next navigation. The
+// assertions below deliberately include one of those strings.
+const LOCALE_KEY = "caravel.locale";
+
+const storedLocale = (page) => page.evaluate((key) => localStorage.getItem(key), LOCALE_KEY);
+const languageTrigger = (page) => page.locator(".language-slot .menu__trigger");
+
+async function pickLanguage(page, label) {
+  await languageTrigger(page).click();
+  await page.locator(`.language-slot .menu__dropdown [role="menuitemradio"]`).filter({ hasText: label }).click();
+}
+
+test.describe("language: switching to German", () => {
+  // An English browser, so "Automatic" and "English" are two distinct rows that
+  // happen to resolve to the same locale - the case the old setLocale's
+  // "already active, bail out" guard made unreachable.
+  test.use({ locale: "en-GB" });
+
+  test("re-translates the whole app, including strings built in JS", async ({ page }) => {
+    await login(page);
+    const trips = await resolveScenarioTrips(page);
+    await gotoRoute(page, "/settings");
+
+    // Auto is the default, and it says what it resolved to rather than just
+    // "Automatic".
+    await expect(languageTrigger(page)).toHaveText("Automatic (English)");
+    expect(await storedLocale(page)).toBeNull();
+    await expect(page.locator("html")).toHaveAttribute("lang", "en");
+
+    await pickLanguage(page, "Deutsch");
+
+    // Declarative copy, the <html lang>, and the stored preference.
+    await expect(page.locator("html")).toHaveAttribute("lang", "de");
+    await expect(page.locator("h1")).toHaveText("Kontoeinstellungen");
+    expect(await storedLocale(page)).toBe("de");
+    // The control itself is rebuilt by the re-render, and the Auto row is now
+    // German too - which is only true if t() ran again, not just translatePage.
+    await expect(languageTrigger(page)).toHaveText("Deutsch");
+
+    // The assertions that catch a missing re-render, and they have to be about
+    // what is *already on screen*: a fresh page load or an in-app navigation
+    // renders every t() call against the new locale anyway, so asserting after
+    // one proves nothing about the listener. These two are strings composed in
+    // JS by t() in markup that was built before the language changed:
+    //
+    //   - the route: the Auto row's label, whose *translated* half must follow
+    //     ("Automatic" -> "Automatisch") while the resolved language stays
+    //     English, because this browser's language is what Auto follows;
+    //   - the header: the user menu's items, which live outside the router
+    //     entirely and are the reason the listener re-renders it too.
+    await languageTrigger(page).click();
+    await expect(
+      page.locator('.language-slot .menu__dropdown [role="menuitemradio"]').first()
+    ).toContainText("Automatisch (English)");
+    await page.keyboard.press("Escape");
+
+    const userMenu = page.locator(".user-menu-slot");
+    await userMenu.locator(".menu__trigger").click();
+    await expect(userMenu.locator('[role="menuitem"]').first()).toContainText("Kontoeinstellungen");
+    await expect(userMenu.locator('[role="menuitem"]').last()).toContainText("Abmelden");
+    await page.keyboard.press("Escape");
+
+    // And the rest of the app follows on the next navigation - the locations
+    // filter's trigger is another t()-built label.
+    await gotoRoute(page, `/trips/${trips.full}/locations`);
+    await expect(page.locator(".locations-toolbar .menu__trigger")).toContainText("Alle");
+
+    // German survives a reload, from storage rather than from the browser.
+    await page.reload();
+    await expect(page.locator("html")).toHaveAttribute("lang", "de");
+  });
+});
+
+test.describe("language: back to Auto", () => {
+  // A German browser this time, so Auto resolving correctly is visible: picking
+  // English and then Auto has to land back on German.
+  test.use({ locale: "de-DE" });
+
+  test("clears the stored preference and follows the browser again", async ({ page }) => {
+    await login(page);
+    await gotoRoute(page, "/settings");
+
+    await expect(page.locator("html")).toHaveAttribute("lang", "de");
+    await expect(languageTrigger(page)).toHaveText("Automatisch (Deutsch)");
+
+    await pickLanguage(page, "English");
+    await expect(page.locator("html")).toHaveAttribute("lang", "en");
+    await expect(page.locator("h1")).toHaveText("Account settings");
+    expect(await storedLocale(page)).toBe("en");
+
+    // Back to Auto: German returns *and* the key is gone. A stored "auto"
+    // string would make this row silently sticky.
+    // "Automatic (Deutsch)" in English copy: the language is always named in
+    // its own language (LOCALE_NAMES), which is the point of that map.
+    await pickLanguage(page, "Automatic (Deutsch)");
+    await expect(page.locator("html")).toHaveAttribute("lang", "de");
+    await expect(page.locator("h1")).toHaveText("Kontoeinstellungen");
+    expect(await storedLocale(page)).toBeNull();
   });
 });

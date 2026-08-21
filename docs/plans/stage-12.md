@@ -301,6 +301,44 @@ today: with the browser locale forced to German
 assert the app returns to German *and* that `localStorage["caravel.locale"]` is
 gone — a stale key would make Auto silently sticky.
 
+**Done.** `components/language-field.js` is a `renderMenu` in selection mode
+over `["auto", ...SUPPORTED_LOCALES]`, so adding a language stays two edits
+(`SUPPORTED_LOCALES` + a locale file) with nothing to change on this screen. The
+trigger is `btn btn-secondary` and deliberately **not** `.btn-collapse` (the
+component's default), which hides the trigger label under 640px — fine for an
+icon button, useless for one with no icon.
+
+`i18n.js` grew the missing preference API: `SUPPORTED_LOCALES` and
+`LOCALE_NAMES` are exported, plus `AUTO_LOCALE`, `getLocalePreference()` and
+`detectBrowserLocale()`. `setLocale()` now takes `"auto"` as well as a code, and
+**lost its "already active, bail out" guard** — that guard was what made Auto
+unreachable in the common case (an English browser with English explicitly
+chosen resolves to the same active locale, so the key was never cleared). It
+also dispatches `locale-changed` even when the resolved locale doesn't move,
+because the *preference* did and the control has to catch up. `detectLocale`'s
+`localStorage` read is now guarded like `theme.js`'s: it runs first at boot, so
+storage blocked in a private window used to take the whole app down.
+
+`app.js` is the first listener the `locale-changed` event has ever had: it
+re-renders the user menu and the current route, kept in a module-scoped
+variable so logging out and back in replaces the listener rather than stacking
+one that renders into a detached header.
+
+Verified: `make ci` green (145 keys in sync); `make test-ui` green, 25 tests.
+Two new specs: switching to German on an English browser (declarative copy,
+`<html lang>`, stored value, and the control rebuilt) and Auto on a German
+browser (English, then Auto → German again with the key *removed*).
+
+Worth recording, because the first version of this was wrong: my
+"would have caught a missing re-render" assertion was **vacuous**. It asserted a
+`t()`-built string after `gotoRoute`, and a page load re-renders everything from
+storage anyway — the test passed with the listener deleted. The assertions now
+stay on the screen that was already rendered: the Auto row's translated half
+("Automatic" → "Automatisch", while the resolved language stays English) and the
+user menu's items, which live outside the router entirely. With the listener
+removed, that test now fails; the negative check also confirmed the restored
+"already active" guard fails exactly the Auto test.
+
 ---
 
 ## 5. Set my password

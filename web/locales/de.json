@@ -18,6 +18,7 @@
   "settings.title": "Kontoeinstellungen",
   "settings.language": "Sprache",
   "settings.languageHint": "In welcher Sprache Caravel angezeigt wird. In diesem Browser gespeichert.",
+  "settings.language.auto": "Automatisch ({language})",
   "settings.appearance": "Erscheinungsbild",
   "settings.appearanceHint": "Hell oder dunkel – oder dem Gerät folgen. In diesem Browser gespeichert.",
   "settings.password": "Passwort",

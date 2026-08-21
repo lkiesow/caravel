@@ -271,6 +271,7 @@ func (s *sqliteStore) ListTripsForUser(ctx context.Context, userID string) ([]Tr
 			Role:             TripRole(row.Role),
 			OwnerUsername:    row.OwnerUsername,
 			OwnerDisplayName: row.OwnerDisplayName,
+			MemberCount:      row.MemberCount,
 		}
 	}
 	return trips, nil
@@ -781,6 +782,8 @@ func (s *sqliteStore) CreateFile(ctx context.Context, p CreateFileParams) (File,
 		SizeBytes:   p.SizeBytes,
 		UploadedAt:  formatTime(p.UploadedAt),
 		Note:        nullString(p.Note),
+		Visibility:  string(p.Visibility),
+		OwnerUserID: nullString(p.OwnerUserID),
 	})
 	if err != nil {
 		return File{}, err
@@ -796,8 +799,8 @@ func (s *sqliteStore) GetFileByID(ctx context.Context, id string) (File, error) 
 	return sqliteFileToDomain(row), nil
 }
 
-func (s *sqliteStore) ListTripFiles(ctx context.Context, tripID string) ([]FileDetail, error) {
-	rows, err := s.q.ListTripFiles(ctx, tripID)
+func (s *sqliteStore) ListTripFiles(ctx context.Context, tripID, userID string) ([]FileDetail, error) {
+	rows, err := s.q.ListTripFiles(ctx, sqlitegen.ListTripFilesParams{TripID: tripID, UserID: nullString(&userID)})
 	if err != nil {
 		return nil, err
 	}
@@ -816,6 +819,8 @@ func (s *sqliteStore) ListTripFiles(ctx context.Context, tripID string) ([]FileD
 				SizeBytes:   row.SizeBytes,
 				UploadedAt:  parseTime(row.UploadedAt),
 				Note:        strPtr(row.Note),
+				Visibility:  FileVisibility(row.Visibility),
+				OwnerUserID: strPtr(row.OwnerUserID),
 			},
 			ItemTitle: strPtr(row.ItemTitle),
 		}
@@ -823,8 +828,8 @@ func (s *sqliteStore) ListTripFiles(ctx context.Context, tripID string) ([]FileD
 	return files, nil
 }
 
-func (s *sqliteStore) ListItemFiles(ctx context.Context, itemID string) ([]File, error) {
-	rows, err := s.q.ListItemFiles(ctx, nullString(&itemID))
+func (s *sqliteStore) ListItemFiles(ctx context.Context, itemID, userID string) ([]File, error) {
+	rows, err := s.q.ListItemFiles(ctx, sqlitegen.ListItemFilesParams{ItemID: nullString(&itemID), UserID: nullString(&userID)})
 	if err != nil {
 		return nil, err
 	}
@@ -845,6 +850,33 @@ func (s *sqliteStore) UpdateFileNote(ctx context.Context, id, tripID string, not
 		return File{}, mapNotFound(err)
 	}
 	return sqliteFileToDomain(row), nil
+}
+
+func (s *sqliteStore) SetFileVisibility(ctx context.Context, id, tripID string, visibility FileVisibility) (File, error) {
+	row, err := s.q.SetFileVisibility(ctx, sqlitegen.SetFileVisibilityParams{
+		Visibility: string(visibility),
+		ID:         id,
+		TripID:     tripID,
+	})
+	if err != nil {
+		return File{}, mapNotFound(err)
+	}
+	return sqliteFileToDomain(row), nil
+}
+
+func (s *sqliteStore) ListPersonalFilesForUser(ctx context.Context, tripID, userID string) ([]File, error) {
+	rows, err := s.q.ListPersonalFilesForUser(ctx, sqlitegen.ListPersonalFilesForUserParams{
+		TripID: tripID,
+		UserID: nullString(&userID),
+	})
+	if err != nil {
+		return nil, err
+	}
+	files := make([]File, len(rows))
+	for i, row := range rows {
+		files[i] = sqliteFileToDomain(row)
+	}
+	return files, nil
 }
 
 func (s *sqliteStore) DeleteFile(ctx context.Context, id, tripID string) (bool, error) {
@@ -976,6 +1008,8 @@ func sqliteFileToDomain(d sqlitegen.File) File {
 		SizeBytes:   d.SizeBytes,
 		UploadedAt:  parseTime(d.UploadedAt),
 		Note:        strPtr(d.Note),
+		Visibility:  FileVisibility(d.Visibility),
+		OwnerUserID: strPtr(d.OwnerUserID),
 	}
 }
 

@@ -8,7 +8,7 @@ import { renderFileList } from "../components/file-list.js";
 import { renderChecklistList } from "../components/checklist-list.js";
 import { renderSettingsTab } from "./settings-tab.js";
 import { renderMembersTab } from "./members-tab.js";
-import { canEdit, canManageMembers, isViewer } from "../trip-role.js";
+import { canEdit, canManageMembers, isShared, isViewer } from "../trip-role.js";
 import { TRIP_TABS, OVERFLOW_TRIP_TABS } from "../trip-tabs.js";
 import { renderMenu } from "../components/menu.js";
 import { navigate } from "../router.js";
@@ -141,7 +141,7 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
     } else if (tab === "files") {
       // file-list.js has had a documented read-only mode since Stage 11 (used
       // by the location view); a viewer is simply the second caller for it.
-      renderFileList(content, `/trips/${trip.id}/files`, { readOnly: !canEdit(trip) });
+      renderFileList(content, `/trips/${trip.id}/files`, { readOnly: !canEdit(trip), shared: isShared(trip) });
     } else if (tab === "checklists") {
       renderChecklistList(content, trip.id, { readOnly: !canEdit(trip) });
     } else if (tab === "members") {

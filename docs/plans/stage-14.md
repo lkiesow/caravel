@@ -962,6 +962,108 @@ endpoints and 404s on direct download, while a `trip` file is visible to both.
 Playwright: upload as personal, confirm the badge, confirm `other` does not see
 the row.
 
+**Done.** Migration 0009, the predicate in three places, and the UI.
+
+*Two states, not three.* Checklists get `shared` because being *ticked* is a
+second axis; a file has no equivalent, since who may edit its note or delete it
+already follows the trip role. Recorded on `db.FileVisibility` so the asymmetry
+with Milestone 8 does not read as an oversight.
+
+*The default is `trip`*, against `todo.md`'s original argument, and it is still
+the call in this stage most worth revisiting. An invisible privacy default
+produces "where did my upload go?" rather than safety, and every file on a solo
+trip would be born private for no reason. What guards the risk instead: the
+choice is visible on the drop zone before anything is sent, a personal row is
+marked with a lock, and an unrecognised value falls back to `trip` — the
+direction that produces a visible file rather than a silently hidden one.
+
+*The predicate is written three times on purpose:* in `ListTripFiles`, in
+`ListItemFiles`, and in `loadFile`. The first two hide a file from a listing; the
+third is what stops a remembered id from reaching it. A list endpoint that forgot
+the check would leak silently, so having it in the SQL matters as much as in Go.
+
+*`owner_user_id` is nullable*, a schema wart with a reason: SQLite cannot add a
+NOT NULL column without a constant default, and the right value is per-row. The
+backfill fills every existing row and the app always writes it, so NULL means
+only "a bug wrote this row" — and that case fails closed, since
+`owner_user_id = @user` never matches NULL. Worth making NOT NULL at the
+migration squash.
+
+*Only the uploader may change visibility*, the one file rule keyed to a person
+rather than a role: an editor may rename or delete shared content, but who reads
+someone else's document is not theirs to decide. Layered on top of `RoleEditor`
+rather than instead of it, so a viewer cannot reach it either.
+
+*Removing a member deletes their personal files on that trip*, blobs included,
+and both the Members tab's removal and leave confirmations name the count — the
+same reasoning as the admin screen quoting a trip count before deleting an
+account. Done before the membership row so a failure leaves the person on the
+trip with their files intact rather than removed with orphans behind them.
+Trip-visible uploads survive: those are the trip's, not theirs.
+
+*The visibility UI is hidden entirely on a solo trip.* `trip.member_count` (new
+on the payload, counting non-owner members) drives `isShared()` in
+`trip-role.js`; with nobody else on the trip, personal versus trip-visible is a
+question with one possible answer, and the drop-zone selector, the lock marker
+and the row radio group all disappear.
+
+**Verified.** `make ci` green (247 keys in sync); full Playwright suite passing.
+New `file_visibility_test.go` covers a personal file being invisible to the
+*trip owner* as well as to other members, the same for item-attached files (a
+separate query), the default across four inputs including a checklist-only
+value, uploader-only visibility changes in both directions, member removal
+deleting personal files while sparing shared ones, and a viewer being unable to
+upload even personally.
+
+Break-checked with eight breaks. All are caught now, but three took two attempts
+each and the reasons are worth keeping:
+
+- **A silent no-op edit.** My first pass at the store converters used the wrong
+  receiver name, so a scripted replace with no assertion changed nothing and both
+  dialects quietly dropped `visibility` and `owner_user_id` on read. The database
+  was correct throughout; only the responses were empty. Every scripted edit in
+  this milestone now asserts its pattern is present *and* unique.
+- **A vacuous assertion.** The member-removal test checked that the *owner* could
+  not reach the removed member's personal file — true whether or not the file was
+  deleted, because it is personal. It passed with the deletion removed entirely.
+  Rewritten to re-add the member and assert their file does not come back, which
+  is both a real observable difference and the actual contract.
+- **A break that only looked like one.** Neutering the deletion's error check left
+  the deletion itself running. The compiling version that actually skips it is
+  what proved the fixed test catches it.
+
+Also caught: `git checkout` on a file mid-break-check reverted every edit this
+milestone had made to `sqlite_store.go`. Re-applied with assertions, which is the
+only reason it was recoverable cleanly.
+
+Live at 1280 and 324×756. The selector defaults to "Everyone on the trip";
+uploading as "Only me" produced a row marked "Only you" and the choice survived
+the re-render. As the trip's **owner**, that file was absent from the list and
+404 on download, PATCH, DELETE and the visibility route — the case that matters,
+since the owner can otherwise reach everything on the trip. The row menu shows
+the two radios plus Edit note and Delete, and flipping to "Only me" persisted.
+On a solo trip: no selector, no lock, no radios, only the two actions. In German
+at 324px the marker reads "Nur du" with a lock, 44px choices, no overflow.
+
+**The suite caught the change, and the fix improved it.** `menu.spec.js`'s file-row
+test exists to assert the *actions-only* mode of `renderMenu` — no radios, nothing
+checked — and adding a visibility radio group made that premise false on the
+`full` trip, which the seeder shares with `other`. Rather than loosening the
+assertion, the test moved to the `cascade` scenario: a solo trip with two seeded
+files, where actions-only is still exactly right, and where it now also asserts
+that no visibility UI appears at all. A second spec covers the shared case —
+radios and actions in one popup, exactly one checked — so each mode fails for one
+reason. That mixed shape is something `menu.js` always supported and nothing
+exercised until now.
+
+**One CSS bug found by measuring rather than looking.** The mobile rule putting
+the lock marker on its own line was written into the stylesheet's central mobile
+block, which appears *earlier* in the file than the base rule appended at the
+end — so at equal specificity the base rule won and `flex-basis` stayed `auto`,
+silently. The page looked fine, which is why only reading the computed value
+caught it. The rules now live in the feature's own trailing media block, the
+shape the Members and Admin sections already use, with a comment saying why.
+
 ---
 
 ## 8. Checklist visibility

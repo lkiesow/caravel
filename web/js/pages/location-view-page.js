@@ -4,7 +4,7 @@ import { navigate } from "../router.js";
 import { icon } from "../icon.js";
 import "../components/leaflet-map.js";
 import { renderLoading } from "../components/loading.js";
-import { canEdit } from "../trip-role.js";
+import { canEdit, isShared } from "../trip-role.js";
 import { renderFileList } from "../components/file-list.js";
 import { renderNotFoundPage } from "./not-found-page.js";
 
@@ -141,7 +141,14 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
   // refetched - they were already needed above to decide whether this card
   // exists at all.
   if (files.length) {
-    renderFileList(container.querySelector(".file-list-slot"), `/items/${itemId}/files`, { rows: files, readOnly: true });
+    // readOnly, so no controls either way — but `shared` is still passed so a
+    // personal file is *marked* as one here too. Seeing a lock on a file you
+    // uploaded is the confirmation that it is not on show to the trip.
+    renderFileList(container.querySelector(".file-list-slot"), `/items/${itemId}/files`, {
+      rows: files,
+      readOnly: true,
+      shared: isShared(trip),
+    });
   }
 
   container.querySelector("h1").textContent = item.title;

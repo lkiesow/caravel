@@ -6,7 +6,6 @@ package postgresgen
 
 import (
 	"context"
-	"database/sql"
 	"time"
 )
 
@@ -84,7 +83,7 @@ type Querier interface {
 	ListChecklistItemsByChecklist(ctx context.Context, checklistID string) ([]ChecklistItem, error)
 	ListChecklistsByTrip(ctx context.Context, tripID string) ([]Checklist, error)
 	ListItemDatesByItem(ctx context.Context, itemID string) ([]ItemDate, error)
-	ListItemFiles(ctx context.Context, itemID sql.NullString) ([]File, error)
+	ListItemFiles(ctx context.Context, arg ListItemFilesParams) ([]File, error)
 	ListItemLinksByItem(ctx context.Context, itemID string) ([]ItemLink, error)
 	// ListItemLocationsByTrip: every coordinate on the trip, keyed by item.
 	//
@@ -103,11 +102,24 @@ type Querier interface {
 	// ListMapItemsByTrip: show_on_map is filtered in the store layer, not here,
 	// since its Go type (int64 vs bool) diverges by dialect (plan Section 2.1).
 	ListMapItemsByTrip(ctx context.Context, tripID string) ([]ListMapItemsByTripRow, error)
+	// Every personal file belonging to one user on one trip, for the moment they
+	// stop being a member. The rows are found first so their blobs can be deleted
+	// too: a row removed without its blob leaks bytes nobody can reach.
+	ListPersonalFilesForUser(ctx context.Context, arg ListPersonalFilesForUserParams) ([]File, error)
 	// Every file on the trip, including those attached to a location: each row
 	// carries the trip's id regardless of item_id (see uploadFile), so no join
 	// is needed to find them - only to name the location for display. LEFT, not
 	// INNER: a trip-level row has a NULL item_id and must survive the join.
-	ListTripFiles(ctx context.Context, tripID string) ([]ListTripFilesRow, error)
+	//
+	// The visibility predicate is the same one on ListItemFiles and on the Go-side
+	// check in loadFile: a personal file is visible only to whoever uploaded it. It
+	// lives in the SQL as well as in Go on purpose - a list endpoint that forgot it
+	// would leak silently, where a single-file endpoint that forgot it at least
+	// needs an id to be guessed first.
+	//
+	// NULL owner_user_id matches nobody, which is the intended failure: see
+	// migration 0009 on why that column is nullable.
+	ListTripFiles(ctx context.Context, arg ListTripFilesParams) ([]ListTripFilesRow, error)
 	// Joined to users because the members list is a list of people, not of ids,
 	// and rendering it otherwise would be an N+1 lookup per row.
 	ListTripMembers(ctx context.Context, tripID string) ([]ListTripMembersRow, error)
@@ -161,6 +173,11 @@ type Querier interface {
 	// write a special case.
 	SetAppSetting(ctx context.Context, arg SetAppSettingParams) error
 	SetChecklistItemChecked(ctx context.Context, arg SetChecklistItemCheckedParams) (ChecklistItem, error)
+	// Separate from UpdateFileNote rather than folded into it: changing a note is
+	// an editor-level edit of shared content, while changing visibility is a
+	// decision only the file's own uploader may make. Two different authorization
+	// rules should not share one statement.
+	SetFileVisibility(ctx context.Context, arg SetFileVisibilityParams) (File, error)
 	SetItemImage(ctx context.Context, arg SetItemImageParams) (Item, error)
 	SetTripPreviewImage(ctx context.Context, arg SetTripPreviewImageParams) (Trip, error)
 	TouchSession(ctx context.Context, arg TouchSessionParams) error
@@ -168,7 +185,7 @@ type Querier interface {
 	// A note is the only thing about a file that can change after upload: it is
 	// the readable name a file gets when its own filename is a storage blob, so
 	// write-once was the wrong lifetime for it. Scoped by (id, trip_id) exactly
-	// like DeleteFile, so an owned-trip check is the whole authorization story.
+	// like DeleteFile, so a trip-role check is the whole authorization story.
 	// Passing NULL clears it.
 	UpdateFileNote(ctx context.Context, arg UpdateFileNoteParams) (File, error)
 	UpdateItem(ctx context.Context, arg UpdateItemParams) (Item, error)

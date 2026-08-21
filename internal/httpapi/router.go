@@ -183,6 +183,7 @@ func (s *Server) buildRouter() chi.Router {
 			r.Use(auth.RequireAuth)
 			r.Patch("/", s.handleUpdateFileNote)
 			r.Delete("/", s.handleDeleteFile)
+			r.Put("/visibility", s.handleSetFileVisibility)
 			r.Get("/download", s.handleDownloadFile)
 		})
 

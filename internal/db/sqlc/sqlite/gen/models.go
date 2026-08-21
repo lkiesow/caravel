@@ -49,6 +49,8 @@ type File struct {
 	SizeBytes   int64          `json:"size_bytes"`
 	UploadedAt  string         `json:"uploaded_at"`
 	Note        sql.NullString `json:"note"`
+	Visibility  string         `json:"visibility"`
+	OwnerUserID sql.NullString `json:"owner_user_id"`
 }
 
 type Item struct {

@@ -98,7 +98,8 @@ const listTripsForUser = `-- name: ListTripsForUser :many
 SELECT t.id, t.owner_id, t.title, t.start_date, t.end_date, t.preview_image_id, t.created_at, t.updated_at, t.subtitle,
        CAST(CASE WHEN t.owner_id = ?1 THEN 'owner' ELSE m.role END AS TEXT) AS role,
        u.username AS owner_username,
-       u.display_name AS owner_display_name
+       u.display_name AS owner_display_name,
+       (SELECT COUNT(*) FROM trip_members mm WHERE mm.trip_id = t.id) AS member_count
 FROM trips t
 JOIN users u ON u.id = t.owner_id
 LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ?1
@@ -119,6 +120,7 @@ type ListTripsForUserRow struct {
 	Role             string         `json:"role"`
 	OwnerUsername    string         `json:"owner_username"`
 	OwnerDisplayName string         `json:"owner_display_name"`
+	MemberCount      int64          `json:"member_count"`
 }
 
 // Every trip the user can reach, with their own role on each and the owner's
@@ -150,6 +152,7 @@ func (q *Queries) ListTripsForUser(ctx context.Context, userID string) ([]ListTr
 			&i.Role,
 			&i.OwnerUsername,
 			&i.OwnerDisplayName,
+			&i.MemberCount,
 		); err != nil {
 			return nil, err
 		}

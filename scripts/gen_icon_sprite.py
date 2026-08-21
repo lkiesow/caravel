@@ -43,6 +43,7 @@ ICONS = [
     "user-plus",
     "shield-user",
     "key-round",
+    "lock",
 ]
 
 

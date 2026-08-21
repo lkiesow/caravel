@@ -512,6 +512,7 @@ func (s *postgresStore) ListTripsForUser(ctx context.Context, userID string) ([]
 			Role:             TripRole(row.Role),
 			OwnerUsername:    row.OwnerUsername,
 			OwnerDisplayName: row.OwnerDisplayName,
+			MemberCount:      row.MemberCount,
 		}
 	}
 	return trips, nil
@@ -847,6 +848,8 @@ func (s *postgresStore) CreateFile(ctx context.Context, p CreateFileParams) (Fil
 		SizeBytes:   p.SizeBytes,
 		UploadedAt:  p.UploadedAt.UTC(),
 		Note:        nullString(p.Note),
+		Visibility:  string(p.Visibility),
+		OwnerUserID: nullString(p.OwnerUserID),
 	})
 	if err != nil {
 		return File{}, err
@@ -862,8 +865,8 @@ func (s *postgresStore) GetFileByID(ctx context.Context, id string) (File, error
 	return postgresFileToDomain(row), nil
 }
 
-func (s *postgresStore) ListTripFiles(ctx context.Context, tripID string) ([]FileDetail, error) {
-	rows, err := s.q.ListTripFiles(ctx, tripID)
+func (s *postgresStore) ListTripFiles(ctx context.Context, tripID, userID string) ([]FileDetail, error) {
+	rows, err := s.q.ListTripFiles(ctx, postgresgen.ListTripFilesParams{TripID: tripID, UserID: nullString(&userID)})
 	if err != nil {
 		return nil, err
 	}
@@ -882,6 +885,8 @@ func (s *postgresStore) ListTripFiles(ctx context.Context, tripID string) ([]Fil
 				SizeBytes:   row.SizeBytes,
 				UploadedAt:  row.UploadedAt,
 				Note:        strPtr(row.Note),
+				Visibility:  FileVisibility(row.Visibility),
+				OwnerUserID: strPtr(row.OwnerUserID),
 			},
 			ItemTitle: strPtr(row.ItemTitle),
 		}
@@ -889,8 +894,8 @@ func (s *postgresStore) ListTripFiles(ctx context.Context, tripID string) ([]Fil
 	return files, nil
 }
 
-func (s *postgresStore) ListItemFiles(ctx context.Context, itemID string) ([]File, error) {
-	rows, err := s.q.ListItemFiles(ctx, nullString(&itemID))
+func (s *postgresStore) ListItemFiles(ctx context.Context, itemID, userID string) ([]File, error) {
+	rows, err := s.q.ListItemFiles(ctx, postgresgen.ListItemFilesParams{ItemID: nullString(&itemID), UserID: nullString(&userID)})
 	if err != nil {
 		return nil, err
 	}
@@ -911,6 +916,33 @@ func (s *postgresStore) UpdateFileNote(ctx context.Context, id, tripID string, n
 		return File{}, mapNotFound(err)
 	}
 	return postgresFileToDomain(row), nil
+}
+
+func (s *postgresStore) SetFileVisibility(ctx context.Context, id, tripID string, visibility FileVisibility) (File, error) {
+	row, err := s.q.SetFileVisibility(ctx, postgresgen.SetFileVisibilityParams{
+		Visibility: string(visibility),
+		ID:         id,
+		TripID:     tripID,
+	})
+	if err != nil {
+		return File{}, mapNotFound(err)
+	}
+	return postgresFileToDomain(row), nil
+}
+
+func (s *postgresStore) ListPersonalFilesForUser(ctx context.Context, tripID, userID string) ([]File, error) {
+	rows, err := s.q.ListPersonalFilesForUser(ctx, postgresgen.ListPersonalFilesForUserParams{
+		TripID: tripID,
+		UserID: nullString(&userID),
+	})
+	if err != nil {
+		return nil, err
+	}
+	files := make([]File, len(rows))
+	for i, row := range rows {
+		files[i] = postgresFileToDomain(row)
+	}
+	return files, nil
 }
 
 func (s *postgresStore) DeleteFile(ctx context.Context, id, tripID string) (bool, error) {
@@ -1042,6 +1074,8 @@ func postgresFileToDomain(d postgresgen.File) File {
 		SizeBytes:   d.SizeBytes,
 		UploadedAt:  d.UploadedAt,
 		Note:        strPtr(d.Note),
+		Visibility:  FileVisibility(d.Visibility),
+		OwnerUserID: strPtr(d.OwnerUserID),
 	}
 }
 

@@ -128,9 +128,22 @@ func (ts *testServer) do(method, path string, cookie *http.Cookie, body string) 
 // media handlers.
 func (ts *testServer) upload(path string, cookie *http.Cookie, filename, contentType string, content []byte) *httptest.ResponseRecorder {
 	ts.t.Helper()
+	return ts.uploadWithFields(path, cookie, filename, contentType, content, nil)
+}
+
+// uploadWithFields is upload plus extra multipart form fields, for the values
+// that ride along with the file itself rather than arriving as JSON later —
+// today the note and the visibility.
+func (ts *testServer) uploadWithFields(path string, cookie *http.Cookie, filename, contentType string, content []byte, fields map[string]string) *httptest.ResponseRecorder {
+	ts.t.Helper()
 
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
+	for name, value := range fields {
+		if err := mw.WriteField(name, value); err != nil {
+			ts.t.Fatalf("write multipart field %q: %v", name, err)
+		}
+	}
 	header := make(map[string][]string)
 	header["Content-Disposition"] = []string{`form-data; name="file"; filename="` + filename + `"`}
 	if contentType != "" {

@@ -79,6 +79,8 @@ type CreateFileParams struct {
 	Filename    string
 	StoragePath string
 	ContentType *string
+	Visibility  FileVisibility
+	OwnerUserID *string
 	SizeBytes   int64
 	UploadedAt  time.Time
 	Note        *string
@@ -299,12 +301,23 @@ type Store interface {
 	// carrying the title of the location it belongs to (nil for trip-level).
 	// It used to filter item_id IS NULL, which hid location-attached files
 	// from the trip's Files tab even though they are files on that trip.
-	ListTripFiles(ctx context.Context, tripID string) ([]FileDetail, error)
-	ListItemFiles(ctx context.Context, itemID string) ([]File, error)
+	// ListTripFiles and ListItemFiles both take the *reading* user, because a
+	// personal file belongs to whoever uploaded it and must not appear in
+	// anyone else's list.
+	ListTripFiles(ctx context.Context, tripID, userID string) ([]FileDetail, error)
+	ListItemFiles(ctx context.Context, itemID, userID string) ([]File, error)
 	// UpdateFileNote replaces a file's note, or clears it when note is nil —
 	// the one field a file has that can change after upload. Scoped by trip
 	// like DeleteFile; returns ErrNotFound if no row matches both.
 	UpdateFileNote(ctx context.Context, id, tripID string, note *string) (File, error)
+	// SetFileVisibility is separate from UpdateFileNote because the two carry
+	// different authorization rules: an editor may retitle shared content, but
+	// only the uploader may make their own file personal or public.
+	SetFileVisibility(ctx context.Context, id, tripID string, visibility FileVisibility) (File, error)
+	// ListPersonalFilesForUser finds the rows to remove when someone stops
+	// being a member of a trip. Returned rather than deleted in one statement
+	// so the caller can delete each blob too.
+	ListPersonalFilesForUser(ctx context.Context, tripID, userID string) ([]File, error)
 	DeleteFile(ctx context.Context, id, tripID string) (bool, error)
 
 	CreateChecklist(ctx context.Context, p CreateChecklistParams) (Checklist, error)

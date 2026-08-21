@@ -12,9 +12,9 @@ import (
 )
 
 const createFile = `-- name: CreateFile :one
-INSERT INTO files (id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at, note)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at, note
+INSERT INTO files (id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at, note, visibility, owner_user_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+RETURNING id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at, note, visibility, owner_user_id
 `
 
 type CreateFileParams struct {
@@ -27,6 +27,8 @@ type CreateFileParams struct {
 	SizeBytes   int64          `json:"size_bytes"`
 	UploadedAt  time.Time      `json:"uploaded_at"`
 	Note        sql.NullString `json:"note"`
+	Visibility  string         `json:"visibility"`
+	OwnerUserID sql.NullString `json:"owner_user_id"`
 }
 
 func (q *Queries) CreateFile(ctx context.Context, arg CreateFileParams) (File, error) {
@@ -40,6 +42,8 @@ func (q *Queries) CreateFile(ctx context.Context, arg CreateFileParams) (File, e
 		arg.SizeBytes,
 		arg.UploadedAt,
 		arg.Note,
+		arg.Visibility,
+		arg.OwnerUserID,
 	)
 	var i File
 	err := row.Scan(
@@ -52,6 +56,8 @@ func (q *Queries) CreateFile(ctx context.Context, arg CreateFileParams) (File, e
 		&i.SizeBytes,
 		&i.UploadedAt,
 		&i.Note,
+		&i.Visibility,
+		&i.OwnerUserID,
 	)
 	return i, err
 }
@@ -74,7 +80,7 @@ func (q *Queries) DeleteFile(ctx context.Context, arg DeleteFileParams) (int64, 
 }
 
 const getFileByID = `-- name: GetFileByID :one
-SELECT id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at, note FROM files WHERE id = $1
+SELECT id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at, note, visibility, owner_user_id FROM files WHERE id = $1
 `
 
 func (q *Queries) GetFileByID(ctx context.Context, id string) (File, error) {
@@ -90,16 +96,26 @@ func (q *Queries) GetFileByID(ctx context.Context, id string) (File, error) {
 		&i.SizeBytes,
 		&i.UploadedAt,
 		&i.Note,
+		&i.Visibility,
+		&i.OwnerUserID,
 	)
 	return i, err
 }
 
 const listItemFiles = `-- name: ListItemFiles :many
-SELECT id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at, note FROM files WHERE item_id = $1 ORDER BY uploaded_at DESC
+SELECT id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at, note, visibility, owner_user_id FROM files
+WHERE item_id = $1
+  AND (visibility = 'trip' OR owner_user_id = $2)
+ORDER BY uploaded_at DESC
 `
 
-func (q *Queries) ListItemFiles(ctx context.Context, itemID sql.NullString) ([]File, error) {
-	rows, err := q.db.QueryContext(ctx, listItemFiles, itemID)
+type ListItemFilesParams struct {
+	ItemID sql.NullString `json:"item_id"`
+	UserID sql.NullString `json:"user_id"`
+}
+
+func (q *Queries) ListItemFiles(ctx context.Context, arg ListItemFilesParams) ([]File, error) {
+	rows, err := q.db.QueryContext(ctx, listItemFiles, arg.ItemID, arg.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -117,6 +133,56 @@ func (q *Queries) ListItemFiles(ctx context.Context, itemID sql.NullString) ([]F
 			&i.SizeBytes,
 			&i.UploadedAt,
 			&i.Note,
+			&i.Visibility,
+			&i.OwnerUserID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPersonalFilesForUser = `-- name: ListPersonalFilesForUser :many
+SELECT id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at, note, visibility, owner_user_id FROM files
+WHERE trip_id = $1 AND owner_user_id = $2 AND visibility = 'personal'
+`
+
+type ListPersonalFilesForUserParams struct {
+	TripID string         `json:"trip_id"`
+	UserID sql.NullString `json:"user_id"`
+}
+
+// Every personal file belonging to one user on one trip, for the moment they
+// stop being a member. The rows are found first so their blobs can be deleted
+// too: a row removed without its blob leaks bytes nobody can reach.
+func (q *Queries) ListPersonalFilesForUser(ctx context.Context, arg ListPersonalFilesForUserParams) ([]File, error) {
+	rows, err := q.db.QueryContext(ctx, listPersonalFilesForUser, arg.TripID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []File
+	for rows.Next() {
+		var i File
+		if err := rows.Scan(
+			&i.ID,
+			&i.TripID,
+			&i.ItemID,
+			&i.Filename,
+			&i.StoragePath,
+			&i.ContentType,
+			&i.SizeBytes,
+			&i.UploadedAt,
+			&i.Note,
+			&i.Visibility,
+			&i.OwnerUserID,
 		); err != nil {
 			return nil, err
 		}
@@ -133,13 +199,19 @@ func (q *Queries) ListItemFiles(ctx context.Context, itemID sql.NullString) ([]F
 
 const listTripFiles = `-- name: ListTripFiles :many
 SELECT f.id, f.trip_id, f.item_id, f.filename, f.storage_path, f.content_type,
-       f.size_bytes, f.uploaded_at, f.note,
+       f.size_bytes, f.uploaded_at, f.note, f.visibility, f.owner_user_id,
        i.title AS item_title
 FROM files f
 LEFT JOIN items i ON i.id = f.item_id
 WHERE f.trip_id = $1
+  AND (f.visibility = 'trip' OR f.owner_user_id = $2)
 ORDER BY f.uploaded_at DESC
 `
+
+type ListTripFilesParams struct {
+	TripID string         `json:"trip_id"`
+	UserID sql.NullString `json:"user_id"`
+}
 
 type ListTripFilesRow struct {
 	ID          string         `json:"id"`
@@ -151,6 +223,8 @@ type ListTripFilesRow struct {
 	SizeBytes   int64          `json:"size_bytes"`
 	UploadedAt  time.Time      `json:"uploaded_at"`
 	Note        sql.NullString `json:"note"`
+	Visibility  string         `json:"visibility"`
+	OwnerUserID sql.NullString `json:"owner_user_id"`
 	ItemTitle   sql.NullString `json:"item_title"`
 }
 
@@ -158,8 +232,17 @@ type ListTripFilesRow struct {
 // carries the trip's id regardless of item_id (see uploadFile), so no join
 // is needed to find them - only to name the location for display. LEFT, not
 // INNER: a trip-level row has a NULL item_id and must survive the join.
-func (q *Queries) ListTripFiles(ctx context.Context, tripID string) ([]ListTripFilesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listTripFiles, tripID)
+//
+// The visibility predicate is the same one on ListItemFiles and on the Go-side
+// check in loadFile: a personal file is visible only to whoever uploaded it. It
+// lives in the SQL as well as in Go on purpose - a list endpoint that forgot it
+// would leak silently, where a single-file endpoint that forgot it at least
+// needs an id to be guessed first.
+//
+// NULL owner_user_id matches nobody, which is the intended failure: see
+// migration 0009 on why that column is nullable.
+func (q *Queries) ListTripFiles(ctx context.Context, arg ListTripFilesParams) ([]ListTripFilesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listTripFiles, arg.TripID, arg.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -177,6 +260,8 @@ func (q *Queries) ListTripFiles(ctx context.Context, tripID string) ([]ListTripF
 			&i.SizeBytes,
 			&i.UploadedAt,
 			&i.Note,
+			&i.Visibility,
+			&i.OwnerUserID,
 			&i.ItemTitle,
 		); err != nil {
 			return nil, err
@@ -192,9 +277,44 @@ func (q *Queries) ListTripFiles(ctx context.Context, tripID string) ([]ListTripF
 	return items, nil
 }
 
+const setFileVisibility = `-- name: SetFileVisibility :one
+UPDATE files SET visibility = $1
+WHERE id = $2 AND trip_id = $3
+RETURNING id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at, note, visibility, owner_user_id
+`
+
+type SetFileVisibilityParams struct {
+	Visibility string `json:"visibility"`
+	ID         string `json:"id"`
+	TripID     string `json:"trip_id"`
+}
+
+// Separate from UpdateFileNote rather than folded into it: changing a note is
+// an editor-level edit of shared content, while changing visibility is a
+// decision only the file's own uploader may make. Two different authorization
+// rules should not share one statement.
+func (q *Queries) SetFileVisibility(ctx context.Context, arg SetFileVisibilityParams) (File, error) {
+	row := q.db.QueryRowContext(ctx, setFileVisibility, arg.Visibility, arg.ID, arg.TripID)
+	var i File
+	err := row.Scan(
+		&i.ID,
+		&i.TripID,
+		&i.ItemID,
+		&i.Filename,
+		&i.StoragePath,
+		&i.ContentType,
+		&i.SizeBytes,
+		&i.UploadedAt,
+		&i.Note,
+		&i.Visibility,
+		&i.OwnerUserID,
+	)
+	return i, err
+}
+
 const updateFileNote = `-- name: UpdateFileNote :one
 UPDATE files SET note = $1 WHERE id = $2 AND trip_id = $3
-RETURNING id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at, note
+RETURNING id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at, note, visibility, owner_user_id
 `
 
 type UpdateFileNoteParams struct {
@@ -206,7 +326,7 @@ type UpdateFileNoteParams struct {
 // A note is the only thing about a file that can change after upload: it is
 // the readable name a file gets when its own filename is a storage blob, so
 // write-once was the wrong lifetime for it. Scoped by (id, trip_id) exactly
-// like DeleteFile, so an owned-trip check is the whole authorization story.
+// like DeleteFile, so a trip-role check is the whole authorization story.
 // Passing NULL clears it.
 func (q *Queries) UpdateFileNote(ctx context.Context, arg UpdateFileNoteParams) (File, error) {
 	row := q.db.QueryRowContext(ctx, updateFileNote, arg.Note, arg.ID, arg.TripID)
@@ -221,6 +341,8 @@ func (q *Queries) UpdateFileNote(ctx context.Context, arg UpdateFileNoteParams) 
 		&i.SizeBytes,
 		&i.UploadedAt,
 		&i.Note,
+		&i.Visibility,
+		&i.OwnerUserID,
 	)
 	return i, err
 }

@@ -2162,6 +2162,72 @@ button {
 }
 
 /* ---------------------------------------------------------------------------
+   File visibility (Stage 14 Milestone 7)
+
+   A personal file is marked in the row's meta line rather than badged like the
+   admin flag: the meta line is already where a file's secondary facts live, and
+   a pill per row would compete with the filename in a list that is mostly
+   filenames. Muted like its neighbours, with a lock so it reads at a glance
+   without depending on the word.
+   --------------------------------------------------------------------------- */
+
+.file-card__personal {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex: none;
+  color: var(--color-text-muted);
+}
+
+.file-card__lock {
+  width: 0.875em;
+  height: 0.875em;
+}
+
+/* The choice for *new* uploads, under the drop zone: it applies to whatever is
+   dropped next, so it belongs with the zone rather than with the list above it.
+   Reuses .setting-choices from the appearance/language settings, which is the
+   app's existing radio-row treatment. */
+.file-visibility {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.file-visibility__label {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+@media (max-width: 640px) {
+  /* The label takes its own line: at 324px it and two choices cannot share
+     one, and wrapping mid-choice reads worse than a stacked pair. */
+  .file-visibility__label {
+    flex-basis: 100%;
+  }
+
+  /* The marker takes its own line, for the same reason .file-card__source does
+     at this width: the meta line already carries the size and the filename, and
+     a third item wrapping mid-phrase behind a separator strands the dot.
+     Its separator goes with it.
+
+     These live *here* rather than in the stylesheet's central mobile block,
+     which is where they were first written — and lost, silently. That block
+     appears earlier in the file than .file-card__personal's base rule below,
+     so at equal specificity the base rule won and flex-basis stayed auto. A
+     feature's mobile rules belong after its own base rules. */
+  .file-card__personal {
+    flex-basis: 100%;
+  }
+
+  .file-card__sep--visibility {
+    display: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
    Admin screen (Stage 14 Milestone 6)
 
    Rows share the members list's shape deliberately — same avatar, same

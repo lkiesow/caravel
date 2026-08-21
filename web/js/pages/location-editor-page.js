@@ -8,7 +8,7 @@ import { icon } from "../icon.js";
 import { confirmDialog } from "../components/dialog.js";
 import { renderLoading } from "../components/loading.js";
 import { renderNotFoundPage } from "./not-found-page.js";
-import { canEdit } from "../trip-role.js";
+import { canEdit, isShared } from "../trip-role.js";
 import "../components/leaflet-map.js";
 import { getCurrentUser } from "../session.js";
 
@@ -205,7 +205,10 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     bindLinkForm();
     renderDatesList();
     bindDateForm();
-    renderFileList(container.querySelector(".file-list-slot"), item ? `/items/${item.id}/files` : null, { staged: draft.files });
+    renderFileList(container.querySelector(".file-list-slot"), item ? `/items/${item.id}/files` : null, {
+      staged: draft.files,
+      shared: isShared(trip),
+    });
 
     container.querySelector('[data-action="save"]').addEventListener("click", save);
     container.querySelector('[data-action="cancel"]').addEventListener("click", cancel);
@@ -289,6 +292,10 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
         const formData = new FormData();
         formData.append("file", file.file);
         if (file.note) formData.append("note", file.note);
+        // Staged picks carry the visibility chosen before the location existed;
+        // without this the choice would be collected and then quietly dropped
+        // on flush, which is worse than never offering it.
+        if (file.visibility) formData.append("visibility", file.visibility);
         const res = await fetch(`/api/items/${savedId}/files`, { method: "POST", body: formData, credentials: "same-origin" });
         const body = await res.json();
         if (!res.ok) throw new Error(body.error || "upload failed");

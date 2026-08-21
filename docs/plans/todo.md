@@ -177,18 +177,6 @@ together rather than bolting a column onto an existing table.
   shared (everyone can see *and* tick them). Explicitly for after real
   multi-user support exists; the visibility column wants designing alongside the
   roles above.
-- **Per-visibility files, on the same model as the checklists above.** (From the
-  user's notes.) The motivating case is a private one: uploading an identity card
-  or a boarding pass to a shared trip without everyone else on it seeing the
-  file. So this is not merely symmetry with checklists — for documents,
-  "personal" is the *default* people will expect for anything carrying their own
-  details, which makes the default itself a design question rather than just a
-  column value. Same dependency: design it with the roles above, not bolted on
-  after. The storage side is already indifferent — a document row carries
-  `trip_id` and an optional `item_id` and nothing else, so mechanically this is a
-  visibility column plus a predicate in `ListTripFiles`/`ListItemFiles`.
-  The interesting parts are who counts as the owner of a file and what a public
-  share link (see above) is allowed to expose.
 - **Expenses / cost-splitting.** (Stage 01.) A new `expenses` table referencing
   `trip_id` and optionally `item_id`, with no changes to existing tables. The
   *splitting* half only means anything once several people share a trip, which

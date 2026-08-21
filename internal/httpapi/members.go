@@ -32,6 +32,12 @@ type memberResponse struct {
 	// IsSelf lets the client mark "you" and offer Leave instead of Remove
 	// without having to compare against /auth/me itself.
 	IsSelf bool `json:"is_self"`
+	// PersonalFileCount is how many of their own personal files removing them
+	// would delete, so the confirmation can say so. Only meaningful to whoever
+	// can act on it: it is filled in for the owner reading the list, and left
+	// at zero otherwise — the count of someone's private files is itself
+	// information about them.
+	PersonalFileCount int `json:"personal_file_count"`
 }
 
 // handleListMembers returns everyone on the trip, owner first.
@@ -64,14 +70,24 @@ func (s *Server) handleListMembers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not list members")
 		return
 	}
+	canManage := me.ID == trip.OwnerID
 	for _, m := range members {
-		resp = append(resp, memberResponse{
+		row := memberResponse{
 			UserID:      m.UserID,
 			Username:    m.Username,
 			DisplayName: m.DisplayName,
 			Role:        string(m.Role),
 			IsSelf:      m.UserID == me.ID,
-		})
+		}
+		// One query per member, on a list that is a handful of people at most.
+		// Worth it to make the removal confirmation honest; if a trip ever has
+		// enough members for this to matter, it wants a grouped count instead.
+		if canManage || m.UserID == me.ID {
+			if personal, err := s.Store.ListPersonalFilesForUser(r.Context(), trip.ID, m.UserID); err == nil {
+				row.PersonalFileCount = len(personal)
+			}
+		}
+		resp = append(resp, row)
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -276,6 +292,31 @@ func (s *Server) handleRemoveMember(w http.ResponseWriter, r *http.Request) {
 		writeErrorCode(w, http.StatusConflict, "owner_cannot_leave",
 			"the trip owner cannot be removed; transfer or delete the trip instead")
 		return
+	}
+
+	// Their personal files on this trip go with the membership. Bytes that
+	// nobody can ever reach again are worse than a removal that says what it
+	// will take: the file is invisible to everyone else by definition, and its
+	// owner has just lost the trip it lives on. The Members tab's confirmation
+	// names the count for exactly this reason.
+	//
+	// Done before the membership row so a failure leaves the person still on
+	// the trip with their files intact, rather than removed with orphans behind
+	// them. Trip-visible files stay: those are the trip's, not theirs.
+	personal, err := s.Store.ListPersonalFilesForUser(r.Context(), trip.ID, userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not check for personal files")
+		return
+	}
+	for _, f := range personal {
+		if _, err := s.Store.DeleteFile(r.Context(), f.ID, trip.ID); err != nil {
+			writeError(w, http.StatusInternalServerError, "could not remove personal files")
+			return
+		}
+		// Best-effort, like every other blob delete in the app: the row is
+		// gone, and a leaked blob is a disk-space problem rather than a
+		// correctness one.
+		_ = s.Blob.Delete(r.Context(), f.StoragePath)
 	}
 
 	removed, err := s.Store.DeleteTripMember(r.Context(), trip.ID, userID)

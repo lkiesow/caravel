@@ -154,6 +154,21 @@ func (s *Server) loadFile(w http.ResponseWriter, r *http.Request, min db.TripRol
 	if !ok {
 		return db.File{}, "", false
 	}
+	// A personal file belongs to whoever uploaded it, and having its id is not
+	// access. Answering 404 rather than 403 here is the same reasoning as for a
+	// trip nobody shared with you: the point of a personal file is that other
+	// people on the trip do not know it exists.
+	//
+	// This duplicates the predicate in ListTripFiles and ListItemFiles on
+	// purpose. Those hide the file from a listing; this is what stops a
+	// remembered or guessed id from reaching it.
+	if file.Visibility == db.FileVisibilityPersonal {
+		me, _ := auth.UserFromContext(r.Context())
+		if file.OwnerUserID == nil || *file.OwnerUserID != me.ID {
+			writeError(w, http.StatusNotFound, "file not found")
+			return db.File{}, "", false
+		}
+	}
 	return file, role, true
 }
 

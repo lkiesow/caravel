@@ -147,13 +147,29 @@ export function renderMembersTab(content, trip) {
   }
 
   async function remove(m) {
-    if (!(await confirmDialog({ message: t("members.removeConfirm", { name: m.display_name }), confirmKey: "members.confirmRemove", danger: true }))) return;
+    // Removing someone deletes their personal files on this trip, and the count
+    // goes in the question rather than being discovered afterwards. Same
+    // reasoning as the admin screen quoting a trip count before deleting an
+    // account: a confirmation that hides what it destroys is not a
+    // confirmation.
+    const count = m.personal_file_count || 0;
+    const message =
+      count > 0
+        ? t("members.removeConfirmWithFiles", { name: m.display_name, count }, count)
+        : t("members.removeConfirm", { name: m.display_name });
+    if (!(await confirmDialog({ message, confirmKey: "members.confirmRemove", danger: true }))) return;
     await api.delete(`/trips/${trip.id}/members/${m.user_id}`);
     await load();
   }
 
   async function leave(m) {
-    if (!(await confirmDialog({ message: t("members.leaveConfirm", { title: trip.title }), confirmKey: "members.confirmLeave", danger: true }))) return;
+    // Leaving destroys your own personal files on the trip too, so say so.
+    const count = m.personal_file_count || 0;
+    const message =
+      count > 0
+        ? t("members.leaveConfirmWithFiles", { title: trip.title, count }, count)
+        : t("members.leaveConfirm", { title: trip.title });
+    if (!(await confirmDialog({ message, confirmKey: "members.confirmLeave", danger: true }))) return;
     await api.delete(`/trips/${trip.id}/members/${m.user_id}`);
     // Access is gone the moment that returns, so staying on the trip would
     // just render a 404. The trips list is the only honest destination.

@@ -40,6 +40,11 @@ type tripResponse struct {
 	// it would say what you already know, and omitting it keeps the common case
 	// free of an extra lookup.
 	Owner *tripOwnerResponse `json:"owner"`
+	// MemberCount counts people on the trip besides its owner. Zero means solo,
+	// which is what decides whether the client offers per-file visibility: on a
+	// trip nobody else can see, personal versus trip-visible is a question with
+	// only one possible answer.
+	MemberCount int64 `json:"member_count"`
 }
 
 func (s *Server) tripToResponse(ctx context.Context, t db.Trip, role db.TripRole) tripResponse {
@@ -55,6 +60,12 @@ func (s *Server) tripToResponse(ctx context.Context, t db.Trip, role db.TripRole
 		Role:           string(role),
 	}
 	resp.PreviewImageURL = s.resolveImageURL(ctx, t.PreviewImageID)
+	// One extra count on a single-trip response. A failure leaves it at zero,
+	// which renders as a solo trip — the visibility control disappears rather
+	// than the page failing, and the server would refuse a bad value anyway.
+	if n, err := s.Store.CountTripMembers(ctx, t.ID); err == nil {
+		resp.MemberCount = n
+	}
 	if role != db.RoleOwner {
 		// One extra lookup, on a single-trip response only — the list endpoint
 		// gets the owner's name from its own join instead. A failure here is
@@ -107,6 +118,7 @@ func (s *Server) handleListTrips(w http.ResponseWriter, r *http.Request) {
 			CreatedAt:      t.CreatedAt.UTC().Format(time.RFC3339),
 			UpdatedAt:      t.UpdatedAt.UTC().Format(time.RFC3339),
 			Role:           string(t.Role),
+			MemberCount:    t.MemberCount,
 		}
 		item.PreviewImageURL = s.resolveImageURL(r.Context(), t.PreviewImageID)
 		if t.Role != db.RoleOwner {

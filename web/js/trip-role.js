@@ -39,3 +39,16 @@ export function isViewer(trip) {
 export function isOwner(trip) {
   return trip?.role === "owner";
 }
+
+/**
+ * Is anyone else on this trip?
+ *
+ * Decides whether per-file visibility is worth offering: on a trip nobody else
+ * can see, personal versus trip-visible is a question with one possible answer.
+ * Reads member_count, which counts non-owner members — so it is true for a
+ * member looking at a trip they were added to, and true for an owner who has
+ * added someone.
+ */
+export function isShared(trip) {
+  return (trip?.member_count || 0) > 0;
+}

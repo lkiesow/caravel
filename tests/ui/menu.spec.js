@@ -130,9 +130,25 @@ for (const locale of ["en", "de"]) {
 // seed, which the suite has no isolation for yet (see todo.md). Everything up
 // to the click is still worth holding: the roles, the copy in both locales, the
 // destructive tint, and the trigger's tap target.
+//
+// Driven on the `cascade` scenario rather than `full` since Stage 14 Milestone
+// 7. That milestone gave a file row's menu a visibility radio group *on a
+// shared trip*, and `full` is shared (the seeder puts `other` on it), so this
+// test's whole premise — a menu with no selection in it — stopped being true
+// there. `cascade` is a solo trip with two seeded files, which is still exactly
+// the actions-only case. The shared variant is asserted separately below rather
+// than folded in here, so each mode has a test that fails for one reason.
 const FILE_MENU_LABELS = {
   en: { actions: "File actions", items: ["Edit note", "Delete"] },
   de: { actions: "Dateiaktionen", items: ["Notiz bearbeiten", "Löschen"] },
+};
+
+// The same row menu on a *shared* trip, where the uploader can also choose who
+// sees the file. Radio items and action items in one popup is a shape menu.js
+// supports and nothing else exercised until now.
+const FILE_VISIBILITY_LABELS = {
+  en: { radios: ["Everyone on the trip", "Only me"], actions: ["Edit note", "Delete"] },
+  de: { radios: ["Alle auf der Reise", "Nur ich"], actions: ["Notiz bearbeiten", "Löschen"] },
 };
 
 for (const locale of ["en", "de"]) {
@@ -142,16 +158,21 @@ for (const locale of ["en", "de"]) {
     test(`renders actions, not a selection (${locale})`, async ({ page }) => {
       await login(page);
       const trips = await resolveScenarioTrips(page);
-      await gotoRoute(page, `/trips/${trips.full}/files`);
+      await gotoRoute(page, `/trips/${trips.cascade}/files`);
       const copy = FILE_MENU_LABELS[locale];
 
-      // The `full` scenario seeds two files: one on the trip, one on a
+      // The `cascade` scenario seeds two files: one on the trip, one on a
       // location. Both rows carry their own menu.
       const rows = page.locator(".files > li");
       await expect(
         rows,
-        "the full trip should show exactly its two seeded files — a different count means the dev database has drifted from the seed (leftover manual test data; run `make dev-reset FORCE=1`)"
+        "the cascade trip should show exactly its two seeded files — a different count means the dev database has drifted from the seed (leftover manual test data; run `make dev-reset FORCE=1`)"
       ).toHaveCount(2);
+
+      // No visibility UI at all on a solo trip: personal versus trip-visible is
+      // a question with one possible answer there.
+      await expect(page.locator(".file-visibility")).toHaveCount(0);
+      await expect(page.locator(".file-card__personal")).toHaveCount(0);
 
       const trigger = rows.first().locator(".menu__trigger");
       const dropdown = rows.first().locator(".menu__dropdown");
@@ -189,6 +210,42 @@ for (const locale of ["en", "de"]) {
       await page.keyboard.press("Escape");
       await expect(dropdown).toBeHidden();
       await expect(trigger).toHaveAttribute("aria-expanded", "false");
+    });
+  });
+}
+
+for (const locale of ["en", "de"]) {
+  test.describe(`file row menu on a shared trip (${locale})`, () => {
+    test.use({ viewport: MOBILE, locale });
+
+    test(`mixes a visibility selection with the actions (${locale})`, async ({ page }) => {
+      await login(page);
+      const trips = await resolveScenarioTrips(page);
+      await gotoRoute(page, `/trips/${trips.full}/files`);
+      const copy = FILE_VISIBILITY_LABELS[locale];
+
+      // The drop zone carries the choice for whatever is uploaded next, since
+      // it is made before the file is sent rather than after.
+      const choices = page.locator(".file-visibility .setting-choice span");
+      await expect(choices).toHaveText(copy.radios);
+      // Trip-visible by default, deliberately — see stage-14.md.
+      await expect(page.locator('.file-visibility input[value="trip"]')).toBeChecked();
+
+      const row = page.locator(".files > li").first();
+      await row.locator(".menu__trigger").click();
+      const dropdown = row.locator(".menu__dropdown");
+      await expect(dropdown).toBeVisible();
+
+      // Both kinds in one popup: two radios carrying the current state, then
+      // the two actions. Exactly one radio is checked.
+      await expect(dropdown.locator('[role="menuitemradio"]')).toHaveText(copy.radios);
+      await expect(dropdown.locator('[role="menuitem"]')).toHaveText(copy.actions);
+      await expect(dropdown.locator('[role="menuitemradio"][aria-checked="true"]')).toHaveCount(1);
+
+      // Nothing is clicked: changing a visibility would mutate the shared seed,
+      // which this spec has no isolation for. The Go tests cover the effect.
+      await page.keyboard.press("Escape");
+      await expect(dropdown).toBeHidden();
     });
   });
 }

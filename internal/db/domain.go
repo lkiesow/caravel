@@ -136,6 +136,10 @@ type TripForUser struct {
 	Role             TripRole
 	OwnerUsername    string
 	OwnerDisplayName string
+	// MemberCount counts non-owner members, so zero means a solo trip. The
+	// client uses it to decide whether per-file visibility is a question worth
+	// asking at all.
+	MemberCount int64
 }
 
 // MapItem is a lightweight projection for the map view: items with a
@@ -162,6 +166,25 @@ type ItemCoordinate struct {
 
 // File.ItemID is nil for trip-level "general files" and set for
 // files attached to a specific item — see plan Section 2.2.
+// FileVisibility is who can see a file on a shared trip. Two values only, and
+// the reason there is no third is worth knowing: checklists get a `shared`
+// state because being *ticked* is a second axis, and a file has no equivalent —
+// who may edit its note or delete it already follows the trip role.
+type FileVisibility string
+
+const (
+	// FileVisibilityPersonal: only whoever uploaded it. The boarding-pass case.
+	FileVisibilityPersonal FileVisibility = "personal"
+	// FileVisibilityTrip: everyone who can see the trip. The default.
+	FileVisibilityTrip FileVisibility = "trip"
+)
+
+// Valid reports whether v is a storable visibility, for accepting one from a
+// request body.
+func (v FileVisibility) Valid() bool {
+	return v == FileVisibilityPersonal || v == FileVisibilityTrip
+}
+
 type File struct {
 	ID          string
 	TripID      string
@@ -172,6 +195,11 @@ type File struct {
 	SizeBytes   int64
 	UploadedAt  time.Time
 	Note        *string
+	Visibility  FileVisibility
+	// OwnerUserID is who uploaded it, and therefore whose file a personal one
+	// is. A pointer because the column is nullable — see migration 0009; in
+	// practice every row has one.
+	OwnerUserID *string
 }
 
 // FileDetail is a file plus the title of the location it is attached

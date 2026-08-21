@@ -17,7 +17,8 @@ SELECT * FROM trips WHERE id = sqlc.arg(id);
 SELECT t.*,
        CAST(CASE WHEN t.owner_id = sqlc.arg(user_id) THEN 'owner' ELSE m.role END AS TEXT) AS role,
        u.username AS owner_username,
-       u.display_name AS owner_display_name
+       u.display_name AS owner_display_name,
+       (SELECT COUNT(*) FROM trip_members mm WHERE mm.trip_id = t.id) AS member_count
 FROM trips t
 JOIN users u ON u.id = t.owner_id
 LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = sqlc.arg(user_id)

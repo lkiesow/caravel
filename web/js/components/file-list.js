@@ -32,8 +32,22 @@ import { renderLoading } from "./loading.js";
 // brand-new location can carry files, then uploads them itself once
 // the item ID exists - a multipart upload can't be part of the JSON create
 // request, so post-create is the only option regardless (see todo.md).
-export async function renderFileList(container, path, { staged, rows: given, readOnly = false } = {}) {
+// Visibility (Stage 14 Milestone 7): pass `shared: true` when the trip has
+// somebody else on it. That turns on the per-file personal/trip choice — a
+// selector on the drop zone for new uploads and a radio group in each row's own
+// menu afterwards. Left off, nothing about visibility is rendered at all: on a
+// solo trip the distinction cannot mean anything, and offering it would be
+// asking a question with only one possible answer.
+//
+// The value still travels on every upload either way; the server defaults it,
+// and a trip that later gains a member finds its existing files already
+// trip-visible.
+export async function renderFileList(container, path, { staged, rows: given, readOnly = false, shared = false } = {}) {
   const isStaging = !path;
+  // The visibility a new upload gets, remembered across a batch and across the
+  // re-render that follows one — picking "personal" and then dropping three
+  // files should not silently revert between them.
+  let uploadVisibility = "trip";
   // Errors survive the re-render that shows them: render() rebuilds the whole
   // subtree, so the paragraph a handler wrote into is gone by the time the user
   // would read it.
@@ -84,6 +98,23 @@ export async function renderFileList(container, path, { staged, rows: given, rea
           </span>
           <span class="btn btn-secondary file-drop__browse" aria-hidden="true" data-i18n="files.browse"></span>
         </label>
+        ${
+          shared
+            ? `<div class="file-visibility">
+          <span class="file-visibility__label" id="file-visibility-label" data-i18n="files.visibility.label"></span>
+          <div class="setting-choices" role="radiogroup" aria-labelledby="file-visibility-label">
+            <label class="setting-choice">
+              <input type="radio" name="uploadVisibility" value="trip" />
+              <span data-i18n="files.visibility.trip"></span>
+            </label>
+            <label class="setting-choice">
+              <input type="radio" name="uploadVisibility" value="personal" />
+              <span data-i18n="files.visibility.personal"></span>
+            </label>
+          </div>
+        </div>`
+            : ""
+        }
         `
         }
       </div>
@@ -112,8 +143,8 @@ export async function renderFileList(container, path, { staged, rows: given, rea
       // every difference between them belongs here rather than in two copies
       // of the card template.
       const view = isStaging
-        ? { filename: row.file.name, size: row.file.size, contentType: row.file.type, note: row.note, itemTitle: null, href: null }
-        : { filename: row.filename, size: row.size_bytes, contentType: row.content_type, note: row.note, itemTitle: row.item_title, href: row.download_url };
+        ? { filename: row.file.name, size: row.file.size, contentType: row.file.type, note: row.note, itemTitle: null, href: null, visibility: row.visibility || "trip", isMine: true }
+        : { filename: row.filename, size: row.size_bytes, contentType: row.content_type, note: row.note, itemTitle: row.item_title, href: row.download_url, visibility: row.visibility, isMine: row.is_mine };
 
       // The note wins the title when there is one, and the filename drops to
       // the meta line. A note is the only readable name a file uploaded as
@@ -142,9 +173,14 @@ export async function renderFileList(container, path, { staged, rows: given, rea
       //   desktop: [filename or "No note" · location]  (size is the column)
       // So "No note" needs no separator of its own - it is only ever first -
       // while the location's is desktop-only, hidden where the location wraps.
+      // A personal file says so, with a lock. Only rendered when the trip is
+      // shared: on a solo trip every file is trip-visible and a badge saying so
+      // on every row would be noise.
+      const personal = shared && view.visibility === "personal";
       const metaTail =
         (view.note ? "" : `<span class="file-card__nonote">${escapeHtml(t("files.noNote"))}</span>`) +
-        (view.itemTitle ? `${sep("source")}<span class="file-card__source">${escapeHtml(view.itemTitle)}</span>` : "");
+        (view.itemTitle ? `${sep("source")}<span class="file-card__source">${escapeHtml(view.itemTitle)}</span>` : "") +
+        (personal ? `${sep("visibility")}<span class="file-card__personal">${icon("lock", { className: "file-card__lock" })}${escapeHtml(t("files.personal"))}</span>` : "");
 
       const body = `
         <span class="file-card__tile">${icon(tileIconName(view.contentType))}</span>
@@ -184,11 +220,35 @@ export async function renderFileList(container, path, { staged, rows: given, rea
         chevron: false,
         triggerClass: "file-actions__trigger",
         ariaLabel: "files.actions",
+        // Radio items and action items in one menu, which renderMenu supports:
+        // visibility is a state the file is in, the other two are things the
+        // menu does. The radio group appears only for the uploader's own files
+        // on a shared trip — an editor may rename or delete a shared file, but
+        // who reads someone else's document is not theirs to decide, and the
+        // server refuses it too.
+        activeValue: view.visibility,
         items: [
+          ...(shared && view.isMine
+            ? [
+                { value: "trip", label: t("files.visibility.trip"), iconName: "users" },
+                { value: "personal", label: t("files.visibility.personal"), iconName: "lock" },
+              ]
+            : []),
           { value: "note", label: t("files.editNote"), iconName: "pencil", action: true },
           { value: "delete", label: t(isStaging ? "common.remove" : "common.delete"), iconName: "trash-2", action: true, danger: true },
         ],
         onSelect: async (action) => {
+          if (action === "trip" || action === "personal") {
+            if (action === view.visibility) return;
+            if (isStaging) {
+              staged[i].visibility = action;
+            } else {
+              const updated = await api.put(`/files/${row.id}/visibility`, { visibility: action });
+              files = files.map((f) => (f.id === updated.id ? updated : f));
+            }
+            render();
+            return;
+          }
           if (action === "note") {
             const note = await promptDialog({
               messageKey: "files.notePrompt",
@@ -229,6 +289,19 @@ export async function renderFileList(container, path, { staged, rows: given, rea
     const drop = container.querySelector(".file-drop");
     const fileInput = drop.querySelector('input[type="file"]');
     const errorEl = container.querySelector(".file-list__error");
+
+    // The selector reflects the remembered choice and writes back to it. Not a
+    // form field read at submit time: the drop zone has no submit, and a drop
+    // gesture never touches this control.
+    if (shared) {
+      const current = container.querySelector(`[name="uploadVisibility"][value="${uploadVisibility}"]`);
+      if (current) current.checked = true;
+      container.querySelectorAll('[name="uploadVisibility"]').forEach((input) => {
+        input.addEventListener("change", () => {
+          if (input.checked) uploadVisibility = input.value;
+        });
+      });
+    }
 
     if (errors.length) {
       // One line per file that failed, so a batch reports which of its members
@@ -285,12 +358,13 @@ export async function renderFileList(container, path, { staged, rows: given, rea
         // the next load moved it to the top. Found by the spec below, which
         // asserted the order before and after a reload.
         if (isStaging) {
-          staged.unshift({ file, note: null });
+          staged.unshift({ file, note: null, visibility: uploadVisibility });
           continue;
         }
         try {
           const formData = new FormData();
           formData.append("file", file);
+          formData.append("visibility", uploadVisibility);
           const res = await fetch(`/api${path}`, { method: "POST", body: formData, credentials: "same-origin" });
           const created = await res.json();
           if (!res.ok) throw new Error(created.error || t("common.error"));

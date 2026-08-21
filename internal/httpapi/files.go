@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"caravel/internal/auth"
 	"caravel/internal/db"
 )
 
@@ -70,9 +71,17 @@ type fileResponse struct {
 	// and the upload responses know their location from context, so only the
 	// trip listing pays for the join.
 	ItemTitle *string `json:"item_title"`
+	// Visibility is "personal" or "trip". Always sent, so the client never has
+	// to infer a default.
+	Visibility string `json:"visibility"`
+	// IsMine says whether the reading user uploaded this file, which is what
+	// decides whether they may change its visibility. Sent rather than an owner
+	// id: the client only ever asks "may I", and naming the uploader of every
+	// shared file would be a wider disclosure than the feature needs.
+	IsMine bool `json:"is_mine"`
 }
 
-func fileToResponse(d db.File) fileResponse {
+func fileToResponse(d db.File, readerID string) fileResponse {
 	return fileResponse{
 		ID:          d.ID,
 		TripID:      d.TripID,
@@ -83,14 +92,16 @@ func fileToResponse(d db.File) fileResponse {
 		UploadedAt:  d.UploadedAt.UTC().Format(time.RFC3339),
 		Note:        d.Note,
 		DownloadURL: fmt.Sprintf("/api/files/%s/download", d.ID),
+		Visibility:  string(d.Visibility),
+		IsMine:      d.OwnerUserID != nil && *d.OwnerUserID == readerID,
 	}
 }
 
 // fileDetailToResponse wraps the plain mapper rather than repeating it, so
 // a new field on fileResponse can't end up set on one path and not the
 // other.
-func fileDetailToResponse(d db.FileDetail) fileResponse {
-	resp := fileToResponse(d.File)
+func fileDetailToResponse(d db.FileDetail, readerID string) fileResponse {
+	resp := fileToResponse(d.File, readerID)
 	resp.ItemTitle = d.ItemTitle
 	return resp
 }
@@ -138,6 +149,18 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request, tripID strin
 		notePtr = &note
 	}
 
+	// Visibility rides along in the multipart form, since this is the one
+	// request that creates the file and the choice is made before it is sent.
+	// An absent or unrecognised value means "trip" — the default, and the
+	// failure direction that produces a visible file rather than a silently
+	// hidden one. Nothing is lost by guessing wrong: the uploader can change it
+	// from the row menu afterwards.
+	visibility := db.FileVisibility(strings.TrimSpace(r.FormValue("visibility")))
+	if !visibility.Valid() {
+		visibility = db.FileVisibilityTrip
+	}
+	uploader, _ := auth.UserFromContext(r.Context())
+
 	row, err := s.Store.CreateFile(r.Context(), db.CreateFileParams{
 		ID:          id,
 		TripID:      tripID,
@@ -148,12 +171,14 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request, tripID strin
 		SizeBytes:   size,
 		UploadedAt:  time.Now().UTC(),
 		Note:        notePtr,
+		Visibility:  visibility,
+		OwnerUserID: &uploader.ID,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not save file")
 		return
 	}
-	writeJSON(w, http.StatusCreated, fileToResponse(row))
+	writeJSON(w, http.StatusCreated, fileToResponse(row, uploader.ID))
 }
 
 func (s *Server) handleListTripFiles(w http.ResponseWriter, r *http.Request) {
@@ -161,14 +186,15 @@ func (s *Server) handleListTripFiles(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	files, err := s.Store.ListTripFiles(r.Context(), trip.ID)
+	me, _ := auth.UserFromContext(r.Context())
+	files, err := s.Store.ListTripFiles(r.Context(), trip.ID, me.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not list files")
 		return
 	}
 	resp := make([]fileResponse, len(files))
 	for i, d := range files {
-		resp[i] = fileDetailToResponse(d)
+		resp[i] = fileDetailToResponse(d, me.ID)
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -186,14 +212,15 @@ func (s *Server) handleListItemFiles(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	files, err := s.Store.ListItemFiles(r.Context(), item.ID)
+	me, _ := auth.UserFromContext(r.Context())
+	files, err := s.Store.ListItemFiles(r.Context(), item.ID, me.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not list files")
 		return
 	}
 	resp := make([]fileResponse, len(files))
 	for i, d := range files {
-		resp[i] = fileToResponse(d)
+		resp[i] = fileToResponse(d, me.ID)
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -243,7 +270,55 @@ func (s *Server) handleUpdateFileNote(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	writeJSON(w, http.StatusOK, fileToResponse(updated))
+	me, _ := auth.UserFromContext(r.Context())
+	writeJSON(w, http.StatusOK, fileToResponse(updated, me.ID))
+}
+
+type fileVisibilityRequest struct {
+	Visibility string `json:"visibility"`
+}
+
+// handleSetFileVisibility is the one file route restricted to the uploader
+// rather than to a trip role.
+//
+// An editor may rename or delete a shared file — that is what editing a trip
+// means — but making someone else's file public, or hiding it from the trip, is
+// a decision about *their* document. So this checks ownership on top of the
+// editor role rather than instead of it: a viewer cannot reach it either, since
+// they cannot write anything.
+func (s *Server) handleSetFileVisibility(w http.ResponseWriter, r *http.Request) {
+	file, _, ok := s.loadFile(w, r, db.RoleEditor)
+	if !ok {
+		return
+	}
+	me, _ := auth.UserFromContext(r.Context())
+	if file.OwnerUserID == nil || *file.OwnerUserID != me.ID {
+		writeErrorCode(w, http.StatusForbidden, "not_file_owner",
+			"only the person who uploaded a file can change who sees it")
+		return
+	}
+
+	var req fileVisibilityRequest
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	visibility := db.FileVisibility(req.Visibility)
+	if !visibility.Valid() {
+		writeError(w, http.StatusBadRequest, "visibility must be personal or trip")
+		return
+	}
+
+	updated, err := s.Store.SetFileVisibility(r.Context(), file.ID, file.TripID, visibility)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "file not found")
+		} else {
+			writeError(w, http.StatusInternalServerError, "could not update file")
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, fileToResponse(updated, me.ID))
 }
 
 func (s *Server) handleDeleteFile(w http.ResponseWriter, r *http.Request) {

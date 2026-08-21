@@ -124,7 +124,7 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
     if (tab === "locations") {
       renderItemsTab(content, trip.id);
     } else if (tab === "map") {
-      content.innerHTML = `<leaflet-map trip-id="${trip.id}"></leaflet-map>`;
+      content.innerHTML = `<leaflet-map trip-id="${trip.id}" locate></leaflet-map>`;
       // A marker popup's in-app link. leaflet-map.js can't let the router's
       // [data-link] interception handle it - that listener sits on document
       // and a click inside a shadow root retargets to the host - so it

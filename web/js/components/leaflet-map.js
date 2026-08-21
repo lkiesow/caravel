@@ -1,5 +1,7 @@
 import { api } from "../api.js";
 import { t } from "../i18n.js";
+import { icon } from "../icon.js";
+import { getCurrentPosition, locateErrorKey, locateUnavailableReason } from "../geolocation.js";
 
 const CATEGORY_COLORS = {
   site: "#16a34a",
@@ -29,6 +31,16 @@ const PICK_MARKER_COLOR = "#ea580c";
 // writes a 17-digit float straight into a number input.
 const PICK_PRECISION = 1e6;
 
+// "You are here". Not a category colour and not the pick amber either - this
+// marker means something different from both, and the accuracy ring is the
+// same hue at low opacity so the two read as one thing.
+const HERE_MARKER_COLOR = "#0891b2";
+
+// Zoom used when centring on the device's position. Closer than
+// SINGLE_MARKER_ZOOM: you know roughly where you are, so the useful question
+// is what is on the next street, not which region this is.
+const HERE_ZOOM = 15;
+
 // Every marker in this component is drawn as a CSS dot rather than an image.
 // Leaflet's default marker is an <img> whose src is resolved relative to the
 // *page* URL, which in an SPA means /trips/<id>/locations/marker-icon.png -
@@ -51,6 +63,17 @@ function pickMarkerIcon(L) {
       `border:4px solid ${PICK_MARKER_COLOR};background:rgba(255,255,255,.85);` +
       `box-shadow:0 0 3px rgba(0,0,0,.6)"></span>`,
     iconSize: [24, 24],
+  });
+}
+
+function hereMarkerIcon(L) {
+  return L.divIcon({
+    className: "",
+    html:
+      `<span style="display:block;width:1rem;height:1rem;border-radius:50%;box-sizing:border-box;` +
+      `background:${HERE_MARKER_COLOR};border:3px solid white;` +
+      `box-shadow:0 0 4px rgba(0,0,0,.6)"></span>`,
+    iconSize: [16, 16],
   });
 }
 
@@ -136,6 +159,55 @@ const styles = `
   .popup-link {
     display: block;
   }
+  /* The locate control, overlaid on the map like a map control should be.
+     Bottom left: Leaflet's zoom sits top left, the legend top right and the
+     attribution bottom right, so this is the one free corner. */
+  .locate {
+    position: absolute;
+    bottom: 0.5rem;
+    left: 0.5rem;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    /* A map control is a tap target like any other, at every width - not just
+       under 640px. Nothing here is ever reachable with a mouse only. */
+    min-width: var(--tap-min, 2.75rem);
+    min-height: var(--tap-min, 2.75rem);
+    padding: 0 0.6rem;
+    border: 1px solid var(--color-border, #ccc);
+    border-radius: 0.375rem;
+    background: var(--color-surface, #fff);
+    color: var(--color-text, #111);
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+  .locate[disabled] {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+  .locate .icon {
+    width: 1.1rem;
+    height: 1.1rem;
+    /* The sprite's symbols are strokes with no fill, so they are invisible
+       without this - base.css says the same for .icon outside the shadow. */
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .locate-status {
+    margin: 0.5rem 0 0;
+    font-size: 0.8rem;
+    color: var(--color-text-muted, #666);
+  }
+  .locate-status[hidden] {
+    display: none;
+  }
+
   /* Rendered only on coarse pointers (see render()), where one-finger drag
      deliberately no longer pans the map. */
   .gesture-hint {
@@ -206,7 +278,7 @@ const styles = `
 
 class LeafletMap extends HTMLElement {
   static get observedAttributes() {
-    return ["trip-id", "lat", "lng", "marker-title", "marker-category", "pick"];
+    return ["trip-id", "lat", "lng", "marker-title", "marker-category", "pick", "locate"];
   }
 
   connectedCallback() {
@@ -314,7 +386,13 @@ class LeafletMap extends HTMLElement {
             .join("")}
         </div>`
         }
+        ${
+          this.hasAttribute("locate")
+            ? `<button type="button" class="locate" data-action="locate">${icon("locate-fixed")}<span>${t("map.locate.label")}</span></button>`
+            : ""
+        }
       </div>
+      ${this.hasAttribute("locate") ? `<p class="locate-status" role="status" hidden></p>` : ""}
       ${isCoarsePointer() ? `<p class="gesture-hint">${t("map.twoFingerHint")}</p>` : ""}
     `;
 
@@ -387,6 +465,8 @@ class LeafletMap extends HTMLElement {
       // handler in syncPickMarker.
       map.on("click", (e) => this.emitPick(e.latlng));
     }
+
+    if (this.hasAttribute("locate")) this.bindLocate();
 
     this.setAttribute("data-ready", "");
 
@@ -506,6 +586,89 @@ class LeafletMap extends HTMLElement {
     } else if (!this._map.getBounds().contains([lat, lng])) {
       this._map.setView([lat, lng], this._map.getZoom(), { animate: false });
     }
+  }
+
+  // The locate control. Failing honestly is the requirement here, not an
+  // edge case: over plain HTTP on a phone the geolocation API exists and
+  // simply never calls back, so an unguarded button would spin forever with
+  // nothing to show. locateUnavailableReason() answers that up front and the
+  // button is disabled with the reason spelled out instead.
+  bindLocate() {
+    const button = this.shadowRoot.querySelector('[data-action="locate"]');
+    const status = this.shadowRoot.querySelector(".locate-status");
+
+    const say = (key) => {
+      status.textContent = key ? t(key) : "";
+      status.hidden = !key;
+    };
+
+    const blocked = locateUnavailableReason();
+    if (blocked) {
+      button.disabled = true;
+      say(locateErrorKey(blocked));
+      return;
+    }
+
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      say("map.locate.searching");
+      try {
+        const position = await getCurrentPosition();
+        say(null);
+        this.showPosition(position.lat, position.lng, position.accuracy);
+        // The page decides what a position *means*: the trip map only shows
+        // it, while the editor's picker takes it as the point being set. Same
+        // control, one event, no second button to keep in step.
+        this.dispatchEvent(
+          new CustomEvent("position-found", {
+            bubbles: true,
+            composed: true,
+            detail: position,
+          })
+        );
+      } catch (err) {
+        // Denied, unavailable and timed out are three different situations
+        // and get three different sentences; anything else would tell the
+        // user nothing about what to try next.
+        say(locateErrorKey(err.reason || "unavailable"));
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
+
+  // "You are here": the point plus the accuracy the browser reported, drawn
+  // as a ring. The ring is not decoration - a 2km fix and a 5m fix look
+  // identical without it, and only one of them is worth acting on.
+  showPosition(lat, lng, accuracy) {
+    const L = this._L;
+    if (!L || !this._map) return;
+
+    this._hereMarker?.remove();
+    this._hereCircle?.remove();
+
+    this._hereMarker = L.marker([lat, lng], {
+      icon: hereMarkerIcon(L),
+      // Not draggable, unlike the pick marker: this is a reading, not a
+      // choice, so dragging it would claim to move the device.
+      interactive: false,
+      keyboard: false,
+    }).addTo(this._map);
+
+    if (Number.isFinite(accuracy) && accuracy > 0) {
+      this._hereCircle = L.circle([lat, lng], {
+        radius: accuracy,
+        color: HERE_MARKER_COLOR,
+        weight: 1,
+        fillColor: HERE_MARKER_COLOR,
+        fillOpacity: 0.12,
+        interactive: false,
+      }).addTo(this._map);
+    } else {
+      this._hereCircle = null;
+    }
+
+    this._map.setView([lat, lng], HERE_ZOOM, { animate: false });
   }
 
   // The component's one output in pick mode. Composed, because it has to

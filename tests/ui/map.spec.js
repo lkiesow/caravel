@@ -665,3 +665,158 @@ test.describe("address search in the location editor", () => {
     expect(page.url(), "Enter should not have saved and navigated away").toContain("/locations/new");
   });
 });
+
+
+// Milestone 6. The device's own position.
+//
+// The happy path is testable at all because http://localhost counts as a
+// secure context; over plain HTTP to a phone the API exists and never calls
+// back, which is the failure the insecure-context guard exists for and the
+// one case below that has to be simulated rather than provoked.
+// accuracy matters here: Playwright defaults it to 0, and a zero-accuracy fix
+// deliberately draws no ring (see showPosition), so a test that left it out
+// would "fail" on correct behaviour. 35m is a plausible phone GPS reading.
+const REYKJAVIK = { latitude: 64.1466, longitude: -21.9426, accuracy: 35 };
+
+// The locate button settles by re-enabling itself, whether it succeeded or
+// failed. Polling merely for "the status line is visible" is not enough - the
+// in-progress "Finding your location…" message satisfies that too, which made
+// the first version of the refusal test below pass on a request still in
+// flight.
+async function waitForLocateSettled(page, selector = "leaflet-map") {
+  await page.waitForFunction(
+    (sel) => document.querySelector(sel).shadowRoot.querySelector('[data-action="locate"]').disabled === false,
+    selector,
+    { timeout: 20000 }
+  );
+}
+
+test.describe("the locate control", () => {
+  test.use({ permissions: ["geolocation"], geolocation: REYKJAVIK });
+
+  test("shows where you are, with the accuracy the browser reported", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+
+    await page.evaluate(() => document.querySelector("leaflet-map").shadowRoot.querySelector('[data-action="locate"]').click());
+    await waitForLocateSettled(page);
+
+    const here = await page.evaluate(() => {
+      const el = document.querySelector("leaflet-map");
+      const p = el._hereMarker.getLatLng();
+      const c = el._map.getCenter();
+      return {
+        marker: { lat: p.lat, lng: p.lng },
+        centre: { lat: c.lat, lng: c.lng },
+        zoom: el._map.getZoom(),
+        hasAccuracyRing: Boolean(el._hereCircle),
+        radius: el._hereCircle?.getRadius() ?? null,
+        status: el.shadowRoot.querySelector(".locate-status").hidden,
+      };
+    });
+
+    expect(here.marker.lat).toBeCloseTo(REYKJAVIK.latitude, 3);
+    expect(here.marker.lng).toBeCloseTo(REYKJAVIK.longitude, 3);
+    // Centred, not merely marked - the point of the button is to take you there.
+    expect(here.centre.lat).toBeCloseTo(REYKJAVIK.latitude, 2);
+    expect(here.zoom, "should zoom in on the position").toBeGreaterThan(10);
+    // The ring is not decoration: a 2km fix and a 5m fix look identical
+    // without it and only one is worth acting on.
+    expect(here.hasAccuracyRing, "an accuracy ring should be drawn").toBe(true);
+    expect(here.radius, "the ring should have a real radius").toBeGreaterThan(0);
+    expect(here.status, "no error line on success").toBe(true);
+  });
+
+  test("in the editor, it sets the point being picked", async ({ page }) => {
+    await login(page);
+    const res = await page.request.post("/api/trips", { data: { title: "UI suite: locate spec" } });
+    const tripId = (await res.json()).id;
+    try {
+      await gotoRoute(page, `/trips/${tripId}/locations/new`);
+      await page.waitForFunction(() => document.querySelector(".location-form__map")?.hasAttribute("data-ready"));
+
+      await page.evaluate(() =>
+        document.querySelector(".location-form__map").shadowRoot.querySelector('[data-action="locate"]').click()
+      );
+      await waitForLocateSettled(page, ".location-form__map");
+
+      // The single most useful case: standing somewhere and recording it.
+      await expect(page.locator('.location-form input[name="lat"]')).toHaveValue(/64\.14/);
+      await expect(page.locator('.location-form input[name="lng"]')).toHaveValue(/-21\.94/);
+      // ...and the coordinates flowed on to the pick marker, so the two
+      // markers now mean different things on the same map.
+      await expect
+        .poll(() => page.evaluate(() => Boolean(document.querySelector(".location-form__map")._pickMarker)))
+        .toBe(true);
+    } finally {
+      await page.request.delete(`/api/trips/${tripId}`);
+    }
+  });
+});
+
+test.describe("the locate control when it cannot work", () => {
+  test("an unanswered or refused prompt settles instead of hanging", async ({ page, context }) => {
+    await context.clearPermissions();
+    await login(page);
+    await gotoTripMap(page);
+
+    await page.evaluate(() => document.querySelector("leaflet-map").shadowRoot.querySelector('[data-action="locate"]').click());
+
+    await waitForLocateSettled(page);
+
+    const after = await page.evaluate(() => {
+      const el = document.querySelector("leaflet-map");
+      return {
+        message: el.shadowRoot.querySelector(".locate-status").textContent.trim(),
+        marker: Boolean(el._hereMarker),
+        buttonDisabled: el.shadowRoot.querySelector('[data-action="locate"]').disabled,
+      };
+    });
+    expect(after.marker, "a refusal must not mark a position anyway").toBe(false);
+    expect(after.message.length, "the outcome should be explained").toBeGreaterThan(10);
+    // Re-enabled afterwards: a refusal can be changed in site settings, so
+    // the button has to remain pressable.
+    expect(after.buttonDisabled, "the control should be usable again").toBe(false);
+    // Not the in-progress line: this is the assertion that fails if the
+    // request is left hanging, which is what PositionOptions.timeout alone
+    // does when the permission prompt goes unanswered.
+    expect(after.message.toLowerCase()).not.toContain("finding your location…");
+  });
+
+  test("an insecure context disables the control up front rather than hanging", async ({ page }) => {
+    // The case that cannot be provoked on localhost, and the one that matters
+    // most: over plain HTTP a phone's browser leaves getCurrentPosition
+    // silently uncalled forever. isSecureContext is what the guard reads.
+    await page.addInitScript(() => {
+      Object.defineProperty(window, "isSecureContext", { get: () => false });
+    });
+    await login(page);
+    await gotoTripMap(page);
+
+    const state = await page.evaluate(() => {
+      const el = document.querySelector("leaflet-map");
+      const status = el.shadowRoot.querySelector(".locate-status");
+      return {
+        disabled: el.shadowRoot.querySelector('[data-action="locate"]').disabled,
+        message: status.hidden ? null : status.textContent.trim(),
+      };
+    });
+    expect(state.disabled, "the button must not be pressable at all").toBe(true);
+    expect(state.message, "and it must say why").toBeTruthy();
+    // Specifically about the connection, not a generic failure - it is the
+    // only one of these the user can do nothing about from the page.
+    expect(state.message.toLowerCase()).toMatch(/secure|http/);
+  });
+
+  test("the trip map without the attribute has no locate control at all", async ({ page }) => {
+    // The control is opt-in per mount: the single-marker embed on a location's
+    // view page has no use for it.
+    await login(page);
+    const routes = await buildRoutes(page);
+    await gotoRoute(page, routes.find((r) => r.label === "view location").path);
+    const count = await page.evaluate(
+      () => document.querySelector("leaflet-map")?.shadowRoot.querySelectorAll('[data-action="locate"]').length ?? -1
+    );
+    expect(count, "the view page's embed should not offer a locate button").toBe(0);
+  });
+});

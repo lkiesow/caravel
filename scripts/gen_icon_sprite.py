@@ -38,6 +38,7 @@ ICONS = [
     "ellipsis",
     "file",
     "ellipsis-vertical",
+    "locate-fixed",
 ]
 
 

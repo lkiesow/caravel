@@ -58,21 +58,17 @@ Things that are wrong today, each confirmed against the current source.
 
 Direction already agreed or obviously wanted; none of it built.
 
-- **Use the device's location.** (From the user's notes.) Three related
-  capabilities, in rough order of usefulness:
-    - show the user's own position on a map;
-    - centre a map on it;
-    - filter the locations list by distance from it (1 / 2 / 5 / 10 / 25 km).
-  Needs `navigator.geolocation`, which means a permission prompt and a
-  secure context — fine on localhost, but it will not work over plain HTTP on a
-  phone, so this is the first feature that pushes toward HTTPS in deployment.
-  `leaflet-map.js` is attribute-driven and read-only today, so showing a
-  position means teaching it a "here" marker plus an accuracy circle. The
-  distance filter is cheaper than it looks: `locations-tab.js` already loads
-  every item and filters client-side, so a haversine over `item.location`
-  needs no backend change — but it does need a second control next to the
-  existing category menu, and a decision about what to do with locations that
-  have no coordinates (hide, or always show).
+- **Filter the locations list by distance from the device.** (From the user's
+  notes; the "show my position on a map" and "centre on it" halves were built
+  in Stage 13 Milestone 6, which also left `web/js/geolocation.js` as the
+  shared helper.) Radii of 1 / 2 / 5 / 10 / 25 km. Cheaper than it looks:
+  `locations-tab.js` already loads every item and filters client-side, so a
+  haversine over `item.location` needs no backend change — but it does need a
+  second control next to the existing category menu (the toolbar is a
+  deliberately non-wrapping row that already fits 324px, so a third control
+  has to be icon-only), and a decision about what to do with locations that
+  have no coordinates: hiding them would make a data gap look like a distance
+  result.
 - **Search, filter and sort on the trips list.** Confirmed absent:
   `trips-page.js` has no search input, filter or sort control, and
   `ListTripsByOwner` (`internal/db/sqlc/queries/trips.sql`) has a fixed
@@ -422,7 +418,15 @@ else runs this.
 - **OpenID Connect / external auth providers.** `auth_identities` already
   supports a `provider` column beyond `'local'` for exactly this; no provider
   integration exists yet.
-- **HTTPS in deployment** is not currently a concern, but becomes one as soon as
-  the device-location feature above is picked up: `navigator.geolocation`
-  requires a secure context, so it will silently do nothing when the app is
-  served over plain HTTP to a phone.
+- **HTTPS in deployment is now a real concern, not a future one.** Stage 13
+  Milestone 6 shipped the locate control, and `navigator.geolocation` requires
+  a secure context. `localhost` counts, so development and the UI suite are
+  fine, but served over plain HTTP to a phone the feature cannot work at all.
+  It fails honestly rather than mysteriously — `locateUnavailableReason()`
+  disables the button and says the connection is the reason — but "honestly
+  unavailable" is still unavailable, and this is the first feature that a
+  deployment without TLS simply does not have. Worth remembering alongside it:
+  `PositionOptions.timeout` is **not** honoured while a permission prompt is
+  outstanding (measured in Firefox: still pending at 6s with a 3s timeout), so
+  anything else that calls the geolocation API must bring its own timer —
+  `web/js/geolocation.js` already does.

@@ -534,6 +534,71 @@ override (`context.grantPermissions(["geolocation"])` +
 and the map centred there; then the denial path with permissions revoked,
 asserting the translated error is shown and no marker appears.
 
+**Done.** `web/js/geolocation.js` holds the guarded helper and the vocabulary
+for why a position could not be had — `unsupported` / `insecure` / `denied` /
+`unavailable` / `timeout`, each with its own sentence, because they call for
+different responses. `leaflet-map.js` gained `showPosition(lat, lng, accuracy)`
+and a `locate` attribute rendering an in-map control (bottom left — Leaflet
+takes top-left and bottom-right, the legend top-right). The new `locate-fixed`
+icon went in through the `CLAUDE.md` recipe; the sprite diff is **purely
+additive**, every existing symbol byte-identical.
+
+One design decision the plan implied but did not state: there is **one**
+control, not two. Pressing it always shows and centres on the device's
+position and emits `position-found`; the *page* decides what that means. The
+trip map ignores the event, and the editor takes it as the point being set —
+which is the "standing somewhere and recording it" case — so there is no
+second "Use my location" button to keep in step with the first. The here-marker
+is a distinct teal, non-interactive and non-draggable (it is a reading, not a
+choice), with an `L.circle` accuracy ring: a 2km fix and a 5m fix look
+identical without one and only one of them is worth acting on. A zero or
+non-finite accuracy draws no ring at all.
+
+**The plan's central claim turned out to be wrong in my favour, and finding out
+was the most valuable part of this milestone.** The plan said the insecure
+context was the case where the API "does not error — it does nothing", and
+feature-detecting `isSecureContext` handles that. True, but incomplete: an
+**unanswered permission prompt hangs too**, and `PositionOptions.timeout` does
+not save you. Measured in Firefox with `{timeout: 3000}`, `getCurrentPosition`
+was still pending after **six seconds** — the browser does not run the spec's
+timeout while a permission decision is outstanding. So the first version of
+this milestone disabled the button, said "Finding your location…", and stayed
+that way forever for any user who ignored the prompt: precisely the failure
+the milestone exists to prevent, reintroduced by trusting an option.
+
+Two fixes. `getCurrentPosition` now races a `setTimeout` of its own, so the
+promise settles whatever the browser does; and a permission the user already
+refused is detected up front via `navigator.permissions.query` (guarded — an
+unsupported query falls through to asking) so a repeat refusal is instant
+rather than a ten-second wait. The `timeout` message was reworded to name its
+most common real cause, since a slow fix and an unanswered prompt are
+indistinguishable from here: "…If your browser asked for permission, answer
+that first, then try again."
+
+That bug was found by a **test that was itself wrong first**. It polled for
+"the status line is visible", which the in-progress "Finding your location…"
+message satisfies — so it passed on a request still in flight. It now waits for
+a terminal state (the button re-enabling) and asserts the message is *not* the
+in-progress one. A second test mistake worth recording: Playwright defaults
+mocked `accuracy` to **0**, and a zero-accuracy fix deliberately draws no ring,
+so the accuracy assertion failed on correct behaviour until the mock got a
+realistic 35m.
+
+Verified: `make ci` green (171 keys); `make test-ui` green, 52 tests (was 47),
+two consecutive full runs. Six new tests: the position shown, centred and
+ringed; the editor taking it as the picked point; an unanswered prompt settling
+rather than hanging; an insecure context disabling the control up front with a
+message that names the *connection*; and the view page's embed having no locate
+button at all, since `locate` is opt-in per mount. Deleting the `setTimeout`
+fails exactly the hanging test, with the button never re-enabling.
+
+Checked rather than assumed: the control **is** covered by the route sweeps —
+`deepQueryAll` reaches it and it has no `leaflet-*` ancestor to exclude it, so
+its 44px floor is genuinely asserted and not silently skipped like the popup
+links were. German at 324px: the button is 131×44 ("Mein Standort") and the
+longest message — the insecure-context one — wraps inside the viewport with no
+document overflow.
+
 ---
 
 ## 7. Filter the locations list by distance

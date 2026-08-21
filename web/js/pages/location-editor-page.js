@@ -109,7 +109,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
               <ul class="location-search__results"></ul>
             </div>
             <p class="location-form__pick-hint" data-i18n="location.form.pickHint"></p>
-            <leaflet-map pick class="location-form__map"${
+            <leaflet-map pick locate class="location-form__map"${
               item?.location?.lat != null && item?.location?.lng != null
                 ? ` lat="${escapeAttr(item.location.lat)}" lng="${escapeAttr(item.location.lng)}"`
                 : ""
@@ -352,12 +352,18 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
 
     // Map -> fields. No loop: setting the attributes above only moves the
     // marker, and location-picked is only ever emitted by a click or a drag.
-    picker.addEventListener("location-picked", (e) => {
-      form.lat.value = e.detail.lat;
-      form.lng.value = e.detail.lng;
+    const takeCoordinates = ({ lat, lng }) => {
+      form.lat.value = lat;
+      form.lng.value = lng;
       syncMapFromFields();
       syncHint();
-    });
+    };
+    picker.addEventListener("location-picked", (e) => takeCoordinates(e.detail));
+    // The locate control shows where the device is on any map; here that is
+    // also the answer to "where is this place", which is the single most
+    // useful case - standing somewhere and recording it. The trip map gets
+    // the same button and ignores this event.
+    picker.addEventListener("position-found", (e) => takeCoordinates(e.detail));
 
     for (const name of ["lat", "lng"]) {
       form[name].addEventListener("input", () => {

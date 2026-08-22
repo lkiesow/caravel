@@ -46,9 +46,101 @@ down.
   referencing `trip_id` and optionally `item_id`, with no changes to existing
   tables. The *splitting* half only means anything once several people share a
   trip.
-- **LLM-assisted metadata fetching for locations.** **(soon)** An external
-  provider (endpoint + API key in config) to auto-fill a location's details from
-  its title. Shape still to be pinned down.
+- **AI-assisted metadata for locations.** **(soon)** Designed out in the Stage
+  15 backlog review; what follows is the agreed shape, not a plan.
+
+  *The feature.* In the location editor, a "Search via AI" control either
+  enriches the location you are editing or takes a free prompt ("a cheap hostel
+  near Hallgrimskirkja") and builds one from scratch. It proposes `type`, `notes`,
+  an address and links; you accept or reject **per field**, including for fields
+  that already have content — those show a visible before/after, so accepting can
+  never silently destroy something you wrote. The sources the agent used are
+  listed with the proposal and stored nowhere: once you accept, it is just your
+  data.
+
+  *Optional, and invisible when unconfigured.* This needs an LLM endpoint, a key
+  and possibly a search key — infrastructure not everyone has, and one that can
+  cost money. So it is off by default and configured through **env vars only**
+  (`CARAVEL_LLM_URL` / `_KEY` / `_MODEL`, plus a search provider), never in the
+  database, where the key would end up in every backup. Unset means the endpoint
+  is not mounted and the control does not render. This is exactly the
+  `CARAVEL_GEOCODER_URL` precedent, which already disables address search and
+  hides its control the same way.
+
+  *No MCP.* Decided deliberately. MCP solves "connect an agent to tools unknown
+  at build time"; here the tool set is two things and one of them
+  (OSM/Nominatim) is already implemented. Adopting it would mean an MCP client
+  plus a sidecar process per server -- and both candidate servers (`ddgs`, the
+  OpenStreetMap ones) are Python, so a Go binary that ships as one static file
+  would grow a Python runtime. Implement the tools as native Go functions behind
+  the OpenAI tool-calling API instead, and keep the tool-dispatch seam clean
+  enough that an MCP-backed tool could be added later without a refactor.
+
+  *Web search behind an interface,* with implementations for Serper, SerpAPI and
+  Ollama Cloud (~80 lines of HTTP+JSON each), chosen by config. Start with Ollama
+  Cloud -- free tier, key already in hand. `ddgs` was considered and rejected as
+  the primary: unofficial scraping that breaks when DuckDuckGo changes its
+  markup, aggressive rate limiting from datacenter IPs, and Python.
+
+  *Never let the model produce coordinates.* It returns a place name and address
+  string; the existing Nominatim path resolves them. A plausible lat/lng 40km
+  from the real hotel looks perfectly fine in the form and is only wrong on the
+  map -- the one failure mode with no visible tell. Same reasoning for
+  `category`, which is a three-value enum and gets validated rather than trusted.
+  `type` is free text and would fragment ("hotel"/"Hotel"/"hostel"), so send the
+  distinct values already in use as a vocabulary and ask it to reuse one where it
+  fits.
+
+  *Hallucinated URLs* are the classic failure, so every proposed link gets a HEAD
+  check in parallel and the dead ones are dropped before the proposal is shown.
+
+  *Open-ended agent,* chosen over a bounded loop for the quality ceiling. That
+  makes the guard rails a hard requirement rather than a nicety: a wall-clock
+  deadline, a token budget per request and a cancel button -- an unbounded loop
+  is a bug in any design. No per-user rate limit; the instance owner configured
+  the key. Because a run can take 30+ seconds, progress has to stream ("searching
+  for...", "checking OpenStreetMap...") or it reads as a hung spinner -- so this
+  wants SSE, not a plain JSON POST.
+
+  *Structured output needs no library.* OpenAI-compatible servers take
+  `response_format: {type: "json_schema", strict: true}` (Ollama, vLLM and
+  llama.cpp all support it); hand-write the schema literal next to the Go struct
+  and validate after. The real work is the fallback for proxies that only do
+  `json_object`: prompt, validate, retry once.
+
+  *What goes to the provider.* The location's own existing metadata always --
+  title, notes, address, type, links -- since enriching means knowing what is
+  already there. Trip title and dates go too **behind a checkbox that turns them
+  off**, for anyone who would rather not send them. Notes should come back in the
+  user's locale. Note also that the agent reads web pages, so a page could carry
+  injected instructions; the blast radius is bounded by design, since the output
+  is a validated structure the user confirms field by field and no tool has a
+  side effect.
+
+  *In-binary, in `internal/assist`,* behind a narrow interface. A sidecar was
+  considered: it buys a clean seam, which a package boundary also buys, at the
+  cost of a second image, a second config, an internal API to version and a new
+  class of "the sidecar is down" failures. It would only earn that if Python were
+  needed -- and dropping MCP and `ddgs` removes Python.
+
+  *A stub provider* (`CARAVEL_LLM_URL` pointed at a built-in fake returning
+  canned proposals) so the UI can be built and Playwright-tested without a key or
+  a network. Nothing else here would be testable in CI.
+
+  Deliberately **not** in v1: auto-filling a cover image. The workable route is
+  the model returning a Wikipedia article title and Caravel pulling the lead
+  image through the Wikimedia API -- which gives a real photo with a known
+  license and attribution, where generic web image search is a licensing
+  landmine. It needs a Wikimedia client, an attribution field on `media_assets`
+  and UI to display the credit, so it is a follow-on rather than part of the
+  first cut.
+- **AI trip-level suggestions.** (Stage 15 backlog review.) "Suggest things to do
+  in Reykjavik" returning several candidate locations to add at once, rather than
+  enriching one location at a time. Deliberately out of scope for the entry above,
+  which is already large: this needs a multi-result review UI, a way to add N
+  locations in one transaction, and dedup against what the trip already has.
+  Blocked on the single-location version existing first -- it reuses the same
+  provider, tools, agent loop and stub.
 - **Account settings: what Stage 12 left out.** The screen, appearance and
   language controls and password changing all landed in Stage 12
   (Milestones 2-5). Two things remain:

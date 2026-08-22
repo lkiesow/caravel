@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"mime"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -40,7 +41,11 @@ type Server struct {
 	// not configured, which is the only off switch: the route answers 501,
 	// /auth/me reports the capability as absent and the client hides the
 	// control. Same shape as GeocoderURL above.
-	Assist         assist.Assistant
+	Assist assist.Assistant
+	// assistSlots is a counting semaphore over in-flight assist runs; see
+	// DefaultAssistMaxConcurrent. A buffered channel rather than a mutex and
+	// a counter, so the non-blocking "is there room" question is one select.
+	assistSlots    chan struct{}
 	LoginLimiter   *rateLimiter
 	GeocodeLimiter *rateLimiter
 	AssistLimiter  *rateLimiter
@@ -75,6 +80,9 @@ type Options struct {
 	// happen -- assist.Limits bounds what one run may spend -- so the
 	// worst-case cost of an instance is roughly the two multiplied together.
 	AssistRateLimit int
+	// AssistMaxConcurrent bounds how many runs may be in flight at once. Zero
+	// takes DefaultAssistMaxConcurrent.
+	AssistMaxConcurrent int
 }
 
 // DefaultAssistRateLimit is far tighter than the other limiters because the
@@ -86,6 +94,20 @@ type Options struct {
 // Exported so the startup log can report the *effective* value rather than
 // the configured one, which is zero whenever the operator left it alone.
 const DefaultAssistRateLimit = 6
+
+// DefaultAssistMaxConcurrent bounds runs in flight at once.
+//
+// The rate limiter above bounds how often runs *start*, per client address.
+// This bounds how many are alive across the whole instance, which is the
+// number that actually decides the worst-case bill and the worst-case load:
+// without it, ten browser tabs are ten simultaneous multi-turn conversations
+// against a metered API, and the per-IP limiter does not see them as related.
+//
+// Four rather than one, because a household or a small group planning
+// together should not queue behind each other, and rather than twenty because
+// this is a self-hosted app for a handful of people and the failure it guards
+// is financial.
+const DefaultAssistMaxConcurrent = 4
 
 func NewServer(opts Options) *Server {
 	s := &Server{
@@ -103,6 +125,7 @@ func NewServer(opts Options) *Server {
 		LoginLimiter:   newRateLimiter(10, time.Minute),
 		GeocodeLimiter: newRateLimiter(20, time.Minute),
 		AssistLimiter:  newRateLimiter(assistRateLimit(opts.AssistRateLimit), time.Minute),
+		assistSlots:    make(chan struct{}, assistMaxConcurrent(opts.AssistMaxConcurrent)),
 	}
 	s.router = s.buildRouter()
 	go s.sweepLimitersPeriodically()
@@ -114,6 +137,26 @@ func assistRateLimit(configured int) int {
 		return DefaultAssistRateLimit
 	}
 	return configured
+}
+
+func assistMaxConcurrent(configured int) int {
+	if configured <= 0 {
+		return DefaultAssistMaxConcurrent
+	}
+	return configured
+}
+
+// acquireAssistSlot takes a slot if one is free, returning a release function.
+// Never blocks: a request that waited behind three others would only time out
+// further downstream, and refusing lets the client decide whether to retry.
+func (s *Server) acquireAssistSlot() (func(), bool) {
+	select {
+	case s.assistSlots <- struct{}{}:
+		var once sync.Once
+		return func() { once.Do(func() { <-s.assistSlots }) }, true
+	default:
+		return nil, false
+	}
 }
 
 func (s *Server) sweepLimitersPeriodically() {

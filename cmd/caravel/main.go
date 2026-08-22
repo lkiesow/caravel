@@ -77,7 +77,11 @@ func main() {
 		if rate <= 0 {
 			rate = httpapi.DefaultAssistRateLimit
 		}
-		log.Printf("assist enabled: %s rate=%d/min/ip", a.Limits(), rate)
+		concurrent := cfg.AssistMaxConcurrent
+		if concurrent <= 0 {
+			concurrent = httpapi.DefaultAssistMaxConcurrent
+		}
+		log.Printf("assist enabled: %s rate=%d/min/ip concurrent=%d", a.Limits(), rate, concurrent)
 	}
 
 	go sweepExpiredSessionsPeriodically(store)

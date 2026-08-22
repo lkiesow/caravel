@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	"caravel/internal/assist"
@@ -91,19 +92,21 @@ func TestAssistEnabledAuthorization(t *testing.T) {
 	})
 
 	t.Run("the owner reaches the handler body", func(t *testing.T) {
-		// Still 501 -- but from the far end of the handler, past the capability
-		// check and the authorization, which is what this asserts. Milestone 6
-		// replaces this expectation with a real stream.
+		// 400 rather than 403 or 404: an empty body has no mode, so this is
+		// the request being *validated*, which only happens past the
+		// capability check and past authorization. That is what this asserts;
+		// the successful path is in assist_stream_test.go, which needs a real
+		// server to read a stream from.
 		rec := ts.do(http.MethodPost, "/api/trips/"+tripID+"/assist/location", owner, `{}`)
-		if rec.Code != http.StatusNotImplemented {
-			t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotImplemented)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
 		}
 		var body map[string]string
 		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 			t.Fatalf("decode: %v", err)
 		}
-		if body["error"] != "the assistant is not implemented yet" {
-			t.Errorf("error = %q, want the past-authorization message", body["error"])
+		if !strings.Contains(body["error"], "mode") {
+			t.Errorf("error = %q, want the body validation to have run", body["error"])
 		}
 	})
 }

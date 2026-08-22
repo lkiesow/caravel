@@ -66,9 +66,13 @@ type Config struct {
 	AssistMaxToolCalls  int           // CARAVEL_ASSIST_MAX_TOOL_CALLS
 	AssistMaxTokens     int           // CARAVEL_ASSIST_MAX_TOKENS
 	AssistAnswerReserve int           // CARAVEL_ASSIST_ANSWER_RESERVE
-	// AssistRateLimit is runs per minute per client address. Zero takes the
-	// default in internal/httpapi.
-	AssistRateLimit int // CARAVEL_ASSIST_RATE_LIMIT
+	// AssistRateLimit is runs per minute per client address, and
+	// AssistMaxConcurrent is how many may be in flight across the whole
+	// instance at once. Zero takes the defaults in internal/httpapi. The
+	// second is the one that actually bounds the worst-case bill: the first
+	// is per address and does not see ten browser tabs as related.
+	AssistRateLimit     int // CARAVEL_ASSIST_RATE_LIMIT
+	AssistMaxConcurrent int // CARAVEL_ASSIST_MAX_CONCURRENT
 }
 
 // SearchProviders are the valid values for CARAVEL_SEARCH_PROVIDER. "stub" is
@@ -138,6 +142,7 @@ func Load() (Config, error) {
 	cfg.AssistMaxTokens = pickInt("CARAVEL_ASSIST_MAX_TOKENS")
 	cfg.AssistAnswerReserve = pickInt("CARAVEL_ASSIST_ANSWER_RESERVE")
 	cfg.AssistRateLimit = pickInt("CARAVEL_ASSIST_RATE_LIMIT")
+	cfg.AssistMaxConcurrent = pickInt("CARAVEL_ASSIST_MAX_CONCURRENT")
 	if len(errs) > 0 {
 		return Config{}, errors.Join(errs...)
 	}

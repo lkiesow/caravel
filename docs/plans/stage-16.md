@@ -684,6 +684,71 @@ event sequence is progress-then-proposal, a viewer gets 403 and a stranger 404,
 the limiter returns 429 on the N+1th call, and aborting the request context
 mid-run stops the agent.
 
+**Done.** The endpoint streams, and the milestone settled the concurrency
+question that Milestones 4 and 5 had left open.
+
+**A global in-flight cap landed here**, which the plan did not call for. The
+rate limiter bounds how often runs *start*, per client address; nothing bounded
+how many were alive at once, and the per-IP limiter does not see ten browser
+tabs as related. Since the first six limits bound one run, that made the
+instance-wide worst case unbounded in the one dimension that decides the bill.
+`assistSlots` is a buffered channel of `DefaultAssistMaxConcurrent` (4,
+`CARAVEL_ASSIST_MAX_CONCURRENT`), acquired without blocking: a request that
+queued behind three others would only time out further downstream, so it is
+refused with 429 and a distinct `assist_busy` code the client can explain. A
+test asserts the slot comes back afterwards -- an instance wedged after a busy
+moment would be a worse bug than the one being guarded against.
+
+Decisions in the transport:
+
+1. **A failure after the stream opens arrives as an event, not a status.** The
+   200 is already sent by then. The event carries a stable `code`
+   (`assist_timeout`, `assist_budget`, `assist_failed`) for the client to
+   branch on, since the message is free to be reworded.
+2. **The error message is never the underlying error.** A provider's own words
+   can name an endpoint, a model or an account detail, and none of that is ours
+   to forward to whoever is using the app. A test feeds in an error containing
+   a fake key, gateway host and model name and asserts none of them reach the
+   client.
+3. **`X-Accel-Buffering: no`.** Without it a default nginx in front of the app
+   buffers the whole stream and delivers it at the end -- the classic "SSE
+   works locally and not in production". Asserted, because it is invisible
+   until deployed.
+4. **Progress params are always an object, never null**, and the response's
+   slices are always `[]` rather than null. Both for the same reason: the
+   client reads them in exactly one place, and a null is one more branch there
+   for no gain.
+5. **The locale is validated before it reaches a prompt.** It is user input
+   that ends up in text sent to a third party, so anything that is not
+   letters, dashes and underscores under 16 characters is dropped. A test
+   feeds an injection-shaped locale.
+6. **`newTestServerWithOptions`** was added alongside `newTestServerWithStore`,
+   because the semaphore is sized at construction and cannot be poked
+   afterwards the way `ts.Assist` can.
+
+The client sends the location's metadata *as the editor currently holds it*
+rather than the server reading the database, since the editor has unsaved
+changes and enriching should see what the user is looking at. The server adds
+only what the client cannot know: the trip context (behind the flag, absent
+meaning yes) and the vocabulary of type tags already used on the trip.
+
+**Verified.** `make ci` green, `-race` clean, 27 assist tests in
+`internal/httpapi`. SSE cannot be tested through `httptest.NewRecorder` -- a
+recorder hands over the whole body at the end, which is exactly the failure the
+Flusher exists to prevent -- so these run the router in a real
+`httptest.Server` and read the response as it arrives. One test asserts the
+first event lands within 500ms of a request whose proposal is 750ms away, which
+is the only way to prove the stream is a stream. Also covered: the event
+sequence and content type, keys-not-sentences, cancellation actually stopping
+the agent (a closed tab must not leave a paid conversation running), the
+limiter at 429 without spending the login limiter, five bad request bodies, the
+trip-context flag in both directions, the type vocabulary being distinct and
+sorted, and unsaved editor metadata arriving intact.
+
+Then live against a real server with the stub: five progress events at 0.00s
+and the proposal at 0.78s, the delay being the dead-link check on the stub's
+`example.invalid` URL.
+
 ## 7. The editor UI
 
 `web/js/pages/location-editor-page.js` and `web/js/components/location-form.js`.

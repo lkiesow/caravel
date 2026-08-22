@@ -45,6 +45,20 @@ func newTestServer(t *testing.T) *testServer {
 // failingStore in items_test.go). Pass nil for the plain store.
 func newTestServerWithStore(t *testing.T, wrap func(db.Store) db.Store) *testServer {
 	t.Helper()
+	return newTestServerWith(t, wrap, nil)
+}
+
+// newTestServerWithOptions is newTestServer with a hook to adjust Options
+// before NewServer sees them — for the settings that are fixed at
+// construction and cannot be poked afterwards, such as the size of the assist
+// concurrency semaphore.
+func newTestServerWithOptions(t *testing.T, adjust func(*Options)) *testServer {
+	t.Helper()
+	return newTestServerWith(t, nil, adjust)
+}
+
+func newTestServerWith(t *testing.T, wrap func(db.Store) db.Store, adjust func(*Options)) *testServer {
+	t.Helper()
 
 	dir := t.TempDir()
 
@@ -70,13 +84,17 @@ func newTestServerWithStore(t *testing.T, wrap func(db.Store) db.Store) *testSer
 	// default here instead, any test that reached /api/geocode would send a
 	// real request to OpenStreetMap's public Nominatim. The geocode tests set
 	// srv.Geocoder to a client pointed at their own httptest.Server.
-	srv := NewServer(Options{
+	opts := Options{
 		DB:    conn,
 		Store: store,
 		Auth:  auth.NewService(store),
 		Blob:  blob,
 		WebFS: fstest.MapFS{},
-	})
+	}
+	if adjust != nil {
+		adjust(&opts)
+	}
+	srv := NewServer(opts)
 
 	// Registration is closed by default from Stage 14 Milestone 5 on, and most
 	// tests here need to create several users over HTTP. Opened explicitly

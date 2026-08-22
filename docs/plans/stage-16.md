@@ -424,6 +424,93 @@ an invalid `category` rejected, a dead link dropped, deadline exhaustion
 returning a partial-progress error rather than hanging, and cancellation
 returning promptly.
 
+**Done.** The loop, the rails and the three enforced validations all landed.
+`Propose` is real; `ErrNotImplemented` is gone.
+
+**The loop is two phases, which the plan did not specify.** A plain
+tool-calling conversation with no response format, and then -- once a turn
+arrives with no tool calls -- one final turn that asks for the structured
+answer. Offering tools *and* a strict `json_schema` on every turn is the
+obvious shortcut and a compatibility minefield: several OpenAI-compatible
+servers constrain all output to the schema when one is set, which makes tool
+calls impossible, and they differ on whether it applies to tool arguments too.
+The separation costs one extra billed turn per run and buys behaviour that does
+not depend on which server the operator pointed us at. The stub script grew a
+fourth turn to match.
+
+**Four rails, not three.** Wall-clock deadline, token budget, turn ceiling and
+tool-call ceiling. The turn ceiling is not redundant with the budget: a server
+that reports no usage makes the budget vacuous, and something still has to end
+the run. Hitting the tool-call ceiling *answers* the outstanding calls with
+"no more tool calls are available" rather than dropping them -- a tool call
+with no result leaves the conversation malformed, and telling the model it is
+out of budget lets it answer with what it has.
+
+**Cancellation is passed through as `context.Canceled`, not dressed up.** The
+user pressing Cancel is not an error condition, and Milestone 6 needs to tell
+it apart from a timeout to decide whether to report anything at all.
+
+Decisions inside `buildProposal`:
+
+1. **An invalid category is dropped, not corrected.** Guessing which of three
+   the model meant is how a hotel becomes a ferry terminal. One bad field does
+   not discard the rest of a good run.
+2. **An empty proposal is silence, not a request to clear the field.** The
+   feature never offers to delete what somebody wrote.
+3. **The title is left alone when enriching something already named.** The user
+   chose that name; renaming is not enrichment, and proposing a near-identical
+   title every run trains people to click past the review. Prompt mode still
+   proposes one.
+4. **Link liveness falls back to GET on 405 and 501.** A meaningful minority of
+   servers refuse HEAD and serve the page fine, and treating those as dead
+   would silently drop working links from a whole class of sites.
+
+**The fetcher's address policy became explicit** rather than the ad-hoc client
+swapping Milestone 3 used in tests. `newFetcherWithPolicy(true)` relaxes
+*only* the address check -- the scheme check, redirect re-check and size and
+time caps all still apply -- and it is an unexported constructor with no path
+from an operator's environment, so there is no config value that can weaken the
+guard in production. A test pins that the relaxed policy still refuses
+`file://`.
+
+Also fixed a stale comment in `internal/db/domain.go`: `Item.Category` was
+documented as `"location" | "stay" | "transport"`, which migration `0002`
+made wrong. It now matches the CHECK constraint, and
+`TestValidCategoriesMatchTheSchema` pins this package's copy of the list
+against it.
+
+**Verified.** `make ci` green, `go test -race` clean, 91 tests in
+`internal/assist`. Coverage of the rails: the turn ceiling against a model that
+calls a tool forever, the tool-call ceiling against one turn requesting 40
+calls, the budget against a provider reporting it all spent at once,
+cancellation mid-tool-call, and an already-expired deadline. Coverage of the
+validations: coordinates taken from the geocoder with the address tried before
+the place name, no coordinates at all without a geocoder, four invalid
+categories dropped while valid fields survive, case normalisation, dead links
+dropped, GET-only links kept, duplicates of existing links suppressed, unchanged
+and empty fields not proposed, and overwriting fields carrying their current
+value for the before/after.
+
+Then one run outside the test harness, against the **real** Nominatim: the stub
+answer carries no coordinates, and the proposal came back with
+`64.1453191, -21.9195604` resolved from "Skulagata 28, 101 Reykjavik, Iceland"
+-- which is Kex Hostel. That is the guarantee the unit tests only exercise
+against a fake upstream.
+
+**One finding for Milestone 7.** That same run returned `Links: null` and
+`Sources: []`, correctly: the stub's URLs point at `example.invalid`, which
+does not resolve, so the liveness check drops the link and the failed fetch
+records no source. Both behaviours are right, but it means **the stub cannot
+currently produce a live link or a source**, because anything it could reach
+locally is loopback and the guard refuses that. So the UI milestone has nothing
+to develop the links list and the sources list against. Milestone 7 has to
+decide between three options, none of them obviously best: accept that those
+two lists are only exercised by unit tests and a manual real-provider run;
+point the stub at a public URL and give up on CI having no network; or let
+`CARAVEL_LLM_URL=stub` relax the fetcher's address policy the way the tests do,
+which is a config value weakening a security control and wants thinking about
+rather than doing quietly.
+
 ## 5. The first real provider: Ollama Cloud
 
 One provider, ~80 lines — and the smallest milestone in the stage by line count

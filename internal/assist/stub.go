@@ -36,9 +36,10 @@ type stubProvider struct {
 	n     int
 }
 
-// newStubProvider returns the default script: search, read a page, answer.
+// newStubProvider returns the default script: search, read a page, stop
+// gathering, answer.
 //
-// Three turns rather than one because the number of turns is the interesting
+// Four turns rather than one because the number of turns is the interesting
 // part. A single-turn script would never exercise the loop, the tool
 // dispatcher or the history-echoing rule that most servers enforce, so the
 // first real provider would be the first time any of it ran.
@@ -64,6 +65,10 @@ func newStubProvider() *stubProvider {
 	return newScriptedProvider(
 		turnCalling(toolWebSearch, `{"query":"Kex Hostel Reykjavik"}`),
 		turnCalling(toolFetchPage, `{"url":"https://example.invalid/kex"}`),
+		// A turn with no tool calls: this is what tells the loop the model has
+		// finished gathering. The structured answer is a separate turn after
+		// it -- see the two-phase note in agent.go.
+		stubTurn{Content: "I have enough to describe this place."},
 		stubTurn{Content: string(answer)},
 	)
 }

@@ -3,20 +3,24 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"testing"
 
 	"caravel/internal/assist"
 )
 
-// fakeAssistant stands in for a configured assistant. Milestone 1 only needs
-// "non-nil", since the handler refuses before it would ever call Propose --
-// but it implements the interface properly so the later milestones can grow
-// canned responses here rather than replacing it.
+// fakeAssistant stands in for a configured assistant. The handler still
+// refuses before it would ever call Propose (the streaming endpoint is
+// Milestone 6), so what matters here is only that it is non-nil -- but it
+// implements the interface properly so Milestone 6 can grow canned responses
+// here rather than replacing it.
 type fakeAssistant struct{}
 
+var errFakeAssistant = errors.New("fakeAssistant.Propose was called")
+
 func (fakeAssistant) Propose(context.Context, assist.Request, func(assist.Event)) (*assist.Proposal, error) {
-	return nil, assist.ErrNotImplemented
+	return nil, errFakeAssistant
 }
 
 func TestAssistDisabledByDefault(t *testing.T) {

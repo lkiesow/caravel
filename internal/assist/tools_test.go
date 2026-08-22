@@ -173,18 +173,16 @@ func TestSourcesRecordOnlySuccessfulReads(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	f := newPageFetcher()
-	f.client = srv.Client()
+	f := newFetcherWithPolicy(true)
 	ts := newToolset(nil, f, nil, nil)
 
-	// Through the fetcher directly: dispatch would apply the guard, and the
-	// test server is on loopback. What is under test here is the recording.
-	if _, err := f.fetchUnguarded(context.Background(), srv.URL+"/ok"); err != nil {
-		t.Fatalf("fetch: %v", err)
+	// Through dispatch, which is what records sources; the fetcher's address
+	// policy is relaxed because the test server is on loopback.
+	if out := ts.dispatch(context.Background(), callTo(toolFetchPage, `{"url":"`+srv.URL+`/ok"}`)); !strings.Contains(out, "Kex Hostel") {
+		t.Fatalf("fetch result = %q", out)
 	}
-	ts.record(Source{Title: "Kex Hostel", URL: srv.URL + "/ok"})
-	if _, err := f.fetchUnguarded(context.Background(), srv.URL+"/gone"); err == nil {
-		t.Fatal("the 404 fetch succeeded")
+	if out := ts.dispatch(context.Background(), callTo(toolFetchPage, `{"url":"`+srv.URL+`/gone"}`)); !strings.Contains(out, "404") {
+		t.Fatalf("the 404 fetch did not report its status: %q", out)
 	}
 
 	got := ts.Sources()

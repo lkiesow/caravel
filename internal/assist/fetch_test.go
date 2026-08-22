@@ -91,7 +91,7 @@ func TestFetchRefusesRedirectIntoPrivateSpace(t *testing.T) {
 // address, so a name that passes the pre-flight lookup and then resolves
 // differently is still refused.
 func TestGuardedDialRefusesPrivateAddresses(t *testing.T) {
-	_, err := guardedDialContext(context.Background(), "tcp", "127.0.0.1:80")
+	_, err := newPageFetcher().dial(context.Background(), "tcp", "127.0.0.1:80")
 	var blocked errBlockedAddress
 	if !errors.As(err, &blocked) {
 		t.Fatalf("error = %v, want the dial-time guard to refuse", err)
@@ -99,11 +99,11 @@ func TestGuardedDialRefusesPrivateAddresses(t *testing.T) {
 }
 
 func TestFetchReadsAPublicPage(t *testing.T) {
-	// httptest listens on loopback, which the guard refuses by design. So the
-	// transport is swapped for one that dials the test server regardless,
-	// leaving the rest of Fetch -- status handling, content type, size cap,
-	// text extraction -- exercised for real. Testing the guard and testing
-	// what happens past it are separate jobs.
+	// httptest listens on loopback, which the guard refuses by design, so this
+	// fetcher relaxes the address policy only. Everything else -- the scheme
+	// check, redirects, status handling, content type, the size cap and text
+	// extraction -- runs exactly as in production. Testing the guard and
+	// testing what happens past it are separate jobs.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprint(w, `<html><head><title>Kex</title><style>body{color:red}</style></head>
@@ -111,10 +111,9 @@ func TestFetchReadsAPublicPage(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	f := newPageFetcher()
-	f.client = srv.Client()
+	f := newFetcherWithPolicy(true)
 
-	text, err := f.fetchUnguarded(context.Background(), srv.URL)
+	text, err := f.Fetch(context.Background(), srv.URL)
 	if err != nil {
 		t.Fatalf("fetch: %v", err)
 	}
@@ -134,9 +133,8 @@ func TestFetchRejectsNonTextContent(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	f := newPageFetcher()
-	f.client = srv.Client()
-	_, err := f.fetchUnguarded(context.Background(), srv.URL)
+	f := newFetcherWithPolicy(true)
+	_, err := f.Fetch(context.Background(), srv.URL)
 	if err == nil || !strings.Contains(err.Error(), "not text") {
 		t.Errorf("error = %v, want a complaint about the content type", err)
 	}
@@ -155,9 +153,8 @@ func TestFetchCapsTheBodyItReads(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	f := newPageFetcher()
-	f.client = srv.Client()
-	text, err := f.fetchUnguarded(context.Background(), srv.URL)
+	f := newFetcherWithPolicy(true)
+	text, err := f.Fetch(context.Background(), srv.URL)
 	if err != nil {
 		t.Fatalf("fetch: %v", err)
 	}
@@ -174,9 +171,8 @@ func TestFetchRejectsAnEmptyPage(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	f := newPageFetcher()
-	f.client = srv.Client()
-	_, err := f.fetchUnguarded(context.Background(), srv.URL)
+	f := newFetcherWithPolicy(true)
+	_, err := f.Fetch(context.Background(), srv.URL)
 	if err == nil || !strings.Contains(err.Error(), "no readable text") {
 		t.Errorf("error = %v, want a complaint that there was nothing to read", err)
 	}
@@ -188,11 +184,22 @@ func TestFetchSurfacesAnErrorStatus(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	f := newPageFetcher()
-	f.client = srv.Client()
-	_, err := f.fetchUnguarded(context.Background(), srv.URL)
+	f := newFetcherWithPolicy(true)
+	_, err := f.Fetch(context.Background(), srv.URL)
 	if err == nil || !strings.Contains(err.Error(), "404") {
 		t.Errorf("error = %v, want the status reported", err)
+	}
+}
+
+// The relaxed policy is address-only. A test fetcher must still refuse
+// file:// and a URL with no host, or the tests would be exercising a
+// different guard from the one that ships.
+func TestRelaxedPolicyStillEnforcesTheScheme(t *testing.T) {
+	f := newFetcherWithPolicy(true)
+	for _, bad := range []string{"file:///etc/passwd", "gopher://example.com/", "http:///nowhere"} {
+		if _, err := f.Fetch(context.Background(), bad); err == nil {
+			t.Errorf("Fetch(%q) succeeded under the relaxed policy", bad)
+		}
 	}
 }
 

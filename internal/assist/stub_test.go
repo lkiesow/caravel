@@ -35,15 +35,22 @@ func TestStubDrivesAMultiStepExchange(t *testing.T) {
 		t.Fatalf("turn 2 = %+v, want a %s call", second.ToolCalls, toolFetchPage)
 	}
 
+	// Turn 3 is prose with no tool calls: that is the signal the loop reads as
+	// "done gathering". The structured answer is turn 4, a separate request.
 	third, err := s.Complete(ctx, chatRequest{})
 	if err != nil {
 		t.Fatalf("turn 3: %v", err)
 	}
-	if third.FinishReason != "stop" {
-		t.Errorf("turn 3 FinishReason = %q, want stop", third.FinishReason)
+	if third.FinishReason != "stop" || len(third.ToolCalls) != 0 {
+		t.Errorf("turn 3 = %+v, want a plain stop", third)
 	}
-	if len(third.ToolCalls) != 0 {
-		t.Errorf("turn 3 asked for tools, want the final answer")
+
+	fourth, err := s.Complete(ctx, chatRequest{})
+	if err != nil {
+		t.Fatalf("turn 4: %v", err)
+	}
+	if fourth.Content == "" {
+		t.Error("turn 4 carried no answer")
 	}
 }
 
@@ -52,7 +59,7 @@ func TestStubDrivesAMultiStepExchange(t *testing.T) {
 func TestStubAnswerMatchesTheSchema(t *testing.T) {
 	s := newStubProvider()
 	ctx := context.Background()
-	for range 2 {
+	for range 3 {
 		if _, err := s.Complete(ctx, chatRequest{}); err != nil {
 			t.Fatalf("advancing the script: %v", err)
 		}

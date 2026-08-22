@@ -61,10 +61,21 @@ func (e errBlockedAddress) Error() string {
 // pageFetcher retrieves pages, with the guard applied.
 type pageFetcher struct {
 	client *http.Client
+	// allowPrivate relaxes the address policy to permit loopback and private
+	// ranges. Only newFetcherWithPolicy(true) sets it and only tests call
+	// that, because httptest servers listen on loopback -- which is precisely
+	// what the guard exists to refuse. Everything else stays on: the scheme
+	// check, the redirect re-check and the size and time caps.
+	//
+	// An unexported field with one caller rather than a config option, so
+	// there is no path from an operator's environment to a relaxed guard.
+	allowPrivate bool
 }
 
-func newPageFetcher() *pageFetcher {
-	f := &pageFetcher{}
+func newPageFetcher() *pageFetcher { return newFetcherWithPolicy(false) }
+
+func newFetcherWithPolicy(allowPrivate bool) *pageFetcher {
+	f := &pageFetcher{allowPrivate: allowPrivate}
 	f.client = &http.Client{
 		Timeout: fetchTimeout,
 		// The redirect target is checked before it is followed. Returning an
@@ -74,7 +85,7 @@ func newPageFetcher() *pageFetcher {
 			if len(via) >= fetchMaxRedirects {
 				return fmt.Errorf("too many redirects")
 			}
-			return guardURL(req.URL)
+			return f.guard(req.URL)
 		},
 		Transport: &http.Transport{
 			// DialContext re-checks the address the dialer actually got. The
@@ -83,7 +94,7 @@ func newPageFetcher() *pageFetcher {
 			// classic DNS-rebinding race. Checking the address being connected
 			// to closes it, because this hook sees the resolved IP rather than
 			// the name.
-			DialContext: guardedDialContext,
+			DialContext: f.dial,
 			// Modest: a page fetch is one-shot, and a pool of idle
 			// connections to arbitrary hosts is not something to keep.
 			MaxIdleConns:        10,
@@ -108,7 +119,7 @@ func (f *pageFetcher) Fetch(ctx context.Context, rawURL string) (string, error) 
 	if err != nil {
 		return "", fmt.Errorf("not a usable URL: %w", err)
 	}
-	if err := guardURL(parsed); err != nil {
+	if err := f.guard(parsed); err != nil {
 		return "", err
 	}
 	return f.fetchUnguarded(ctx, parsed.String())
@@ -167,19 +178,61 @@ func (f *pageFetcher) fetchUnguarded(ctx context.Context, target string) (string
 	return text, nil
 }
 
+// guard applies this fetcher's address policy.
+func (f *pageFetcher) guard(u *url.URL) error {
+	if err := guardScheme(u); err != nil {
+		return err
+	}
+	if f.allowPrivate {
+		return nil
+	}
+	return guardURL(u)
+}
+
+// dial applies the policy again at connect time, where the address is already
+// resolved. See the note on the Transport.
+func (f *pageFetcher) dial(ctx context.Context, network, addr string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, err
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		// The dialer is given an address, not a name, so this should be
+		// unreachable. Failing closed rather than dialing something we could
+		// not classify.
+		return nil, errBlockedAddress{host: host, reason: "the dial address is not an IP"}
+	}
+	if !f.allowPrivate {
+		if err := guardIP(host, ip); err != nil {
+			return nil, err
+		}
+	}
+	return (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext(ctx, network, net.JoinHostPort(host, port))
+}
+
+// guardScheme is the half of the policy that always applies, however the
+// address policy is set: file:// and gopher:// are never fetchable.
+func guardScheme(u *url.URL) error {
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return errBlockedAddress{host: u.Scheme + "://", reason: "only http and https are allowed"}
+	}
+	if u.Hostname() == "" {
+		return errBlockedAddress{host: u.String(), reason: "no host"}
+	}
+	return nil
+}
+
 // guardURL rejects anything that is not a plain public HTTP(S) address.
 //
 // Scheme first, then the resolved addresses. Every A/AAAA record is checked,
 // not just the first: a name that resolves to one public and one private
 // address would otherwise pass here and dial either.
 func guardURL(u *url.URL) error {
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return errBlockedAddress{host: u.Scheme + "://", reason: "only http and https are allowed"}
+	if err := guardScheme(u); err != nil {
+		return err
 	}
 	host := u.Hostname()
-	if host == "" {
-		return errBlockedAddress{host: u.String(), reason: "no host"}
-	}
 
 	// A literal address needs no lookup, and must not get one: resolving it
 	// would be a no-op that only adds a failure mode.
@@ -237,26 +290,6 @@ func isUniqueLocal(ip net.IP) bool {
 	return ip.To4() == nil && v6 != nil && v6[0]&0xfe == 0xfc
 }
 
-// guardedDialContext re-checks the address at dial time, closing the
-// DNS-rebinding race described on the Transport above.
-func guardedDialContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	host, port, err := net.SplitHostPort(addr)
-	if err != nil {
-		return nil, err
-	}
-	ip := net.ParseIP(host)
-	if ip == nil {
-		// The dialer is given an address, not a name, so this should be
-		// unreachable. Failing closed rather than dialing something we could
-		// not classify.
-		return nil, errBlockedAddress{host: host, reason: "the dial address is not an IP"}
-	}
-	if err := guardIP(host, ip); err != nil {
-		return nil, err
-	}
-	return (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext(ctx, network, net.JoinHostPort(host, port))
-}
-
 // extractText reduces HTML to the words a model can use.
 //
 // Not a readability implementation: dropping script and style content and
@@ -311,4 +344,64 @@ func collapseWhitespace(s string) string {
 		}
 	}
 	return strings.Join(out, "\n")
+}
+
+// LinkIsLive reports whether a proposed URL actually resolves to something.
+//
+// Hallucinated URLs are the classic failure of this feature, and a dead link
+// is worse than no link: it looks authoritative until somebody clicks it. So
+// every link the model proposes is checked before it is offered.
+//
+// HEAD first, because it is the cheap question and most servers answer it. A
+// meaningful minority answer 405 or 501 to HEAD while serving the page
+// perfectly well on GET, so those two specifically fall back rather than
+// counting as dead -- treating them as dead would silently drop working links
+// from a whole class of sites.
+//
+// The full guard applies: this is an outbound request driven by model output,
+// exactly like a page fetch, and a link is as good an SSRF vector as anything
+// else. Errs toward *dropping* a link when anything is unclear, since the cost
+// of a false negative is one missing suggestion and the cost of a false
+// positive is a broken link in the user's data.
+func (f *pageFetcher) LinkIsLive(ctx context.Context, rawURL string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || f.guard(parsed) != nil {
+		return false
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, linkCheckTimeout)
+	defer cancel()
+
+	status, err := f.probe(ctx, http.MethodHead, parsed.String())
+	if err != nil {
+		return false
+	}
+	if status == http.StatusMethodNotAllowed || status == http.StatusNotImplemented {
+		status, err = f.probe(ctx, http.MethodGet, parsed.String())
+		if err != nil {
+			return false
+		}
+	}
+	// 2xx and 3xx both count: the client follows redirects, so a 3xx here
+	// means the chain ended somewhere the guard allowed.
+	return status >= 200 && status < 400
+}
+
+func (f *pageFetcher) probe(ctx context.Context, method, target string) (int, error) {
+	req, err := http.NewRequestWithContext(ctx, method, target, nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("User-Agent", assistUserAgent())
+
+	resp, err := f.client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	// Nothing here reads the body, but it must still be drained-and-closed or
+	// the connection cannot be reused -- and with six of these in parallel
+	// that is six sockets left hanging per run.
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
+	resp.Body.Close()
+	return resp.StatusCode, nil
 }

@@ -38,7 +38,6 @@ package assist
 
 import (
 	"context"
-	"errors"
 
 	"caravel/internal/buildinfo"
 	"caravel/internal/geocode"
@@ -85,12 +84,6 @@ type Options struct {
 	// plausible position that is wrong only on the map.
 	Geocoder *geocode.Client
 }
-
-// ErrNotImplemented is returned by a configured-but-unbuilt assistant. It
-// exists so Milestone 1 can wire the seam end to end -- config, capability,
-// route, 501 -- before any of the machinery behind it exists, and disappears
-// once Propose is real (Milestone 4).
-var ErrNotImplemented = errors.New("assist: the agent is not implemented yet")
 
 // LLMStub is the CARAVEL_LLM_URL sentinel selecting the in-process fake
 // provider rather than a real endpoint. Duplicated from config rather than
@@ -139,10 +132,6 @@ type Agent struct {
 	search   Searcher
 	fetcher  *pageFetcher
 	geocoder *geocode.Client
-}
-
-func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*Proposal, error) {
-	return nil, ErrNotImplemented
 }
 
 // assistUserAgent identifies our outbound requests to the sites the agent

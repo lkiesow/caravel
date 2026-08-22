@@ -190,6 +190,20 @@ export function renderItemForm(container, item, { onSubmit }) {
       title: form.title.value,
       notes: form.notes.value || null,
     }),
+    // Write access, for the assistant panel: an accepted suggestion goes into
+    // the form exactly as if it had been typed, and Save is still the only
+    // thing that commits it. Only the fields this form owns; the address and
+    // coordinates live in the Location card and the page applies those.
+    setValues(partial) {
+      for (const [name, value] of Object.entries(partial)) {
+        const field = form.elements[name];
+        if (!field) continue;
+        field.value = value ?? "";
+      }
+      // The notes box sizes itself to its content, and a pasted-in paragraph
+      // would otherwise open as a 6-row box with a scrollbar.
+      if ("notes" in partial) autoGrowNotes();
+    },
     // The page reports save failures here, in the card the required fields
     // live in, rather than in a dialog at the bottom of the page.
     showError,

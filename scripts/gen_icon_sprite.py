@@ -48,6 +48,7 @@ ICONS = [
     "copy",
     "arrow-down-up",
     "chevron-up",
+    "sparkles",
 ]
 
 

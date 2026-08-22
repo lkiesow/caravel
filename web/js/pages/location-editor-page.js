@@ -11,6 +11,7 @@ import { renderNotFoundPage } from "./not-found-page.js";
 import { canEdit, isShared } from "../trip-role.js";
 import "../components/leaflet-map.js";
 import { getCurrentUser } from "../session.js";
+import { renderAssistPanel } from "../components/assist-panel.js";
 
 // Both modes render the same cards, in the same order - Basic info, Cover
 // photo, Location, Links, Dates, Files - matching the read view's
@@ -73,6 +74,11 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
   // this binding rather than being passed it, since they're all closures over
   // the same single render.
   let itemForm;
+  // Assigned by renderLocationForm(). The assistant writes coordinates through
+  // it so the map and the "show on map" hint update exactly as they do when a
+  // pin is dragged, rather than the fields being set behind their backs.
+  let setCoordinates = null;
+  let assistPanel = null;
 
   const draft = {
     image: null,
@@ -92,6 +98,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
         <div class="editor-card">
           <h2 data-i18n="location.editor.basicInfo"></h2>
           <div class="item-form-slot"></div>
+          <div class="assist-slot" hidden></div>
         </div>
 
         <div class="editor-card">
@@ -201,6 +208,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     });
 
     renderLocationForm();
+    renderAssistSlot();
     renderLinksList();
     bindLinkForm();
     renderDatesList();
@@ -217,6 +225,43 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       if (!(await confirmDialog({ messageKey: "item.deleteConfirm" }))) return;
       await api.delete(`/items/${item.id}`);
       navigate(`/trips/${tripId}`);
+    });
+  }
+
+  // The assistant proposes; nothing here writes. Every accepted suggestion
+  // lands in the same draft a keystroke would, so Save remains the only thing
+  // that commits and the worst outcome of a bad suggestion is pressing Cancel.
+  function renderAssistSlot() {
+    // A run in flight would otherwise keep streaming into nodes this render
+    // has just replaced.
+    assistPanel?.destroy();
+    assistPanel = renderAssistPanel(container.querySelector(".assist-slot"), {
+      tripId,
+      // Read live rather than captured: the point of enriching is to see what
+      // is in front of the user, including anything typed and not yet saved.
+      readCurrent: () => {
+        const values = itemForm.readValues();
+        return {
+          title: values.title ?? "",
+          category: values.category ?? "",
+          type: values.type ?? "",
+          notes: values.notes ?? "",
+          address: container.querySelector('.location-form [name="address"]').value,
+          links: draft.links.map((l) => ({ url: l.url, label: l.label ?? "" })),
+        };
+      },
+      applyField: (name, value) => {
+        if (name === "address") {
+          container.querySelector('.location-form [name="address"]').value = value;
+          return;
+        }
+        itemForm.setValues({ [name]: value });
+      },
+      applyLink: (link) => {
+        draft.links.push({ url: link.url, label: link.label || null });
+        renderLinksList();
+      },
+      applyCoordinates: ({ lat, lng }) => setCoordinates?.({ lat, lng }),
     });
   }
 
@@ -384,6 +429,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       syncMapFromFields();
       syncHint();
     };
+    setCoordinates = takeCoordinates;
     picker.addEventListener("location-picked", (e) => takeCoordinates(e.detail));
     // The locate control shows where the device is on any map; here that is
     // also the answer to "where is this place", which is the single most

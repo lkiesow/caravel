@@ -776,6 +776,81 @@ accepting one field and rejecting another leaves the other untouched; an
 overwrite shows its before/after. Assertions over screenshots — DOM counts,
 accessible names, field values. Mobile pass at 324×756.
 
+**Done.** The panel lives at the bottom of the Basic info card, below the
+fields it fills in, and is deliberately quieter than the form above it: it is
+an offer, not part of the form.
+
+Following the recommendation on the links-and-sources question from Milestone
+4: **accepted as-is.** The stub cannot produce a live link or a source, because
+its URLs are `example.invalid` and anything reachable locally is loopback,
+which the guard refuses. Neither of the alternatives was worth its cost —
+pointing the stub at a public URL gives up CI having no network, and letting
+`CARAVEL_LLM_URL=stub` relax the address policy is a config value weakening a
+security control, which is the exact pattern deliberately avoided in Milestone
+3. So both lists are built from the shape a real provider returns, unit-tested,
+and verified by hand against OpenRouter in Milestone 5. Milestone 9's
+Playwright spec will therefore assert on fields and not on links or sources,
+and that is a known gap rather than an oversight.
+
+Decisions worth recording:
+
+1. **Everything is built with DOM calls, not template strings.** Every value in
+   a proposal came off a web page the agent read, so one forgotten escape in a
+   template is an injection. `textContent` throughout.
+2. **An accepted row stays, marked, rather than vanishing.** A list that
+   shortens as you work through it loses your place, and "did I already take
+   that one?" is a question the panel should answer for itself. A rejected row
+   does disappear -- there is nothing left to say about it.
+3. **The "before" is struck through, not merely greyed.** At a glance the row
+   has to say *this text goes away*; grey alone reads as secondary rather than
+   as doomed.
+4. **`--color-danger-fg` marks an overwrite**, rather than a new warning token.
+   It already means "this destroys something" and is defined in both themes; a
+   new colour would have needed a dark value inventing to go with it.
+5. **Progress keys are validated against a set the client knows.** A key from a
+   newer server falls back to the generic line instead of rendering a raw key
+   at the user -- and spelling them out is also the only way
+   `scripts/i18n.py` can see them, since they arrive at runtime and its scanner
+   cannot follow a variable into `t()`. That limitation is a `todo.md` entry;
+   this is the workaround it recommends.
+6. **Category is translated on both sides of the before/after.** First pass
+   showed `site -> Stay`, which reads as two different kinds of thing rather
+   than one value changing.
+7. **`api.postStream`** carries the SSE reading, so the fetch and the line
+   parsing live with the rest of the transport rather than in a component.
+   `renderItemForm` gained `setValues`, so the panel writes through the form's
+   own API rather than reaching into its DOM.
+
+A `sparkles` icon was added by the documented procedure; the sprite diff is the
+new symbol and nothing else, so no upstream revision restyled an icon already
+in use.
+
+**Verified.** `make ci` green, i18n parity at 312 keys. Then driven in a real
+browser against a stub-configured server:
+
+- unconfigured (`:8080`), the slot is hidden and empty, no control renders, and
+  the rest of the editor is untouched;
+- configured, a run streams and produces four rows -- category and notes as
+  overwrites with their before/after, address and coordinates as plain
+  suggestions;
+- accepting notes, address and coordinates writes all three into the form, and
+  the coordinates go through the Location card's own handler, so the map marker
+  moves exactly as it does when a pin is dragged;
+- rejecting the category leaves the select alone and removes the row;
+- an accepted row shows "Added to the form" and loses its buttons;
+- prompt mode on a new location refuses an empty prompt *locally*, without
+  spending a request, then proposes a Name -- which the enrich case correctly
+  suppresses;
+- **the full round trip**: accept address and coordinates, reject the notes
+  overwrite, press Save, and the database has the new address and position with
+  the hand-written note intact. That is the guarantee the whole per-field
+  review exists for.
+- German throughout, including the category labels on both sides;
+- dark mode, where the overwrite marker resolves to the dark danger colour;
+- 324x756, no horizontal overflow anywhere in the panel. The trip-context
+  checkbox row was 38px against the 44px that `.location-form__checkbox`
+  already uses for the same pattern, and was matched to it.
+
 ## 8. The remaining three providers
 
 `ddgs`, SearXNG and Serper, ~60–80 lines each behind the interface Milestone 3

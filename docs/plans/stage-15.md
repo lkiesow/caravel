@@ -257,6 +257,59 @@ asserts a real `h1` and `strong` exist inside `.location-view__notes`; then
 toggles back and asserts the textarea still holds the source. Plus the a11y
 sweep already covering every button on the route.
 
+**Done.** `POST /api/markdown/preview` plus a Write/Preview toggle on the notes
+field. Built as planned; four things worth recording.
+
+*The endpoint calls `renderNotesHTML`, not just the same library.* That is the
+whole point — the preview goes through the identical function the item payload
+uses, so the two cannot drift even if one of them is changed later.
+`TestMarkdownPreviewMatchesTheItemPayload` compares two independent HTTP
+responses (the preview, and `notes_html` from `GET /api/items/{id}` for an item
+saved with the same source), so neither side is the other's expectation.
+
+*The plan said to reuse the view page's `.location-view__notes` class. It turns
+out to carry no rules at all* — only a comment explaining why it deliberately
+has no `white-space: pre-wrap`. So the class was applied anyway (if that
+container ever gains styling the preview inherits it), but the visible styling
+is new `.notes-field__preview` rules. Worth knowing that the "shared styling"
+in the plan was aspirational rather than existing.
+
+*One bug this milestone would have introduced, caught while writing it.* The
+form's `keydown` handler treats Enter as "save the page" everywhere except a
+textarea — and this form had no buttons at all before now. Enter on the Preview
+tab would have saved the location instead of switching mode. The handler now
+excludes `BUTTON` as well.
+
+*And one the sweep caught rather than me.* The tabs were first styled at 32px
+with a comment claiming they were small on purpose and excluded from nothing.
+That comment was wrong twice over: the `@media (max-width: 640px)` block gives
+every `button` `min-height: var(--tap-min)`, and a class selector out-specifies
+it — so `routes.spec.js` reported them at 67.7x32 and 82.3x32 on both editor
+routes, and `map.spec.js`'s German location-editor test failed for the same
+reason. Removing the `min-height` lets the house rule apply: 44px on a phone,
+padding-sized above 640px. These are our controls, so the guideline applies to
+them.
+
+Verified: `make ci` green. Six new Go tests
+(`internal/httpapi/markdown_test.go`): concrete expected HTML written out by
+hand for headings, emphasis, lists, links and the hard-wrap `<br>`; three
+sanitizer cases asserting the *endpoint* goes through bluemonday; the
+cross-endpoint agreement test; the size cap including that the boundary value
+itself is accepted; an empty note as 200-with-empty; and 401 for an anonymous
+caller. A `jsonBody` helper was added because this file's inputs are markdown —
+hand-written JSON would have mangled `"first\nsecond"` and made the hard-wrap
+assertion pass or fail for the wrong reason.
+
+Five new specs in `tests/ui/notes-preview.spec.js`, in both locales, all
+**break-checked**: swapping `innerHTML` for `textContent` fails the render test
+in both locales, dropping the unchanged-text guard fails the request-count test,
+and previewing an empty note anyway fails the empty-state test in both locales.
+Full suite 89 passed (84 before). Also measured by hand at 324px: the preview
+replaces the textarea at exactly the same `top` so switching does not shift the
+form, the textarea regains its auto-grown height on the way back, and the header
+row fits in German too ("Schreiben" 96px + "Vorschau" 92px inside 258px, no
+overflow).
+
 ---
 
 ## 4. Itinerary entries get an order — and one, first

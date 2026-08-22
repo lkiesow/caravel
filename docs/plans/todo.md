@@ -58,11 +58,6 @@ Things that are wrong today, each confirmed against the current source.
 
 Direction already agreed or obviously wanted; none of it built.
 
-- **A markdown preview for location notes.** Notes are authored in a plain
-  `<textarea>` (`location-form.js`) and only rendered after saving, on the view
-  page — so formatting is written blind. Wants a preview (side-by-side, or a
-  toggle) using the same server-rendered `notes_html` the view page uses, or a
-  client-side render if a round trip per keystroke is too much.
 - **The trips list filters and sorts in the browser, not in the query.** (Stage
   15 Milestone 2.) `GET /trips` still returns every trip with a fixed
   `ORDER BY t.created_at DESC` and takes no parameters; the search box and the
@@ -131,6 +126,21 @@ Not yet decided; each needs a call before it is work.
 - **Federation between self-hosted instances.** (Stage 01.) Real sync-protocol
   design still needed; v1 only avoided the integer-PK and local-only-ID mistakes
   that would have made it harder later.
+- **The notes preview is a toggle, not side by side.** (Stage 15 Milestone 3.)
+  Write and Preview swap places in the same column, which is the only thing that
+  fits 324px. On a desktop there is room to show both at once, and a live
+  side-by-side render would remove the toggling entirely — but it needs a
+  debounce policy (the current code renders once per switch *into* preview, and
+  a live pane means a request per pause in typing) and a second layout for the
+  narrow case. Also unbuilt: any editing affordance beyond the plain textarea —
+  no toolbar, no bold/link shortcuts, no drag-and-drop image paste.
+- **`.location-view__notes` still carries no CSS rules.** (Stage 15 Milestone 3.)
+  The preview was given that class so it would inherit the view page's styling,
+  and then it turned out the class only carries a comment explaining why it has
+  no `white-space: pre-wrap`. The rendered-note styling that does exist is
+  `.notes-field__preview`, in the editor. So the two places a note is displayed
+  are styled by different rules that happen to agree today. Consolidating means
+  deciding which one owns "a rendered note" and pointing both at it.
 - **Duplicating a checklist always resets the ticks.** (Stage 15 Milestone 1.)
   The other reading — copy the checked state too, for splitting one list in two
   — was considered and deliberately not built: it wanted a second menu item on

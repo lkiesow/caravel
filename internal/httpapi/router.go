@@ -124,6 +124,11 @@ func (s *Server) buildRouter() chi.Router {
 		// happens on the client, which already has the member list.
 		r.With(auth.RequireAuth).Get("/users/search", s.handleSearchUsers)
 
+		// Not trip-scoped either: it renders the text sitting in the caller's
+		// own textarea, so there is nothing to authorize against but the
+		// session. See internal/httpapi/markdown.go.
+		r.With(auth.RequireAuth).Post("/markdown/preview", s.handleMarkdownPreview)
+
 		// Behind RequireAuth as well as its own limiter: this endpoint spends
 		// an external service's quota, so it is not for anonymous callers.
 		r.With(auth.RequireAuth, s.rateLimitGeocode).Get("/geocode", s.handleGeocode)

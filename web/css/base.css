@@ -1187,6 +1187,90 @@ button {
    resize the UA default (resize: both) lets the drag handle pull the
    textarea wider than the card containing it. Vertical-only dragging still
    works, on top of the auto-grow in location-form.js. */
+/* The notes field, with its Edit/Preview toggle (Stage 15 Milestone 3). The
+   header is the label and the toggle on one row, so the tabs sit above the box
+   they switch rather than below it. .notes-field itself is the column the
+   textarea and the rendered preview take turns occupying. */
+.notes-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.notes-field__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.notes-field__toggle {
+  display: flex;
+  gap: 0.25rem;
+}
+
+/* No min-height here on purpose. The @media (max-width: 640px) block near the
+   end of this file gives every `button` min-height: var(--tap-min), and a class
+   selector would out-specify it — which is exactly what happened on the first
+   attempt: these were set to 32px and routes.spec.js's tap-target sweep caught
+   them at 67.7x32 and 82.3x32 on both location editor routes. They are our
+   controls on a phone, so the guideline applies to them like anything else.
+   Above 640px the padding sizes them, which keeps them compact next to the
+   field's label where a 44px pair would dominate the row. */
+.notes-field__tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.375rem;
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.notes-field__tab[aria-pressed="true"] {
+  background: var(--color-surface);
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+.notes-field__tab:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+/* The preview stands where the textarea stood, so switching modes does not move
+   the page. min-height matches the textarea's so a short note does not make the
+   card jump; the border is dashed to say "this is a rendering, not a field". */
+.notes-field__preview,
+.notes-field__empty {
+  min-height: 7rem;
+  padding: 0.5rem;
+  border: 1px dashed var(--color-border);
+  border-radius: 0.375rem;
+  background: var(--color-surface);
+}
+
+.notes-field__empty {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+/* The rendered note's own blocks: goldmark emits real headings and lists, and
+   without this they inherit the document's h1-h6 margins inside a small box. */
+.notes-field__preview > :first-child {
+  margin-top: 0;
+}
+
+.notes-field__preview > :last-child {
+  margin-bottom: 0;
+}
+
 .item-form textarea {
   width: 100%;
   min-height: 7rem;

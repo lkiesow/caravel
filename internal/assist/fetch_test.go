@@ -91,10 +91,62 @@ func TestFetchRefusesRedirectIntoPrivateSpace(t *testing.T) {
 // address, so a name that passes the pre-flight lookup and then resolves
 // differently is still refused.
 func TestGuardedDialRefusesPrivateAddresses(t *testing.T) {
-	_, err := newPageFetcher().dial(context.Background(), "tcp", "127.0.0.1:80")
+	// Control is handed a resolved ip:port, which is what makes it the right
+	// hook -- see the note on the Transport.
+	err := newPageFetcher().checkDialAddress("tcp", "127.0.0.1:80", nil)
 	var blocked errBlockedAddress
 	if !errors.As(err, &blocked) {
 		t.Fatalf("error = %v, want the dial-time guard to refuse", err)
+	}
+	if err := newPageFetcher().checkDialAddress("tcp", "93.184.216.34:80", nil); err != nil {
+		t.Errorf("a public address was refused: %v", err)
+	}
+}
+
+// The regression test for the bug that shipped through Milestone 3 and 4
+// unnoticed: the dial-time check was in Transport.DialContext, which receives
+// the *hostname*, so it could never parse an IP, failed closed, and refused
+// every fetch of every real site.
+//
+// It survived two milestones of tests because every one of them used
+// httptest's URL, which is an IP literal -- the single way the test
+// environment differed from every real caller. So this test insists on
+// reaching the same server through a *name*.
+func TestFetchWorksWhenTheHostIsANameNotAnIP(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, "<html><body><p>Reached by name.</p></body></html>")
+	}))
+	defer srv.Close()
+
+	// "localhost" is a name that resolves to loopback, so the relaxed policy
+	// is needed to get past the pre-flight check -- but the dialer still runs
+	// exactly as it does in production, which is the half under test.
+	byName := strings.Replace(srv.URL, "127.0.0.1", "localhost", 1)
+	if byName == srv.URL {
+		t.Skipf("test server URL %q is not the expected loopback form", srv.URL)
+	}
+
+	text, err := newFetcherWithPolicy(true).Fetch(context.Background(), byName)
+	if err != nil {
+		t.Fatalf("Fetch(%q) = %v; a hostname must reach the dialer intact", byName, err)
+	}
+	if !strings.Contains(text, "Reached by name") {
+		t.Errorf("text = %q", text)
+	}
+}
+
+// The same for the liveness probe, which takes its own path through the
+// client and would have been just as broken.
+func TestLinkIsLiveWorksWhenTheHostIsAName(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "ok")
+	}))
+	defer srv.Close()
+
+	byName := strings.Replace(srv.URL, "127.0.0.1", "localhost", 1)
+	if !newFetcherWithPolicy(true).LinkIsLive(context.Background(), byName) {
+		t.Errorf("LinkIsLive(%q) = false; a hostname must reach the dialer intact", byName)
 	}
 }
 

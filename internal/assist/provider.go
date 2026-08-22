@@ -17,10 +17,14 @@ import (
 // proxy worth pointing at implement it, so supporting one shape reaches almost
 // everything without an SDK or a vendor abstraction.
 //
-// CARAVEL_LLM_URL is the *full* endpoint ("https://host/v1/chat/completions"),
-// not a base URL to which a path gets appended. Same convention as
-// CARAVEL_GEOCODER_URL, and it means an endpoint mounted somewhere unusual
-// needs no special case.
+// CARAVEL_LLM_URL accepts either the full endpoint
+// ("https://host/v1/chat/completions") or the base URL every provider actually
+// documents ("https://openrouter.ai/api/v1"). Milestone 2 required the full
+// path, on the CARAVEL_GEOCODER_URL precedent; Milestone 5 met a real provider
+// and found that nobody publishes it that way -- OpenAI, OpenRouter, Ollama and
+// vLLM all document the base. Requiring the form nobody is given produces a
+// 404 whose cause is invisible, so the base form is completed instead. An
+// endpoint mounted somewhere unusual still works by giving the full path.
 
 // provider is one turn of conversation. The HTTP client and the in-process
 // stub both implement it, which is what lets the agent loop, the validation
@@ -130,7 +134,7 @@ type httpProvider struct {
 
 func newHTTPProvider(url, key, model string) *httpProvider {
 	return &httpProvider{
-		url:    url,
+		url:    completionsURL(url),
 		key:    key,
 		model:  model,
 		client: &http.Client{Timeout: turnTimeout},
@@ -281,6 +285,22 @@ func (p *httpProvider) post(ctx context.Context, req chatRequest, format respons
 		FinishReason: choice.FinishReason,
 		Usage:        decoded.Usage,
 	}, nil
+}
+
+// completionsURL accepts a base URL or a full endpoint and returns the
+// endpoint. Deliberately dumb: it appends unless the path already ends in
+// chat/completions, because anything cleverer would have to guess at
+// providers that mount the API somewhere unexpected, and the full path is
+// their escape hatch.
+func completionsURL(raw string) string {
+	trimmed := strings.TrimRight(strings.TrimSpace(raw), "/")
+	if trimmed == "" {
+		return raw
+	}
+	if strings.HasSuffix(trimmed, "/chat/completions") {
+		return trimmed
+	}
+	return trimmed + "/chat/completions"
 }
 
 const (

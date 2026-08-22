@@ -284,10 +284,26 @@ func hostOf(raw string) string {
 	return u.Host
 }
 
+// firstLine is a crude title for a source: the first line of the extracted
+// text. Crude on purpose -- the alternative is parsing <title>, which on a
+// real site is as often "Home | Some CMS" as it is the page's subject.
+//
+// Zero-width characters are stripped because they are invisible in the source
+// and very visible in the rendered list: the first live run produced a title
+// reading "Opening hours" followed by a stray BOM, which the sources list
+// would have shown as a smudge nobody could explain or select.
 func firstLine(s string) string {
 	line, _, _ := strings.Cut(strings.TrimSpace(s), "\n")
-	if len(line) > 120 {
-		line = line[:120]
+	line = strings.Map(func(r rune) rune {
+		switch r {
+		case '\ufeff', '\u200b', '\u200c', '\u200d', '\u2060':
+			return -1
+		}
+		return r
+	}, line)
+	line = strings.TrimSpace(line)
+	if len([]rune(line)) > 120 {
+		line = string([]rune(line)[:120])
 	}
 	if line == "" {
 		return "(untitled)"

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"syscall"
 	"time"
 
 	"golang.org/x/net/html"
@@ -42,8 +43,11 @@ const (
 	fetchMaxRedirects = 5
 	// fetchMaxTextBytes is what reaches the model, which is a different limit
 	// from what is read: a 512KB page of navigation chrome is mostly tokens
-	// nobody is paying for on purpose.
-	fetchMaxTextBytes = 24 << 10
+	// nobody is paying for on purpose. Halved in Milestone 5 after watching a
+	// live run spend its budget on page text -- the useful part of a page is
+	// almost always near the top, and page reads are the dominant cost of a
+	// run by a wide margin.
+	fetchMaxTextBytes = 12 << 10
 )
 
 // errBlockedAddress means the URL resolved somewhere it is not allowed to go.
@@ -88,13 +92,22 @@ func newFetcherWithPolicy(allowPrivate bool) *pageFetcher {
 			return f.guard(req.URL)
 		},
 		Transport: &http.Transport{
-			// DialContext re-checks the address the dialer actually got. The
-			// belt to guardURL's braces: between the lookup in guardURL and
-			// the dial, a hostile DNS server can answer differently -- the
-			// classic DNS-rebinding race. Checking the address being connected
-			// to closes it, because this hook sees the resolved IP rather than
-			// the name.
-			DialContext: f.dial,
+			// The belt to guardURL's braces. Between the lookup in guardURL
+			// and the connect, a hostile DNS server can answer differently --
+			// the classic rebinding race -- so the address actually being
+			// connected to is checked too.
+			//
+			// This must be Dialer.Control, not Transport.DialContext.
+			// DialContext is handed the *hostname*; the dialer resolves it
+			// afterwards, so a check there sees "example.com" and never an IP.
+			// Control runs after resolution and once per candidate address,
+			// with the resolved ip:port, which is the only hook that sees what
+			// is really being connected to. Milestone 5 learned this the
+			// expensive way: the first implementation checked in DialContext,
+			// could not parse a hostname as an IP, failed closed, and refused
+			// every fetch of every real site. Nothing caught it, because
+			// httptest serves on an IP literal and only a live run uses names.
+			DialContext: f.dialer().DialContext,
 			// Modest: a page fetch is one-shot, and a pool of idle
 			// connections to arbitrary hosts is not something to keep.
 			MaxIdleConns:        10,
@@ -189,26 +202,34 @@ func (f *pageFetcher) guard(u *url.URL) error {
 	return guardURL(u)
 }
 
-// dial applies the policy again at connect time, where the address is already
-// resolved. See the note on the Transport.
-func (f *pageFetcher) dial(ctx context.Context, network, addr string) (net.Conn, error) {
-	host, port, err := net.SplitHostPort(addr)
+// dialer builds the connecting dialer, with the address policy applied in
+// Control -- see the note on the Transport for why it has to be there.
+func (f *pageFetcher) dialer() *net.Dialer {
+	return &net.Dialer{
+		Timeout:   5 * time.Second,
+		KeepAlive: 30 * time.Second,
+		Control:   f.checkDialAddress,
+	}
+}
+
+// checkDialAddress runs after DNS resolution and before the connect, once per
+// candidate address. Its argument really is ip:port.
+func (f *pageFetcher) checkDialAddress(_, address string, _ syscall.RawConn) error {
+	if f.allowPrivate {
+		return nil
+	}
+	host, _, err := net.SplitHostPort(address)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	ip := net.ParseIP(host)
 	if ip == nil {
-		// The dialer is given an address, not a name, so this should be
-		// unreachable. Failing closed rather than dialing something we could
-		// not classify.
-		return nil, errBlockedAddress{host: host, reason: "the dial address is not an IP"}
+		// Control is documented to receive a resolved address, so this is
+		// unreachable in practice -- but failing closed on something we could
+		// not classify is the only safe direction.
+		return errBlockedAddress{host: host, reason: "the connect address could not be read as an IP"}
 	}
-	if !f.allowPrivate {
-		if err := guardIP(host, ip); err != nil {
-			return nil, err
-		}
-	}
-	return (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext(ctx, network, net.JoinHostPort(host, port))
+	return guardIP(host, ip)
 }
 
 // guardScheme is the half of the policy that always applies, however the

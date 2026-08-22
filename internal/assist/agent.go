@@ -60,10 +60,20 @@ const (
 	maxTurns = 12
 	// maxToolCalls bounds the work, since one turn may request several calls.
 	maxToolCalls = 20
-	// maxTokens is the budget per run, checked between turns. Enough for a
-	// dozen turns carrying a few pages of context; small enough that a
-	// pathological run costs cents rather than dollars.
-	maxTokens = 60000
+	// maxTokens is the budget per run, checked between turns. Sized against
+	// what the tools actually cost: a search returns six extracts and a page
+	// read is capped at fetchMaxTextBytes, so twenty tool calls is most of
+	// this. Raised from 60000 in Milestone 5, where the first live run spent
+	// it in 75 seconds and had to stop with nothing to show.
+	maxTokens = 120000
+	// finalAnswerReserve is held back from maxTokens so there is always
+	// enough left to compose the answer. Gathering stops at the difference;
+	// without the reserve a run can spend its entire budget researching and
+	// then have nothing with which to say what it found.
+	finalAnswerReserve = 20000
+	// finalAnswerTimeout bounds the composing turn, which runs outside the
+	// run deadline for the reason given in Propose.
+	finalAnswerTimeout = 60 * time.Second
 	// linkCheckTimeout bounds one liveness check. Short: these run in
 	// parallel at the very end, and a slow server should not hold up a
 	// proposal that is otherwise ready.
@@ -74,7 +84,14 @@ const (
 // something the user can act on -- "it took too long, try again" reads very
 // differently from "the model endpoint is misconfigured".
 var (
-	ErrTimedOut        = errors.New("assist: the run took too long and was stopped")
+	// ErrTimedOut means the caller's own context expired, leaving nothing to
+	// compose with. Note that the agent's *internal* gathering deadline does
+	// not produce this: hitting it ends the research and the run still
+	// answers. See the note in the loop.
+	ErrTimedOut = errors.New("assist: the run took too long and was stopped")
+	// ErrBudgetExhausted is reserved for a budget so small that composing is
+	// impossible. The ordinary case -- gathering spends the budget -- stops
+	// the research and answers with what was found.
 	ErrBudgetExhausted = errors.New("assist: the run reached its token budget and was stopped")
 )
 
@@ -86,7 +103,12 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 		return nil, fmt.Errorf("assist: unknown mode %q", req.Mode)
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, maxRunDuration)
+	// Two contexts, deliberately. runCtx carries the gathering deadline;
+	// userCtx is the caller's own, which only ends when the user cancels.
+	// The composing turn below uses the latter, so a run that ran out of time
+	// still gets to say what it found.
+	userCtx := ctx
+	runCtx, cancel := context.WithTimeout(userCtx, maxRunDuration)
 	defer cancel()
 
 	// The stub plays a fixed script, so a second run in the same process would
@@ -109,16 +131,41 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 	var spent usage
 	toolCalls := 0
 
-	for turn := 0; turn < maxTurns; turn++ {
-		if err := ctx.Err(); err != nil {
-			return nil, runContextError(err)
+	// Why the rails break rather than return an error.
+	//
+	// The first live run against a real model spent its whole budget hunting
+	// for one detail it was never going to find, and returned nothing after
+	// seventy-five seconds. But by then it had read the official site, the
+	// city guide and Wikipedia -- it knew the address, the type and plenty for
+	// the notes. Throwing that away because a ceiling was reached is the wrong
+	// trade: the user has already waited and the tokens are already spent, and
+	// a partial proposal they can accept field by field is worth far more than
+	// an apology. So a ceiling ends the *gathering*, and the run still
+	// composes. Only the user cancelling stops it outright.
+	turn := 0
+	for ; turn < maxTurns; turn++ {
+		// The caller's own context, not ours. If it is already done there is
+		// nothing to compose with -- every remaining call would fail too.
+		if err := userCtx.Err(); err != nil {
+			return nil, wrapRunError(err)
 		}
-		if spent.TotalTokens >= maxTokens {
-			return nil, ErrBudgetExhausted
+		if runCtx.Err() != nil {
+			events(Event{Key: "assist.progress.wrappingUp"})
+			break
+		}
+		if spent.TotalTokens >= maxTokens-finalAnswerReserve {
+			events(Event{Key: "assist.progress.wrappingUp"})
+			break
 		}
 
-		resp, err := a.provider.Complete(ctx, chatRequest{Messages: messages, Tools: defs})
+		resp, err := a.provider.Complete(runCtx, chatRequest{Messages: messages, Tools: defs})
 		if err != nil {
+			// A provider call that failed because gathering ran out of time is
+			// not a failure of the run: compose with what is already here.
+			if errors.Is(err, context.DeadlineExceeded) && userCtx.Err() == nil {
+				events(Event{Key: "assist.progress.wrappingUp"})
+				break
+			}
 			return nil, wrapRunError(err)
 		}
 		spent = addUsage(spent, resp.Usage)
@@ -150,38 +197,40 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 			messages = append(messages, chatMessage{
 				Role:       roleTool,
 				ToolCallID: call.ID,
-				Content:    tools.dispatch(ctx, call),
+				Content:    tools.dispatch(runCtx, call),
 			})
 			toolCalls++
 		}
 	}
 
-	if err := ctx.Err(); err != nil {
-		return nil, runContextError(err)
+	if err := userCtx.Err(); err != nil {
+		return nil, wrapRunError(err)
+	}
+
+	// The turn and tool-call ceilings break out silently above; say so here,
+	// so every reason the research stopped short reaches the user the same way.
+	if turn >= maxTurns || toolCalls >= maxToolCalls {
+		events(Event{Key: "assist.progress.wrappingUp"})
 	}
 
 	events(Event{Key: "assist.progress.composing"})
 
 	messages = append(messages, chatMessage{Role: roleUser, Content: finalPrompt(req)})
 
+	// Detached from the gathering deadline, still bound by the user cancelling
+	// and by a timeout of its own. This is the turn that turns a run into an
+	// answer, so it must not be the thing the run deadline kills.
+	finalCtx, cancelFinal := context.WithTimeout(userCtx, finalAnswerTimeout)
+	defer cancelFinal()
+
 	var raw modelProposal
-	used, err := completeJSON(ctx, a.provider, chatRequest{Messages: messages, Format: proposalFormat()}, &raw)
+	used, err := completeJSON(finalCtx, a.provider, chatRequest{Messages: messages, Format: proposalFormat()}, &raw)
 	spent = addUsage(spent, used)
 	if err != nil {
 		return nil, wrapRunError(err)
 	}
 
-	return a.buildProposal(ctx, req, raw, tools.Sources(), events)
-}
-
-// runContextError turns a cancelled or expired context into something a caller
-// can tell apart. context.Canceled is passed through unchanged, because
-// "the user pressed Cancel" is not an error condition to report.
-func runContextError(err error) error {
-	if errors.Is(err, context.DeadlineExceeded) {
-		return ErrTimedOut
-	}
-	return err
+	return a.buildProposal(finalCtx, req, raw, tools.Sources(), events)
 }
 
 // wrapRunError catches the case where a provider call failed *because* the run

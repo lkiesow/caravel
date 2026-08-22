@@ -537,6 +537,85 @@ notes are plausible, the links resolve, and the coordinates came from Nominatim
 rather than the model. This is the first honest answer to "is this feature any
 good", and it is manual by nature.
 
+**Done.** The Ollama Cloud searcher is ~90 lines and was the least interesting
+part of the milestone. Positioning this milestone early — one real provider
+straight after the loop, rather than all four at the end — paid for itself
+three times over.
+
+**Credentials first.** `credentials.yaml` arrived untracked but *not*
+gitignored, one `git add -A` from being committed permanently. `.gitignore` now
+covers it plus `*.credentials` and `.env*`, ignored broadly rather than by
+exact name because the failure mode is silent and not fixable by deletion: a
+key that reaches a public history has to be rotated. The file was read with its
+values masked, and only the non-secret URL and model name appear anywhere.
+
+**Finding 1: nobody publishes the URL in the form Milestone 2 required.** That
+milestone made `CARAVEL_LLM_URL` the full `/chat/completions` path, on the
+`CARAVEL_GEOCODER_URL` precedent. The credentials gave
+`https://openrouter.ai/api/v1` — and OpenAI, OpenRouter, Ollama and vLLM all
+document the base URL. Requiring the form nobody is handed produces a 404 whose
+cause is invisible, so `completionsURL` now accepts either and appends when
+needed.
+
+**Finding 2: a rail firing threw the whole run away.** The first live run went
+hunting for a ticket price, spent its 60k budget in 75 seconds and returned an
+error — having by then already read the official site, the city guide and
+Wikipedia. The user has waited and the tokens are spent either way, so a
+ceiling now ends the *gathering* and the run still composes, on a context
+detached from the gathering deadline but still bound by the user cancelling.
+Only the caller's own dead context aborts outright. With it: the budget raised
+to 120k with a 20k reserve held back for composing, page text capped at 12KB
+rather than 24KB (page reads dominate the cost and the useful part is near the
+top), and a prompt line telling the model to stop when it has the essentials.
+
+**Finding 3, and the reason this milestone was worth its position:
+`fetch_page` had never worked against a real site.** The dial-time SSRF check
+sat in `Transport.DialContext`, which is handed the *hostname* — the dialer
+resolves it afterwards. So `net.ParseIP("www.hallgrimskirkja.is")` returned nil,
+the fail-closed branch fired, and every fetch of every real host was refused.
+The correct hook is `net.Dialer.Control`, which runs after resolution and once
+per candidate address with the real `ip:port`.
+
+Two milestones of green tests went over it, and the reason is worth recording:
+**`httptest` serves on `127.0.0.1`, an IP literal**, which parses fine. That one
+difference between the test environment and every real caller hid the bug
+completely. The regression tests now reach an `httptest` server through
+`localhost` rather than `127.0.0.1`, precisely so a hostname has to survive the
+dialer; both fail against the old code.
+
+**Verified.** `make ci` green, 108 tests in `internal/assist`. The searcher
+against an `httptest.Server` for the documented response shape, the auth
+header, results with no URL skipped, long content trimmed, and an auth failure
+named rather than reported as a bare status. `completionsURL` over seven forms.
+The dial fix pinned by two hostname regression tests plus a direct test of the
+`Control` check in both directions.
+
+Then three live runs against OpenRouter, Ollama Cloud and the real Nominatim.
+The first found the rail problem; the second, after fixing it, produced a good
+proposal in 135s but with **zero links and zero sources** — which is what
+exposed the fetch bug, since everything it knew had come from search snippets.
+The third, after the fix:
+
+- 50 seconds, down from 135, because the page reads answered the question
+  instead of sending it hunting;
+- `type: church`, reused from the vocabulary rather than invented;
+- notes carrying real opening hours, the 1,500 kr. tower ticket and the
+  November daylight warning — the last of those only because the trip dates
+  were sent;
+- two links, both liveness-checked, both on the official domain;
+- two sources;
+- `64.141795, -21.926710` from Nominatim, which is Hallgrímskirkja.
+
+One blemish from that run is fixed: source titles are the first line of the
+extracted text, and the official site's begins with a BOM, so the list showed a
+smudge. `firstLine` now strips zero-width characters and truncates by rune.
+
+**Note for Milestone 8**: `ddgs-example.sh` in the repo root (not committed)
+shows the DDGS API answering on **port 8000**, not the 4479 this plan's
+introduction guessed, and offering both GET and POST forms of every endpoint.
+Take the shapes from there rather than from this document.
+
+
 ## 6. The SSE endpoint
 
 `POST /api/trips/{tripId}/assist/location`, `text/event-stream`.

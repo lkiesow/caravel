@@ -20,3 +20,14 @@
 
 # A live session token, written fresh by tests/ui/auth.setup.js on every run.
 /tests/ui/.auth/
+
+# Live API credentials for the assistant (Stage 16). Env-var-only by design —
+# see internal/config — so nothing in the repo should ever read these, and
+# nothing should ever commit them. Ignored broadly rather than by exact name:
+# the failure mode is silent and permanent, since a key that reaches a public
+# history has to be rotated, not deleted.
+/credentials.yaml
+/credentials.yml
+/*.credentials
+/.env
+/.env.*

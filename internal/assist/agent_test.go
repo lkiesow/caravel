@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -477,19 +478,67 @@ func (c *countingSearcher) Search(context.Context, string) ([]SearchResult, erro
 	return []SearchResult{{Title: "t", URL: "https://example.invalid/x", Snippet: "s"}}, nil
 }
 
-func TestRunStopsWhenTheTokenBudgetIsSpent(t *testing.T) {
-	// The stub reports 600 tokens a turn; this provider reports the whole
-	// budget in one, so the check between turns must fire immediately.
+// Spending the budget ends the research, not the run. The first live run
+// against a real model burned its whole budget hunting one detail and returned
+// nothing after 75 seconds, having already read the official site and
+// Wikipedia. The tokens are spent and the user has waited either way, so a
+// partial proposal beats an apology.
+func TestSpendingTheBudgetStillProducesAProposal(t *testing.T) {
 	expensive := newScriptedProvider(
 		stubTurn{ToolCalls: []toolCall{callTo(toolWebSearch, `{"query":"x"}`)}},
-		stubTurn{ToolCalls: []toolCall{callTo(toolWebSearch, `{"query":"x"}`)}},
+		// Never reached: the budget check fires before the second turn, and
+		// the run jumps to composing.
+		stubTurn{ToolCalls: []toolCall{callTo(toolWebSearch, `{"query":"never"}`)}},
+		stubTurn{Content: answerJSON(t, modelProposal{Category: "stay", Type: "hostel"})},
 	)
 	a := &Agent{provider: &greedyProvider{inner: expensive}, fetcher: newPageFetcher(), search: &stubSearcher{}}
 
-	_, err := a.Propose(context.Background(), enrichRequest(), nil)
-	if !errors.Is(err, ErrBudgetExhausted) {
-		t.Fatalf("err = %v, want ErrBudgetExhausted", err)
+	var keys []string
+	p, err := a.Propose(context.Background(), enrichRequest(), func(e Event) { keys = append(keys, e.Key) })
+	if err != nil {
+		t.Fatalf("Propose: %v", err)
 	}
+	if _, ok := fieldNamed(p, "type"); !ok {
+		t.Error("no proposal came back from a budget-limited run")
+	}
+	// The user should be told the run is cutting its research short rather
+	// than left wondering why the answer is thin.
+	if !slices.Contains(keys, "assist.progress.wrappingUp") {
+		t.Errorf("events = %v, want a wrapping-up event", keys)
+	}
+}
+
+// The gathering deadline behaves the same way: research stops, the run still
+// answers.
+func TestGatheringDeadlineStillProducesAProposal(t *testing.T) {
+	slow := newScriptedProvider(
+		stubTurn{ToolCalls: []toolCall{callTo(toolWebSearch, `{"query":"x"}`)}},
+		stubTurn{Content: answerJSON(t, modelProposal{Category: "stay", Type: "hostel"})},
+	)
+	a := &Agent{provider: &expiringProvider{inner: slow}, fetcher: newPageFetcher(), search: &stubSearcher{}}
+
+	p, err := a.Propose(context.Background(), enrichRequest(), nil)
+	if err != nil {
+		t.Fatalf("Propose: %v", err)
+	}
+	if _, ok := fieldNamed(p, "type"); !ok {
+		t.Error("no proposal came back from a time-limited run")
+	}
+}
+
+// expiringProvider reports a gathering-deadline failure once, the way a real
+// provider call does when the run clock runs out mid-request.
+type expiringProvider struct {
+	inner provider
+	done  bool
+}
+
+func (e *expiringProvider) Complete(ctx context.Context, req chatRequest) (*chatResponse, error) {
+	if !e.done {
+		e.done = true
+		return nil, fmt.Errorf("post: %w", context.DeadlineExceeded)
+	}
+	return e.inner.Complete(ctx, req)
 }
 
 // greedyProvider reports the entire budget spent on its first turn.
@@ -529,9 +578,10 @@ func (c *cancellingSearcher) Search(context.Context, string) ([]SearchResult, er
 	return nil, nil
 }
 
-func TestDeadlineIsReportedAsATimeout(t *testing.T) {
-	// A context already past its deadline: the loop must notice before
-	// spending anything.
+// The caller's *own* expired context is different from the agent's internal
+// gathering deadline: there is nothing left to compose with, because every
+// remaining call would fail too.
+func TestTheCallersExpiredDeadlineIsReportedAsATimeout(t *testing.T) {
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
 	defer cancel()
 

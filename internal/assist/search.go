@@ -57,6 +57,11 @@ func newSearcher(opts Options) (Searcher, error) {
 		return nil, nil
 	case "stub":
 		return &stubSearcher{}, nil
+	case "ollama":
+		if opts.SearchKey == "" {
+			return nil, fmt.Errorf("assist: search provider %q needs CARAVEL_SEARCH_KEY", opts.SearchProvider)
+		}
+		return newOllamaSearcher(opts.SearchKey, opts.SearchURL), nil
 	default:
 		return nil, fmt.Errorf("assist: unknown search provider %q", opts.SearchProvider)
 	}

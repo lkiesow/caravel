@@ -25,9 +25,11 @@ type Config struct {
 	// while debugging. The same reasoning is why there is no admin screen for
 	// these -- the instance owner sets them where secrets already live.
 	//
-	// LLMURL is an OpenAI-compatible chat-completions endpoint. The sentinel
-	// value "stub" selects an in-process fake instead, which is what lets the
-	// UI be built and the Playwright suite run with no key and no network.
+	// LLMURL is an OpenAI-compatible endpoint: either the base URL the
+	// provider documents ("https://openrouter.ai/api/v1") or the full
+	// chat-completions path. The sentinel value "stub" selects an in-process
+	// fake instead, which is what lets the UI be built and the Playwright
+	// suite run with no key and no network.
 	LLMURL   string
 	LLMKey   string
 	LLMModel string

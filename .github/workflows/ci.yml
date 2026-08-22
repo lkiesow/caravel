@@ -59,6 +59,16 @@ jobs:
         env:
           CARAVEL_DB_DSN: data/ci.db
           CARAVEL_WEB_DIR: web
+          # The assistant, pointed at its in-process fakes. This is the first
+          # thing the UI suite needs from server *configuration* rather than
+          # from seed data, so assist.spec.js skips rather than fails when it
+          # is absent - which is what a developer running `make test-ui`
+          # against an ordinary dev server gets. Here it must be present, or
+          # the spec would skip silently and CI would report a pass for tests
+          # that never ran.
+          CARAVEL_LLM_URL: stub
+          CARAVEL_LLM_MODEL: stub
+          CARAVEL_SEARCH_PROVIDER: stub
         run: |
           set -euo pipefail
           mkdir -p data
@@ -83,6 +93,22 @@ jobs:
             cat /tmp/caravel-ci.log >&2
             exit 1
           fi
+
+      - name: Confirm the assistant is actually enabled
+        # assist.spec.js skips itself when the capability is off. That is right
+        # locally and wrong here: without this check, a typo in the env block
+        # above would turn three tests into three silent skips and CI would
+        # still be green.
+        run: |
+          set -euo pipefail
+          curl -fsS -c /tmp/ci-cookies -X POST http://localhost:8080/api/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"username":"demo","password":"demo1234"}' > /dev/null
+          if ! curl -fsS -b /tmp/ci-cookies http://localhost:8080/api/auth/me | grep -q '"assist":true'; then
+            echo "the server did not come up with the assistant enabled; assist.spec.js would skip" >&2
+            exit 1
+          fi
+          echo "assistant enabled"
 
       - name: UI suite
         run: make test-ui

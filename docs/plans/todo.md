@@ -46,131 +46,44 @@ down.
   referencing `trip_id` and optionally `item_id`, with no changes to existing
   tables. The *splitting* half only means anything once several people share a
   trip.
-- **AI-assisted metadata for locations.** **(soon)** Designed out in the Stage
-  15 backlog review; what follows is the agreed shape, not a plan.
-
-  *The feature.* In the location editor, a "Search via AI" control either
-  enriches the location you are editing or takes a free prompt ("a cheap hostel
-  near Hallgrimskirkja") and builds one from scratch. It proposes `type`, `notes`,
-  an address and links; you accept or reject **per field**, including for fields
-  that already have content — those show a visible before/after, so accepting can
-  never silently destroy something you wrote. The sources the agent used are
-  listed with the proposal and stored nowhere: once you accept, it is just your
-  data.
-
-  *Optional, and invisible when unconfigured.* This needs an LLM endpoint, a key
-  and possibly a search key — infrastructure not everyone has, and one that can
-  cost money. So it is off by default and configured through **env vars only**
-  (`CARAVEL_LLM_URL` / `_KEY` / `_MODEL`, plus a search provider), never in the
-  database, where the key would end up in every backup. Unset means the endpoint
-  is not mounted and the control does not render. This is exactly the
-  `CARAVEL_GEOCODER_URL` precedent, which already disables address search and
-  hides its control the same way.
-
-  *No MCP.* Decided deliberately, and the decision stands -- but note that one
-  reason originally given for it does not. MCP solves "connect an agent to tools
-  unknown at build time"; here the tool set is three things (web search, page
-  fetch, OSM/Nominatim) and one of them is already implemented. Adopting it
-  would mean an MCP client plus a sidecar process per server, which is the whole
-  of the cost. What was *also* claimed -- that the candidate servers being
-  Python would make a Go binary shipping as one static file grow a Python
-  runtime -- is wrong: an MCP server is a separate process by definition, so its
-  language never enters our binary. See the ddgs note below, where the same
-  mistaken premise did real damage. Implement the tools as native Go functions
-  behind the OpenAI tool-calling API instead, and keep the tool-dispatch seam
-  clean enough that an MCP-backed tool could be added later without a refactor.
-
-  *Web search behind an interface,* with four implementations (~60-90 lines of
-  HTTP+JSON each), chosen by config: a stub for CI, Ollama Cloud, ddgs and
-  Serper. No documented default. SearXNG was planned and deferred (see the
-  entry below); SerpAPI, Brave, Tavily and Exa were considered and left out,
-  with reasons. See the provider table in `docs/plans/stage-16.md`.
-
-  *The earlier rejection of `ddgs` recorded here was wrong on its facts*, and is
-  corrected rather than deleted so nobody re-derives it. It said Python meant a
-  Go binary shipping as one static file would grow a Python runtime. It would
-  not: ddgs ships a built-in FastAPI server (`ddgs api`), so Python runs as a
-  separate service the operator starts, exactly the SearXNG shape, and in the
-  Docker work below it is a second compose service rather than a second runtime
-  in our image. It is also no longer DuckDuckGo-only -- the name is legacy, and
-  text search now aggregates nine backends with per-query selection and
-  fallback. What does still hold is that it scrapes, so backends break when
-  sites change their markup; that datacenter IPs get rate limited, making it
-  better suited to a home server than a VPS; and that scraping Google and Bing
-  is against their terms of service. All three are documented caveats rather
-  than disqualifying, which is why it is supported but never the default.
-
-  *SearXNG as a search backend.* **Deferred from Stage 16 Milestone 8**, where
-  it was planned and then dropped: nobody had an instance to test against, and
-  a backend verified only against a fake is a backend nobody should trust.
-  Everything needed for it already exists -- the `Searcher` interface takes a
-  ~60-line implementation, `CARAVEL_SEARCH_URL` already carries a self-hosted
-  address (ddgs uses it), and `config.SearchProviders` is one string longer.
-  What it needs is somebody with a running SearXNG. Two things to know when
-  picking it up: the JSON output format is disabled by default and has to be
-  added to `search.formats` in `settings.yml`, and it overlaps heavily with
-  ddgs, which shipped -- both are self-hosted keyless metasearch, so this is
-  for people who already run one rather than a gap in coverage.
-
-  *Never let the model produce coordinates.* It returns a place name and address
-  string; the existing Nominatim path resolves them. A plausible lat/lng 40km
-  from the real hotel looks perfectly fine in the form and is only wrong on the
-  map -- the one failure mode with no visible tell. Same reasoning for
-  `category`, which is a three-value enum and gets validated rather than trusted.
-  `type` is free text and would fragment ("hotel"/"Hotel"/"hostel"), so send the
-  distinct values already in use as a vocabulary and ask it to reuse one where it
-  fits.
-
-  *Hallucinated URLs* are the classic failure, so every proposed link gets a HEAD
-  check in parallel and the dead ones are dropped before the proposal is shown.
-
-  *Open-ended agent,* chosen over a bounded loop for the quality ceiling. That
-  makes the guard rails a hard requirement rather than a nicety: a wall-clock
-  deadline, a token budget per request and a cancel button -- an unbounded loop
-  is a bug in any design. No per-user rate limit; the instance owner configured
-  the key. Because a run can take 30+ seconds, progress has to stream ("searching
-  for...", "checking OpenStreetMap...") or it reads as a hung spinner -- so this
-  wants SSE, not a plain JSON POST.
-
-  *Structured output needs no library.* OpenAI-compatible servers take
-  `response_format: {type: "json_schema", strict: true}` (Ollama, vLLM and
-  llama.cpp all support it); hand-write the schema literal next to the Go struct
-  and validate after. The real work is the fallback for proxies that only do
-  `json_object`: prompt, validate, retry once.
-
-  *What goes to the provider.* The location's own existing metadata always --
-  title, notes, address, type, links -- since enriching means knowing what is
-  already there. Trip title and dates go too **behind a checkbox that turns them
-  off**, for anyone who would rather not send them. Notes should come back in the
-  user's locale. Note also that the agent reads web pages, so a page could carry
-  injected instructions; the blast radius is bounded by design, since the output
-  is a validated structure the user confirms field by field and no tool has a
-  side effect.
-
-  *In-binary, in `internal/assist`,* behind a narrow interface. A sidecar was
-  considered: it buys a clean seam, which a package boundary also buys, at the
-  cost of a second image, a second config, an internal API to version and a new
-  class of "the sidecar is down" failures. It would only earn that if Python were
-  needed -- and dropping MCP and `ddgs` removes Python.
-
-  *A stub provider* (`CARAVEL_LLM_URL` pointed at a built-in fake returning
-  canned proposals) so the UI can be built and Playwright-tested without a key or
-  a network. Nothing else here would be testable in CI.
-
-  Deliberately **not** in v1: auto-filling a cover image. The workable route is
-  the model returning a Wikipedia article title and Caravel pulling the lead
-  image through the Wikimedia API -- which gives a real photo with a known
-  license and attribution, where generic web image search is a licensing
-  landmine. It needs a Wikimedia client, an attribution field on `media_assets`
-  and UI to display the credit, so it is a follow-on rather than part of the
-  first cut.
-- **AI trip-level suggestions.** (Stage 15 backlog review.) "Suggest things to do
-  in Reykjavik" returning several candidate locations to add at once, rather than
-  enriching one location at a time. Deliberately out of scope for the entry above,
-  which is already large: this needs a multi-result review UI, a way to add N
-  locations in one transaction, and dedup against what the trip already has.
-  Blocked on the single-location version existing first -- it reuses the same
-  provider, tools, agent loop and stub.
+- **SearXNG as a search backend.** (Stage 16 Milestone 8.) Planned for that
+  milestone and dropped: nobody had an instance to test against, and a backend
+  verified only against a fake is a backend nobody should trust. Everything
+  needed already exists -- the `Searcher` interface in `internal/assist` takes
+  a ~60-line implementation, `CARAVEL_SEARCH_URL` already carries a
+  self-hosted address (ddgs uses it), and `config.SearchProviders` is one
+  string longer. What it needs is somebody with a running SearXNG. Two things
+  to know when picking it up: the JSON output format is disabled by default and
+  has to be added to `search.formats` in `settings.yml`, and it overlaps
+  heavily with ddgs, which shipped -- both are self-hosted keyless metasearch,
+  so this is for people who already run one rather than a gap in coverage.
+- **The assistant's links and sources are not covered by the UI suite.**
+  (Stage 16 Milestone 9.) `tests/ui/assist.spec.js` asserts on the suggested
+  fields but not on the two list sections, because the stub provider cannot
+  produce either: its URLs point at `example.invalid`, so the proposed link is
+  correctly dropped as dead and the failed page fetch records no source. Both
+  behaviours are right, which is what makes this awkward. The alternatives were
+  rejected in that milestone -- giving CI a network dependency, or letting
+  `CARAVEL_LLM_URL=stub` relax the fetcher's SSRF guard, which is a config
+  value weakening a security control. Both lists have Go tests and were
+  verified by hand against real providers. Closing it properly probably means a
+  second fake that serves pages from an in-process `httptest` server the
+  fetcher is allowed to reach, which is a bigger change than it sounds because
+  the guard refuses loopback by design.
+- **Auto-filling a location's cover image.** (Stage 16, deliberately out of
+  scope.) The workable route is the model returning a Wikipedia article title
+  and Caravel pulling the lead image through the Wikimedia API -- a real photo
+  with a known licence and attribution, where generic web image search is a
+  licensing landmine. Needs a Wikimedia client, an attribution field on
+  `media_assets` and UI to show the credit.
+- **AI trip-level suggestions.** (Stage 15 backlog review.) "Suggest things to
+  do in Reykjavik" returning several candidate locations to add at once, rather
+  than enriching one location at a time. **No longer blocked**: Stage 16 built
+  the single-location version, so the provider, the search backends, the tools,
+  the agent loop, the guard rails, the SSE transport and the stub are all in
+  place and this reuses every one of them. What is genuinely new is a
+  multi-result review UI, a way to add N locations in one transaction, and
+  dedup against what the trip already has.
 - **Account settings: what Stage 12 left out.** The screen, appearance and
   language controls and password changing all landed in Stage 12
   (Milestones 2-5). Two things remain:
@@ -299,6 +212,12 @@ down.
       for every later run, so a restore step has to assert its own success. Every
       other mutating flow is uncovered and should copy one of those two shapes:
       the location and trip editors, checklists, and the itinerary.
+      Stage 16 Milestone 9 added a third shape worth copying: `assist.spec.js`
+      creates its own trip like `files.spec.js`, but also *skips itself* when
+      the server lacks a capability it needs, since that capability is
+      configuration rather than seed data. CI asserts the capability is on
+      before running the suite, because a spec that skips silently reads as a
+      pass.
     - **The register page**, which no spec renders. Stage 14 Milestone 9's
       `unauthenticated.spec.js` covers the *login* screen from a fresh
       unauthenticated context, but the register form only appears when open
@@ -310,6 +229,24 @@ down.
       the sweeps themselves (overflow, headings, names, tap targets) run in one
       locale, and German copy is the longer of the two — the case most likely to
       overflow a box.
+- **Manual testing in a seeded trip silently breaks the UI suite.** (Stage 16
+  Milestone 9.) `map.spec.js`'s distance filter asserts an exact card count in
+  the seeded Iceland trip, so a single location added by hand while trying a
+  feature out makes it fail -- which is exactly what happened, twice in one
+  evening, from testing the assistant in `Demo: Iceland Ring Road`. The failure
+  points at the map spec and says nothing about the real cause, so the time
+  goes on investigating a filter that works perfectly.
+
+  The specs that *write* already solve this for themselves by creating their
+  own trip (`files.spec.js`, and now `assist.spec.js`), but nothing protects
+  the seeded scenarios from a person. Options, none obviously best: have
+  `make test-ui` reseed first, which is a big hammer and would wipe anything
+  else in the dev database; have the suite assert the seed is pristine before
+  running and say so plainly when it is not, which is cheap and turns a
+  confusing failure into an instruction; or seed a scenario specifically for
+  poking at by hand and point people at it. The middle one is probably the
+  right size.
+
 - **Add a Chromium project for gesture specs.** **(soon)** (Stage 13 Milestone
   1.) `playwright.config.js` runs Firefox alone, but Playwright's `isMobile` —
   the option that flips `(pointer: coarse)` and enables real touch emulation — is

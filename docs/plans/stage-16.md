@@ -1044,6 +1044,67 @@ the stub cannot produce.
   on the single-location version existing first" line, which is no longer true.
   Add whatever this stage defers.
 
+**Done.** The spec, the CI wiring and the documentation.
+
+`tests/ui/assist.spec.js` is three tests following `files.spec.js`'s isolation
+shape — its own trip in `beforeEach`, deleted in `afterEach`. It covers the
+idle state first, because that is what shipped broken: the spinner and Cancel
+had to be asserted *hidden* before anything else happens. Then a full run from
+a prompt, with each suggestion asserted to be in the slot under its own field;
+accept filling the field and removing the suggestion; reject removing it and
+leaving the field; the counter tracking both; coordinates moving the map marker
+(so they went through the Location card's handler rather than being written
+behind its back); Accept all clearing the rest; and Save committing. The second
+test is the overwrite case, ending by reading the item back from the API to
+prove a dismissed proposal leaves the handwritten note intact **in the
+database**, not merely on screen. The third fakes the capability off and
+asserts the control is absent.
+
+**A new shape for this suite: a spec that skips itself.** The assistant is
+server *configuration*, not seed data, which nothing here had depended on
+before. Failing would be wrong — a developer running `make test-ui` against
+their ordinary dev server has broken nothing, and a red suite meaning "you did
+not set an env var" trains people to ignore red suites. So it skips, verified
+by running it against a deliberately unconfigured server.
+
+**That skip then needed a guard in CI**, which is the part worth recording: a
+spec that skips silently reads as a pass, so a typo in the workflow's env block
+would have turned three tests into three skips with CI still green. The `ui`
+job now logs in and asserts `"assist":true` before `make test-ui` runs, and
+fails with a message naming the cause.
+
+`README.md` gained a section rather than eight more rows in the general table:
+what the feature does, that it is off unless configured, why the key is env-var
+only, the three variables that turn it on, the four-provider table with no
+default, the eight limits, and two honest caveats about `ddgs` — that it
+scrapes, and that scraped engines rate-limit datacenter addresses, so it suits
+a home server better than a VPS. Also added the `CARAVEL_GEOCODER_URL` row,
+which had never been documented at all.
+
+`todo.md` lost the entry this stage built and gained three that outlived it:
+SearXNG deferred with the `settings.yml` note, the links-and-sources coverage
+gap with the two rejected alternatives and a sketch of what closing it properly
+would take, and cover-image auto-fill. "AI trip-level suggestions" was rewritten
+— it was blocked on this stage and is not any more.
+
+**Verified.** `make ci` green. `make test-ui` green, the three new tests
+included. Then the same spec against a server started without the assistant:
+three skips, no failures.
+
+**One failure on the first full-suite run, and it was not a regression.**
+`map.spec.js`'s distance filter asserts that exactly one location sits within
+5km of the hotel, and two locations had been added to the seeded Iceland trip
+by hand during the evening's manual testing of the assistant -- one of them
+Kex Hostel, 460m from that hotel. Deleting the two strays made it green again;
+the test was right and the data was wrong.
+
+Worth noticing rather than just fixing: the failure points at the map spec and
+says nothing about the real cause, so the time goes on investigating a filter
+that works. The write-specs protect themselves by creating their own trip, but
+nothing protects the seeded scenarios from a person trying a feature out. Filed
+in `todo.md` with three options; asserting the seed is pristine before the
+suite runs is probably the right size.
+
 ---
 
 ## Build order

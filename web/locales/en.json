@@ -220,6 +220,8 @@
   "itinerary.noDates": "Set a start and end date in this trip's settings to build a day-by-day itinerary, or add days manually below.",
   "itinerary.addDay": "Add a day",
   "itinerary.addDayDate": "Date to add",
+  "itinerary.moveUp": "Move {title} earlier",
+  "itinerary.moveDown": "Move {title} later",
   "itinerary.removeDay": "Remove this day",
   "itinerary.removeDayConfirm": "Remove this day and everything planned on it? This cannot be undone.",
   "itinerary.notesPlaceholder": "Notes for this day…",

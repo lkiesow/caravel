@@ -294,6 +294,13 @@ type Store interface {
 
 	CreateItineraryEntry(ctx context.Context, p CreateItineraryEntryParams) (ItineraryEntry, error)
 	ListItineraryEntriesByTrip(ctx context.Context, tripID string) ([]ItineraryEntryDetail, error)
+	// ListItineraryEntriesByDay returns one day's entries in stored order. Used
+	// to number a new entry, and to check a reorder against the entries the day
+	// actually has.
+	ListItineraryEntriesByDay(ctx context.Context, itineraryDayID string) ([]ItineraryEntry, error)
+	// SetItineraryEntrySortOrder reports whether it matched a row, so a reorder
+	// naming an entry from another day fails rather than silently doing nothing.
+	SetItineraryEntrySortOrder(ctx context.Context, id, itineraryDayID string, sortOrder int) (bool, error)
 	DeleteItineraryEntry(ctx context.Context, id, itineraryDayID string) (bool, error)
 
 	CreateFile(ctx context.Context, p CreateFileParams) (File, error)

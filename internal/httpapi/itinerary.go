@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 	"sort"
 	"time"
@@ -206,10 +207,22 @@ func (s *Server) handleCreateItineraryEntry(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// SortOrder was omitted here until Stage 15 Milestone 4, so every row in the
+	// table was 0 and ListItineraryEntriesByTrip's ORDER BY sort_order was an
+	// undefined tie - entries within a day came back in whatever order the
+	// database felt like. Numbering from the count appends, which is what adding
+	// an item to a day obviously means.
+	existing, err := s.Store.ListItineraryEntriesByDay(r.Context(), day.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not add item to day")
+		return
+	}
+
 	entry, err := s.Store.CreateItineraryEntry(r.Context(), db.CreateItineraryEntryParams{
 		ID:             uuid.NewString(),
 		ItineraryDayID: day.ID,
 		ItemID:         item.ID,
+		SortOrder:      len(existing),
 		Note:           req.Note,
 	})
 	if err != nil {
@@ -223,6 +236,97 @@ func (s *Server) handleCreateItineraryEntry(w http.ResponseWriter, r *http.Reque
 		SortOrder:    entry.SortOrder, Note: entry.Note,
 	})
 }
+
+type reorderItineraryEntriesRequest struct {
+	// Every entry id on the day, in the order they should end up in.
+	EntryIDs []string `json:"entry_ids"`
+}
+
+// handleReorderItineraryEntries renumbers a whole day at once.
+//
+// The full ordered list rather than a "move this entry up" call, for two
+// reasons. It is one transactional write instead of two, so a reorder cannot be
+// observed half-applied; and it is self-validating - the set of ids has to match
+// the day exactly, which catches a stale client sending an order computed before
+// somebody else added or removed an entry. A per-entry move would have to guess
+// what to do about that.
+//
+// It renumbers from 0 on every call rather than swapping two values, so a day
+// whose rows are all sort_order 0 (everything created before Stage 15 Milestone
+// 4) is repaired by the first reorder someone performs on it.
+func (s *Server) handleReorderItineraryEntries(w http.ResponseWriter, r *http.Request) {
+	day, _, ok := s.loadItineraryDay(w, r, db.RoleEditor)
+	if !ok {
+		return
+	}
+
+	var req reorderItineraryEntriesRequest
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	existing, err := s.Store.ListItineraryEntriesByDay(r.Context(), day.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not reorder the day")
+		return
+	}
+
+	// Same size, no duplicates, and every id belongs to this day. Checked before
+	// any write, so a rejected reorder changes nothing.
+	if len(req.EntryIDs) != len(existing) {
+		writeError(w, http.StatusBadRequest, "entry_ids must list every entry on this day exactly once")
+		return
+	}
+	onDay := make(map[string]bool, len(existing))
+	for _, e := range existing {
+		onDay[e.ID] = true
+	}
+	seen := make(map[string]bool, len(req.EntryIDs))
+	for _, id := range req.EntryIDs {
+		if !onDay[id] || seen[id] {
+			writeError(w, http.StatusBadRequest, "entry_ids must list every entry on this day exactly once")
+			return
+		}
+		seen[id] = true
+	}
+
+	err = s.Store.WithTx(r.Context(), func(store db.Store) error {
+		for i, id := range req.EntryIDs {
+			updated, err := store.SetItineraryEntrySortOrder(r.Context(), id, day.ID, i)
+			if err != nil {
+				return err
+			}
+			if !updated {
+				// Validated above, so reaching here means the day changed under
+				// us mid-transaction. Rolling back is the only honest answer.
+				return errItineraryEntryVanished
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, errItineraryEntryVanished) {
+			writeError(w, http.StatusConflict, "the day changed while it was being reordered")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "could not reorder the day")
+		return
+	}
+
+	entries, err := s.Store.ListItineraryEntriesByDay(r.Context(), day.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not reorder the day")
+		return
+	}
+	order := make([]string, len(entries))
+	for i, e := range entries {
+		order[i] = e.ID
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"entry_ids": order})
+}
+
+var errItineraryEntryVanished = errors.New("itinerary entry vanished mid-reorder")
 
 func (s *Server) handleDeleteItineraryEntry(w http.ResponseWriter, r *http.Request) {
 	day, _, ok := s.loadItineraryDay(w, r, db.RoleEditor)

@@ -744,6 +744,30 @@ func (s *sqliteStore) ListItineraryEntriesByTrip(ctx context.Context, tripID str
 	return entries, nil
 }
 
+func (s *sqliteStore) ListItineraryEntriesByDay(ctx context.Context, itineraryDayID string) ([]ItineraryEntry, error) {
+	rows, err := s.q.ListItineraryEntriesByDay(ctx, itineraryDayID)
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]ItineraryEntry, len(rows))
+	for i, row := range rows {
+		entries[i] = sqliteItineraryEntryToDomain(row)
+	}
+	return entries, nil
+}
+
+func (s *sqliteStore) SetItineraryEntrySortOrder(ctx context.Context, id, itineraryDayID string, sortOrder int) (bool, error) {
+	n, err := s.q.SetItineraryEntrySortOrder(ctx, sqlitegen.SetItineraryEntrySortOrderParams{
+		ID:             id,
+		ItineraryDayID: itineraryDayID,
+		SortOrder:      int64(sortOrder),
+	})
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
 func (s *sqliteStore) DeleteItineraryEntry(ctx context.Context, id, itineraryDayID string) (bool, error) {
 	n, err := s.q.DeleteItineraryEntry(ctx, sqlitegen.DeleteItineraryEntryParams{ID: id, ItineraryDayID: itineraryDayID})
 	if err != nil {

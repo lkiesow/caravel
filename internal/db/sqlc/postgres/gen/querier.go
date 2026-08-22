@@ -105,6 +105,9 @@ type Querier interface {
 	ListItemLocationsByTrip(ctx context.Context, tripID string) ([]ListItemLocationsByTripRow, error)
 	ListItemsByTrip(ctx context.Context, arg ListItemsByTripParams) ([]Item, error)
 	ListItineraryDaysByTrip(ctx context.Context, tripID string) ([]ItineraryDay, error)
+	// Entries of one day, in their stored order. Used to number a new entry and to
+	// validate a reorder against the set of entries the day actually has.
+	ListItineraryEntriesByDay(ctx context.Context, itineraryDayID string) ([]ItineraryEntry, error)
 	ListItineraryEntriesByTrip(ctx context.Context, tripID string) ([]ListItineraryEntriesByTripRow, error)
 	// ListMapItemsByTrip: show_on_map is filtered in the store layer, not here,
 	// since its Go type (int64 vs bool) diverges by dialect (plan Section 2.1).
@@ -193,6 +196,9 @@ type Querier interface {
 	// rules should not share one statement.
 	SetFileVisibility(ctx context.Context, arg SetFileVisibilityParams) (File, error)
 	SetItemImage(ctx context.Context, arg SetItemImageParams) (Item, error)
+	// The day id is part of the predicate, not just the id: it keeps a reorder from
+	// renumbering an entry that belongs to a different day.
+	SetItineraryEntrySortOrder(ctx context.Context, arg SetItineraryEntrySortOrderParams) (int64, error)
 	SetTripPreviewImage(ctx context.Context, arg SetTripPreviewImageParams) (Trip, error)
 	TouchSession(ctx context.Context, arg TouchSessionParams) error
 	UpdateAuthIdentityPassword(ctx context.Context, arg UpdateAuthIdentityPasswordParams) error

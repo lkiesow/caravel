@@ -382,6 +382,68 @@ but the `<details>` must be open for it to see them, which the seed's
 relative-to-today dates arrange for the current day only. Worth checking rather
 than assuming.
 
+**Done.** The bug first: `handleCreateItineraryEntry` now numbers a new entry
+from the count of entries already on that day, so
+`ListItineraryEntriesByTrip`'s `ORDER BY sort_order` decides something. Then
+`PUT /api/itinerary/days/{dayId}/entries/order`, taking every entry id in the
+order they should end up in, validated before any write and renumbered inside
+`Store.WithTx`. Frontend: up/down buttons per entry, disabled at the ends.
+
+No migration needed, as planned. `sqlc generate` produced both dialects cleanly
+and the generated files were read rather than diffed: no unsubstituted
+`sqlc.arg(...)` in either, and the parameter order matches. Worth noting what
+the read turned up — the generated `SortOrder` is `int64` on sqlite and `int32`
+on postgres, so the two adapters cast differently. Precisely the class of
+difference that only compiles today.
+
+Because the handler renumbers from 0 rather than swapping two values, the first
+reorder on any day repairs it — every entry created before this milestone is
+sitting at 0. `TestReorderRepairsADayOfZeroes` pins that, forcing the zeroes
+through the store because the API can no longer produce them.
+
+Three things found while building it:
+
+*The focus follow was silently broken.* Moving an entry re-renders the day, so
+the button just pressed now belongs to a different row and focus has to follow
+the entry. The first version focused the same-direction button — which is
+**disabled** when the entry lands at an end, and focusing a disabled button
+focuses nothing (measured: `activeElement` fell back to `<body>`). It now
+prefers the same direction and falls back to the opposite one, which is always
+enabled because the entry just came from there. Two presses in a row now work
+without re-aiming.
+
+*The reorder buttons measured 13x44.* The `max-width: 640px` block's blanket
+`button` rule gives min-height but nothing gives an icon-only button its
+*width* — `.icon-remove` gets that from an explicit `min-width` rule the new
+`.icon-btn` was not part of. Caught by measuring rather than by the sweep,
+because the sweep only reaches an entry row when a day is open. The same
+mistake as the notes tabs one milestone earlier, in the other dimension.
+
+*Three 44px controls on a 324px row cost the title.* The entry link now
+truncates with an ellipsis at 114px on a phone. That is the real price of
+up/down/remove in one row; the full title stays in each button's accessible
+name and on the location page itself.
+
+Verified: `make ci` green. Six new Go tests
+(`internal/httpapi/itinerary_order_test.go`) covering insertion order, the
+reorder happy path, the day-of-zeroes repair, seven bad-id-set cases including
+an entry from another day, and the viewer/stranger authorization pair. The
+insertion-order test was **break-checked twice**: the first attempt at breaking
+it removed the field and left `existing` unused, so it failed to *compile* —
+which reads as a test failure and proves nothing, exactly the `without.sh` trap
+`todo.md` records. Re-broken as `len(existing) - len(existing)`, it fails with
+`sort_orders are [0 0 0]` while the *titles* assertion still passes, which is
+the point: all-equal values leave the order undefined rather than wrong.
+
+Two new UI specs in `tests/ui/itinerary-order.spec.js`, isolated the
+files.spec.js way (own trip in `beforeEach`, deleted in `afterEach`), also
+break-checked: dropping the request fails the persistence assertion, focusing
+the disabled button fails the focus assertion, and removing the `min-width`
+fails the geometry assertion. A third spec was written and deleted rather than
+committed — "a viewer gets no reorder controls" asserted only that the buttons
+were *present*, which proves nothing about viewers; that case is the Go test's
+403 and `sharing.spec.js`'s read-only arc. Full suite 91 passed (89 before).
+
 ---
 
 ## 5. Sweep-up

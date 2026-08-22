@@ -70,10 +70,6 @@ Direction already agreed or obviously wanted; none of it built.
   results cannot be sorted client-side. No filter on owner/role either: with
   Stage 14 other people's trips are in the list, and "mine only" was considered
   and left out to keep the row to three controls at 324px.
-- **Itinerary entry reordering.** `itinerary_entries.sort_order` exists in the
-  schema and Stage 01 floated "native drag-and-drop or a minimal pointer-events
-  reorder", but `itinerary-tab.js` has no reordering UI at all — entries render
-  in whatever order the API returns, with no drag handle and no up/down buttons.
 - **"Add to every day of this stay."** (Stage 01.) For multi-day items such as a
   3-night hotel, driven by the item's date range. Today adding an item to a day
   is manual, one day at a time, via each day's own dropdown.
@@ -126,6 +122,23 @@ Not yet decided; each needs a call before it is work.
 - **Federation between self-hosted instances.** (Stage 01.) Real sync-protocol
   design still needed; v1 only avoided the integer-PK and local-only-ID mistakes
   that would have made it harder later.
+- **Itinerary entries reorder by button, not by dragging.** (Stage 15 Milestone
+  4.) Up/down buttons per entry, because the entries are a list of real links
+  inside a `<details>` on a 324px phone: native HTML5 drag does not work on
+  touch at all, and a pointer-events reorder needs its own gesture testing —
+  which the suite cannot do today anyway (Firefox-only Playwright cannot emulate
+  a coarse pointer; see the entry below). Two costs worth knowing before
+  revisiting: moving an entry several places means one press per position, and
+  three 44px controls in one row truncate the location title to ~114px at
+  324px. A drag handle would reclaim the row *and* make long moves one gesture,
+  so this is the strongest remaining argument for adding a Chromium project to
+  the suite.
+- **Reordering is per day, with no way to move an entry to another day.** (Stage
+  15 Milestone 4.) `PUT /itinerary/days/{dayId}/entries/order` validates that
+  the ids it is given are exactly the ones on that day, so moving something to
+  the next day still means removing it and adding it there — which loses its
+  note. A cross-day move wants either a second endpoint or a day id per entry
+  in the reorder body.
 - **The notes preview is a toggle, not side by side.** (Stage 15 Milestone 3.)
   Write and Preview swap places in the same column, which is the only thing that
   fits 324px. On a desktop there is room to show both at once, and a live

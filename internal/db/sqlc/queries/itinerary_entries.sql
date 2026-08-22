@@ -15,3 +15,17 @@ INNER JOIN itinerary_days d ON d.id = e.itinerary_day_id
 INNER JOIN items i ON i.id = e.item_id
 WHERE d.trip_id = sqlc.arg(trip_id)
 ORDER BY e.sort_order;
+
+-- Entries of one day, in their stored order. Used to number a new entry and to
+-- validate a reorder against the set of entries the day actually has.
+-- name: ListItineraryEntriesByDay :many
+SELECT * FROM itinerary_entries
+WHERE itinerary_day_id = sqlc.arg(itinerary_day_id)
+ORDER BY sort_order;
+
+-- The day id is part of the predicate, not just the id: it keeps a reorder from
+-- renumbering an entry that belongs to a different day.
+-- name: SetItineraryEntrySortOrder :execrows
+UPDATE itinerary_entries
+SET sort_order = sqlc.arg(sort_order)
+WHERE id = sqlc.arg(id) AND itinerary_day_id = sqlc.arg(itinerary_day_id);

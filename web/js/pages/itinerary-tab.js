@@ -198,7 +198,7 @@ export async function renderItineraryTab(container, trip) {
     el.querySelector(".itinerary-day__count").textContent =
       count === 0 ? t("itinerary.summaryEmpty") : t("itinerary.entryCount", { count }, count);
 
-    for (const entry of day.entries) {
+    day.entries.forEach((entry, index) => {
       const li = document.createElement("li");
       // A real <a href>, not a button with a click handler. The router
       // intercepts [data-link] clicks itself, so navigation still stays
@@ -218,14 +218,81 @@ export async function renderItineraryTab(container, trip) {
           <span>${escapeHtml(entry.item_title)}</span>
         </a>
         ${entry.note ? `<span class="itinerary-entry__note">${escapeHtml(entry.note)}</span>` : ""}
-        ${editable ? `<button class="icon-remove" data-action="remove" aria-label="${t("common.remove")}">${icon("x")}</button>` : ""}
+        ${
+          editable
+            ? `<span class="itinerary-entry__actions">
+          <button class="icon-btn" data-action="move-up" ${index === 0 ? "disabled" : ""} aria-label="${escapeAttr(t("itinerary.moveUp", { title: entry.item_title }))}">${icon("chevron-up")}</button>
+          <button class="icon-btn" data-action="move-down" ${index === day.entries.length - 1 ? "disabled" : ""} aria-label="${escapeAttr(t("itinerary.moveDown", { title: entry.item_title }))}">${icon("chevron-down")}</button>
+          <button class="icon-remove" data-action="remove" aria-label="${escapeAttr(t("common.remove"))}">${icon("x")}</button>
+        </span>`
+            : ""
+        }
       `;
       li.querySelector('[data-action="remove"]')?.addEventListener("click", async () => {
         await api.delete(`/itinerary/days/${day.id}/entries/${entry.id}`);
         day.entries = day.entries.filter((e) => e.id !== entry.id);
         renderEntries(el, day);
       });
+      li.querySelector('[data-action="move-up"]')?.addEventListener("click", () => moveEntry(el, day, index, -1));
+      li.querySelector('[data-action="move-down"]')?.addEventListener("click", () => moveEntry(el, day, index, 1));
       list.appendChild(li);
+    });
+  }
+
+  // Up/down rather than drag-and-drop. The entries are a list of real links
+  // inside a <details> on a 324px phone: native HTML5 drag does not work on
+  // touch at all, and a pointer-events reorder is its own piece of work with its
+  // own gesture testing (see todo.md).
+  //
+  // Optimistic: the swap is applied locally and drawn immediately, then sent.
+  // The request is the whole new order rather than "move this one" - the server
+  // renumbers a day in one transaction, so a reorder cannot be observed
+  // half-applied. On failure the day is reloaded from the server rather than
+  // left showing an order that was not saved.
+  async function moveEntry(el, day, index, delta) {
+    const target = index + delta;
+    if (target < 0 || target >= day.entries.length) return;
+
+    const reordered = [...day.entries];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    day.entries = reordered;
+    renderEntries(el, day);
+    // Keep the moved entry under the finger: after the re-render the button that
+    // was just pressed belongs to a *different* row, so focus follows the entry
+    // rather than the position - otherwise moving something twice means aiming
+    // again between presses, and a keyboard user loses their place entirely.
+    //
+    // The button pressed may not exist to return to: an entry moved to the top
+    // has its "up" disabled, and focusing a disabled button silently focuses
+    // nothing (measured - it left document.activeElement on <body>). So the
+    // same-direction button is preferred and the opposite one is the fallback,
+    // which is always enabled because the entry just came from there.
+    const movedRow = el.querySelector(`.itinerary-day__entries li:nth-child(${target + 1})`);
+    const sameWay = movedRow?.querySelector(`[data-action="move-${delta < 0 ? "up" : "down"}"]`);
+    const otherWay = movedRow?.querySelector(`[data-action="move-${delta < 0 ? "down" : "up"}"]`);
+    (sameWay && !sameWay.disabled ? sameWay : otherWay)?.focus();
+
+    try {
+      await api.put(`/itinerary/days/${day.id}/entries/order`, {
+        entry_ids: reordered.map((e) => e.id),
+      });
+    } catch (err) {
+      console.error("reorder failed", err);
+      // The server is the authority on the order, so re-read this day rather
+      // than guessing how to undo the local swap. Only this day is refetched:
+      // a failed reorder says nothing about the rest of the itinerary, and
+      // rebuilding the whole list would collapse and redraw days the user was
+      // not touching.
+      try {
+        const fresh = await api.get(`/trips/${trip.id}/itinerary`);
+        const server = fresh.find((d) => d.id === day.id);
+        if (server) {
+          day.entries = server.entries ?? [];
+          renderEntries(el, day);
+        }
+      } catch (reloadErr) {
+        console.error("could not re-read the day after a failed reorder", reloadErr);
+      }
     }
   }
 

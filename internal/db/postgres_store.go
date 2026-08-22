@@ -810,6 +810,33 @@ func (s *postgresStore) ListItineraryEntriesByTrip(ctx context.Context, tripID s
 	return entries, nil
 }
 
+func (s *postgresStore) ListItineraryEntriesByDay(ctx context.Context, itineraryDayID string) ([]ItineraryEntry, error) {
+	rows, err := s.q.ListItineraryEntriesByDay(ctx, itineraryDayID)
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]ItineraryEntry, len(rows))
+	for i, row := range rows {
+		entries[i] = postgresItineraryEntryToDomain(row)
+	}
+	return entries, nil
+}
+
+func (s *postgresStore) SetItineraryEntrySortOrder(ctx context.Context, id, itineraryDayID string, sortOrder int) (bool, error) {
+	n, err := s.q.SetItineraryEntrySortOrder(ctx, postgresgen.SetItineraryEntrySortOrderParams{
+		ID:             id,
+		ItineraryDayID: itineraryDayID,
+		// int32 here where sqlite takes int64: the two generated packages differ
+		// on integer width, which is exactly the sort of thing only a build
+		// catches today (see the postgres note in todo.md).
+		SortOrder: int32(sortOrder),
+	})
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
 func (s *postgresStore) DeleteItineraryEntry(ctx context.Context, id, itineraryDayID string) (bool, error) {
 	n, err := s.q.DeleteItineraryEntry(ctx, postgresgen.DeleteItineraryEntryParams{ID: id, ItineraryDayID: itineraryDayID})
 	if err != nil {

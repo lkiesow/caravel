@@ -220,6 +220,8 @@
   "itinerary.noDates": "Lege in den Einstellungen dieser Reise ein Start- und Enddatum fest, um einen Tag-für-Tag-Reiseplan zu erstellen, oder füge unten manuell Tage hinzu.",
   "itinerary.addDay": "Tag hinzufügen",
   "itinerary.addDayDate": "Hinzuzufügendes Datum",
+  "itinerary.moveUp": "{title} nach vorne verschieben",
+  "itinerary.moveDown": "{title} nach hinten verschieben",
   "itinerary.removeDay": "Diesen Tag entfernen",
   "itinerary.removeDayConfirm": "Diesen Tag und alles, was für ihn geplant ist, entfernen? Das kann nicht rückgängig gemacht werden.",
   "itinerary.notesPlaceholder": "Notizen für diesen Tag…",

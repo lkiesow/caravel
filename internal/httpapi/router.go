@@ -218,6 +218,10 @@ func (s *Server) buildRouter() chi.Router {
 			r.Use(auth.RequireAuth)
 			r.Delete("/", s.handleDeleteItineraryDay)
 			r.Post("/entries", s.handleCreateItineraryEntry)
+			// PUT on the collection, not PATCH on an entry: reordering is one
+			// statement about the whole day, and the body is every entry id in
+			// the order they should end up in.
+			r.Put("/entries/order", s.handleReorderItineraryEntries)
 			r.Delete("/entries/{entryId}", s.handleDeleteItineraryEntry)
 		})
 

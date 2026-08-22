@@ -60,6 +60,43 @@ func (q *Queries) DeleteItineraryEntry(ctx context.Context, arg DeleteItineraryE
 	return result.RowsAffected()
 }
 
+const listItineraryEntriesByDay = `-- name: ListItineraryEntriesByDay :many
+SELECT id, itinerary_day_id, item_id, sort_order, note FROM itinerary_entries
+WHERE itinerary_day_id = $1
+ORDER BY sort_order
+`
+
+// Entries of one day, in their stored order. Used to number a new entry and to
+// validate a reorder against the set of entries the day actually has.
+func (q *Queries) ListItineraryEntriesByDay(ctx context.Context, itineraryDayID string) ([]ItineraryEntry, error) {
+	rows, err := q.db.QueryContext(ctx, listItineraryEntriesByDay, itineraryDayID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ItineraryEntry
+	for rows.Next() {
+		var i ItineraryEntry
+		if err := rows.Scan(
+			&i.ID,
+			&i.ItineraryDayID,
+			&i.ItemID,
+			&i.SortOrder,
+			&i.Note,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listItineraryEntriesByTrip = `-- name: ListItineraryEntriesByTrip :many
 SELECT e.id, e.itinerary_day_id, e.item_id, e.sort_order, e.note,
        i.title AS item_title, i.category AS item_category, i.type AS item_type,
@@ -114,4 +151,26 @@ func (q *Queries) ListItineraryEntriesByTrip(ctx context.Context, tripID string)
 		return nil, err
 	}
 	return items, nil
+}
+
+const setItineraryEntrySortOrder = `-- name: SetItineraryEntrySortOrder :execrows
+UPDATE itinerary_entries
+SET sort_order = $1
+WHERE id = $2 AND itinerary_day_id = $3
+`
+
+type SetItineraryEntrySortOrderParams struct {
+	SortOrder      int32  `json:"sort_order"`
+	ID             string `json:"id"`
+	ItineraryDayID string `json:"itinerary_day_id"`
+}
+
+// The day id is part of the predicate, not just the id: it keeps a reorder from
+// renumbering an entry that belongs to a different day.
+func (q *Queries) SetItineraryEntrySortOrder(ctx context.Context, arg SetItineraryEntrySortOrderParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setItineraryEntrySortOrder, arg.SortOrder, arg.ID, arg.ItineraryDayID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

@@ -1522,6 +1522,62 @@ button {
   gap: 0.5rem;
 }
 
+/* The per-entry controls: move up, move down, remove. Grouped so the three sit
+   together at the right end of the row rather than each fighting for the auto
+   margin, and so the entry link keeps the rest of the row. Stage 15 Milestone 4.
+
+   No min-height here: the max-width 640px block gives every button
+   var(--tap-min), and a class selector would out-specify it - the mistake made
+   with the notes tabs one milestone earlier. */
+.itinerary-entry__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: var(--radius);
+}
+
+.icon-btn:hover:not(:disabled) {
+  color: var(--color-text);
+}
+
+.icon-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Kept in the row rather than hidden at the ends, so the controls do not move
+   between entries - the first entry has no "up" and the reader can see that
+   rather than having to infer it from a gap. */
+.icon-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* The link has to be allowed to shrink now that three controls share the row,
+   or a long location title pushes them off the edge at 324px. */
+.itinerary-entry__link {
+  min-width: 0;
+}
+
+.itinerary-entry__link > span:not(.dot) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .itinerary-day__entries .dot {
   width: 0.6rem;
   height: 0.6rem;
@@ -2168,6 +2224,16 @@ button {
     min-width: var(--tap-min);
     min-height: var(--tap-min);
     margin-block: -0.5rem;
+  }
+
+  /* The itinerary reorder buttons need the same treatment, and needed saying
+     separately: the blanket `button` rule above gives them min-height but
+     nothing gives an icon-only button its *width*, so they measured 13x44 until
+     this was added. No negative margin - the row's height is set by the entry
+     link beside them, which already carries the tap minimum. */
+  .icon-btn {
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
   }
 
   /* Ticking an item off is the whole point of a checklist on a phone, and it

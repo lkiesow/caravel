@@ -323,6 +323,73 @@ as a table test over `http://127.0.0.1`, `http://10.0.0.1`, `http://[::1]`,
 `file://`, a public redirect into a private address, and an oversized body;
 the stub searcher satisfying the interface.
 
+**Done.** All three parts landed, and the lift went exactly as the plan
+predicted: `internal/httpapi/geocode_test.go` needed only import and
+constructor edits and stayed green, which is the evidence that behaviour did
+not change.
+
+**The geocoder lift** went slightly further than "move the function". Rather
+than keeping `GeocoderURL string` on the Server and building a client per
+request, `Server.Geocoder` is now a `*geocode.Client` and `geocode.New("")`
+returns nil -- so nil is the off switch and `s.Geocoder != nil` is the
+capability check, the same shape `Assist` uses. `cmd/caravel` builds one client
+and shares it between the HTTP handler and the assistant, so there is one
+connection pool and one place that knows the User-Agent. `geocode.Search` on a
+nil client returns `ErrNotConfigured` rather than panicking, so a missed check
+fails where it happens.
+
+**`fetch_page` has three layers of guard, not one.** The plan called for a
+pre-flight check and a redirect check; a third was added at dial time. The
+pre-flight check resolves the name and rejects on *every* A/AAAA record rather
+than the first, the `CheckRedirect` hook re-checks each hop, and
+`DialContext` checks the address actually being connected to -- which is the
+only one of the three that closes DNS rebinding, where a name passes the
+lookup and then resolves to something private a moment later. All three share
+one `guardIP` so they cannot drift apart.
+
+**The dispatcher never returns an error**, which is the load-bearing decision
+in `tools.go`. A tool failure is turned into text for the model -- "That did
+not work: ..." -- because a 404 or an unresolvable address should make it try
+something else, exactly as a person would. Aborting instead would turn every
+dead link on the web into a failed enrichment. The genuinely fatal cases stay
+the agent's job in Milestone 4.
+
+Four smaller decisions:
+
+1. **Only tools that can work are offered.** Describing web search to a model
+   with no search backend produces a run that calls it, gets an error and
+   wastes a turn discovering what the config already knew.
+2. **The geocode tool returns formatted addresses with no coordinates.** The
+   model has no use for lat/lng and showing them invites it to copy one into
+   the answer, which is the exact failure the design forbids. A test asserts
+   no coordinate appears in the tool output.
+3. **`Fetch` is split into the guard and `fetchUnguarded`** for a testing
+   reason: `httptest` servers listen on loopback, which the guard exists to
+   refuse. Without the split, either the guard or everything past it goes
+   untested because the other is in the way.
+4. **The ULA check runs before `IsPrivate`.** Both refuse `fd00::1`, but
+   `IsPrivate` answered first with the vaguer reason. Reordering means the
+   refusal names the kind of address, and the policy does not quietly depend on
+   one stdlib helper's IPv6 behaviour.
+
+**One new direct dependency**: `golang.org/x/net`, for `html.Parse` in the text
+extractor. It was already in the module graph as an indirect dependency so
+nothing new is downloaded, but it is now direct. The alternative was
+regex-based tag stripping, which is fragile enough that the parser is worth
+the line in `go.mod`.
+
+**Verified.** `make ci` green and `go test -race ./internal/...` clean. 68
+tests across `internal/assist` and `internal/geocode`. The SSRF table covers 13
+targets -- loopback by literal, by name and over IPv6; all three RFC1918
+ranges; `169.254.169.254` specifically, since cloud metadata is the most
+valuable thing an SSRF reaches; link-local and unique-local IPv6; the
+unspecified address; `file://` and `gopher://`; and a URL with no host -- plus
+a live redirect from a public-looking server into private space, and the
+dial-time guard on its own. Past the guard: content-type refusal, the body cap
+against a server streaming 4MB, an empty page, an error status, and script and
+style content actually being stripped. The geocode suite in `internal/httpapi`
+passed unchanged but for imports.
+
 ## 4. The agent loop and its guard rails
 
 `internal/assist/agent.go`. Open-ended — model calls tools until it emits the

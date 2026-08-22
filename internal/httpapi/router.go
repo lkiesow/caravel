@@ -14,6 +14,7 @@ import (
 	"caravel/internal/auth"
 	"caravel/internal/buildinfo"
 	"caravel/internal/db"
+	"caravel/internal/geocode"
 	"caravel/internal/storagefs"
 )
 
@@ -30,10 +31,11 @@ type Server struct {
 	Blob    storagefs.Blob
 	WebFS   http.FileSystem // static assets (embedded, or a live directory in dev)
 	NoCache bool            // true when serving from a live directory (dev mode)
-	// GeocoderURL is the upstream address-search endpoint /api/geocode
-	// proxies to. Empty means address search is switched off: the endpoint
-	// reports that plainly and the client hides the control.
-	GeocoderURL string
+	// Geocoder resolves place names to coordinates for /api/geocode. Nil
+	// means address search is switched off: the endpoint reports that plainly
+	// and the client hides the control. Shared with Assist below, which
+	// resolves the addresses the model proposes through the same client.
+	Geocoder *geocode.Client
 	// Assist proposes location metadata via an LLM. Nil means the feature is
 	// not configured, which is the only off switch: the route answers 501,
 	// /auth/me reports the capability as absent and the client hides the
@@ -64,23 +66,22 @@ type Options struct {
 	WebFS fs.FS
 	// NoCache disables asset caching, for serving from a live directory.
 	NoCache bool
-	// GeocoderURL is the upstream /api/geocode proxies to; empty disables
-	// address search.
-	GeocoderURL string
+	// Geocoder backs /api/geocode; nil disables address search.
+	Geocoder *geocode.Client
 	// Assist is the location-metadata assistant, or nil when unconfigured.
 	Assist assist.Assistant
 }
 
 func NewServer(opts Options) *Server {
 	s := &Server{
-		DB:          opts.DB,
-		Store:       opts.Store,
-		Auth:        opts.Auth,
-		Blob:        opts.Blob,
-		WebFS:       http.FS(opts.WebFS),
-		NoCache:     opts.NoCache,
-		GeocoderURL: opts.GeocoderURL,
-		Assist:      opts.Assist,
+		DB:       opts.DB,
+		Store:    opts.Store,
+		Auth:     opts.Auth,
+		Blob:     opts.Blob,
+		WebFS:    http.FS(opts.WebFS),
+		NoCache:  opts.NoCache,
+		Geocoder: opts.Geocoder,
+		Assist:   opts.Assist,
 		// 20/minute/IP. Higher than login's 10 because a search is a normal,
 		// repeated action rather than a credential attempt, and still far
 		// under what would embarrass us upstream.

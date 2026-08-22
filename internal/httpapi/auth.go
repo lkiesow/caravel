@@ -52,7 +52,7 @@ func (s *Server) userToResponse(r *http.Request, u db.User) userResponse {
 		Username:    u.Username,
 		DisplayName: u.DisplayName,
 		HasPassword: hasPassword,
-		Geocoding:   s.GeocoderURL != "",
+		Geocoding:   s.Geocoder != nil,
 		Assist:      s.Assist != nil,
 		IsAdmin:     u.IsAdmin,
 	}

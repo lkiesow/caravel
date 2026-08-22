@@ -13,6 +13,7 @@ import (
 	"caravel/internal/buildinfo"
 	"caravel/internal/config"
 	"caravel/internal/db"
+	"caravel/internal/geocode"
 	"caravel/internal/httpapi"
 	"caravel/internal/storagefs"
 )
@@ -40,6 +41,11 @@ func main() {
 	authService := auth.NewService(store)
 	blob := storagefs.NewLocalFS(cfg.UploadDir)
 
+	// One geocoder, shared: /api/geocode proxies through it and the assistant
+	// resolves proposed addresses with it. Nil when unconfigured, which
+	// disables both.
+	geocoder := geocode.New(cfg.GeocoderURL)
+
 	// Nil when unconfigured, which is not an error: it means the operator did
 	// not turn the assistant on. See internal/assist.
 	assistant, err := assist.New(assist.Options{
@@ -49,7 +55,7 @@ func main() {
 		SearchProvider: cfg.SearchProvider,
 		SearchKey:      cfg.SearchKey,
 		SearchURL:      cfg.SearchURL,
-		GeocoderURL:    cfg.GeocoderURL,
+		Geocoder:       geocoder,
 	})
 	if err != nil {
 		log.Fatalf("assist: %v", err)
@@ -59,14 +65,14 @@ func main() {
 
 	webFS := httpapi.WebFS(webassets.FS(), cfg.WebDir)
 	server := httpapi.NewServer(httpapi.Options{
-		DB:          dbConn,
-		Store:       store,
-		Auth:        authService,
-		Blob:        blob,
-		WebFS:       webFS,
-		NoCache:     cfg.WebDir != "",
-		GeocoderURL: cfg.GeocoderURL,
-		Assist:      assistant,
+		DB:       dbConn,
+		Store:    store,
+		Auth:     authService,
+		Blob:     blob,
+		WebFS:    webFS,
+		NoCache:  cfg.WebDir != "",
+		Geocoder: geocoder,
+		Assist:   assistant,
 	})
 
 	log.Printf("caravel %s listening on :%s (db=%s, assist=%t)", buildinfo.Version, cfg.Port, cfg.DBDriver, assistant != nil)

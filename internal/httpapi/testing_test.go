@@ -69,7 +69,7 @@ func newTestServerWithStore(t *testing.T, wrap func(db.Store) db.Store) *testSer
 	// Geocoding off by default, and deliberately so: with the production
 	// default here instead, any test that reached /api/geocode would send a
 	// real request to OpenStreetMap's public Nominatim. The geocode tests set
-	// srv.GeocoderURL to their own httptest.Server.
+	// srv.Geocoder to a client pointed at their own httptest.Server.
 	srv := NewServer(Options{
 		DB:    conn,
 		Store: store,

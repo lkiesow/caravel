@@ -39,6 +39,9 @@ package assist
 import (
 	"context"
 	"errors"
+
+	"caravel/internal/buildinfo"
+	"caravel/internal/geocode"
 )
 
 // Assistant proposes location metadata. One implementation today (*Agent);
@@ -76,9 +79,11 @@ type Options struct {
 	SearchKey      string
 	SearchURL      string
 
-	// GeocoderURL resolves a proposed address to coordinates. Empty means the
-	// agent proposes an address with no coordinates rather than guessing them.
-	GeocoderURL string
+	// Geocoder resolves a proposed address to coordinates. Nil means the
+	// agent proposes an address with no coordinates rather than guessing
+	// them -- which is the right failure, since the alternative is a
+	// plausible position that is wrong only on the map.
+	Geocoder *geocode.Client
 }
 
 // ErrNotImplemented is returned by a configured-but-unbuilt assistant. It
@@ -110,15 +115,40 @@ func New(opts Options) (Assistant, error) {
 		p = newHTTPProvider(opts.LLMURL, opts.LLMKey, opts.LLMModel)
 	}
 
-	return &Agent{opts: opts, provider: p}, nil
+	// An unknown provider name is a startup error rather than a silent
+	// downgrade to "no search": config.Load has already validated it, so
+	// reaching here with something else means the two lists have drifted.
+	search, err := newSearcher(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Agent{
+		opts:     opts,
+		provider: p,
+		search:   search,
+		fetcher:  newPageFetcher(),
+		geocoder: opts.Geocoder,
+	}, nil
 }
 
-// Agent is the open-ended tool-calling loop. Milestones 3-4 fill it in.
+// Agent is the open-ended tool-calling loop. Milestone 4 fills in Propose.
 type Agent struct {
 	opts     Options
 	provider provider
+	search   Searcher
+	fetcher  *pageFetcher
+	geocoder *geocode.Client
 }
 
 func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*Proposal, error) {
 	return nil, ErrNotImplemented
+}
+
+// assistUserAgent identifies our outbound requests to the sites the agent
+// reads. Naming ourselves is the polite half of scraping and the useful half
+// of being blocked: an operator who sees this in their logs can tell what it
+// is and complain to the right project.
+func assistUserAgent() string {
+	return "Caravel/" + buildinfo.Version + " (self-hosted trip planner; +assistant)"
 }

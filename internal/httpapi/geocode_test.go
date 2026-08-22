@@ -8,11 +8,13 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"caravel/internal/geocode"
 )
 
 // Every test here points the server at its own httptest.Server. None of them
 // may reach OpenStreetMap's public Nominatim - newTestServerWithStore leaves
-// GeocoderURL empty precisely so that forgetting to set it fails loudly (501)
+// Geocoder nil precisely so that forgetting to set it fails loudly (501)
 // rather than quietly sending a real request.
 
 const nominatimTwoResults = `[
@@ -29,7 +31,7 @@ func stubGeocoder(t *testing.T, ts *testServer, handler http.HandlerFunc) *[]*ht
 		handler(w, r)
 	}))
 	t.Cleanup(upstream.Close)
-	ts.GeocoderURL = upstream.URL
+	ts.Geocoder = geocode.New(upstream.URL)
 	return &seen
 }
 
@@ -45,7 +47,7 @@ func TestGeocodeMapsUpstreamResults(t *testing.T) {
 		t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
 	}
 
-	var got []geocodeResult
+	var got []geocode.Result
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
@@ -92,7 +94,7 @@ func TestGeocodeSkipsUnparseableRowsRatherThanFailing(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
-	var got []geocodeResult
+	var got []geocode.Result
 	json.Unmarshal(rec.Body.Bytes(), &got)
 	if len(got) != 1 || got[0].DisplayName != "Fine" {
 		t.Fatalf("got %+v, want only the one usable row", got)
@@ -129,7 +131,7 @@ func TestGeocodeUpstreamFailureIsABadGatewayNotA500(t *testing.T) {
 			fmt.Fprint(w, "<html>not json</html>")
 		}},
 		{"upstream too slow", func(w http.ResponseWriter, r *http.Request) {
-			time.Sleep(geocodeTimeout + time.Second)
+			time.Sleep(geocode.Timeout + time.Second)
 		}},
 	}
 	for _, tc := range cases {
@@ -189,7 +191,7 @@ func TestGeocodeRequiresAuthentication(t *testing.T) {
 }
 
 func TestGeocodeDisabledWhenNoGeocoderConfigured(t *testing.T) {
-	ts := newTestServer(t) // GeocoderURL is "" here by default
+	ts := newTestServer(t) // Geocoder is nil here by default
 	cookie := ts.login("alice")
 
 	rec := ts.do(http.MethodGet, "/api/geocode?q=Reykjavik", cookie, "")
@@ -239,7 +241,7 @@ func TestAuthMeReportsGeocodingCapability(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ts := newTestServer(t)
-			ts.GeocoderURL = tc.url
+			ts.Geocoder = geocode.New(tc.url)
 			cookie := ts.login("alice")
 
 			rec := ts.do(http.MethodGet, "/api/auth/me", cookie, "")

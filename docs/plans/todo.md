@@ -67,20 +67,38 @@ down.
   `CARAVEL_GEOCODER_URL` precedent, which already disables address search and
   hides its control the same way.
 
-  *No MCP.* Decided deliberately. MCP solves "connect an agent to tools unknown
-  at build time"; here the tool set is two things and one of them
-  (OSM/Nominatim) is already implemented. Adopting it would mean an MCP client
-  plus a sidecar process per server -- and both candidate servers (`ddgs`, the
-  OpenStreetMap ones) are Python, so a Go binary that ships as one static file
-  would grow a Python runtime. Implement the tools as native Go functions behind
-  the OpenAI tool-calling API instead, and keep the tool-dispatch seam clean
-  enough that an MCP-backed tool could be added later without a refactor.
+  *No MCP.* Decided deliberately, and the decision stands -- but note that one
+  reason originally given for it does not. MCP solves "connect an agent to tools
+  unknown at build time"; here the tool set is three things (web search, page
+  fetch, OSM/Nominatim) and one of them is already implemented. Adopting it
+  would mean an MCP client plus a sidecar process per server, which is the whole
+  of the cost. What was *also* claimed -- that the candidate servers being
+  Python would make a Go binary shipping as one static file grow a Python
+  runtime -- is wrong: an MCP server is a separate process by definition, so its
+  language never enters our binary. See the ddgs note below, where the same
+  mistaken premise did real damage. Implement the tools as native Go functions
+  behind the OpenAI tool-calling API instead, and keep the tool-dispatch seam
+  clean enough that an MCP-backed tool could be added later without a refactor.
 
-  *Web search behind an interface,* with implementations for Serper, SerpAPI and
-  Ollama Cloud (~80 lines of HTTP+JSON each), chosen by config. Start with Ollama
-  Cloud -- free tier, key already in hand. `ddgs` was considered and rejected as
-  the primary: unofficial scraping that breaks when DuckDuckGo changes its
-  markup, aggressive rate limiting from datacenter IPs, and Python.
+  *Web search behind an interface,* with five implementations (~60-80 lines of
+  HTTP+JSON each), chosen by config: a stub for CI, Ollama Cloud, ddgs, SearXNG
+  and Serper. No documented default. SerpAPI, Brave, Tavily and Exa were
+  considered and left out, with reasons. See the provider table in
+  `docs/plans/stage-16.md` for all of it.
+
+  *The earlier rejection of `ddgs` recorded here was wrong on its facts*, and is
+  corrected rather than deleted so nobody re-derives it. It said Python meant a
+  Go binary shipping as one static file would grow a Python runtime. It would
+  not: ddgs ships a built-in FastAPI server (`ddgs api`), so Python runs as a
+  separate service the operator starts, exactly the SearXNG shape, and in the
+  Docker work below it is a second compose service rather than a second runtime
+  in our image. It is also no longer DuckDuckGo-only -- the name is legacy, and
+  text search now aggregates nine backends with per-query selection and
+  fallback. What does still hold is that it scrapes, so backends break when
+  sites change their markup; that datacenter IPs get rate limited, making it
+  better suited to a home server than a VPS; and that scraping Google and Bing
+  is against their terms of service. All three are documented caveats rather
+  than disqualifying, which is why it is supported but never the default.
 
   *Never let the model produce coordinates.* It returns a place name and address
   string; the existing Nominatim path resolves them. A plausible lat/lng 40km

@@ -25,6 +25,13 @@ type userResponse struct {
 	// screen that needs it; if a third capability ever turns up, that trade
 	// is worth revisiting.
 	Geocoding bool `json:"geocoding"`
+	// Assist is the second server capability to ride along here, for the same
+	// reason as Geocoding: /auth/me is the one call the app already makes at
+	// boot, and the location editor needs the answer before it decides what to
+	// render. Two flags is still under the threshold where a nested
+	// "capabilities" object would earn the client-visible reshape; a third
+	// probably is not.
+	Assist bool `json:"assist"`
 	// IsAdmin governs account administration only — never access to another
 	// user's trips. The client uses it to decide whether to show the admin
 	// entry in the user menu; the server checks it again on every /api/admin
@@ -46,6 +53,7 @@ func (s *Server) userToResponse(r *http.Request, u db.User) userResponse {
 		DisplayName: u.DisplayName,
 		HasPassword: hasPassword,
 		Geocoding:   s.GeocoderURL != "",
+		Assist:      s.Assist != nil,
 		IsAdmin:     u.IsAdmin,
 	}
 }

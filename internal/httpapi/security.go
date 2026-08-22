@@ -115,3 +115,18 @@ func (s *Server) rateLimitGeocode(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
+// Stricter again, and for a third reason: an assist run is the only request in
+// the app that costs the instance owner real money per call. The limit is per
+// IP like the others rather than per user -- deliberately, since the owner
+// configured the key and every account on a self-hosted instance is someone
+// they know.
+func (s *Server) rateLimitAssist(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !s.AssistLimiter.Allow(clientIP(r)) {
+			writeError(w, http.StatusTooManyRequests, "too many assistant requests, try again in a moment")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}

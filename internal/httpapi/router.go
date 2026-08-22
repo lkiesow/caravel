@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"caravel/internal/assist"
 	"caravel/internal/auth"
 	"caravel/internal/buildinfo"
 	"caravel/internal/db"
@@ -32,9 +33,15 @@ type Server struct {
 	// GeocoderURL is the upstream address-search endpoint /api/geocode
 	// proxies to. Empty means address search is switched off: the endpoint
 	// reports that plainly and the client hides the control.
-	GeocoderURL    string
+	GeocoderURL string
+	// Assist proposes location metadata via an LLM. Nil means the feature is
+	// not configured, which is the only off switch: the route answers 501,
+	// /auth/me reports the capability as absent and the client hides the
+	// control. Same shape as GeocoderURL above.
+	Assist         assist.Assistant
 	LoginLimiter   *rateLimiter
 	GeocodeLimiter *rateLimiter
+	AssistLimiter  *rateLimiter
 	router         chi.Router
 }
 
@@ -60,6 +67,8 @@ type Options struct {
 	// GeocoderURL is the upstream /api/geocode proxies to; empty disables
 	// address search.
 	GeocoderURL string
+	// Assist is the location-metadata assistant, or nil when unconfigured.
+	Assist assist.Assistant
 }
 
 func NewServer(opts Options) *Server {
@@ -71,11 +80,19 @@ func NewServer(opts Options) *Server {
 		WebFS:       http.FS(opts.WebFS),
 		NoCache:     opts.NoCache,
 		GeocoderURL: opts.GeocoderURL,
+		Assist:      opts.Assist,
 		// 20/minute/IP. Higher than login's 10 because a search is a normal,
 		// repeated action rather than a credential attempt, and still far
 		// under what would embarrass us upstream.
 		LoginLimiter:   newRateLimiter(10, time.Minute),
 		GeocodeLimiter: newRateLimiter(20, time.Minute),
+		// Far tighter than the other two, because the budget being protected
+		// is different in kind: a login attempt costs us a hash and a geocode
+		// costs somebody else a cheap lookup, but one assist run is a
+		// multi-turn LLM conversation the instance owner pays for by the
+		// token. Six a minute is generous for a human filling in a form and
+		// ungenerous for anything else.
+		AssistLimiter: newRateLimiter(6, time.Minute),
 	}
 	s.router = s.buildRouter()
 	go s.sweepLimitersPeriodically()
@@ -88,6 +105,7 @@ func (s *Server) sweepLimitersPeriodically() {
 	for range ticker.C {
 		s.LoginLimiter.sweep()
 		s.GeocodeLimiter.sweep()
+		s.AssistLimiter.sweep()
 	}
 }
 
@@ -159,6 +177,11 @@ func (s *Server) buildRouter() chi.Router {
 				r.Post("/items", s.handleCreateItem)
 
 				r.Get("/map", s.handleGetTripMap)
+
+				// Editor, not viewer: a viewer could not save the result, and
+				// the request may carry the trip title and dates outward to a
+				// third party. Its own limiter -- see AssistLimiter.
+				r.With(s.rateLimitAssist).Post("/assist/location", s.handleAssistLocation)
 
 				r.Get("/itinerary", s.handleGetItinerary)
 				r.Put("/itinerary/days/{date}", s.handleSetItineraryDayNotes)

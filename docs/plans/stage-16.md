@@ -162,6 +162,53 @@ The whole feature switched off, end to end, before any of it exists.
 `assist:false` on the default test server and `true` when `Options.Assist` is
 set; the endpoint answers 501 unconfigured and 401 unauthenticated.
 
+**Done.** Landed as planned, with three additions the plan did not specify.
+
+`internal/config` gained the six env vars plus `AssistEnabled()`, `LLMStub` and
+`SearchProviders`. Validation turned out to be worth more than the plan credited
+it for, so it covers five half-configurations rather than one: URL without
+model, model without URL, an unknown provider (the message names the five valid
+values), a search provider with no assistant to use it, and `ddgs`/`searxng`
+without a `CARAVEL_SEARCH_URL` they cannot function without. All five refuse at
+startup rather than at first use -- the failure mode being avoided is an
+instance where the capability reads as on, so the control renders, and the
+feature breaks only when somebody presses it.
+
+`internal/assist` is the interface, `Options`, the plain-data `Request` /
+`Proposal` / `Field` / `Event` / `Location` types, and `New` returning
+`(nil, nil)` when `LLMURL` is empty. `Agent.Propose` returns `ErrNotImplemented`
+for now, which is what lets the seam be wired and tested end to end before any
+machinery exists.
+
+Three additions beyond the plan:
+
+1. **`AssistLimiter` landed here rather than in Milestone 6.** Adding a third
+   limiter meant touching `NewServer` and `sweepLimitersPeriodically`, and doing
+   that in the milestone that already touches both is cheaper than coming back.
+   Set to 6/minute/IP, far tighter than geocode's 20 -- the budget being
+   protected is different in kind, since one run is a multi-turn LLM
+   conversation the instance owner pays for by the token.
+2. **The capability check runs before the trip lookup**, with a test pinning it
+   (`TestAssistDisabledAnswersBeforeAuthorizing`). The other order would let a
+   disabled instance leak whether a trip id exists to anyone who asks.
+3. **The startup banner reports `assist=true|false`**, so "is this instance
+   configured" is answerable from the log without a session.
+
+Note that the endpoint answers 501 in two distinguishable situations -- "not
+enabled on this server" before authorization, "not implemented yet" after it --
+which is what lets the authorization tests assert they got all the way through.
+The second message disappears in Milestone 6.
+
+**Verified.** `make ci` green, including a ten-case config table test and five
+new httpapi tests (501 unconfigured, 501-before-404, 401 unauthenticated,
+404/403/501 for stranger/viewer/owner, and `/auth/me` both ways). Then live
+against a real server: unconfigured, `/auth/me` reports `assist:false` and the
+endpoint answers 501 "not enabled"; with `CARAVEL_LLM_URL=stub
+CARAVEL_LLM_MODEL=stub`, the banner logs `assist=true`, `/auth/me` reports
+`assist:true`, an owner reaches the handler body, an anonymous caller gets 401
+and a non-member gets 404. Each of the five half-configurations was started by
+hand and refused with a message naming the missing variable.
+
 ## 2. The LLM client, and the stub provider
 
 `internal/assist/provider.go` — an OpenAI-compatible chat-completions client:

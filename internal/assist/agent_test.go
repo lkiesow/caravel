@@ -33,6 +33,7 @@ func agentWith(turns ...stubTurn) *Agent {
 	return &Agent{
 		provider: newScriptedProvider(turns...),
 		fetcher:  newPageFetcher(),
+		limits:   DefaultLimits(),
 	}
 }
 
@@ -462,8 +463,8 @@ func TestRunStopsAtTheToolCallCeiling(t *testing.T) {
 	if _, err := a.Propose(context.Background(), enrichRequest(), nil); err != nil {
 		t.Fatalf("Propose: %v", err)
 	}
-	if got := counting.n.Load(); got > maxToolCalls {
-		t.Errorf("%d tool calls ran, want at most %d", got, maxToolCalls)
+	if got := counting.n.Load(); got > int32(DefaultLimits().MaxToolCalls) {
+		t.Errorf("%d tool calls ran, want at most %d", got, DefaultLimits().MaxToolCalls)
 	}
 	if counting.n.Load() == 0 {
 		t.Error("no tool calls ran at all")
@@ -491,7 +492,7 @@ func TestSpendingTheBudgetStillProducesAProposal(t *testing.T) {
 		stubTurn{ToolCalls: []toolCall{callTo(toolWebSearch, `{"query":"never"}`)}},
 		stubTurn{Content: answerJSON(t, modelProposal{Category: "stay", Type: "hostel"})},
 	)
-	a := &Agent{provider: &greedyProvider{inner: expensive}, fetcher: newPageFetcher(), search: &stubSearcher{}}
+	a := &Agent{provider: &greedyProvider{inner: expensive}, fetcher: newPageFetcher(), search: &stubSearcher{}, limits: DefaultLimits()}
 
 	var keys []string
 	p, err := a.Propose(context.Background(), enrichRequest(), func(e Event) { keys = append(keys, e.Key) })
@@ -515,7 +516,7 @@ func TestGatheringDeadlineStillProducesAProposal(t *testing.T) {
 		stubTurn{ToolCalls: []toolCall{callTo(toolWebSearch, `{"query":"x"}`)}},
 		stubTurn{Content: answerJSON(t, modelProposal{Category: "stay", Type: "hostel"})},
 	)
-	a := &Agent{provider: &expiringProvider{inner: slow}, fetcher: newPageFetcher(), search: &stubSearcher{}}
+	a := &Agent{provider: &expiringProvider{inner: slow}, fetcher: newPageFetcher(), search: &stubSearcher{}, limits: DefaultLimits()}
 
 	p, err := a.Propose(context.Background(), enrichRequest(), nil)
 	if err != nil {
@@ -549,7 +550,7 @@ func (g *greedyProvider) Complete(ctx context.Context, req chatRequest) (*chatRe
 	if err != nil {
 		return nil, err
 	}
-	resp.Usage = usage{TotalTokens: maxTokens + 1}
+	resp.Usage = usage{TotalTokens: DefaultLimits().MaxTokens + 1}
 	return resp, nil
 }
 
@@ -655,5 +656,114 @@ func TestTheDefaultStubScriptRunsEndToEnd(t *testing.T) {
 	// process must not find an exhausted stub.
 	if _, err := a.Propose(context.Background(), enrichRequest(), nil); err != nil {
 		t.Fatalf("second Propose: %v", err)
+	}
+}
+
+// --- Configurable limits ---
+
+// Zero means "not configured", not "zero". A run with no turns or no token
+// budget is not a configuration anybody wants, and reading it as one would
+// turn a forgotten variable into a silently disabled feature.
+func TestLimitsFillFromDefaults(t *testing.T) {
+	got := Limits{}.withDefaults()
+	if got != DefaultLimits() {
+		t.Errorf("withDefaults() on the zero value = %+v, want the defaults", got)
+	}
+
+	// A set field survives, and only that field.
+	partial := Limits{MaxTokens: 5000}.withDefaults()
+	if partial.MaxTokens != 5000 {
+		t.Errorf("MaxTokens = %d, want the override kept", partial.MaxTokens)
+	}
+	if partial.MaxTurns != DefaultLimits().MaxTurns {
+		t.Errorf("MaxTurns = %d, want the default", partial.MaxTurns)
+	}
+}
+
+// A reserve at or above the budget means gathering never starts: the feature
+// looks configured and does nothing. That is a startup error, not a run that
+// behaves oddly once somebody presses the button.
+func TestLimitsRejectAReserveThatSwallowsTheBudget(t *testing.T) {
+	for _, l := range []Limits{
+		{MaxTokens: 1000, AnswerReserve: 1000},
+		{MaxTokens: 1000, AnswerReserve: 5000},
+	} {
+		if err := l.withDefaults().validate(); err == nil {
+			t.Errorf("validate() accepted %+v", l)
+		}
+	}
+	if err := (Limits{MaxTokens: 5000, AnswerReserve: 1000}).withDefaults().validate(); err != nil {
+		t.Errorf("validate() rejected a sane pair: %v", err)
+	}
+}
+
+func TestNewRejectsIncoherentLimits(t *testing.T) {
+	_, err := New(Options{
+		LLMURL: LLMStub, LLMModel: "stub",
+		Limits: Limits{MaxTokens: 1000, AnswerReserve: 2000},
+	})
+	if err == nil {
+		t.Fatal("New accepted a reserve larger than the budget")
+	}
+	if !strings.Contains(err.Error(), "reserve") {
+		t.Errorf("error = %v, want it to name the reserve", err)
+	}
+}
+
+// The rails have to actually follow the configured values, not the constants
+// they replaced.
+func TestConfiguredLimitsAreTheOnesEnforced(t *testing.T) {
+	// Two turns allowed, and a script that would loop for ten.
+	// Exactly the two turns the limit allows, then the answer. A third tool
+	// turn here would be consumed by the composing request instead, which is
+	// how this test first failed -- worth stating, since the script position
+	// of the answer depends on the limit being tested.
+	turns := make([]stubTurn, 2)
+	for i := range turns {
+		turns[i] = turnCalling(toolWebSearch, `{"query":"again"}`)
+	}
+	counting := &countingSearcher{}
+	a := &Agent{
+		provider: newScriptedProvider(append(turns, stubTurn{Content: answerJSON(t, modelProposal{Category: "stay"})})...),
+		fetcher:  newPageFetcher(),
+		search:   counting,
+		limits:   Limits{MaxTurns: 2, MaxToolCalls: 3}.withDefaults(),
+	}
+
+	if _, err := a.Propose(context.Background(), enrichRequest(), nil); err != nil {
+		t.Fatalf("Propose: %v", err)
+	}
+	// Two turns of one call each, so the turn ceiling binds first.
+	if got := counting.n.Load(); got != 2 {
+		t.Errorf("%d tool calls ran, want 2 from a two-turn limit", got)
+	}
+}
+
+// Lowering the budget alone collides with the default reserve, and the error
+// has to name the variable to change -- "the reserve is too big" is baffling
+// to someone who never set a reserve.
+func TestLoweringTheBudgetAloneIsRefusedHelpfully(t *testing.T) {
+	_, err := New(Options{LLMURL: LLMStub, LLMModel: "stub", Limits: Limits{MaxTokens: 7777}})
+	if err == nil {
+		t.Fatal("New accepted a budget smaller than the default reserve")
+	}
+	if !strings.Contains(err.Error(), "CARAVEL_ASSIST_ANSWER_RESERVE") {
+		t.Errorf("error = %v, want it to name the variable to change", err)
+	}
+}
+
+func TestAgentReportsItsEffectiveLimits(t *testing.T) {
+	a, err := New(Options{LLMURL: LLMStub, LLMModel: "stub", Limits: Limits{MaxTokens: 7777, AnswerReserve: 1000}})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	got := a.(*Agent).Limits()
+	if got.MaxTokens != 7777 || got.AnswerReserve != 1000 {
+		t.Errorf("limits = %+v, want the overrides", got)
+	}
+	// The startup log prints this; it should name the numbers an operator
+	// would want to check.
+	if s := got.String(); !strings.Contains(s, "7777") || !strings.Contains(s, "turns=") {
+		t.Errorf("String() = %q", s)
 	}
 }

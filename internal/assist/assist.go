@@ -83,6 +83,11 @@ type Options struct {
 	// them -- which is the right failure, since the alternative is a
 	// plausible position that is wrong only on the map.
 	Geocoder *geocode.Client
+
+	// Limits are the guard rails on a run. Any field left zero takes its
+	// default from DefaultLimits, so a caller that does not care passes the
+	// zero value and gets the shipped behaviour.
+	Limits Limits
 }
 
 // LLMStub is the CARAVEL_LLM_URL sentinel selecting the in-process fake
@@ -116,12 +121,22 @@ func New(opts Options) (Assistant, error) {
 		return nil, err
 	}
 
+	// Defaults filled and the combination checked here rather than at first
+	// use, so a nonsensical setting is a startup failure naming the problem
+	// instead of a run that behaves strangely once somebody presses the
+	// button.
+	limits := opts.Limits.withDefaults()
+	if err := limits.validate(); err != nil {
+		return nil, err
+	}
+
 	return &Agent{
 		opts:     opts,
 		provider: p,
 		search:   search,
 		fetcher:  newPageFetcher(),
 		geocoder: opts.Geocoder,
+		limits:   limits,
 	}, nil
 }
 
@@ -132,7 +147,11 @@ type Agent struct {
 	search   Searcher
 	fetcher  *pageFetcher
 	geocoder *geocode.Client
+	limits   Limits
 }
+
+// Limits reports the effective guard rails, for the startup log.
+func (a *Agent) Limits() Limits { return a.limits }
 
 // assistUserAgent identifies our outbound requests to the sites the agent
 // reads. Naming ourselves is the polite half of scraping and the useful half

@@ -48,35 +48,120 @@ import (
 //     a dead link is worse than no link because it looks authoritative until
 //     someone clicks it.
 
+// Limits are the guard rails on one run. Every field has a default (see
+// DefaultLimits) and every one is settable from the environment, because these
+// are the numbers an operator needs to turn *quickly*: a model that reasons
+// more per turn, a search backend returning fatter extracts, or simply a
+// bill that came in higher than expected are all reasons to change one of
+// these today rather than at the next release.
+//
+// They are not independent. MaxTokens and AnswerReserve are checked against
+// each other at construction, because a reserve larger than the budget means
+// gathering never starts at all -- a configuration that looks conservative and
+// silently disables the feature.
+type Limits struct {
+	// RunDuration bounds the gathering phase. Not the whole call: composing
+	// the answer runs outside it, so a run that hits this still reports what
+	// it found. The client can cancel sooner; this is the backstop for when
+	// nobody does.
+	RunDuration time.Duration
+	// MaxTurns bounds the conversation. The backstop for a model that loops
+	// cheaply, and the only rail that works at all against a server which
+	// reports no token usage -- with usage absent, Tokens below never fires.
+	MaxTurns int
+	// MaxToolCalls bounds the work, since one turn may request several calls.
+	MaxToolCalls int
+	// MaxTokens is the cumulative budget for a run, summed from what each
+	// response reports. Note this counts *billed* tokens, not context size:
+	// every turn resends the conversation, so a long run costs
+	// superlinearly, which is why this is spent faster than it looks.
+	MaxTokens int
+	// AnswerReserve is held back from MaxTokens so there is always enough
+	// left to compose. Gathering stops at the difference. Without it a run can
+	// spend everything researching and have nothing left to say what it found,
+	// which is exactly what the first live run did.
+	AnswerReserve int
+	// AnswerTimeout bounds the composing turn, which runs outside RunDuration.
+	AnswerTimeout time.Duration
+}
+
+// DefaultLimits are the shipped values, tuned in Milestone 5 against a real
+// model and a real search backend. They are the single source of truth: config
+// parses overrides and leaves anything unset as zero, and withDefaults fills
+// the gaps.
+func DefaultLimits() Limits {
+	return Limits{
+		// Generous because the run is genuinely slow -- several searches and
+		// page reads -- and because the user is watching a progress line
+		// rather than a frozen spinner.
+		RunDuration:  2 * time.Minute,
+		MaxTurns:     12,
+		MaxToolCalls: 20,
+		// Sized against what the tools actually cost: a search returns six
+		// extracts and a page read is capped at fetchMaxTextBytes, so twenty
+		// tool calls is most of this. Raised from 60000 in Milestone 5, where
+		// the first live run spent it in 75 seconds with nothing to show.
+		MaxTokens:     120000,
+		AnswerReserve: 20000,
+		AnswerTimeout: 60 * time.Second,
+	}
+}
+
+// withDefaults fills unset fields. Zero means "not configured" rather than
+// "zero", which is the only sane reading: a run with a zero token budget or
+// zero turns is not a configuration anybody wants, and treating it as one
+// would turn a forgotten variable into a silently disabled feature.
+func (l Limits) withDefaults() Limits {
+	d := DefaultLimits()
+	if l.RunDuration <= 0 {
+		l.RunDuration = d.RunDuration
+	}
+	if l.MaxTurns <= 0 {
+		l.MaxTurns = d.MaxTurns
+	}
+	if l.MaxToolCalls <= 0 {
+		l.MaxToolCalls = d.MaxToolCalls
+	}
+	if l.MaxTokens <= 0 {
+		l.MaxTokens = d.MaxTokens
+	}
+	if l.AnswerReserve <= 0 {
+		l.AnswerReserve = d.AnswerReserve
+	}
+	if l.AnswerTimeout <= 0 {
+		l.AnswerTimeout = d.AnswerTimeout
+	}
+	return l
+}
+
+// validate rejects combinations that would disable the feature rather than
+// constrain it.
+func (l Limits) validate() error {
+	if l.AnswerReserve >= l.MaxTokens {
+		// Names both numbers and the variable to change, because the usual
+		// way to arrive here is lowering the budget alone and colliding with
+		// the *default* reserve -- at which point "the reserve is too big" is
+		// baffling to someone who never set a reserve. Deliberately not
+		// scaled down silently: a budget quietly reinterpreted is worse than
+		// a startup error that says what to do.
+		return fmt.Errorf("assist: the answer reserve (%d) must be smaller than the token budget (%d), or gathering never starts -- lower CARAVEL_ASSIST_ANSWER_RESERVE alongside CARAVEL_ASSIST_MAX_TOKENS", l.AnswerReserve, l.MaxTokens)
+	}
+	return nil
+}
+
+// String renders the effective limits for the startup log, so "what is this
+// instance actually running with" is answerable without reading the
+// environment of a running process.
+func (l Limits) String() string {
+	return fmt.Sprintf("tokens=%d (reserve %d) turns=%d tools=%d run=%s answer=%s",
+		l.MaxTokens, l.AnswerReserve, l.MaxTurns, l.MaxToolCalls, l.RunDuration, l.AnswerTimeout)
+}
+
 const (
-	// maxRunDuration bounds the whole run. Generous because the run is
-	// genuinely slow -- several searches and page reads -- and because the
-	// user is watching a progress line rather than a frozen spinner. The
-	// client can cancel sooner; this is the backstop for when nobody does.
-	maxRunDuration = 2 * time.Minute
-	// maxTurns bounds the conversation. The backstop for a model that loops
-	// cheaply: a server reporting no token usage makes the budget below
-	// useless, and this still ends the run.
-	maxTurns = 12
-	// maxToolCalls bounds the work, since one turn may request several calls.
-	maxToolCalls = 20
-	// maxTokens is the budget per run, checked between turns. Sized against
-	// what the tools actually cost: a search returns six extracts and a page
-	// read is capped at fetchMaxTextBytes, so twenty tool calls is most of
-	// this. Raised from 60000 in Milestone 5, where the first live run spent
-	// it in 75 seconds and had to stop with nothing to show.
-	maxTokens = 120000
-	// finalAnswerReserve is held back from maxTokens so there is always
-	// enough left to compose the answer. Gathering stops at the difference;
-	// without the reserve a run can spend its entire budget researching and
-	// then have nothing with which to say what it found.
-	finalAnswerReserve = 20000
-	// finalAnswerTimeout bounds the composing turn, which runs outside the
-	// run deadline for the reason given in Propose.
-	finalAnswerTimeout = 60 * time.Second
 	// linkCheckTimeout bounds one liveness check. Short: these run in
 	// parallel at the very end, and a slow server should not hold up a
-	// proposal that is otherwise ready.
+	// proposal that is otherwise ready. Not configurable -- it is a property
+	// of "is this URL alive", not a budget anyone needs to tune.
 	linkCheckTimeout = 5 * time.Second
 )
 
@@ -108,7 +193,7 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 	// The composing turn below uses the latter, so a run that ran out of time
 	// still gets to say what it found.
 	userCtx := ctx
-	runCtx, cancel := context.WithTimeout(userCtx, maxRunDuration)
+	runCtx, cancel := context.WithTimeout(userCtx, a.limits.RunDuration)
 	defer cancel()
 
 	// The stub plays a fixed script, so a second run in the same process would
@@ -143,7 +228,7 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 	// an apology. So a ceiling ends the *gathering*, and the run still
 	// composes. Only the user cancelling stops it outright.
 	turn := 0
-	for ; turn < maxTurns; turn++ {
+	for ; turn < a.limits.MaxTurns; turn++ {
 		// The caller's own context, not ours. If it is already done there is
 		// nothing to compose with -- every remaining call would fail too.
 		if err := userCtx.Err(); err != nil {
@@ -153,7 +238,7 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 			events(Event{Key: "assist.progress.wrappingUp"})
 			break
 		}
-		if spent.TotalTokens >= maxTokens-finalAnswerReserve {
+		if spent.TotalTokens >= a.limits.MaxTokens-a.limits.AnswerReserve {
 			events(Event{Key: "assist.progress.wrappingUp"})
 			break
 		}
@@ -183,7 +268,7 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 		messages = append(messages, chatMessage{Role: roleAssistant, Content: resp.Content, ToolCalls: resp.ToolCalls})
 
 		for _, call := range resp.ToolCalls {
-			if toolCalls >= maxToolCalls {
+			if toolCalls >= a.limits.MaxToolCalls {
 				// Answered rather than dropped: a tool call with no result
 				// leaves the conversation malformed. Telling the model it is
 				// out of budget lets it write the answer with what it has.
@@ -209,7 +294,7 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 
 	// The turn and tool-call ceilings break out silently above; say so here,
 	// so every reason the research stopped short reaches the user the same way.
-	if turn >= maxTurns || toolCalls >= maxToolCalls {
+	if turn >= a.limits.MaxTurns || toolCalls >= a.limits.MaxToolCalls {
 		events(Event{Key: "assist.progress.wrappingUp"})
 	}
 
@@ -220,7 +305,7 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 	// Detached from the gathering deadline, still bound by the user cancelling
 	// and by a timeout of its own. This is the turn that turns a run into an
 	// answer, so it must not be the thing the run deadline kills.
-	finalCtx, cancelFinal := context.WithTimeout(userCtx, finalAnswerTimeout)
+	finalCtx, cancelFinal := context.WithTimeout(userCtx, a.limits.AnswerTimeout)
 	defer cancelFinal()
 
 	var raw modelProposal

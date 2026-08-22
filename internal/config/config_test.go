@@ -3,6 +3,7 @@ package config
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // Load reads the process environment, so each case sets exactly the vars it
@@ -140,4 +141,102 @@ func TestLoadAssistValidation(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The guard-rail overrides. A typo here is the kind of thing that silently
+// does nothing for a week, so an unparseable value is a startup error naming
+// the variable rather than a quiet fallback to the default.
+func TestLoadAssistLimits(t *testing.T) {
+	limitVars := []string{
+		"CARAVEL_ASSIST_TIMEOUT", "CARAVEL_ASSIST_ANSWER_TIMEOUT",
+		"CARAVEL_ASSIST_MAX_TURNS", "CARAVEL_ASSIST_MAX_TOOL_CALLS",
+		"CARAVEL_ASSIST_MAX_TOKENS", "CARAVEL_ASSIST_ANSWER_RESERVE",
+		"CARAVEL_ASSIST_RATE_LIMIT",
+	}
+	clear := func(t *testing.T) {
+		for _, k := range limitVars {
+			t.Setenv(k, "")
+		}
+	}
+
+	t.Run("unset leaves zero, which means use the default", func(t *testing.T) {
+		clear(t)
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.AssistMaxTokens != 0 || cfg.AssistTimeout != 0 || cfg.AssistRateLimit != 0 {
+			t.Errorf("unset limits are not zero: %+v", cfg)
+		}
+	})
+
+	t.Run("values are parsed", func(t *testing.T) {
+		clear(t)
+		t.Setenv("CARAVEL_ASSIST_TIMEOUT", "90s")
+		t.Setenv("CARAVEL_ASSIST_ANSWER_TIMEOUT", "2m")
+		t.Setenv("CARAVEL_ASSIST_MAX_TURNS", "5")
+		t.Setenv("CARAVEL_ASSIST_MAX_TOOL_CALLS", "8")
+		t.Setenv("CARAVEL_ASSIST_MAX_TOKENS", "50000")
+		t.Setenv("CARAVEL_ASSIST_ANSWER_RESERVE", "8000")
+		t.Setenv("CARAVEL_ASSIST_RATE_LIMIT", "3")
+
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.AssistTimeout != 90*time.Second {
+			t.Errorf("AssistTimeout = %v", cfg.AssistTimeout)
+		}
+		if cfg.AssistAnswerTimeout != 2*time.Minute {
+			t.Errorf("AssistAnswerTimeout = %v", cfg.AssistAnswerTimeout)
+		}
+		if cfg.AssistMaxTurns != 5 || cfg.AssistMaxToolCalls != 8 {
+			t.Errorf("turns/tools = %d/%d", cfg.AssistMaxTurns, cfg.AssistMaxToolCalls)
+		}
+		if cfg.AssistMaxTokens != 50000 || cfg.AssistAnswerReserve != 8000 {
+			t.Errorf("tokens/reserve = %d/%d", cfg.AssistMaxTokens, cfg.AssistAnswerReserve)
+		}
+		if cfg.AssistRateLimit != 3 {
+			t.Errorf("AssistRateLimit = %d", cfg.AssistRateLimit)
+		}
+	})
+
+	t.Run("a bad value names its variable", func(t *testing.T) {
+		for _, tc := range []struct{ key, value, want string }{
+			// The letter O for a zero: the exact typo that would otherwise
+			// look like the setting simply had no effect.
+			{"CARAVEL_ASSIST_MAX_TOKENS", "12O000", "CARAVEL_ASSIST_MAX_TOKENS"},
+			{"CARAVEL_ASSIST_MAX_TURNS", "lots", "CARAVEL_ASSIST_MAX_TURNS"},
+			{"CARAVEL_ASSIST_MAX_TURNS", "-1", "must not be negative"},
+			{"CARAVEL_ASSIST_TIMEOUT", "2 minutes", "CARAVEL_ASSIST_TIMEOUT"},
+			{"CARAVEL_ASSIST_TIMEOUT", "120", "duration such as"},
+		} {
+			t.Run(tc.key+"="+tc.value, func(t *testing.T) {
+				clear(t)
+				t.Setenv(tc.key, tc.value)
+				_, err := Load()
+				if err == nil {
+					t.Fatalf("Load accepted %s=%q", tc.key, tc.value)
+				}
+				if !strings.Contains(err.Error(), tc.want) {
+					t.Errorf("error = %v, want it to mention %q", err, tc.want)
+				}
+			})
+		}
+	})
+
+	t.Run("several bad values are all reported", func(t *testing.T) {
+		// Fixing one typo, restarting, and finding another is a poor way to
+		// spend an afternoon.
+		clear(t)
+		t.Setenv("CARAVEL_ASSIST_MAX_TURNS", "nope")
+		t.Setenv("CARAVEL_ASSIST_TIMEOUT", "also nope")
+		_, err := Load()
+		if err == nil {
+			t.Fatal("Load accepted two bad values")
+		}
+		if !strings.Contains(err.Error(), "MAX_TURNS") || !strings.Contains(err.Error(), "TIMEOUT") {
+			t.Errorf("error = %v, want both variables named", err)
+		}
+	})
 }

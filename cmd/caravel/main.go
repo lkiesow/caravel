@@ -56,9 +56,28 @@ func main() {
 		SearchKey:      cfg.SearchKey,
 		SearchURL:      cfg.SearchURL,
 		Geocoder:       geocoder,
+		Limits: assist.Limits{
+			RunDuration:   cfg.AssistTimeout,
+			AnswerTimeout: cfg.AssistAnswerTimeout,
+			MaxTurns:      cfg.AssistMaxTurns,
+			MaxToolCalls:  cfg.AssistMaxToolCalls,
+			MaxTokens:     cfg.AssistMaxTokens,
+			AnswerReserve: cfg.AssistAnswerReserve,
+		},
 	})
 	if err != nil {
-		log.Fatalf("assist: %v", err)
+		log.Fatalf("%v", err)
+	}
+	// Logged rather than left implicit: these bound what the instance can
+	// spend, and "what is this server actually running with" should be
+	// answerable from the log rather than by reading a running process's
+	// environment.
+	if a, ok := assistant.(*assist.Agent); ok {
+		rate := cfg.AssistRateLimit
+		if rate <= 0 {
+			rate = httpapi.DefaultAssistRateLimit
+		}
+		log.Printf("assist enabled: %s rate=%d/min/ip", a.Limits(), rate)
 	}
 
 	go sweepExpiredSessionsPeriodically(store)

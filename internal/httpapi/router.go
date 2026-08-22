@@ -70,7 +70,22 @@ type Options struct {
 	Geocoder *geocode.Client
 	// Assist is the location-metadata assistant, or nil when unconfigured.
 	Assist assist.Assistant
+	// AssistRateLimit is runs per minute per client address. Zero takes
+	// defaultAssistRateLimit. This is the only thing bounding how *many* runs
+	// happen -- assist.Limits bounds what one run may spend -- so the
+	// worst-case cost of an instance is roughly the two multiplied together.
+	AssistRateLimit int
 }
+
+// DefaultAssistRateLimit is far tighter than the other limiters because the
+// budget being protected is different in kind: a login attempt costs a hash
+// and a geocode costs somebody else a cheap lookup, but one assist run is a
+// multi-turn LLM conversation the instance owner pays for by the token. Six a
+// minute is generous for a human filling in a form and ungenerous for anything
+// else.
+// Exported so the startup log can report the *effective* value rather than
+// the configured one, which is zero whenever the operator left it alone.
+const DefaultAssistRateLimit = 6
 
 func NewServer(opts Options) *Server {
 	s := &Server{
@@ -87,17 +102,18 @@ func NewServer(opts Options) *Server {
 		// under what would embarrass us upstream.
 		LoginLimiter:   newRateLimiter(10, time.Minute),
 		GeocodeLimiter: newRateLimiter(20, time.Minute),
-		// Far tighter than the other two, because the budget being protected
-		// is different in kind: a login attempt costs us a hash and a geocode
-		// costs somebody else a cheap lookup, but one assist run is a
-		// multi-turn LLM conversation the instance owner pays for by the
-		// token. Six a minute is generous for a human filling in a form and
-		// ungenerous for anything else.
-		AssistLimiter: newRateLimiter(6, time.Minute),
+		AssistLimiter:  newRateLimiter(assistRateLimit(opts.AssistRateLimit), time.Minute),
 	}
 	s.router = s.buildRouter()
 	go s.sweepLimitersPeriodically()
 	return s
+}
+
+func assistRateLimit(configured int) int {
+	if configured <= 0 {
+		return DefaultAssistRateLimit
+	}
+	return configured
 }
 
 func (s *Server) sweepLimitersPeriodically() {

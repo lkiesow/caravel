@@ -1,10 +1,13 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -43,6 +46,29 @@ type Config struct {
 	// SearchURL is the base URL for the self-hosted providers (ddgs, searxng),
 	// which have no fixed address. Ignored by the hosted ones.
 	SearchURL string
+
+	// Guard rails on one assistant run, and on how often runs may be started.
+	//
+	// Every one of these is settable because they are the numbers an operator
+	// needs to change *fast*: a chattier model, a search backend returning
+	// fatter extracts, or a bill larger than expected are all reasons to turn
+	// one of these today rather than at the next release. Zero means "not
+	// set" and takes the shipped default -- see assist.DefaultLimits, which
+	// owns the values so they are not written down twice.
+	//
+	// Note what these do and do not bound. The first five bound *one run*.
+	// AssistRateLimit is the only thing bounding how many runs happen, so the
+	// worst-case spend for an instance is roughly the two multiplied
+	// together, per client address.
+	AssistTimeout       time.Duration // CARAVEL_ASSIST_TIMEOUT, e.g. "2m"
+	AssistAnswerTimeout time.Duration // CARAVEL_ASSIST_ANSWER_TIMEOUT
+	AssistMaxTurns      int           // CARAVEL_ASSIST_MAX_TURNS
+	AssistMaxToolCalls  int           // CARAVEL_ASSIST_MAX_TOOL_CALLS
+	AssistMaxTokens     int           // CARAVEL_ASSIST_MAX_TOKENS
+	AssistAnswerReserve int           // CARAVEL_ASSIST_ANSWER_RESERVE
+	// AssistRateLimit is runs per minute per client address. Zero takes the
+	// default in internal/httpapi.
+	AssistRateLimit int // CARAVEL_ASSIST_RATE_LIMIT
 }
 
 // SearchProviders are the valid values for CARAVEL_SEARCH_PROVIDER. "stub" is
@@ -85,6 +111,37 @@ func Load() (Config, error) {
 		SearchURL:      os.Getenv("CARAVEL_SEARCH_URL"),
 	}
 
+	// Parsed after the struct literal because each may fail, and a typo in a
+	// limit should stop the server with the variable named rather than fall
+	// back to a default the operator did not ask for. Silently ignoring
+	// "CARAVEL_ASSIST_MAX_TOKENS=12O000" (letter O) is how somebody spends a
+	// week wondering why their change did nothing.
+	var errs []error
+	pickDuration := func(key string) time.Duration {
+		v, err := getEnvDuration(key)
+		if err != nil {
+			errs = append(errs, err)
+		}
+		return v
+	}
+	pickInt := func(key string) int {
+		v, err := getEnvInt(key)
+		if err != nil {
+			errs = append(errs, err)
+		}
+		return v
+	}
+	cfg.AssistTimeout = pickDuration("CARAVEL_ASSIST_TIMEOUT")
+	cfg.AssistAnswerTimeout = pickDuration("CARAVEL_ASSIST_ANSWER_TIMEOUT")
+	cfg.AssistMaxTurns = pickInt("CARAVEL_ASSIST_MAX_TURNS")
+	cfg.AssistMaxToolCalls = pickInt("CARAVEL_ASSIST_MAX_TOOL_CALLS")
+	cfg.AssistMaxTokens = pickInt("CARAVEL_ASSIST_MAX_TOKENS")
+	cfg.AssistAnswerReserve = pickInt("CARAVEL_ASSIST_ANSWER_RESERVE")
+	cfg.AssistRateLimit = pickInt("CARAVEL_ASSIST_RATE_LIMIT")
+	if len(errs) > 0 {
+		return Config{}, errors.Join(errs...)
+	}
+
 	if cfg.DBDriver != "sqlite" && cfg.DBDriver != "postgres" {
 		return Config{}, fmt.Errorf("invalid CARAVEL_DB_DRIVER %q: must be %q or %q", cfg.DBDriver, "sqlite", "postgres")
 	}
@@ -113,6 +170,40 @@ func Load() (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// getEnvInt reads a non-negative integer, or 0 when unset. A negative or
+// unparseable value is an error rather than a fallback: it is a typo, and the
+// operator should hear about it now.
+func getEnvInt(key string) (int, error) {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return 0, nil
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s %q: must be a whole number", key, raw)
+	}
+	if n < 0 {
+		return 0, fmt.Errorf("invalid %s %q: must not be negative", key, raw)
+	}
+	return n, nil
+}
+
+// getEnvDuration reads a Go duration ("90s", "2m"), or 0 when unset.
+func getEnvDuration(key string) (time.Duration, error) {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return 0, nil
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s %q: must be a duration such as 90s or 2m", key, raw)
+	}
+	if d < 0 {
+		return 0, fmt.Errorf("invalid %s %q: must not be negative", key, raw)
+	}
+	return d, nil
 }
 
 func getEnv(key, fallback string) string {

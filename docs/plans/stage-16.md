@@ -103,6 +103,49 @@ cover all five with no reshaping.
 decision table (needs a key? self-hosted? scraping?), not five flat sections, so
 a first-time operator is not left with a bare five-way choice.
 
+## Guard rails, and their configuration
+
+Added in a Milestone 5 follow-up, on the reasoning that these are the numbers
+an operator needs to change *fast* — a chattier model, a search backend
+returning fatter extracts, or a bill larger than expected are all reasons to
+turn one today rather than at the next release. Shipped values are the
+defaults; every one is an env var. `assist.DefaultLimits` owns them so they are
+not written down twice, and zero from the environment means "unset, use the
+default" rather than "zero".
+
+| Variable | Default | Bounds |
+| --- | --- | --- |
+| `CARAVEL_ASSIST_MAX_TOKENS` | 120000 | Cumulative billed tokens for one run |
+| `CARAVEL_ASSIST_ANSWER_RESERVE` | 20000 | Held back from the budget to compose the answer |
+| `CARAVEL_ASSIST_MAX_TURNS` | 12 | Conversation turns; the only rail that works when a server reports no usage |
+| `CARAVEL_ASSIST_MAX_TOOL_CALLS` | 20 | Tool calls, since one turn may request several |
+| `CARAVEL_ASSIST_TIMEOUT` | 2m | The gathering phase |
+| `CARAVEL_ASSIST_ANSWER_TIMEOUT` | 1m | The composing turn, which runs outside the above |
+| `CARAVEL_ASSIST_RATE_LIMIT` | 6 | Runs per minute per client address |
+
+Three things worth knowing about these:
+
+- **The token budget counts *billed* tokens, not context size.** Every turn
+  resends the conversation, so `prompt_tokens` on turn five includes turns one
+  to four. Summing is right for cost — that is genuinely what is charged — but
+  it means a long run costs superlinearly and the budget goes faster than it
+  looks.
+- **The first six bound one run; the seventh bounds how many runs happen.** So
+  the worst-case spend of an instance is roughly the two multiplied together,
+  per client address. Nothing caps concurrent runs across users, which is the
+  same reasoning as having no per-user limit — but it is a per-run guard doing
+  a per-instance job, and Milestone 6 is the place to decide whether a global
+  in-flight cap is wanted.
+- **Lowering `MAX_TOKENS` alone is refused**, because it collides with the
+  default reserve. Deliberately an error rather than a silent rescale: a budget
+  quietly reinterpreted is worse than a startup failure, and the message names
+  the other variable to set.
+
+The effective values are printed at startup when the assistant is enabled, so
+"what is this instance running with" is answerable from the log rather than by
+reading a running process's environment. **Milestone 9 must document all seven
+in the README.**
+
 `ddgs` and SearXNG overlap heavily — both self-hosted, keyless, metasearch,
 JSON over HTTP. Both are supported anyway because they are cheap and serve two
 existing setups ("I already run SearXNG" versus "I want the quickest thing"),

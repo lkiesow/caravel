@@ -84,8 +84,14 @@ type Options struct {
 // ErrNotImplemented is returned by a configured-but-unbuilt assistant. It
 // exists so Milestone 1 can wire the seam end to end -- config, capability,
 // route, 501 -- before any of the machinery behind it exists, and disappears
-// once Propose is real.
+// once Propose is real (Milestone 4).
 var ErrNotImplemented = errors.New("assist: the agent is not implemented yet")
+
+// LLMStub is the CARAVEL_LLM_URL sentinel selecting the in-process fake
+// provider rather than a real endpoint. Duplicated from config rather than
+// imported, so this package does not depend on the app's configuration
+// package for one string.
+const LLMStub = "stub"
 
 // New builds the assistant, or returns nil if it is not configured.
 //
@@ -96,12 +102,21 @@ func New(opts Options) (Assistant, error) {
 	if opts.LLMURL == "" {
 		return nil, nil
 	}
-	return &Agent{opts: opts}, nil
+
+	var p provider
+	if opts.LLMURL == LLMStub {
+		p = newStubProvider()
+	} else {
+		p = newHTTPProvider(opts.LLMURL, opts.LLMKey, opts.LLMModel)
+	}
+
+	return &Agent{opts: opts, provider: p}, nil
 }
 
-// Agent is the open-ended tool-calling loop. Milestones 2-4 fill it in.
+// Agent is the open-ended tool-calling loop. Milestones 3-4 fill it in.
 type Agent struct {
-	opts Options
+	opts     Options
+	provider provider
 }
 
 func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*Proposal, error) {

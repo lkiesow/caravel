@@ -231,6 +231,71 @@ a plain completion, a tool-call round trip, a `json_schema` response, and the
 `json_object` fallback including the retry. A test that the stub provider
 drives a multi-step exchange.
 
+**Done.** Landed as planned, in four files.
+
+`provider.go` is the OpenAI-compatible client. `CARAVEL_LLM_URL` is the *full*
+chat-completions endpoint rather than a base URL, matching
+`CARAVEL_GEOCODER_URL`. `completeJSON` is where the plan's "real work" lives:
+it asks for structured output, decodes, and on a wrong shape sends the answer
+back with the complaint attached and tries once more -- once, not in a loop,
+since a model that cannot produce the shape twice will not produce it on the
+fifth attempt and every attempt is billed. Usage is summed across attempts, so
+a retry is not free in the budget Milestone 4 will enforce.
+
+`schema.go` is the contract with the model: `modelProposal` plus a hand-written
+strict JSON Schema literal beside it. Deliberately *not* `Proposal` -- it has no
+coordinates (resolved from the address, never returned), no current values and
+no sources (recorded from the tool calls actually made, not from what the model
+claims it read).
+
+`stub.go` is the in-process fake, and `tools.go` holds the three tool names it
+scripts against, which Milestone 3 implements.
+
+Four things worth recording, three of them decisions the plan did not make:
+
+1. **The `json_schema` downgrade is sticky.** A server that rejects the format
+   sets a flag, so the fallback costs one failed request per process rather
+   than one per turn.
+2. **The "is this a format complaint?" match is deliberately narrow** -- a 400
+   or 422 that mentions `response_format`/`json_schema` *and* a
+   support-flavoured word. Being wrong is cheap in one direction and expensive
+   in the other: a false positive costs one extra request that fails the same
+   way, while a false negative would hide real errors behind a confusing retry.
+   `TestProviderDoesNotFallBackOnUnrelatedBadRequest` pins the expensive
+   direction.
+3. **Code fences are tolerated, unknown fields ignored.** Models emit fenced
+   JSON even when told not to, and both would otherwise burn a paid retry on a
+   formatting habit. Note this is the opposite of `readJSON` in the HTTP layer,
+   which rejects unknown fields -- there they mean a bug in our own client.
+4. **`errors.As`, not a type assertion**, for detecting the format error. The
+   original hand-rolled helper worked but would have silently stopped working
+   the first time anyone wrapped the error, which is the kind of latent
+   breakage that surfaces as "the fallback just doesn't happen any more".
+
+The stub's default script is three turns -- search, fetch, answer -- rather
+than one. The number of turns is the point: a single-turn script would never
+exercise the loop, the dispatcher or the history-echoing rule that real servers
+enforce, so the first real provider in Milestone 5 would be the first time any
+of it ran.
+
+**Verified.** `make ci` green, plus `go test -race`. 24 tests in
+`internal/assist`: plain completion, keyed and keyless auth headers, a two-turn
+tool round trip asserting the `tool_call_id` survives, `json_schema` with
+`strict` actually set on the wire, the full `json_object` fallback including
+that the downgrade sticks, an unrelated 400 *not* triggering it, the
+wrong-shape retry carrying its complaint and counting both attempts' tokens,
+giving up after exactly two, code fences and unknown fields costing no retry, a
+non-JSON body reported as such rather than as a syntax error, context
+cancellation, the stub's three-turn script, its answer decoding against the
+schema and carrying no coordinates, script exhaustion erroring rather than
+panicking, concurrent use under `-race`, and `New` selecting stub versus HTTP
+client versus nil.
+
+No app-level behaviour changed and none was expected: `Propose` still returns
+`ErrNotImplemented`, so the endpoint still answers 501. The `httptest.Server`
+suite is the behavioural evidence for this milestone -- there is nothing to see
+in a browser until Milestone 4 makes the loop real.
+
 ## 3. Tools: the geocoder lift, page fetch, and the Searcher seam
 
 Three tools the model may call, all native Go, dispatched through one small

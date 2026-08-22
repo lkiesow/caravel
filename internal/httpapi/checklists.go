@@ -163,6 +163,103 @@ func (s *Server) handleCreateChecklist(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, resp)
 }
 
+type duplicateChecklistRequest struct {
+	// The copy's title, built by the client. The server has no user-facing copy
+	// of its own and should not grow any: "(copy)" is a translated string and
+	// belongs in web/locales, not here.
+	Title string `json:"title"`
+}
+
+// handleDuplicateChecklist copies a list and its items. Its whole reason for
+// existing is reuse across trips - last year's packing list, minus the ticks.
+//
+// Three decisions worth stating, because none of them is forced by the schema:
+//
+// The ticks reset. Both answers were defensible (splitting one list in two
+// wants them kept), and reuse is the case the backlog actually described, so
+// this is the one that ships - as a single menu item rather than two.
+//
+// The copy is *mine*, whoever made the original. Otherwise duplicating
+// somebody else's trip-visible list would produce a list I cannot tick, which
+// is a strange thing for an action of mine to do. Visibility carries over
+// unchanged: copying is not the way to change who sees something, and
+// PUT /visibility already exists for that.
+//
+// Authorization is the *read* rule, not the write one - deliberately no
+// requireChecklistWrite call here. Copying a list I can see is a create on the
+// trip, so editor is the bar, and loadChecklist has already answered 404 for
+// somebody else's personal list and 403 for a viewer. requireChecklistWrite
+// would additionally refuse another person's trip-visible list, which is
+// exactly the list most worth copying.
+func (s *Server) handleDuplicateChecklist(w http.ResponseWriter, r *http.Request) {
+	source, role, ok := s.loadChecklist(w, r, db.RoleEditor)
+	if !ok {
+		return
+	}
+	me, _ := auth.UserFromContext(r.Context())
+
+	var req duplicateChecklistRequest
+	if err := readJSON(r, &req); err != nil || strings.TrimSpace(req.Title) == "" {
+		writeError(w, http.StatusBadRequest, "title is required")
+		return
+	}
+
+	items, err := s.Store.ListChecklistItemsByChecklist(r.Context(), source.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not duplicate checklist")
+		return
+	}
+	existing, err := s.Store.ListChecklistsByTrip(r.Context(), source.TripID, me.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not duplicate checklist")
+		return
+	}
+
+	// One transaction for the list and every item: a copy that half succeeded
+	// would leave a list whose contents silently disagree with the one it was
+	// copied from, and there is no way for the client to tell.
+	now := time.Now().UTC()
+	var copied db.Checklist
+	err = s.Store.WithTx(r.Context(), func(store db.Store) error {
+		created, err := store.CreateChecklist(r.Context(), db.CreateChecklistParams{
+			ID:          uuid.NewString(),
+			TripID:      source.TripID,
+			Title:       strings.TrimSpace(req.Title),
+			SortOrder:   len(existing),
+			CreatedAt:   now,
+			Visibility:  source.Visibility,
+			OwnerUserID: &me.ID,
+		})
+		if err != nil {
+			return err
+		}
+		for _, item := range items {
+			if _, err := store.CreateChecklistItem(r.Context(), db.CreateChecklistItemParams{
+				ID:          uuid.NewString(),
+				ChecklistID: created.ID,
+				Text:        item.Text,
+				SortOrder:   item.SortOrder,
+				CreatedAt:   now,
+			}); err != nil {
+				return err
+			}
+		}
+		copied = created
+		return nil
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not duplicate checklist")
+		return
+	}
+
+	resp, err := s.checklistToResponse(r.Context(), copied, me.ID, role)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not duplicate checklist")
+		return
+	}
+	writeJSON(w, http.StatusCreated, resp)
+}
+
 // requireChecklistWrite is the write half of the visibility rule: loadChecklist
 // already refused a list the caller cannot see, and this refuses one they can
 // see but not change — somebody else's trip-visible list. 403 rather than 404,

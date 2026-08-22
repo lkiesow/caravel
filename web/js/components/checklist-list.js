@@ -129,6 +129,11 @@ export async function renderChecklistList(container, tripId, { readOnly = false,
     // is_mine is the visibility itself.
     const canWrite = !readOnly && checklist.can_tick;
     const canMove = !readOnly && shared && checklist.is_mine;
+    // Duplicating asks neither: the copy is a new list on the trip, so being an
+    // editor is the whole requirement. Notably true for somebody else's
+    // trip-visible list, where canWrite and canMove are both false and this is
+    // the only thing the ⋮ holds - which is also the list most worth copying.
+    const canDuplicate = !readOnly;
 
     const card = document.createElement("div");
     card.className = "editor-card checklist-card";
@@ -153,7 +158,9 @@ export async function renderChecklistList(container, tripId, { readOnly = false,
     const itemsList = card.querySelector(".checklist-items");
     for (const item of checklist.items) renderItem(itemsList, checklist, item, canWrite);
 
-    if (canWrite || canMove) renderCardMenu(card.querySelector(".checklist-card__actions"), checklist, canWrite, canMove);
+    if (canWrite || canMove || canDuplicate) {
+      renderCardMenu(card.querySelector(".checklist-card__actions"), checklist, canWrite, canMove, canDuplicate);
+    }
 
     card.querySelector(".checklist-item-form")?.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -172,7 +179,7 @@ export async function renderChecklistList(container, tripId, { readOnly = false,
     parent.appendChild(card);
   }
 
-  function renderCardMenu(slot, checklist, canWrite, canMove) {
+  function renderCardMenu(slot, checklist, canWrite, canMove, canDuplicate) {
     const current = checklist.visibility || "shared";
     renderMenu(slot, {
       iconName: "ellipsis-vertical",
@@ -185,6 +192,7 @@ export async function renderChecklistList(container, tripId, { readOnly = false,
       ariaLabel: "checklists.listActions",
       items: [
         ...(canMove ? MOVES[current].map((m) => ({ value: m.value, label: t(m.labelKey), iconName: m.iconName, action: true })) : []),
+        ...(canDuplicate ? [{ value: "duplicate", label: t("checklists.duplicate"), iconName: "copy", action: true }] : []),
         ...(canWrite
           ? [
               { value: "rename", label: t("checklists.rename"), iconName: "pencil", action: true },
@@ -202,6 +210,16 @@ export async function renderChecklistList(container, tripId, { readOnly = false,
           if (title === null || !title.trim()) return;
           const updated = await api.patch(`/checklists/${checklist.id}`, { title });
           checklists = checklists.map((c) => (c.id === updated.id ? updated : c));
+          render();
+          return;
+        }
+        if (action === "duplicate") {
+          // The title is built here rather than server-side: "(copy)" is
+          // translated copy, and internal/httpapi emits no user-facing strings.
+          const copy = await api.post(`/checklists/${checklist.id}/duplicate`, {
+            title: t("checklists.duplicateTitle", { title: checklist.title }),
+          });
+          checklists.push(copy);
           render();
           return;
         }

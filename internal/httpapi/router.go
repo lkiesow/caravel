@@ -192,6 +192,9 @@ func (s *Server) buildRouter() chi.Router {
 			r.Patch("/", s.handleRenameChecklist)
 			r.Delete("/", s.handleDeleteChecklist)
 			r.Put("/visibility", s.handleSetChecklistVisibility)
+			// A create, not a mutation of the source, so it sits here rather
+			// than under the trip: the id in the path says what to copy.
+			r.Post("/duplicate", s.handleDuplicateChecklist)
 			r.Post("/items", s.handleCreateChecklistItem)
 			r.Patch("/items/{itemId}", s.handleSetChecklistItemChecked)
 			// Separate from the PATCH above, which carries `checked`: ticking is

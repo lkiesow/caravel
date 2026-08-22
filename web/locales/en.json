@@ -256,6 +256,8 @@
   "checklists.makeShared": "Let everyone tick",
   "checklists.makeTrip": "Show to everyone",
   "checklists.makePersonal": "Make private",
+  "checklists.duplicate": "Duplicate",
+  "checklists.duplicateTitle": "{title} (copy)",
   "checklists.rename": "Rename",
   "checklists.renamePrompt": "New name for this list",
   "checklists.listActions": "List actions",

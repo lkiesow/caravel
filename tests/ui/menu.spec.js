@@ -14,7 +14,7 @@
 // locations filter, the file row's actions and the header's user menu all
 // regress together.
 import { test, expect } from "@playwright/test";
-import { login, resolveScenarioTrips, gotoRoute } from "./helpers/scenarios.js";
+import { login, resolveScenarioTrips, gotoRoute, openAs, fetchTrips, SCENARIO_TITLES, OTHER_AUTH_STATE_FILE } from "./helpers/scenarios.js";
 
 // Phone width, where the More menu is the only way to reach the overflow
 // sections: the tab bar shows four tabs plus More under 640px.
@@ -461,12 +461,14 @@ const CHECKLIST_LABELS = {
     actions: "List actions",
     sections: { shared: "Everyone can tick", trip: "Everyone can see", personal: "Only you" },
     moves: { shared: ["Show to everyone", "Make private"], personal: ["Let everyone tick", "Show to everyone"] },
+    duplicate: "Duplicate",
     tail: ["Rename", "Delete"],
   },
   de: {
     actions: "Listenaktionen",
     sections: { shared: "Alle können abhaken", trip: "Alle können sehen", personal: "Nur du" },
     moves: { shared: ["Für alle sichtbar machen", "Privat machen"], personal: ["Von allen abhakbar machen", "Für alle sichtbar machen"] },
+    duplicate: "Duplizieren",
     tail: ["Umbenennen", "Löschen"],
   },
 };
@@ -510,11 +512,52 @@ for (const locale of ["en", "de"]) {
         // and the same bug (renderMenu echoing an activeValue) it guards against.
         await expect(actions.locator(".menu__label")).toHaveText("");
         await expect(dropdown.locator('[role="menuitemradio"]')).toHaveCount(0);
-        await expect(dropdown.locator('[role="menuitem"]')).toHaveText([...copy.moves[key], ...copy.tail]);
+        await expect(dropdown.locator('[role="menuitem"]')).toHaveText([...copy.moves[key], copy.duplicate, ...copy.tail]);
         // Nothing is clicked: a move would mutate the shared seed, which this
         // spec has no isolation for. The Go tests cover the effect.
         await page.keyboard.press("Escape");
         await expect(dropdown).toBeHidden();
+      }
+    });
+
+    // The case Stage 15 Milestone 1 added, and the reason its authorization is
+    // the *read* rule: somebody else's trip-visible list. `other` is an editor
+    // on `full`, so they can see demo's "Route plan" and can neither tick nor
+    // rename it - before Duplicate existed their ⋮ held nothing and so was not
+    // rendered at all. Now it holds exactly one item.
+    test(`a non-author's menu on a trip-visible list holds only Duplicate (${locale})`, async ({ browser }) => {
+      const { context, page: theirPage } = await openAs(browser, OTHER_AUTH_STATE_FILE, MOBILE);
+      try {
+        // Navigated first: fetchTrips fetches a relative URL inside the page,
+        // and a context that has never navigated has no origin to resolve it
+        // against. And resolved by title rather than through
+        // resolveScenarioTrips, which insists on all seven scenarios - `other`
+        // is a member of two, so that helper is the demo user's.
+        await theirPage.goto("/trips");
+        const theirTrips = await fetchTrips(theirPage);
+        const fullId = theirTrips.find((trip) => trip.title === SCENARIO_TITLES.full)?.id;
+        expect(fullId, `\`other\` should be a member of ${SCENARIO_TITLES.full}`).toBeTruthy();
+        await gotoRoute(theirPage, `/trips/${fullId}/checklists`);
+        const copy = CHECKLIST_LABELS[locale];
+
+        const card = theirPage.locator('.checklist-section[data-visibility="trip"] .checklist-card');
+        await expect(card, "demo's trip-visible list should be visible to an editor").toHaveCount(1);
+        // The premise: not theirs, and not tickable by them. If either of these
+        // stops holding, this test is measuring a different situation.
+        await expect(card.locator('.checklist-items input[type="checkbox"]').first()).toBeDisabled();
+        await expect(card.locator(".checklist-item-form")).toHaveCount(0);
+
+        const actions = card.locator(".checklist-card__actions");
+        await actions.locator(".menu__trigger").click();
+        const dropdown = actions.locator(".menu__dropdown");
+        await expect(dropdown).toBeVisible();
+        await expect(dropdown.locator('[role="menuitem"]')).toHaveText([copy.duplicate]);
+        // Not clicked: this trip is the shared seed. The Go tests cover what the
+        // click does, including that the copy becomes the duplicator's own.
+        await theirPage.keyboard.press("Escape");
+        await expect(dropdown).toBeHidden();
+      } finally {
+        await context.close();
       }
     });
   });

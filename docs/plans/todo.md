@@ -66,13 +66,6 @@ Direction already agreed or obviously wanted; none of it built.
   frontend control, and a decision about whether the filtering happens in the
   browser (the API returns every trip unconditionally today, which is what
   `locations-tab.js` relies on) or in the query.
-- **Checklist duplication.** (Stage 05; everything else in this entry landed in
-  Stage 14 Milestone 8, which added renaming, in-place item editing and the
-  ⋮-menus to hold them.) What is left is copying a list, which is useful for
-  reusing a packing list across trips — and which still needs the call that kept
-  it out of Milestone 8: does a copy keep the checked state or reset it? Both
-  answers are defensible (reusing last year's list wants a reset; splitting one
-  list in two wants it kept), so it probably wants asking, or two menu items.
 - **A markdown preview for location notes.** Notes are authored in a plain
   `<textarea>` (`location-form.js`) and only rendered after saving, on the view
   page — so formatting is written blind. Wants a preview (side-by-side, or a
@@ -134,6 +127,14 @@ Not yet decided; each needs a call before it is work.
 - **Federation between self-hosted instances.** (Stage 01.) Real sync-protocol
   design still needed; v1 only avoided the integer-PK and local-only-ID mistakes
   that would have made it harder later.
+- **Duplicating a checklist always resets the ticks.** (Stage 15 Milestone 1.)
+  The other reading — copy the checked state too, for splitting one list in two
+  — was considered and deliberately not built: it wanted a second menu item on
+  every card, and reuse across trips is the case the backlog actually described.
+  Only worth revisiting if somebody actually tries to split a list and finds
+  retyping the ticks annoying. The handler is one flag away from either
+  behaviour, so the cost of changing the answer later is a parameter, not a
+  rewrite.
 - **Is trip-visible the right default for an upload?** (Stage 14 Milestones 7
   and 10.) A new file defaults to `visibility = trip` and a new checklist to
   `shared`, with the choice offered at creation time and the control hidden

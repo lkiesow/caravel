@@ -256,6 +256,8 @@
   "checklists.makeShared": "Von allen abhakbar machen",
   "checklists.makeTrip": "Für alle sichtbar machen",
   "checklists.makePersonal": "Privat machen",
+  "checklists.duplicate": "Duplizieren",
+  "checklists.duplicateTitle": "{title} (Kopie)",
   "checklists.rename": "Umbenennen",
   "checklists.renamePrompt": "Neuer Name für diese Liste",
   "checklists.listActions": "Listenaktionen",

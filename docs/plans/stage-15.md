@@ -105,6 +105,43 @@ in `renderCardMenu` with `iconName: "copy"`, between the visibility moves and
 `rename`. `onSelect` POSTs, pushes the returned list, re-renders. Offered
 whenever `!readOnly` — copying is a create, so it needs editor, not authorship.
 
+**Done.** `POST /api/checklists/{checklistId}/duplicate`, plus one `copy` row in
+`renderCardMenu` and the two locale keys. Built as planned, with two things
+worth recording.
+
+*The authorization rule turned out to need no new code.* `loadChecklist`
+already answers 404 for somebody else's personal list and 403 for a viewer, so
+"the read rule" is simply what you get by calling it and **not** calling
+`requireChecklistWrite`. The handler carries a comment saying that omission is
+deliberate, because it looks like a missing check.
+
+*One consequence that was not in the plan.* The card menu was only rendered
+`if (canWrite || canMove)`, so a non-author's view of a trip-visible list had no
+⋮ at all. Duplicate is offered to any editor, so the condition gained
+`|| canDuplicate` — and that list, the one most worth copying, now has a ⋮
+holding exactly one item. `menu.spec.js` gained a test for precisely that view,
+driven as `other` through `openAs`.
+
+Two seams inside the handler that are decisions, not defaults: the copy is
+wrapped in `Store.WithTx` (a list plus N items is inherently multi-write, and a
+half-copy would silently disagree with its source), and the title comes from the
+client, because "(copy)" is translated copy and `internal/httpapi` emits no
+user-facing strings.
+
+Verified: `make ci` green. Seven new Go tests in
+`internal/httpapi/checklist_duplicate_test.go`, and **break-checked** rather
+than merely passing — the todo.md lesson about a test that asks the code what to
+expect. Adding `requireChecklistWrite` to the handler fails
+`TestDuplicateChecklistSomeoneElsesTripVisibleList` (403); copying
+`item.Checked` fails `TestDuplicateChecklistResetsTicks`; keeping
+`source.OwnerUserID` fails two. All 80 UI specs pass, including the Duplicate
+row asserted in the menu list in both locales and the new non-author test. And
+a real click at 324px on the `full` scenario: "Packing (copy)" appeared in the
+shared section with all four items in source order and **0/4 ticked** where the
+source has 1/4, the server-stored row read `shared · mine=true · ticked=0/4`,
+and the source was unchanged. The copy was deleted afterwards, so the seed is
+back as it was.
+
 ---
 
 ## 2. The trips list gets a toolbar

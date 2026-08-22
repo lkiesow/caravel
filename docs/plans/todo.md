@@ -58,19 +58,23 @@ Things that are wrong today, each confirmed against the current source.
 
 Direction already agreed or obviously wanted; none of it built.
 
-- **Search, filter and sort on the trips list.** Confirmed absent:
-  `trips-page.js` has no search input, filter or sort control, and
-  `ListTripsForUser` (`internal/db/sqlc/queries/trips.sql:16` — Stage 14
-  replaced `ListTripsByOwner` with it) has a fixed `ORDER BY t.created_at DESC`
-  with no parameters for sort field/direction or a title predicate. Needs a
-  frontend control, and a decision about whether the filtering happens in the
-  browser (the API returns every trip unconditionally today, which is what
-  `locations-tab.js` relies on) or in the query.
 - **A markdown preview for location notes.** Notes are authored in a plain
   `<textarea>` (`location-form.js`) and only rendered after saving, on the view
   page — so formatting is written blind. Wants a preview (side-by-side, or a
   toggle) using the same server-rendered `notes_html` the view page uses, or a
   client-side render if a round trip per keystroke is too much.
+- **The trips list filters and sorts in the browser, not in the query.** (Stage
+  15 Milestone 2.) `GET /trips` still returns every trip with a fixed
+  `ORDER BY t.created_at DESC` and takes no parameters; the search box and the
+  three sort orders are applied in memory in `trips-page.js`, the same decision
+  `locations-tab.js` made for the same reason (instant feedback, no round trip
+  per keystroke or per sort change). Fine at the trip counts a self-hosted
+  instance has. What it does not survive is someone with hundreds of trips,
+  which wants `q` and `sort` parameters on `ListTripsForUser` plus pagination —
+  and pagination is the part that actually forces the change, because a page of
+  results cannot be sorted client-side. No filter on owner/role either: with
+  Stage 14 other people's trips are in the list, and "mine only" was considered
+  and left out to keep the row to three controls at 324px.
 - **Itinerary entry reordering.** `itinerary_entries.sort_order` exists in the
   schema and Stage 01 floated "native drag-and-drop or a minimal pointer-events
   reorder", but `itinerary-tab.js` has no reordering UI at all — entries render

@@ -988,26 +988,31 @@ button {
   color: var(--color-text-muted);
 }
 
-/* Search + filter menu + "New location", one non-wrapping row. Replaces the
-   old .items-tab__header/.items-filter pill row, which needed an internal
-   horizontal scroller to survive 324px (stage-04.md Section 5). Only the
-   search box flexes; both buttons keep their intrinsic width and collapse to
-   icon-only under 640px via .btn-collapse. */
-.locations-toolbar {
+/* Search + menu(s) + a primary button, one non-wrapping row. Replaces the old
+   .items-tab__header/.items-filter pill row, which needed an internal
+   horizontal scroller to survive 324px (stage-04.md Section 5). Only the search
+   box flexes; the buttons keep their intrinsic width and collapse to icon-only
+   under 640px via .btn-collapse.
+
+   Named for the shape rather than for the locations tab since Stage 15
+   Milestone 2, when the trips list wanted the same row: these were
+   .locations-toolbar/.locations-search with one caller, and a second copy under
+   a second name is how base.css ended up with three drifting input rules. */
+.list-toolbar {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   margin-bottom: 1rem;
 }
 
-.locations-search {
+.list-search {
   position: relative;
   display: flex;
   flex: 1 1 0%;
   min-width: 0;
 }
 
-.locations-search__icon {
+.list-search__icon {
   position: absolute;
   left: 0.625rem;
   top: 50%;
@@ -1016,7 +1021,7 @@ button {
   pointer-events: none;
 }
 
-.locations-search input {
+.list-search input {
   width: 100%;
   min-width: 0;
   padding: 0.5rem 0.5rem 0.5rem 2.125rem;
@@ -1027,7 +1032,7 @@ button {
   font: inherit;
 }
 
-.locations-search input:focus-visible {
+.list-search input:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: -1px;
 }

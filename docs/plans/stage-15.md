@@ -177,6 +177,50 @@ controls, that typing narrows the grid, that each sort order rearranges
 seed has seven scenario trips with varied dates, including `no-dates`, which is
 exactly the sort edge case above.
 
+**Done.** A search box and a sort menu on `/trips`, both applied in memory over
+the one `GET /trips` the page already made. Built as planned; four things worth
+recording.
+
+*The CSS was generalised rather than copied.* `.locations-toolbar` /
+`.locations-search` / `.locations-search__icon` became
+`.list-toolbar` / `.list-search` / `.list-search__icon`, and the locations tab
+now uses the shared rules. Only `base.css` and `locations-tab.js` referenced
+them, so the rename was cheap — and the alternative was a third near-identical
+toolbar rule in the file that already carries a backlog entry about three
+drifting input rules. "New trip" moved out of `.page__header` into the row, as
+the plan called for.
+
+*Sorting never touches the fetched array.* The server's `created_at DESC` **is**
+the "Newest first" answer, so sorting in place would have destroyed it the first
+time another order was picked; `sorted()` works on a copy. Name order uses
+`Intl.Collator(getLocale())` so German umlauts sort where a German reader
+expects, and undated trips sort last under "By start date" — unscheduled, not
+imminent.
+
+*The spec asserts a property, not a literal order.* The `full` scenario's dates
+are relative to *today*, so its position in a date-ordered list moves as real
+time passes and a hard-coded list of expected titles would have rotted within
+weeks. `tests/ui/trips.spec.js` instead asserts that the rendered dates are
+non-decreasing, that every undated card is at the end, and that no trip was
+dropped or duplicated.
+
+*One failure that was not ours.* The full suite went red on
+`menu.spec.js`'s checklist grouping — two personal lists on `full` where the
+seed makes one. The extra row was a hand-made "Route plan (Lars)", a title no
+code path can produce (the key is `{title} (copy)` / `{title} (Kopie)`). Manual
+test data in the dev database, exactly the hazard `todo.md` records from Stage 09
+Milestone 6. `make dev-reset FORCE=1` and it went green.
+
+Verified: `make ci` green. Four new specs, all passing, and the two most
+break-prone **break-checked**: flipping the undated comparator so undated trips
+sort first fails the sort test, and narrowing `matches()` to the title alone
+fails the subtitle half of the search test. Full suite 84 passed (80 before).
+Also checked by hand at 324px: the toolbar is three 44px controls on one row
+with the page not scrolling horizontally, both buttons collapsed to icon-only,
+the sort trigger picking up `menu__trigger--active` once the order is not the
+default — and the locations tab intact after the rename, with its search icon
+still absolutely positioned and its four controls still fitting.
+
 ---
 
 ## 3. A preview for location notes

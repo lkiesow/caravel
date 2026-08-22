@@ -18,7 +18,8 @@ const ANY_DISTANCE = "any";
 // The toolbar is one non-wrapping row - search (flexible) + filter menu +
 // "New location" - which is what makes it fit 324px, where the previous
 // row of four category pills did not (they only scrolled; see stage-04.md
-// Section 5 and stage-06.md Section 1).
+// Section 5 and stage-06.md Section 1). Its .list-toolbar/.list-search rules
+// are shared with the trips list as of Stage 15 Milestone 2.
 //
 // Consequence of putting a search box next to the filter: filtering moved
 // from the server to the client. The trip's locations are fetched once and
@@ -45,9 +46,9 @@ export async function renderItemsTab(container, trip) {
 
   container.innerHTML = `
     <div class="items-tab">
-      <div class="locations-toolbar">
-        <div class="locations-search">
-          ${icon("search", { className: "locations-search__icon" })}
+      <div class="list-toolbar">
+        <div class="list-search">
+          ${icon("search", { className: "list-search__icon" })}
           <input type="search" name="q" autocomplete="off" data-i18n-placeholder="locations.searchPlaceholder" data-i18n-aria-label="locations.searchPlaceholder" />
         </div>
         <div class="locations-filter-slot"></div>

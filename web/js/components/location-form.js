@@ -50,7 +50,7 @@ export function renderItemForm(container, item, { onSubmit }) {
           </div>
         </div>
         <textarea id="${notesId}" name="notes" rows="6"></textarea>
-        <div class="notes-field__preview location-view__notes" hidden></div>
+        <div class="notes-field__preview" hidden></div>
         <p class="notes-field__empty" data-i18n="location.form.notesEmpty" hidden></p>
       </div>
     </form>

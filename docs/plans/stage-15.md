@@ -267,12 +267,16 @@ uses, so the two cannot drift even if one of them is changed later.
 responses (the preview, and `notes_html` from `GET /api/items/{id}` for an item
 saved with the same source), so neither side is the other's expectation.
 
-*The plan said to reuse the view page's `.location-view__notes` class. It turns
-out to carry no rules at all* — only a comment explaining why it deliberately
-has no `white-space: pre-wrap`. So the class was applied anyway (if that
-container ever gains styling the preview inherits it), but the visible styling
-is new `.notes-field__preview` rules. Worth knowing that the "shared styling"
-in the plan was aspirational rather than existing.
+*The plan's "reuse the view page's `.location-view__notes` class so the styling
+is shared" turned out to be reusing nothing.* That class carries no CSS rules at
+all — only a comment explaining why it deliberately has no
+`white-space: pre-wrap`. On the view page it earns its keep as a **JS selector
+hook** (`location-view-page.js:157` fills it with `notes_html`); on the preview
+it would have been decoration asserting a relationship that does not exist. It
+was applied and then removed in the follow-up below. The visible styling is
+`.notes-field__preview`, and the consequence — that the two places a rendered
+note appears are styled by different rules — is now a `todo.md` entry instead of
+a class name pretending otherwise.
 
 *One bug this milestone would have introduced, caught while writing it.* The
 form's `keydown` handler treats Enter as "save the page" everywhere except a
@@ -309,6 +313,28 @@ replaces the textarea at exactly the same `top` so switching does not shift the
 form, the textarea regains its auto-grown height on the way back, and the header
 row fits in German too ("Schreiben" 96px + "Vorschau" 92px inside 258px, no
 overflow).
+
+### 3a. Milestone 3 follow-up: drop a class that was doing nothing
+
+The preview `div` carried `.notes-field__preview location-view__notes`, the
+second class added on the plan's instruction to share the view page's styling.
+Reviewed at the checkpoint with the obvious question — if it has no rules, why
+is it there? — and the answer was that it should not be. Nothing selects it on
+the preview (the component uses `.notes-field__preview`), no CSS matches it, and
+no spec references it, so it claimed a styling relationship that does not exist.
+Removed from the preview only: on the view page the same class is the selector
+`location-view__notes` is filled through, so it stays.
+
+What this leaves, stated plainly rather than hidden behind a shared class name:
+the preview and the view page render **identical HTML** (same
+`renderNotesHTML` call) inside **different chrome** — the preview has a dashed
+border, padding and a tinted background to read as a rendering rather than a
+field, while the view page's note has no container styling at all. That is
+defensible, and it is not the same thing as "shared styling".
+
+Verified: `make ci` green, and the five notes-preview specs plus the view
+location route sweeps still pass — the specs never named the removed class, and
+`location-view-page.js` still fills a note it renders.
 
 ---
 

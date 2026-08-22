@@ -134,13 +134,18 @@ Not yet decided; each needs a call before it is work.
   a live pane means a request per pause in typing) and a second layout for the
   narrow case. Also unbuilt: any editing affordance beyond the plain textarea —
   no toolbar, no bold/link shortcuts, no drag-and-drop image paste.
-- **`.location-view__notes` still carries no CSS rules.** (Stage 15 Milestone 3.)
-  The preview was given that class so it would inherit the view page's styling,
-  and then it turned out the class only carries a comment explaining why it has
-  no `white-space: pre-wrap`. The rendered-note styling that does exist is
-  `.notes-field__preview`, in the editor. So the two places a note is displayed
-  are styled by different rules that happen to agree today. Consolidating means
-  deciding which one owns "a rendered note" and pointing both at it.
+- **A rendered note has no shared styling between the two places it appears.**
+  (Stage 15 Milestone 3 and its follow-up.) The editor's preview and the view
+  page produce identical HTML — both from `renderNotesHTML` — but sit in
+  different containers: `.notes-field__preview` has a dashed border, padding and
+  a tinted background so it reads as a rendering rather than a field, and the
+  view page's `.location-view__notes` carries no CSS rules at all (it exists as
+  a JS selector hook). So the *content* cannot drift and the *presentation*
+  already differs. Whether that matters depends on what the preview is for: as
+  "roughly what this will look like" it is fine, and as "exactly what the page
+  will show" the chrome is a lie. Resolving it means one rule owning "a rendered
+  note" and both callers pointing at it — cheap, but it changes how the view
+  page looks, which is why it was not done inside a preview milestone.
 - **Duplicating a checklist always resets the ticks.** (Stage 15 Milestone 1.)
   The other reading — copy the checked state too, for splitting one list in two
   — was considered and deliberately not built: it wanted a second menu item on

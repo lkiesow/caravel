@@ -259,7 +259,7 @@ func TestNewSearcherSelection(t *testing.T) {
 	}
 }
 
-func TestFirstLineCleansTitles(t *testing.T) {
+func TestCleanTitle(t *testing.T) {
 	cases := map[string]string{
 		// Straight from the first live run: the official site's extracted text
 		// begins with a BOM, which renders as an unexplainable smudge.
@@ -269,14 +269,14 @@ func TestFirstLineCleansTitles(t *testing.T) {
 		"\ufeff\u200b":                   "(untitled)",
 	}
 	for in, want := range cases {
-		if got := firstLine(in); got != want {
-			t.Errorf("firstLine(%q) = %q, want %q", in, got, want)
+		if got := cleanTitle(firstLine(in)); got != want {
+			t.Errorf("cleanTitle(firstLine(%q)) = %q, want %q", in, got, want)
 		}
 	}
 	// Truncation counts runes, not bytes: cutting mid-rune would produce
 	// replacement characters in the sources list.
 	long := strings.Repeat("\u00e9", 200)
-	if got := firstLine(long); len([]rune(got)) != 120 {
-		t.Errorf("firstLine(long) is %d runes, want 120", len([]rune(got)))
+	if got := cleanTitle(long); len([]rune(got)) != 120 {
+		t.Errorf("cleanTitle(long) is %d runes, want 120", len([]rune(got)))
 	}
 }

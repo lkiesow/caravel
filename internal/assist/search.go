@@ -8,10 +8,11 @@ import (
 
 // Web search, behind an interface.
 //
-// Five backends are supported across the stage and they disagree about almost
-// everything -- auth, request shape, response shape, whether they are hosted
-// or something you run yourself. What they agree on is what a result *is*, so
-// that is the interface: a title, a URL and a snippet, which is the lowest
+// Four backends are supported and they disagree about almost everything --
+// auth, request shape, response shape, whether they are hosted or something you
+// run yourself, and even what the three fields are called (`url`/`content`,
+// `href`/`body`, `link`/`snippet`). What they agree on is what a result *is*,
+// so that is the interface: a title, a URL and a snippet, which is the lowest
 // common denominator every one of them returns and the most the model needs to
 // decide what to read.
 //
@@ -46,8 +47,8 @@ const searchMaxResults = 6
 
 // newSearcher builds the configured backend, or nil if none is configured.
 //
-// Milestone 3 implements the stub only; Milestone 5 adds Ollama Cloud and
-// Milestone 8 the remaining three. An unknown name is a startup error rather
+// Milestone 3 implemented the stub, Milestone 5 Ollama Cloud, Milestone 8 ddgs
+// and Serper. An unknown name is a startup error rather
 // than a silent fallback to "no search", because config.Load has already
 // validated the value -- reaching here with something else means the two lists
 // have drifted, which is a bug worth surfacing loudly.
@@ -62,6 +63,19 @@ func newSearcher(opts Options) (Searcher, error) {
 			return nil, fmt.Errorf("assist: search provider %q needs CARAVEL_SEARCH_KEY", opts.SearchProvider)
 		}
 		return newOllamaSearcher(opts.SearchKey, opts.SearchURL), nil
+	case "serper":
+		if opts.SearchKey == "" {
+			return nil, fmt.Errorf("assist: search provider %q needs CARAVEL_SEARCH_KEY", opts.SearchProvider)
+		}
+		return newSerperSearcher(opts.SearchKey, opts.SearchURL), nil
+	case "ddgs":
+		// Self-hosted, so there is no address to fall back on. config.Load
+		// already refuses this combination; the check is here too because this
+		// constructor is reachable from tests that do not go through Load.
+		if opts.SearchURL == "" {
+			return nil, fmt.Errorf("assist: search provider %q needs CARAVEL_SEARCH_URL", opts.SearchProvider)
+		}
+		return newDDGSSearcher(opts.SearchURL), nil
 	default:
 		return nil, fmt.Errorf("assist: unknown search provider %q", opts.SearchProvider)
 	}

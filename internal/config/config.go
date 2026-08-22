@@ -78,7 +78,7 @@ type Config struct {
 // SearchProviders are the valid values for CARAVEL_SEARCH_PROVIDER. "stub" is
 // an in-process fake for tests; the rest are real. Empty is also valid and
 // means no web search.
-var SearchProviders = []string{"stub", "ollama", "ddgs", "searxng", "serper"}
+var SearchProviders = []string{"stub", "ollama", "ddgs", "serper"}
 
 // LLMStub is the CARAVEL_LLM_URL sentinel selecting the in-process fake
 // provider rather than a real HTTP endpoint.
@@ -169,8 +169,10 @@ func Load() (Config, error) {
 	if cfg.SearchProvider != "" && cfg.LLMURL == "" {
 		return Config{}, fmt.Errorf("CARAVEL_SEARCH_PROVIDER is set but CARAVEL_LLM_URL is empty: web search is only used by the assistant")
 	}
-	// The two self-hosted providers have no address anyone could guess.
-	if (cfg.SearchProvider == "ddgs" || cfg.SearchProvider == "searxng") && cfg.SearchURL == "" {
+	// ddgs is a service the operator runs, so it has no address anyone could
+	// guess. The hosted providers default to their own endpoint and only use
+	// CARAVEL_SEARCH_URL as an override.
+	if cfg.SearchProvider == "ddgs" && cfg.SearchURL == "" {
 		return Config{}, fmt.Errorf("CARAVEL_SEARCH_PROVIDER %q needs CARAVEL_SEARCH_URL: it is a service you run yourself", cfg.SearchProvider)
 	}
 

@@ -80,11 +80,11 @@ down.
   behind the OpenAI tool-calling API instead, and keep the tool-dispatch seam
   clean enough that an MCP-backed tool could be added later without a refactor.
 
-  *Web search behind an interface,* with five implementations (~60-80 lines of
-  HTTP+JSON each), chosen by config: a stub for CI, Ollama Cloud, ddgs, SearXNG
-  and Serper. No documented default. SerpAPI, Brave, Tavily and Exa were
-  considered and left out, with reasons. See the provider table in
-  `docs/plans/stage-16.md` for all of it.
+  *Web search behind an interface,* with four implementations (~60-90 lines of
+  HTTP+JSON each), chosen by config: a stub for CI, Ollama Cloud, ddgs and
+  Serper. No documented default. SearXNG was planned and deferred (see the
+  entry below); SerpAPI, Brave, Tavily and Exa were considered and left out,
+  with reasons. See the provider table in `docs/plans/stage-16.md`.
 
   *The earlier rejection of `ddgs` recorded here was wrong on its facts*, and is
   corrected rather than deleted so nobody re-derives it. It said Python meant a
@@ -99,6 +99,18 @@ down.
   better suited to a home server than a VPS; and that scraping Google and Bing
   is against their terms of service. All three are documented caveats rather
   than disqualifying, which is why it is supported but never the default.
+
+  *SearXNG as a search backend.* **Deferred from Stage 16 Milestone 8**, where
+  it was planned and then dropped: nobody had an instance to test against, and
+  a backend verified only against a fake is a backend nobody should trust.
+  Everything needed for it already exists -- the `Searcher` interface takes a
+  ~60-line implementation, `CARAVEL_SEARCH_URL` already carries a self-hosted
+  address (ddgs uses it), and `config.SearchProviders` is one string longer.
+  What it needs is somebody with a running SearXNG. Two things to know when
+  picking it up: the JSON output format is disabled by default and has to be
+  added to `search.formats` in `settings.yml`, and it overlaps heavily with
+  ddgs, which shipped -- both are self-hosted keyless metasearch, so this is
+  for people who already run one rather than a gap in coverage.
 
   *Never let the model produce coordinates.* It returns a place name and address
   string; the existing Nominatim path resolves them. A plausible lat/lng 40km

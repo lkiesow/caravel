@@ -84,15 +84,18 @@ func TestLoadAssistValidation(t *testing.T) {
 			wantErr: "web search is only used by the assistant",
 		},
 		{
-			name: "the self-hosted providers need an address",
+			// Dropped in Milestone 8 along with the searxng implementation:
+			// see the backlog entry. A name that is no longer supported must
+			// be refused rather than silently ignored.
+			name: "a provider that was deferred is not accepted",
 			env: map[string]string{
 				"CARAVEL_LLM_URL": "stub", "CARAVEL_LLM_MODEL": "stub",
 				"CARAVEL_SEARCH_PROVIDER": "searxng",
 			},
-			wantErr: "needs CARAVEL_SEARCH_URL",
+			wantErr: "must be empty or one of",
 		},
 		{
-			name: "ddgs likewise",
+			name: "ddgs, which is self-hosted, needs an address",
 			env: map[string]string{
 				"CARAVEL_LLM_URL": "stub", "CARAVEL_LLM_MODEL": "stub",
 				"CARAVEL_SEARCH_PROVIDER": "ddgs",

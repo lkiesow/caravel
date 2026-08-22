@@ -91,10 +91,12 @@ type Limits struct {
 // the gaps.
 func DefaultLimits() Limits {
 	return Limits{
-		// Generous because the run is genuinely slow -- several searches and
-		// page reads -- and because the user is watching a progress line
-		// rather than a frozen spinner.
-		RunDuration:  2 * time.Minute,
+		// Gathering only, and lowered from two minutes in Milestone 8. Every
+		// good live run has had what it needed inside half a minute; past
+		// that the model is usually hunting a detail it will not find, and
+		// each extra page read makes the composing turn below slower as well
+		// as costlier, because the whole conversation is resent.
+		RunDuration:  90 * time.Second,
 		MaxTurns:     12,
 		MaxToolCalls: 20,
 		// Sized against what the tools actually cost: a search returns six
@@ -103,7 +105,13 @@ func DefaultLimits() Limits {
 		// the first live run spent it in 75 seconds with nothing to show.
 		MaxTokens:     120000,
 		AnswerReserve: 20000,
-		AnswerTimeout: 60 * time.Second,
+		// Raised from 60s in Milestone 8, where a Serper run gathered a long
+		// conversation and then failed *composing* it -- the whole history is
+		// resent on that turn, so it is the slowest single request of the run
+		// by a wide margin, and the one whose failure wastes everything before
+		// it. It is bounded separately from gathering precisely so it can be
+		// generous without extending the research.
+		AnswerTimeout: 2 * time.Minute,
 	}
 }
 

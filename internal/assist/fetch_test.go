@@ -127,12 +127,12 @@ func TestFetchWorksWhenTheHostIsANameNotAnIP(t *testing.T) {
 		t.Skipf("test server URL %q is not the expected loopback form", srv.URL)
 	}
 
-	text, err := newFetcherWithPolicy(true).Fetch(context.Background(), byName)
+	got, err := newFetcherWithPolicy(true).Fetch(context.Background(), byName)
 	if err != nil {
 		t.Fatalf("Fetch(%q) = %v; a hostname must reach the dialer intact", byName, err)
 	}
-	if !strings.Contains(text, "Reached by name") {
-		t.Errorf("text = %q", text)
+	if !strings.Contains(got.Text, "Reached by name") {
+		t.Errorf("text = %q", got.Text)
 	}
 }
 
@@ -165,16 +165,20 @@ func TestFetchReadsAPublicPage(t *testing.T) {
 
 	f := newFetcherWithPolicy(true)
 
-	text, err := f.Fetch(context.Background(), srv.URL)
+	got, err := f.Fetch(context.Background(), srv.URL)
 	if err != nil {
 		t.Fatalf("fetch: %v", err)
 	}
-	if !strings.Contains(text, "Kex Hostel") || !strings.Contains(text, "Skulagata 28") {
-		t.Errorf("text = %q, want the page content", text)
+	if !strings.Contains(got.Text, "Kex Hostel") || !strings.Contains(got.Text, "Skulagata 28") {
+		t.Errorf("text = %q, want the page content", got.Text)
 	}
 	// Script and style content is tokens the model pays for and cannot use.
-	if strings.Contains(text, "alert(1)") || strings.Contains(text, "color:red") {
-		t.Errorf("text = %q, want script and style stripped", text)
+	if strings.Contains(got.Text, "alert(1)") || strings.Contains(got.Text, "color:red") {
+		t.Errorf("text = %q, want script and style stripped", got.Text)
+	}
+	// The <title> is taken from <head>, which is otherwise skipped.
+	if got.Title != "Kex" {
+		t.Errorf("Title = %q, want the document title", got.Title)
 	}
 }
 
@@ -206,13 +210,13 @@ func TestFetchCapsTheBodyItReads(t *testing.T) {
 	defer srv.Close()
 
 	f := newFetcherWithPolicy(true)
-	text, err := f.Fetch(context.Background(), srv.URL)
+	got, err := f.Fetch(context.Background(), srv.URL)
 	if err != nil {
 		t.Fatalf("fetch: %v", err)
 	}
 	// What reaches the model is capped tighter than what is read.
-	if len(text) > fetchMaxTextBytes+64 {
-		t.Errorf("text is %d bytes, want it capped near %d", len(text), fetchMaxTextBytes)
+	if len(got.Text) > fetchMaxTextBytes+64 {
+		t.Errorf("text is %d bytes, want it capped near %d", len(got.Text), fetchMaxTextBytes)
 	}
 }
 
@@ -256,9 +260,29 @@ func TestRelaxedPolicyStillEnforcesTheScheme(t *testing.T) {
 }
 
 func TestExtractTextHandlesNonHTML(t *testing.T) {
-	// A plain-text page takes the parse path too; it must not come back empty.
-	got := extractText("Kex Hostel\n\nSkulagata 28, Reykjavik")
-	if !strings.Contains(got, "Kex Hostel") || !strings.Contains(got, "Skulagata 28") {
-		t.Errorf("extractText = %q", got)
+	// A plain-text page takes the parse path too; it must not come back empty,
+	// and it has no title to find.
+	title, text := extractText("Kex Hostel\n\nSkulagata 28, Reykjavik")
+	if !strings.Contains(text, "Kex Hostel") || !strings.Contains(text, "Skulagata 28") {
+		t.Errorf("extractText text = %q", text)
+	}
+	if title != "" {
+		t.Errorf("extractText title = %q, want empty", title)
+	}
+}
+
+// The reason the title is read at all: a real page's first line is very often
+// furniture. A live run in Milestone 8 listed a source as "Skip to main
+// content", which is the accessibility link every well-built site opens with.
+func TestExtractTextPrefersTheDocumentTitleOverSkipLinks(t *testing.T) {
+	title, text := extractText(`<html><head><title>Hallgrimskirkja Church</title></head>
+	  <body><a href="#main">Skip to main content</a><h1>Hallgrimskirkja</h1></body></html>`)
+	if title != "Hallgrimskirkja Church" {
+		t.Errorf("title = %q", title)
+	}
+	// The skip link is still in the text; it is only the *title* that must not
+	// be taken from it.
+	if !strings.Contains(text, "Skip to main content") {
+		t.Errorf("text = %q, want the body left alone", text)
 	}
 }

@@ -85,7 +85,7 @@ should be stated plainly since we ship support for it.
 
 ## Search providers
 
-Five, all behind one `Searcher` interface returning a normalized
+Four, all behind one `Searcher` interface returning a normalized
 `{title, url, snippet}` — the lowest common denominator every one of them
 returns. Each real implementation is ~60–80 lines of HTTP+JSON. The provider is
 chosen by `CARAVEL_SEARCH_PROVIDER`, and the three config vars from Milestone 1
@@ -95,11 +95,16 @@ cover all five with no reshaping.
 | --- | --- | --- | --- |
 | `stub` | no | in-process | CI and Playwright only; never a real answer |
 | Ollama Cloud | yes | hosted | free tier; same account and key as the LLM half |
-| `ddgs` | no | your own host | `pip install ddgs[api]`; multi-backend metasearch, scraping |
-| SearXNG | no | your own host | needs `json` added to `search.formats` in `settings.yml` |
+| `ddgs` | no | your own host | `pip install ddgs[api]`, answers on :8000; multi-backend metasearch, scraping |
 | Serper | yes | hosted | real Google results, cheapest commercial SERP API |
 
-**No documented default.** The README presents all five as equals — but as a
+**SearXNG was planned here and deferred** in Milestone 8: nobody had an
+instance to test against, and a backend verified only against a fake is one
+nobody should trust. It is now a `todo.md` entry, with the `settings.yml` note
+and the observation that it overlaps almost entirely with `ddgs`, which did
+ship.
+
+**No documented default.** The README presents all four as equals — but as a
 decision table (needs a key? self-hosted? scraping?), not five flat sections, so
 a first-time operator is not left with a bare five-way choice.
 
@@ -146,10 +151,8 @@ The effective values are printed at startup when the assistant is enabled, so
 reading a running process's environment. **Milestone 9 must document all seven
 in the README.**
 
-`ddgs` and SearXNG overlap heavily — both self-hosted, keyless, metasearch,
-JSON over HTTP. Both are supported anyway because they are cheap and serve two
-existing setups ("I already run SearXNG" versus "I want the quickest thing"),
-but they are not distinct niches and the docs should not pretend otherwise.
+`ddgs` covers the self-hosted, keyless, metasearch slot on its own now that
+SearXNG is deferred.
 
 **Deliberately not implemented**, and listed in the README as ~80 lines each for
 anyone who wants them: SerpAPI (same shape as Serper, pricier, multi-engine we
@@ -963,6 +966,64 @@ response mapping, plus one real enrichment run in the browser. For `ddgs`,
 confirm the `/search/text` request and response schema against the running
 server's own `/docs` — this plan has not verified it. For SearXNG, confirm the
 `settings.yml` change the README will tell people to make.
+
+**Done.** Two providers, not three: **SearXNG was deferred** at the user's
+request, since there was no instance to test against and a backend verified
+only against a fake is one nobody should trust. It is a `todo.md` entry now.
+
+Both shapes were taken from live servers rather than from documentation, which
+was the right call — all three providers spell the same three fields
+differently, and only one of those spellings was what memory suggested:
+
+| Provider | Title | URL | Snippet |
+| --- | --- | --- | --- |
+| Ollama Cloud | `title` | `url` | `content` |
+| ddgs | `title` | **`href`** | **`body`** |
+| Serper | `title` | **`link`** | **`snippet`**, under `organic` |
+
+That is the argument for `Searcher` normalising, restated as data.
+
+Provider-specific details worth keeping:
+
+- **`ddgs` is sent `backend: "auto"`.** Pinning one engine would let a single
+  site's markup change take search out entirely, which is the failure this
+  backend is otherwise good at surviving.
+- **A ddgs connection failure says "is it running?"**. It is the one
+  self-hosted backend, so that is nearly always the cause and it is a
+  one-command fix.
+- **Serper's 402 is reported as "out of credit"**, separately from 401/403 as
+  "the key was rejected". Conflating them sends an operator to check a key that
+  is perfectly fine.
+
+**Two things the live runs found**, neither of which any test would have:
+
+1. **A source was listed as "Skip to main content".** Source titles were the
+   first line of extracted text, and the first line of a well-built page is an
+   accessibility skip-link. `extractText` now also returns the document
+   `<title>` and that is preferred, with the first line as the fallback for
+   plain text and unparseable markup. `firstLine` and the character cleaning
+   split into two functions on the way, since they were doing two jobs.
+2. **The first Serper run failed with a timeout after a good search.** The
+   model over-researched, gathering ran the full two minutes, and *composing*
+   then exceeded its 60s — the whole conversation is resent on that turn, so it
+   is the slowest single request of the run and the one whose failure wastes
+   everything before it. Gathering is now 90s (every good run has had what it
+   needed inside thirty seconds) and composing 2m. The same run then finished
+   in **25 seconds**.
+
+**Verified.** `make ci` green. New tests cover both response shapes against an
+`httptest.Server`, ddgs tolerating a trailing slash on its base URL and naming
+a down service, Serper distinguishing credit from auth from a plain failure,
+both dropping results with no URL, and `newSearcher` over all four providers
+plus the three misconfigurations and the deferred name.
+
+Live: `ddgs` on localhost:8000 returned six results in 2.5s with no key, and
+Serper six in 1.0s for one credit. Then a full enrichment in the browser
+against each — `ddgs` produced eight suggestions including two liveness-checked
+links on the official domain and two sources; Serper produced eight in 25s with
+five sources, all of them now correctly titled from the page `<title>`. That is
+the first time the links and sources lists have run against real data, which
+the stub cannot produce.
 
 ## 9. Playwright coverage, and the docs
 

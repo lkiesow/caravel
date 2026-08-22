@@ -212,15 +212,24 @@ func (t *toolset) doFetch(ctx context.Context, args json.RawMessage) (string, er
 
 	t.events(Event{Key: "assist.progress.reading", Params: map[string]string{"url": hostOf(in.URL)}})
 
-	text, err := t.fetch.Fetch(ctx, in.URL)
+	fetched, err := t.fetch.Fetch(ctx, in.URL)
 	if err != nil {
 		return "", err
 	}
 
 	// Recorded only on success: a page that could not be read is not a source,
 	// and listing it would imply the proposal rests on something it does not.
-	t.record(Source{Title: firstLine(text), URL: in.URL})
-	return text, nil
+	//
+	// The <title> when the page has one, the first line of text otherwise. The
+	// fallback exists for plain-text pages and for markup too broken to parse;
+	// it is second choice because a real page's first line is often furniture
+	// -- "Skip to main content" made it into a live sources list before this.
+	title := strings.TrimSpace(fetched.Title)
+	if title == "" {
+		title = firstLine(fetched.Text)
+	}
+	t.record(Source{Title: cleanTitle(title), URL: in.URL})
+	return fetched.Text, nil
 }
 
 func (t *toolset) doGeocode(ctx context.Context, args json.RawMessage) (string, error) {
@@ -284,29 +293,34 @@ func hostOf(raw string) string {
 	return u.Host
 }
 
-// firstLine is a crude title for a source: the first line of the extracted
-// text. Crude on purpose -- the alternative is parsing <title>, which on a
-// real site is as often "Home | Some CMS" as it is the page's subject.
-//
-// Zero-width characters are stripped because they are invisible in the source
-// and very visible in the rendered list: the first live run produced a title
-// reading "Opening hours" followed by a stray BOM, which the sources list
-// would have shown as a smudge nobody could explain or select.
+// firstLine is the fallback title for a source: the first line of the
+// extracted text, used when the page has no <title>.
 func firstLine(s string) string {
 	line, _, _ := strings.Cut(strings.TrimSpace(s), "\n")
-	line = strings.Map(func(r rune) rune {
+	return line
+}
+
+// cleanTitle makes a title fit to show in the sources list.
+//
+// Zero-width characters are stripped because they are invisible in the source
+// and very visible once rendered: a live run produced "Opening hours" followed
+// by a stray BOM, which the list showed as a smudge nobody could explain or
+// select. Truncation counts runes, since cutting mid-rune produces replacement
+// characters.
+func cleanTitle(s string) string {
+	out := strings.Map(func(r rune) rune {
 		switch r {
 		case '\ufeff', '\u200b', '\u200c', '\u200d', '\u2060':
 			return -1
 		}
 		return r
-	}, line)
-	line = strings.TrimSpace(line)
-	if len([]rune(line)) > 120 {
-		line = string([]rune(line)[:120])
+	}, s)
+	out = strings.Join(strings.Fields(out), " ")
+	if len([]rune(out)) > 120 {
+		out = string([]rune(out)[:120])
 	}
-	if line == "" {
+	if out == "" {
 		return "(untitled)"
 	}
-	return line
+	return out
 }

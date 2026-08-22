@@ -118,7 +118,15 @@ func newFetcherWithPolicy(allowPrivate bool) *pageFetcher {
 	return f
 }
 
-// Fetch retrieves one page and returns its text.
+// page is what a fetch yields: the readable text, and the document title when
+// it has one.
+type page struct {
+	// Title is the <title>, trimmed. Empty when the page has none.
+	Title string
+	Text  string
+}
+
+// Fetch retrieves one page.
 //
 // Split into the guard and the retrieval below, rather than written as one
 // function, for a testing reason worth stating: httptest servers listen on
@@ -127,13 +135,13 @@ func newFetcherWithPolicy(allowPrivate bool) *pageFetcher {
 // tested against a real server, instead of one of them going untested because
 // the other is in the way. Nothing but Fetch and the tests call
 // fetchUnguarded, and its name is the reminder.
-func (f *pageFetcher) Fetch(ctx context.Context, rawURL string) (string, error) {
+func (f *pageFetcher) Fetch(ctx context.Context, rawURL string) (page, error) {
 	parsed, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil {
-		return "", fmt.Errorf("not a usable URL: %w", err)
+		return page{}, fmt.Errorf("not a usable URL: %w", err)
 	}
 	if err := f.guard(parsed); err != nil {
-		return "", err
+		return page{}, err
 	}
 	return f.fetchUnguarded(ctx, parsed.String())
 }
@@ -142,13 +150,13 @@ func (f *pageFetcher) Fetch(ctx context.Context, rawURL string) (string, error) 
 // The transport still applies the dial-time guard and the redirect guard, so
 // this is not a way around the policy -- only a way past the first of its
 // three checks.
-func (f *pageFetcher) fetchUnguarded(ctx context.Context, target string) (string, error) {
+func (f *pageFetcher) fetchUnguarded(ctx context.Context, target string) (page, error) {
 	ctx, cancel := context.WithTimeout(ctx, fetchTimeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
-		return "", err
+		return page{}, err
 	}
 	req.Header.Set("User-Agent", assistUserAgent())
 	req.Header.Set("Accept", "text/html,text/plain;q=0.9,*/*;q=0.1")
@@ -159,36 +167,36 @@ func (f *pageFetcher) fetchUnguarded(ctx context.Context, target string) (string
 		// sees why rather than a generic transport failure.
 		var blocked errBlockedAddress
 		if errors.As(err, &blocked) {
-			return "", blocked
+			return page{}, blocked
 		}
-		return "", fmt.Errorf("could not fetch the page: %w", err)
+		return page{}, fmt.Errorf("could not fetch the page: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("the page responded with status %d", resp.StatusCode)
+		return page{}, fmt.Errorf("the page responded with status %d", resp.StatusCode)
 	}
 
 	// Content-Type is advisory, so this is a cheap filter rather than a
 	// guarantee -- a PDF or an image is many tokens of nothing useful.
 	ct := resp.Header.Get("Content-Type")
 	if ct != "" && !strings.HasPrefix(ct, "text/") && !strings.Contains(ct, "html") && !strings.Contains(ct, "xml") {
-		return "", fmt.Errorf("the page is %s, not text", strings.SplitN(ct, ";", 2)[0])
+		return page{}, fmt.Errorf("the page is %s, not text", strings.SplitN(ct, ";", 2)[0])
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, fetchMaxBytes))
 	if err != nil {
-		return "", fmt.Errorf("could not read the page: %w", err)
+		return page{}, fmt.Errorf("could not read the page: %w", err)
 	}
 
-	text := extractText(string(body))
+	title, text := extractText(string(body))
 	if len(text) > fetchMaxTextBytes {
 		text = text[:fetchMaxTextBytes] + "\n[truncated]"
 	}
 	if strings.TrimSpace(text) == "" {
-		return "", fmt.Errorf("the page had no readable text")
+		return page{}, fmt.Errorf("the page had no readable text")
 	}
-	return text, nil
+	return page{Title: title, Text: text}, nil
 }
 
 // guard applies this fetcher's address policy.
@@ -311,26 +319,49 @@ func isUniqueLocal(ip net.IP) bool {
 	return ip.To4() == nil && v6 != nil && v6[0]&0xfe == 0xfc
 }
 
-// extractText reduces HTML to the words a model can use.
+// extractText reduces HTML to the words a model can use, and picks up the
+// document title on the way.
 //
 // Not a readability implementation: dropping script and style content and
 // collapsing whitespace removes most of the tokens without pretending to know
 // which div is the article. Anything cleverer is a maintenance burden for a
 // gain the model mostly does not need.
-func extractText(body string) string {
+//
+// The title is taken here rather than guessed from the text, because the first
+// line of a real page is very often furniture -- Milestone 8's first live run
+// produced a source listed as "Skip to main content", which is an
+// accessibility link every well-built site starts with.
+func extractText(body string) (string, string) {
 	doc, err := html.Parse(strings.NewReader(body))
 	if err != nil {
 		// Not HTML, or HTML too broken to parse. The raw text is still better
 		// than nothing -- plain-text pages take this path deliberately.
-		return collapseWhitespace(body)
+		return "", collapseWhitespace(body)
 	}
 
+	title := ""
 	var b strings.Builder
 	var walk func(*html.Node)
 	walk = func(n *html.Node) {
 		if n.Type == html.ElementNode {
 			switch n.Data {
-			case "script", "style", "noscript", "svg", "head":
+			case "title":
+				// Inside <head>, which is skipped below, so this is read
+				// before the subtree is abandoned.
+				if title == "" && n.FirstChild != nil && n.FirstChild.Type == html.TextNode {
+					title = strings.TrimSpace(n.FirstChild.Data)
+				}
+				return
+			case "script", "style", "noscript", "svg":
+				return
+			case "head":
+				// Walked for its <title> only; nothing else in here is text a
+				// reader would see.
+				for c := n.FirstChild; c != nil; c = c.NextSibling {
+					if c.Type == html.ElementNode && c.Data == "title" {
+						walk(c)
+					}
+				}
 				return
 			}
 		}
@@ -353,7 +384,7 @@ func extractText(body string) string {
 		}
 	}
 	walk(doc)
-	return collapseWhitespace(b.String())
+	return title, collapseWhitespace(b.String())
 }
 
 func collapseWhitespace(s string) string {

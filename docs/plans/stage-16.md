@@ -909,6 +909,36 @@ address take the accent colour, and no title is proposed at all. Then German
 and dark mode at 324x756: no horizontal overflow, no tap target under 44px, and
 the overwrite marker resolving to the dark danger colour.
 
+**Done (second follow-up).** Two more found by looking at the working page.
+
+**A suggestion inside a row of fields became a fourth column.** The Location
+card is a wrapping flex whose labels are `flex: 1 1 8rem`, so Latitude,
+Longitude and Address share a line -- and the coordinates suggestion landed
+*between* Longitude and Address at one column's width, cut off rather than
+using the space. `flex: 1 1 100%` on the slots fixes both halves at once: the
+suggestion gets the full line, and because a full-basis item consumes the row,
+Address is pushed to the next one. That is the *conditional* version of the two
+options considered -- Address moves only when a suggestion is actually present
+-- and it needed no JavaScript, because it is the same idiom
+`.location-form__checkbox` already uses to claim its own line. `:empty` keeps an
+unused slot out of the layout entirely.
+
+**The prompt input did not look like an input.** It had only a `flex` rule, so
+it fell through to the browser default -- most visible in dark mode. Joined to
+the existing shared rule (`.location-form input, .link-form input, ...`) rather
+than given a fourth near-identical copy, which is what `todo.md` already
+records as a problem in this file and what the Members form did before it. It
+is now byte-identical in computed style to the address-search input two cards
+below, which is its real peer: both are `input[type=search]` outside a label.
+
+**Verified.** Desktop 1280px: before a run, Latitude, Longitude and Address
+share one row and the empty slots have zero height; after, Latitude and
+Longitude keep their row, the suggestion spans the form's full 894px, and
+Address has moved below it. Mobile 324px: the suggestion is 258px, exactly the
+form width, with no horizontal overflow anywhere. The prompt input matches the
+address search in computed padding, border, radius, background, colour and font
+in both themes.
+
 ## 8. The remaining three providers
 
 `ddgs`, SearXNG and Serper, ~60–80 lines each behind the interface Milestone 3

@@ -1322,6 +1322,13 @@ button {
 .location-form input,
 .link-form input,
 .date-form input,
+/* Joined onto this group rather than given a rule of its own. todo.md already
+   records three near-identical input rules in this file that have drifted
+   apart; a fourth copy for one field would make that worse, and the assistant
+   prompt has no reason to look different from the address search two cards
+   below it -- which is also an input[type=search] and is covered here via
+   `.location-form input`. */
+.assist__prompt,
 .dialog__input {
   padding: 0.5rem;
   border-radius: 0.375rem;
@@ -2842,6 +2849,8 @@ button {
 }
 
 .assist__row .assist__prompt {
+  /* Sizing only: the look comes from the shared input rule further up, which
+     this is deliberately part of. */
   flex: 1 1 14rem;
   min-width: 0;
 }
@@ -2956,6 +2965,40 @@ button {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+
+/* Where a suggestion sits inside a *row* of fields.
+ *
+ * The Location card is a wrapping flex whose labels are `flex: 1 1 8rem`, so
+ * Latitude, Longitude and Address share a line when there is room. A
+ * suggestion dropped in as an ordinary child becomes a fourth column: the
+ * coordinates box landed between Longitude and Address, and took a column's
+ * width rather than the line it needed.
+ *
+ * `flex: 1 1 100%` is the idiom this file already uses for "give me my own
+ * line" (see .location-form__checkbox), and it does both jobs at once. The
+ * suggestion gets the full width, and because a 100%-basis item consumes the
+ * whole line, Address is pushed to the next one -- but only when a suggestion
+ * is actually there. That is the conditional behaviour rather than moving
+ * Address permanently, and it costs no JavaScript.
+ *
+ * :empty is what keeps an unused slot out of the layout. It is exact rather
+ * than defensive: these divs are written with no whitespace inside and only
+ * assist-panel.js ever fills them, so a stray text node would be a bug in
+ * that file rather than an expected case to tolerate.
+ */
+.location-form [data-assist-field] {
+  flex: 1 1 100%;
+}
+
+.location-form [data-assist-field]:empty {
+  display: none;
+}
+
+/* The row's own 0.5rem gap does the spacing here, so the stacked-field margins
+   below would double it. */
+.location-form [data-assist-field] .assist-suggestion {
+  margin: 0;
 }
 
 /* --- One suggestion, under the field it concerns ------------------------- */

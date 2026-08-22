@@ -2823,15 +2823,16 @@ button {
 
 /* --- The assistant panel (Stage 16) --------------------------------------
  *
- * Sits at the bottom of the Basic info card, below the fields it fills in.
- * Deliberately quieter than the form above it: this is an offer, not part of
- * the form, and it should not compete with the fields somebody came here to
- * type into.
+ * Two parts in two places. The control sits at the top of the Basic info card,
+ * because on a new location it is where you start rather than an afterthought
+ * below the fields. The suggestions it produces are placed by assist-panel.js
+ * into the [data-assist-field] slots throughout the editor, each one directly
+ * under the control it is about.
  */
 .assist {
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--color-border);
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .assist__row {
@@ -2846,7 +2847,7 @@ button {
 }
 
 .assist__hint,
-.assist__sources-hint {
+.assist-sources__hint {
   margin: 0.5rem 0 0;
   font-size: 0.875rem;
   color: var(--color-text-muted);
@@ -2859,9 +2860,9 @@ button {
   margin-top: 0.75rem;
   font-size: 0.875rem;
   color: var(--color-text-muted);
-  /* The checkbox itself is 14px, so the label is the tap target — the same
-   * arrangement as .location-form__checkbox, matched to its 44px so the two
-   * do not disagree about how big a checkbox row is. */
+  /* The checkbox itself is 14px, so the label is the tap target - the same
+   * arrangement as .location-form__checkbox, matched to its 44px so the two do
+   * not disagree about how big a checkbox row is. */
   min-height: 44px;
 }
 
@@ -2879,13 +2880,23 @@ button {
   margin-top: 0.75rem;
 }
 
+/* display:flex above wins over the UA's [hidden] rule, so without this the
+ * spinner and its Cancel button are on screen permanently - which is exactly
+ * what shipped in the first cut of this panel. The same trap is documented on
+ * .image-field__preview further up this file; it is worth assuming any rule
+ * that sets display needs its own [hidden] partner. */
+.assist__status[hidden],
+.assist__bar[hidden] {
+  display: none;
+}
+
 .assist__progress {
   flex: 1 1 10rem;
   min-width: 0;
   font-size: 0.875rem;
   color: var(--color-text-muted);
-  /* A long search query must not push Cancel off a narrow screen: the button
-   * is the one control that has to stay reachable during a run. */
+  /* A long search query must not push Cancel off a narrow screen: it is the
+   * one control that has to stay reachable during a run. */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2896,7 +2907,7 @@ button {
   width: 1rem;
   height: 1rem;
   border: 2px solid var(--color-border);
-  border-top-color: var(--color-primary);
+  border-top-color: var(--color-accent);
   border-radius: 50%;
   animation: assist-spin 0.8s linear infinite;
 }
@@ -2916,52 +2927,56 @@ button {
   }
 }
 
-.assist__error {
+.assist__error,
+.assist__note {
   margin-top: 0.75rem;
 }
 
-.assist__result {
-  margin-top: 1rem;
+.assist__note {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
 }
 
-.assist__result-header {
+/* The bulk actions, shown only while something is still undecided. */
+.assist__bar {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
 }
 
-.assist__result-header h3 {
-  margin: 0;
-  font-size: 1rem;
+.assist__count {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
 }
 
-.assist__suggestions,
-.assist__source-list {
-  list-style: none;
-  margin: 0.75rem 0 0;
-  padding: 0;
+.assist__bar-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
+
+/* --- One suggestion, under the field it concerns ------------------------- */
 
 .assist-suggestion {
-  padding: 0.75rem;
-  margin-bottom: 0.5rem;
+  margin: -0.25rem 0 1rem;
+  padding: 0.625rem 0.75rem;
   border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-accent);
   border-radius: 0.375rem;
-  background: var(--color-surface);
+  background: var(--color-accent-tint);
 }
 
 /* An overwrite is the case the whole review exists for, so it is the one that
- * looks different: an edge, not a colour anyone has to decode. Reuses
- * --color-danger-fg because it is the token that already means "this destroys
- * something" and because it is defined in both themes -- a new warning colour
- * would have needed a dark-mode value inventing to go with it. */
+ * looks different. Reuses --color-danger-fg because it already means "this
+ * destroys something" and is defined in both themes; a new warning colour
+ * would have needed a dark value inventing to go with it. The current value is
+ * not repeated inside the box - it is in the field immediately above. */
 .assist-suggestion--overwrite {
-  border-left: 3px solid var(--color-danger-fg);
-}
-
-.assist-suggestion--accepted {
-  opacity: 0.7;
+  border-left-color: var(--color-danger-fg);
+  background: var(--color-danger-tint);
 }
 
 .assist-suggestion__head {
@@ -2971,65 +2986,53 @@ button {
   flex-wrap: wrap;
 }
 
-.assist-suggestion__name {
-  font-weight: 600;
-}
-
-.assist-suggestion__badge {
-  font-size: 0.75rem;
-  color: var(--color-danger-fg);
-}
-
-.assist-suggestion__value {
-  margin-top: 0.5rem;
-}
-
-.assist-suggestion__label {
-  display: block;
+.assist-suggestion__tag {
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: var(--color-text-muted);
 }
 
-.assist-suggestion__value p {
-  margin: 0.125rem 0 0;
-  /* Notes arrive as markdown source and can be several paragraphs; keep the
-   * author's line breaks rather than running it all together. */
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+.assist-suggestion__badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-danger-fg);
 }
 
-/* The "before" is struck through rather than merely greyed: at a glance the
- * row has to say "this text goes away", and grey alone reads as secondary
- * rather than as doomed. */
-.assist-suggestion__current p {
-  text-decoration: line-through;
-  color: var(--color-text-muted);
+.assist-suggestion__value {
+  margin: 0.25rem 0 0;
+  /* Notes arrive as markdown source and can run to several paragraphs; keep
+   * the line breaks rather than running it all together. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .assist-suggestion__actions {
   display: flex;
   gap: 0.5rem;
-  margin-top: 0.75rem;
+  margin-top: 0.625rem;
 }
 
-.assist-suggestion__done {
-  margin: 0.75rem 0 0;
-  font-size: 0.875rem;
-  color: var(--color-text-muted);
-}
+/* --- Sources ------------------------------------------------------------- */
 
-.assist__sources {
+.assist-sources {
   margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border);
 }
 
-.assist__sources h4 {
+.assist-sources h4 {
   margin: 0 0 0.5rem;
   font-size: 0.875rem;
 }
 
-.assist__source-list li {
+.assist-sources ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.assist-sources li {
   margin-bottom: 0.25rem;
   font-size: 0.875rem;
   overflow-wrap: anywhere;

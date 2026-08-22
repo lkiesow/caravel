@@ -175,4 +175,8 @@
   <path d="M22 4h-4" />
   <circle cx="4" cy="20" r="2" />
   </symbol>
+  <symbol id="lucide-check-check" viewBox="0 0 24 24">
+    <path d="M18 6 7 17l-5-5" />
+  <path d="m22 10-7.5 7.5L13 16" />
+  </symbol>
 </svg>

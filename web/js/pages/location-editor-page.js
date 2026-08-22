@@ -97,8 +97,9 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
 
         <div class="editor-card">
           <h2 data-i18n="location.editor.basicInfo"></h2>
-          <div class="item-form-slot"></div>
           <div class="assist-slot" hidden></div>
+          <div class="item-form-slot"></div>
+          <div data-assist-field="sources"></div>
         </div>
 
         <div class="editor-card">
@@ -117,10 +118,12 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
               <span data-i18n="item.detail.lng"></span>
               <input type="number" step="any" name="lng" />
             </label>
+            <div data-assist-field="coordinates"></div>
             <label>
               <span data-i18n="item.detail.address"></span>
               <input type="text" name="address" />
             </label>
+            <div data-assist-field="address"></div>
             <label class="location-form__checkbox">
               <input type="checkbox" name="showOnMap" checked />
               <span data-i18n="location.form.showOnMap"></span>
@@ -146,6 +149,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
         <div class="editor-card">
           <h2 data-i18n="item.detail.links"></h2>
           <ul class="link-list"></ul>
+          <div data-assist-field="links"></div>
           <form class="link-form">
             <input type="url" name="url" data-i18n-placeholder="item.detail.linkUrl" required />
             <input type="text" name="label" data-i18n-placeholder="item.detail.linkLabel" />
@@ -237,13 +241,20 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     assistPanel?.destroy();
     assistPanel = renderAssistPanel(container.querySelector(".assist-slot"), {
       tripId,
+      // Suggestions are placed into the [data-assist-field] slots scattered
+      // through the page, so the panel needs the whole editor to find them --
+      // they sit in the Basic info card, the Location card and the Links card.
+      root: container,
       // Read live rather than captured: the point of enriching is to see what
       // is in front of the user, including anything typed and not yet saved.
       readCurrent: () => {
         const values = itemForm.readValues();
         return {
           title: values.title ?? "",
-          category: values.category ?? "",
+          // Empty while the select is still showing its default on a new
+          // location: see isCategoryChosen. Sending "site" unchosen would make
+          // every category suggestion claim to overwrite something.
+          category: itemForm.isCategoryChosen() ? (values.category ?? "") : "",
           type: values.type ?? "",
           notes: values.notes ?? "",
           address: container.querySelector('.location-form [name="address"]').value,

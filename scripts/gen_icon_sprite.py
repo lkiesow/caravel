@@ -49,6 +49,7 @@ ICONS = [
     "arrow-down-up",
     "chevron-up",
     "sparkles",
+    "check-check",
 ]
 
 

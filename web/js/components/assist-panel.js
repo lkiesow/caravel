@@ -3,35 +3,41 @@ import { t, translatePage, getLocale } from "../i18n.js";
 import { icon } from "../icon.js";
 import { getCurrentUser } from "../session.js";
 
-// The "Search via AI" control and the review panel it produces.
+// The "Search via AI" control, and the suggestions it produces.
+//
+// # Where the suggestions go
+//
+// Not into a list of their own. Each one is placed in the empty
+// `[data-assist-field]` slot that sits directly under the control it is about:
+// the suggested title under the title box, the suggested category under the
+// category select, and so on. A suggestion three cards away from the field it
+// concerns cannot be compared with what is already there, which is the only
+// thing the reviewer is actually trying to do.
+//
+// That also removes the need to show the current value inside the suggestion.
+// It is right there in the field above it. What stays is the *marking* -- an
+// overwrite gets a red edge and a badge -- because "this will replace
+// something" is the one thing the neighbouring field cannot tell you at a
+// glance.
 //
 // # Nothing here writes
 //
-// Every accepted field goes into the editor's draft, exactly as if it had been
-// typed. Save is still the only thing that commits, which is what makes the
-// whole feature safe to try: the worst outcome of a bad suggestion is that you
-// press Cancel.
-//
-// # Per-field review, and why the before/after matters
-//
-// A field that is currently empty shows only what is proposed. A field with
-// something in it shows both, labelled, and is marked as an overwrite. That is
-// the difference between a tool that fills gaps and one that can quietly
-// destroy a paragraph somebody wrote from memory in a hotel lobby. The server
-// computes `overwrites` so the rule lives in one place, but the visible
-// before/after is what actually protects the user.
+// Accepting fills the form, exactly as typing would; Save is still the only
+// thing that commits. An accepted suggestion then removes itself, because it
+// has become the field above it and leaving a copy behind is just a second
+// thing to read. Rejecting removes it too. So working down the form empties it
+// as you go, and whatever is left is what you have not decided yet.
 //
 // # Hidden unless the server can do it
 //
-// Same shape as the address search above it: `getCurrentUser().assist` is a
-// server capability, and a control that could only ever report "not enabled"
-// is worse than no control.
+// `getCurrentUser().assist` is a server capability. A control that could only
+// ever report "not enabled" is worse than no control.
 
-// The progress keys the server may send, spelled out for two reasons. It lets
-// an unknown key -- a server newer than this file -- fall back to something
-// generic instead of rendering a raw key at the user. And it is the only way
+// The progress keys the server may send, spelled out for two reasons. An
+// unknown key -- a server newer than this file -- falls back to something
+// generic rather than rendering a raw key at the user. And it is the only way
 // scripts/i18n.py can see these keys at all: they arrive at runtime, and its
-// scanner cannot follow a variable into t(). See the note in docs/plans/todo.md.
+// scanner cannot follow a variable into t(). See docs/plans/todo.md.
 const PROGRESS_KEYS = new Set([
   "assist.progress.thinking",
   "assist.progress.searching",
@@ -42,8 +48,6 @@ const PROGRESS_KEYS = new Set([
   "assist.progress.wrappingUp",
 ]);
 
-// Error codes the server sends with a failure event, mapped to copy. Anything
-// unrecognised falls back to the generic line rather than showing a code.
 const ERROR_KEYS = {
   assist_timeout: "assist.error.timeout",
   assist_budget: "assist.error.budget",
@@ -51,19 +55,12 @@ const ERROR_KEYS = {
   assist_failed: "assist.error.failed",
 };
 
-// The fields the panel knows how to label and apply. A field the server
-// proposes that is not in here is ignored rather than rendered namelessly --
-// again, a newer server should degrade rather than produce nonsense.
-const FIELD_KEYS = {
-  title: "assist.field.title",
-  category: "assist.field.category",
-  type: "assist.field.type",
-  notes: "assist.field.notes",
-  address: "assist.field.address",
-};
+// The scalar fields the panel knows how to place. A field name the server
+// invents has no slot and is skipped, rather than being rendered somewhere
+// arbitrary.
+const FIELD_NAMES = ["title", "category", "type", "notes", "address"];
 
-export function renderAssistPanel(container, { tripId, readCurrent, applyField, applyLink, applyCoordinates }) {
-  // The capability check, before anything is rendered.
+export function renderAssistPanel(container, { tripId, root, readCurrent, applyField, applyLink, applyCoordinates }) {
   if (!getCurrentUser()?.assist) {
     container.hidden = true;
     return { destroy() {} };
@@ -93,21 +90,19 @@ export function renderAssistPanel(container, { tripId, readCurrent, applyField, 
           ${icon("x")} <span data-i18n="common.cancel"></span>
         </button>
       </div>
-      <p class="assist__error" role="alert" hidden></p>
 
-      <div class="assist__result" hidden>
-        <div class="assist__result-header">
-          <h3 data-i18n="assist.proposalHeading"></h3>
-          <button type="button" class="btn btn-secondary btn-row" data-action="assist-dismiss">
-            <span data-i18n="assist.dismiss"></span>
+      <p class="assist__error" role="alert" hidden></p>
+      <p class="assist__note" role="status" hidden></p>
+
+      <div class="assist__bar" hidden>
+        <span class="assist__count"></span>
+        <div class="assist__bar-actions">
+          <button type="button" class="btn btn-secondary btn-row" data-action="assist-accept-all">
+            ${icon("check-check")} <span data-i18n="assist.acceptAll"></span>
           </button>
-        </div>
-        <p class="assist__empty" data-i18n="assist.noSuggestions" hidden></p>
-        <ul class="assist__suggestions"></ul>
-        <div class="assist__sources" hidden>
-          <h4 data-i18n="assist.sources"></h4>
-          <ul class="assist__source-list"></ul>
-          <p class="assist__sources-hint" data-i18n="assist.sourcesHint"></p>
+          <button type="button" class="btn btn-secondary btn-row" data-action="assist-dismiss-all">
+            ${icon("x")} <span data-i18n="assist.dismissAll"></span>
+          </button>
         </div>
       </div>
     </div>
@@ -120,13 +115,14 @@ export function renderAssistPanel(container, { tripId, readCurrent, applyField, 
   const statusEl = container.querySelector(".assist__status");
   const progressEl = container.querySelector(".assist__progress");
   const errorEl = container.querySelector(".assist__error");
-  const resultEl = container.querySelector(".assist__result");
-  const emptyEl = container.querySelector(".assist__empty");
-  const listEl = container.querySelector(".assist__suggestions");
-  const sourcesEl = container.querySelector(".assist__sources");
-  const sourceListEl = container.querySelector(".assist__source-list");
+  const noteEl = container.querySelector(".assist__note");
+  const barEl = container.querySelector(".assist__bar");
+  const countEl = container.querySelector(".assist__count");
 
   let controller = null;
+  // Every suggestion currently on the page, so Accept all / Dismiss all have
+  // something to act on and the counter has something to count.
+  let outstanding = [];
 
   function setRunning(running) {
     statusEl.hidden = !running;
@@ -134,7 +130,7 @@ export function renderAssistPanel(container, { tripId, readCurrent, applyField, 
     promptEl.disabled = running;
     if (running) {
       errorEl.hidden = true;
-      resultEl.hidden = true;
+      noteEl.hidden = true;
     }
   }
 
@@ -143,9 +139,86 @@ export function renderAssistPanel(container, { tripId, readCurrent, applyField, 
     errorEl.hidden = false;
   }
 
-  function showProgress(event) {
-    const key = PROGRESS_KEYS.has(event.key) ? event.key : "assist.progress.thinking";
-    progressEl.textContent = t(key, event.params ?? {});
+  function showNote(key) {
+    noteEl.textContent = t(key);
+    noteEl.hidden = false;
+  }
+
+  function forget(entry) {
+    entry.el.remove();
+    outstanding = outstanding.filter((o) => o !== entry);
+    syncBar();
+  }
+
+  function syncBar() {
+    const n = outstanding.length;
+    barEl.hidden = n === 0;
+    countEl.textContent = t("assist.outstanding", { count: n }, n);
+  }
+
+  function clearSuggestions() {
+    for (const entry of outstanding) entry.el.remove();
+    outstanding = [];
+    syncBar();
+  }
+
+  // One suggestion, built with DOM calls rather than a template string: every
+  // value in a proposal came off a web page the agent read, so one forgotten
+  // escape in a template is an injection.
+  function addSuggestion(fieldName, { value, overwrites, onAccept }) {
+    const slot = root.querySelector(`[data-assist-field="${fieldName}"]`);
+    // No slot means this page has nowhere sensible to put it -- a newer server
+    // proposing a field this build does not have. Skipped rather than dumped
+    // somewhere arbitrary.
+    if (!slot) return;
+
+    const el = document.createElement("div");
+    el.className = "assist-suggestion";
+    if (overwrites) el.classList.add("assist-suggestion--overwrite");
+
+    const head = document.createElement("div");
+    head.className = "assist-suggestion__head";
+    const tag = document.createElement("span");
+    tag.className = "assist-suggestion__tag";
+    tag.textContent = t("assist.suggestionLabel");
+    head.appendChild(tag);
+    if (overwrites) {
+      const badge = document.createElement("span");
+      badge.className = "assist-suggestion__badge";
+      badge.textContent = t("assist.replaces");
+      head.appendChild(badge);
+    }
+
+    const body = document.createElement("p");
+    body.className = "assist-suggestion__value";
+    body.textContent = value;
+
+    const actions = document.createElement("div");
+    actions.className = "assist-suggestion__actions";
+    const accept = document.createElement("button");
+    accept.type = "button";
+    accept.className = "btn btn-secondary btn-row";
+    accept.textContent = t("assist.accept");
+    const reject = document.createElement("button");
+    reject.type = "button";
+    reject.className = "btn btn-secondary btn-row";
+    reject.textContent = t("assist.reject");
+    actions.append(accept, reject);
+
+    el.append(head, body, actions);
+    slot.appendChild(el);
+
+    const entry = {
+      el,
+      accept: () => {
+        onAccept();
+        forget(entry);
+      },
+    };
+    accept.addEventListener("click", entry.accept);
+    reject.addEventListener("click", () => forget(entry));
+    outstanding.push(entry);
+    syncBar();
   }
 
   async function run() {
@@ -161,6 +234,10 @@ export function renderAssistPanel(container, { tripId, readCurrent, applyField, 
       return;
     }
 
+    // A second run replaces the first run's suggestions rather than piling up
+    // two opinions under one field.
+    clearSuggestions();
+
     controller = new AbortController();
     setRunning(true);
     progressEl.textContent = t("assist.progress.thinking");
@@ -170,18 +247,14 @@ export function renderAssistPanel(container, { tripId, readCurrent, applyField, 
       let failure = null;
       await api.postStream(
         `/trips/${tripId}/assist/location`,
-        {
-          mode,
-          prompt,
-          ...current,
-          include_trip_context: contextToggle.checked,
-          locale: getLocale(),
-        },
+        { mode, prompt, ...current, include_trip_context: contextToggle.checked, locale: getLocale() },
         {
           signal: controller.signal,
           onEvent: (event) => {
-            if (event.name === "progress") showProgress(event.data);
-            else if (event.name === "proposal") proposal = event.data;
+            if (event.name === "progress") {
+              const key = PROGRESS_KEYS.has(event.data.key) ? event.data.key : "assist.progress.thinking";
+              progressEl.textContent = t(key, event.data.params ?? {});
+            } else if (event.name === "proposal") proposal = event.data;
             else if (event.name === "error") failure = event.data;
           },
         }
@@ -192,14 +265,14 @@ export function renderAssistPanel(container, { tripId, readCurrent, applyField, 
         return;
       }
       if (!proposal) {
-        // The stream ended without either. Rare, but a silent no-op would look
-        // exactly like a bug in the page rather than one in the run.
+        // The stream ended with neither. Rare, but a silent no-op would look
+        // like a bug in the page rather than one in the run.
         showError("assist.error.failed");
         return;
       }
-      renderProposal(proposal);
+      placeProposal(proposal);
     } catch (err) {
-      // Cancelling is not a failure, and there is nothing to report.
+      // Cancelling is not a failure and there is nothing to report.
       if (err?.name === "AbortError") return;
       showError(ERROR_KEYS[err?.body?.code] ?? "assist.error.failed");
     } finally {
@@ -208,162 +281,88 @@ export function renderAssistPanel(container, { tripId, readCurrent, applyField, 
     }
   }
 
-  function renderProposal(proposal) {
-    listEl.innerHTML = "";
-    resultEl.hidden = false;
-
-    let count = 0;
+  function placeProposal(proposal) {
     for (const field of proposal.fields ?? []) {
-      if (!FIELD_KEYS[field.name]) continue;
-      listEl.appendChild(fieldRow(field));
-      count++;
+      if (!FIELD_NAMES.includes(field.name)) continue;
+      // Category is an enum on the wire and a translated label in the select
+      // it changes; show what the control will show.
+      const shown = field.name === "category" ? t(`item.category.${field.proposed}`) : field.proposed;
+      addSuggestion(field.name, {
+        value: shown,
+        overwrites: !!field.overwrites,
+        onAccept: () => applyField(field.name, field.proposed),
+      });
     }
+
     for (const link of proposal.links ?? []) {
-      listEl.appendChild(linkRow(link));
-      count++;
+      addSuggestion("links", {
+        value: link.label ? `${link.label} — ${link.url}` : link.url,
+        overwrites: false,
+        onAccept: () => applyLink(link),
+      });
     }
+
     if (proposal.lat != null && proposal.lng != null) {
-      listEl.appendChild(coordinateRow(proposal.lat, proposal.lng));
-      count++;
+      addSuggestion("coordinates", {
+        // Six decimals is about 10cm; more is noise from a geocoder that does
+        // not know the building to that precision anyway.
+        value: `${Number(proposal.lat).toFixed(6)}, ${Number(proposal.lng).toFixed(6)}`,
+        overwrites: false,
+        onAccept: () => applyCoordinates({ lat: proposal.lat, lng: proposal.lng }),
+      });
     }
 
-    emptyEl.hidden = count > 0;
+    if (outstanding.length === 0) {
+      showNote("assist.noSuggestions");
+      return;
+    }
 
-    // Sources are shown and stored nowhere: once a suggestion is accepted it
-    // is just the user's own data. They are here so the proposal can be
-    // judged, not as provenance.
-    sourceListEl.innerHTML = "";
-    const sources = proposal.sources ?? [];
-    sourcesEl.hidden = sources.length === 0;
+    // Sources are shown so the proposal can be judged, and stored nowhere:
+    // once a suggestion is accepted it is just the user's own data.
+    renderSources(proposal.sources ?? []);
+    // The first suggestion is usually below the fold on a phone.
+    outstanding[0].el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+
+  function renderSources(sources) {
+    const slot = root.querySelector('[data-assist-field="sources"]');
+    if (!slot) return;
+    slot.innerHTML = "";
+    if (sources.length === 0) return;
+
+    const box = document.createElement("div");
+    box.className = "assist-sources";
+    const heading = document.createElement("h4");
+    heading.textContent = t("assist.sources");
+    const list = document.createElement("ul");
     for (const source of sources) {
       const li = document.createElement("li");
       const a = document.createElement("a");
       a.href = source.url;
       a.target = "_blank";
       a.rel = "noopener noreferrer";
-      // textContent throughout: every string in a proposal came off a web
-      // page the agent read, so none of it is ours to trust as markup.
       a.textContent = source.title || source.url;
       li.appendChild(a);
-      sourceListEl.appendChild(li);
+      list.appendChild(li);
     }
-  }
-
-  // One suggestion row, with Accept and Reject. Built with DOM calls rather
-  // than an HTML string for the reason above: these values are
-  // attacker-influenced, and one forgotten escape in a template is an
-  // injection.
-  function suggestionRow({ labelKey, overwrites, currentValue, proposedValue, onAccept }) {
-    const li = document.createElement("li");
-    li.className = "assist-suggestion";
-    if (overwrites) li.classList.add("assist-suggestion--overwrite");
-
-    const head = document.createElement("div");
-    head.className = "assist-suggestion__head";
-    const name = document.createElement("span");
-    name.className = "assist-suggestion__name";
-    name.textContent = t(labelKey);
-    head.appendChild(name);
-    if (overwrites) {
-      const badge = document.createElement("span");
-      badge.className = "assist-suggestion__badge";
-      badge.textContent = t("assist.replaces");
-      head.appendChild(badge);
-    }
-    li.appendChild(head);
-
-    // The before/after. Only shown when there is a before -- an empty field
-    // needs no comparison, and a row of blanks is noise.
-    if (overwrites) {
-      li.appendChild(valueBlock("assist.current", currentValue, "assist-suggestion__current"));
-    }
-    li.appendChild(valueBlock("assist.proposed", proposedValue, "assist-suggestion__proposed"));
-
-    const actions = document.createElement("div");
-    actions.className = "assist-suggestion__actions";
-
-    const accept = document.createElement("button");
-    accept.type = "button";
-    accept.className = "btn btn-secondary btn-row";
-    accept.textContent = t("assist.accept");
-
-    const reject = document.createElement("button");
-    reject.type = "button";
-    reject.className = "btn btn-secondary btn-row";
-    reject.textContent = t("assist.reject");
-
-    accept.addEventListener("click", () => {
-      onAccept();
-      // The row stays, marked, rather than vanishing: a list that shortens as
-      // you work through it loses your place, and "did I already take that
-      // one?" is a question the panel should answer for itself.
-      actions.remove();
-      li.classList.add("assist-suggestion--accepted");
-      const done = document.createElement("p");
-      done.className = "assist-suggestion__done";
-      done.textContent = t("assist.accepted");
-      li.appendChild(done);
-    });
-    reject.addEventListener("click", () => li.remove());
-
-    actions.append(accept, reject);
-    li.appendChild(actions);
-    return li;
-  }
-
-  function valueBlock(labelKey, value, className) {
-    const wrap = document.createElement("div");
-    wrap.className = `assist-suggestion__value ${className}`;
-    const label = document.createElement("span");
-    label.className = "assist-suggestion__label";
-    label.textContent = t(labelKey);
-    const body = document.createElement("p");
-    body.textContent = value;
-    wrap.append(label, body);
-    return wrap;
-  }
-
-  function fieldRow(field) {
-    // Category is an enum on the wire and a translated label in the select it
-    // changes. Both sides of the before/after go through the same lookup, or
-    // the row reads "site -> Stay" and looks like two different kinds of
-    // thing rather than one value changing.
-    const display = (value) => (field.name === "category" && value ? t(`item.category.${value}`) : value);
-    return suggestionRow({
-      labelKey: FIELD_KEYS[field.name],
-      overwrites: !!field.overwrites,
-      currentValue: display(field.current),
-      proposedValue: display(field.proposed),
-      onAccept: () => applyField(field.name, field.proposed),
-    });
-  }
-
-  function linkRow(link) {
-    return suggestionRow({
-      labelKey: "assist.field.link",
-      overwrites: false,
-      proposedValue: link.label ? `${link.label} — ${link.url}` : link.url,
-      onAccept: () => applyLink(link),
-    });
-  }
-
-  function coordinateRow(lat, lng) {
-    return suggestionRow({
-      labelKey: "assist.field.coordinates",
-      overwrites: false,
-      // Six decimals is about 10cm; more is noise from a geocoder that does
-      // not know the building to that precision anyway.
-      proposedValue: `${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}`,
-      onAccept: () => applyCoordinates({ lat, lng }),
-    });
+    const hint = document.createElement("p");
+    hint.className = "assist-sources__hint";
+    hint.textContent = t("assist.sourcesHint");
+    box.append(heading, list, hint);
+    slot.appendChild(box);
+    // Tracked like a suggestion so Dismiss all clears it too: the sources
+    // belong to a proposal nobody is looking at any more.
+    outstanding.push({ el: box, accept: () => box.remove() });
+    syncBar();
   }
 
   runBtn.addEventListener("click", run);
   container.querySelector('[data-action="assist-cancel"]').addEventListener("click", () => controller?.abort());
-  container.querySelector('[data-action="assist-dismiss"]').addEventListener("click", () => {
-    resultEl.hidden = true;
-    listEl.innerHTML = "";
+  container.querySelector('[data-action="assist-accept-all"]').addEventListener("click", () => {
+    // A copy, because accept() mutates the list it is iterating.
+    for (const entry of [...outstanding]) entry.accept();
   });
+  container.querySelector('[data-action="assist-dismiss-all"]').addEventListener("click", clearSuggestions);
 
   // Enter in the prompt runs it, and must not reach the form's own keydown
   // handler, where Enter means "save the page".
@@ -373,6 +372,8 @@ export function renderAssistPanel(container, { tripId, readCurrent, applyField, 
     e.stopPropagation();
     run();
   });
+
+  syncBar();
 
   return {
     // Called when the page re-renders under the panel, so a run in flight does

@@ -851,6 +851,64 @@ browser against a stub-configured server:
   checkbox row was 38px against the 44px that `.location-form__checkbox`
   already uses for the same pattern, and was matched to it.
 
+**Done (follow-up).** Review of the working UI found one real bug and a layout
+that was wrong in principle, both fixed.
+
+**The bug: the spinner and its Cancel button were on screen permanently**, and
+the progress text never cleared, so a finished run sat forever on "Checking the
+links". One cause for all three: `.assist__status { display: flex }` beats the
+UA's `[hidden] { display: none }`, so the `hidden` attribute did nothing. This
+file already documents the same trap on `.image-field__preview`, and it was
+walked into anyway -- the lesson worth keeping is that in this codebase *any*
+rule setting `display` needs its own `[hidden]` partner, which
+`.assist__status[hidden]` and `.assist__bar[hidden]` now have.
+
+**The layout: suggestions moved out of a list and under the fields they
+concern.** A suggested title three cards below the title box cannot be compared
+with what is in the box, which is the only thing a reviewer is trying to do.
+Each suggestion now renders into a `[data-assist-field]` slot placed directly
+under its control -- title, category, type, notes in `location-form.js`,
+coordinates and address in the Location card, links in the Links card. Three
+consequences:
+
+- **The current value is no longer repeated inside the suggestion.** It is in
+  the field immediately above. What stays is the marking: a red edge and a
+  badge for an overwrite, an accent edge otherwise.
+- **An accepted suggestion removes itself**, having become the field above it.
+  Rejected ones go too, so working down the form empties it and whatever is
+  left is what has not been decided.
+- **The control moved to the top of the Basic info card**, because on a new
+  location it is where you start rather than an afterthought below the fields.
+
+**Accept all and Dismiss all** replace the single unlabelled "Dismiss", both
+with icons (`check-check`, `x`) and both alongside a live count of what is
+still outstanding. The bar hides itself when nothing is left.
+
+Two further bugs surfaced while verifying the rework:
+
+1. **The counter read "0 suggestions" with six on screen.** `syncBar()` ran on
+   removal but not on insertion, and the only path that called it afterwards
+   returned early when there were no sources -- which, with the stub, is
+   always.
+2. **Every category suggestion claimed to overwrite something on a new
+   location.** A `<select>` is never empty, so an untouched form reported
+   `category: "site"` and the server correctly computed an overwrite against
+   it. An untouched select on a new location now reports itself as unset. Worth
+   fixing rather than tolerating: a warning that cries wolf on every new
+   location is a warning people stop reading, and that badge is the one thing
+   standing between a suggestion and a destroyed paragraph.
+
+**Verified.** `make ci` green, 305 i18n keys in sync. In a real browser against
+the stub: idle shows no spinner, no Cancel and no bar; a run places six
+suggestions each in its own field slot; accepting fills the field and removes
+the suggestion; rejecting removes it and leaves the field alone; the count
+tracks both; Accept all applies the remainder and empties the bar; Dismiss all
+clears everything and applies nothing. On a location with existing content,
+category, type and notes are marked as overwrites in red while coordinates and
+address take the accent colour, and no title is proposed at all. Then German
+and dark mode at 324x756: no horizontal overflow, no tap target under 44px, and
+the overwrite marker resolving to the dark danger colour.
+
 ## 8. The remaining three providers
 
 `ddgs`, SearXNG and Serper, ~60–80 lines each behind the interface Milestone 3

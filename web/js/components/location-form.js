@@ -11,6 +11,13 @@ let notesFieldSeq = 0;
 // Renders the Basic info fields of a location into `container`. Pass an
 // existing item to prefill them, or null to start empty.
 //
+// The empty `[data-assist-field]` divs are where the assistant puts a
+// suggestion for that field. They live here, directly under the control each
+// one is about, rather than in a list of their own: a suggested title three
+// cards away from the title box cannot be compared with what is in the box,
+// which is the whole job. assist-panel.js finds them by attribute and owns
+// everything that goes inside them.
+//
 // This form does not save anything and owns no button. The location editor
 // commits every card - basic info, coordinates, links, dates - in one
 // request (see location-editor-page.js), so the submit control belongs at
@@ -27,16 +34,19 @@ export function renderItemForm(container, item, { onSubmit }) {
         <span data-i18n="location.form.title"></span>
         <input type="text" name="title" required />
       </label>
+      <div data-assist-field="title"></div>
       <label>
         <span data-i18n="location.form.category"></span>
         <select name="category">
           ${CATEGORIES.map((c) => `<option value="${c}">${t(`item.category.${c}`)}</option>`).join("")}
         </select>
       </label>
+      <div data-assist-field="category"></div>
       <label>
         <span data-i18n="location.form.type"></span>
         <input type="text" name="type" data-i18n-placeholder="location.form.typePlaceholder" />
       </label>
+      <div data-assist-field="type"></div>
       <div class="notes-field">
         <div class="notes-field__header">
           <label for="${notesId}" data-i18n="location.form.notes"></label>
@@ -53,6 +63,7 @@ export function renderItemForm(container, item, { onSubmit }) {
         <div class="notes-field__preview" hidden></div>
         <p class="notes-field__empty" data-i18n="location.form.notesEmpty" hidden></p>
       </div>
+      <div data-assist-field="notes"></div>
     </form>
   `;
   translatePage(container);
@@ -82,6 +93,18 @@ export function renderItemForm(container, item, { onSubmit }) {
   }
   form.notes.addEventListener("input", autoGrowNotes);
   autoGrowNotes();
+
+  // A <select> is never empty, so on a new location the category reads as
+  // "site" before anybody has chosen anything. Left alone, that makes every
+  // category suggestion look like it is about to replace a real decision --
+  // and a warning that cries wolf on every new location is a warning people
+  // stop reading. So an untouched select on a new location reports itself as
+  // unset; the moment it is changed, or when editing something saved, it is a
+  // choice like any other.
+  let categoryChosen = Boolean(item);
+  form.category.addEventListener("change", () => {
+    categoryChosen = true;
+  });
 
   // --- Edit / Preview -------------------------------------------------------
   //
@@ -190,6 +213,10 @@ export function renderItemForm(container, item, { onSubmit }) {
       title: form.title.value,
       notes: form.notes.value || null,
     }),
+    // Whether the category is a real choice rather than the select's default.
+    // Only the assistant asks; readValues() always reports the value, because
+    // saving a new location does have to pick one.
+    isCategoryChosen: () => categoryChosen,
     // Write access, for the assistant panel: an accepted suggestion goes into
     // the form exactly as if it had been typed, and Save is still the only
     // thing that commits it. Only the fields this form owns; the address and
@@ -203,6 +230,9 @@ export function renderItemForm(container, item, { onSubmit }) {
       // The notes box sizes itself to its content, and a pasted-in paragraph
       // would otherwise open as a 6-row box with a scrollbar.
       if ("notes" in partial) autoGrowNotes();
+      // Accepting a suggested category is a choice, so later runs should treat
+      // it as one.
+      if ("category" in partial) categoryChosen = true;
     },
     // The page reports save failures here, in the card the required fields
     // live in, rather than in a dialog at the bottom of the page.

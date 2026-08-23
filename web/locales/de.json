@@ -336,10 +336,11 @@
   "expenses.balances.owes": "schuldet {amount}",
   "expenses.balances.even": "ausgeglichen",
   "expenses.balances.settled": "Alle sind ausgeglichen.",
-  "expenses.balances.transfer": "{from} zahlt {to} {amount}",
+  "expenses.balances.transfer": "{from} zahlt {to}",
   "expenses.balances.unattributed": "{amount} sind hier nicht berücksichtigt: dafür ist niemand als Zahler erfasst.",
   "expenses.onlyFor": "Nur für {people}",
   "expenses.shares.you": "dich",
   "expenses.shares.former": "jemand, der nicht mehr dabei ist",
-  "expenses.form.shareAll": "Mit allen teilen"
+  "expenses.form.shareAll": "Mit allen teilen",
+  "expenses.summaryHeading": "Übersicht"
 }

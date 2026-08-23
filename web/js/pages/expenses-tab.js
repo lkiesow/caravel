@@ -73,16 +73,32 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
         <div class="expenses__days"></div>
         <p class="expenses__empty" data-i18n="expenses.empty" hidden></p>
         ${readOnly ? "" : `<div class="editor-card expenses__form-card"></div>`}
-        ${shared ? `<div class="expenses__payers"></div>` : ""}
-        ${shared ? `<div class="expenses__balances"></div>` : ""}
+        ${
+          shared
+            ? `<div class="editor-card expenses__summary-card">
+          <h2 data-i18n="expenses.summaryHeading"></h2>
+          <div class="expenses__payers"></div>
+          <div class="expenses__balances"></div>
+        </div>`
+            : ""
+        }
       </div>
     `;
     translatePage(container);
 
     container.querySelector(".expenses__total").textContent = formatMoney(data.total_minor, currency());
     container.querySelector(".expenses__empty").hidden = data.expenses.length > 0;
-    if (shared) renderPayers(container.querySelector(".expenses__payers"));
-    if (shared) renderBalances(container.querySelector(".expenses__balances"));
+    if (shared) {
+      const payers = container.querySelector(".expenses__payers");
+      const balances = container.querySelector(".expenses__balances");
+      renderPayers(payers);
+      renderBalances(balances);
+      // A card with nothing but its heading in it is worse than no card, and
+      // both sections decline to render on a trip with no expenses yet. Asked
+      // after the fact rather than predicted, so the two rules for "is there
+      // anything to say" stay inside the functions that own them.
+      container.querySelector(".expenses__summary-card").hidden = !payers.children.length && !balances.children.length;
+    }
     renderDays(container.querySelector(".expenses__days"));
     if (!readOnly) renderForm(container.querySelector(".expenses__form-card"));
   }
@@ -194,11 +210,20 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
       for (const transfer of balances.transfers) {
         const li = document.createElement("li");
         li.className = "expenses__transfer";
-        li.textContent = t("expenses.balances.transfer", {
+        // Split into who-pays-whom and how-much, so the amount lands in the
+        // same right-hand column as every other amount on the tab rather than
+        // trailing off the end of a sentence. The copy therefore holds no
+        // {amount}: see expenses.balances.transfer.
+        const who = document.createElement("span");
+        who.className = "expenses__transfer-who";
+        who.textContent = t("expenses.balances.transfer", {
           from: transfer.from_display_name || t("expenses.payer.none"),
           to: transfer.to_display_name || t("expenses.payer.none"),
-          amount: formatMoney(transfer.amount_minor, currency()),
         });
+        const amount = document.createElement("span");
+        amount.className = "expenses__transfer-amount";
+        amount.textContent = formatMoney(transfer.amount_minor, currency());
+        li.append(who, amount);
         transfers.appendChild(li);
       }
       parent.appendChild(transfers);
@@ -311,6 +336,7 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
       <span class="expenses__row-main">
         <span class="expenses__row-title"></span>
         ${shared ? `<span class="expenses__row-payer"></span>` : ""}
+        ${shared ? `<span class="expenses__row-share"></span>` : ""}
         ${shared ? `<span class="expenses__row-shares"></span>` : ""}
       </span>
       <span class="expenses__row-amount"></span>
@@ -330,11 +356,16 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
     // for.
     const payerEl = li.querySelector(".expenses__row-payer");
     if (payerEl) {
-      const paidBy = t("expenses.paidBy", {
+      payerEl.textContent = t("expenses.paidBy", {
         name: payerLabel({ user_id: expense.payer_user_id, display_name: expense.payer_display_name }),
       });
-      payerEl.textContent = `${paidBy} · ${shareLabel(expense)}`;
     }
+    // On its own line rather than joined to the payer with a "·". Together they
+    // ran to about 38 characters, which does not fit the row at 324px -- and
+    // the half that got truncated was the amount, the one number on the line
+    // somebody is actually looking for.
+    const shareEl = li.querySelector(".expenses__row-share");
+    if (shareEl) shareEl.textContent = shareLabel(expense);
 
     // Who the expense was for, but only when that is not everybody. This is the
     // line the balances were missing: with three people on a trip and an

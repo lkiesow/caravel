@@ -666,6 +666,47 @@ its people ticked, while editing an all-in expense reopens collapsed; the DOM
 order is total → rows → form → who paid → balances; no horizontal overflow and
 no console errors. `make ci` and `make test-ui` green.
 
+**Second follow-up (same milestone).** Two presentation points from looking at
+the result, plus two defects a screenshot exposed that assertions had missed.
+
+*The bottom summary is one `editor-card`.* It was loose text after the form
+while everything else on the page sits in a card, so the page's conclusion read
+as an afterthought. One card, headed "Summary", holding all three sections. It
+hides itself when both sections decline to render, since a card containing only
+its heading is worse than no card.
+
+*"To settle up" rows split into description and amount.* They were a single
+sentence with the amount trailing off the end; now the amount sits in the same
+right-hand column as every other amount in the card, with tabular numerals. All
+three lists in the card share one column edge — measured, not eyeballed: the
+paid, net and transfer amounts all end at the same x.
+
+Then two things only visible in a rendering:
+
+- **The share amount was being truncated away.** Milestone 4 joined the payer
+  and the share into one line, and "Paid by Other User · your share €14.20" is
+  about 38 characters, which does not fit a row at 324px. The half that got cut
+  was the amount — the one number on the line anybody is looking for. Split onto
+  its own line; nothing on the tab truncates now, checked by comparing
+  `scrollWidth` against `clientWidth` for every text span in both locales.
+- **The share checkboxes had their labels *under* the boxes, centred**, and had
+  since Milestone 5. `.item-form label` sets `flex-direction: column` for the
+  form's real fields and, at one class plus one element, outspecifies a lone
+  class — so `.expenses__share-choice`'s `row` never applied. Fixed the way
+  `.location-form label.location-form__checkbox` already does it. Milestone 5
+  "verified" these rows by asserting their **height** (44px, the tap target),
+  which a column layout satisfies just as well as a row does. Measuring the
+  wrong property is how a visibly broken control passes a test.
+
+Verified by hand at 324×756 in both locales, with a full-page screenshot read
+rather than just assertions: the summary card has a border and background and
+its three sections align on one amount column; transfer rows read "Other User
+pays Demo User | €35.54" / "Other User zahlt Demo User | €35.54"; the toggle and
+every member checkbox put their label beside the box on one line at 44px; no
+truncation anywhere; no horizontal overflow. The whole tab now traces by hand —
+Museum €14.20 ÷ 3 = €4.73, Taxi €60 ÷ 2 = €30, Groceries €45 ÷ 3 = €15, so Demo
+paid €105, owes €49.73 and is owed €55.27.
+
 ## 7. Coverage, seed and documentation
 
 - **Expenses in a seed scenario.** Added to an existing multi-member scenario

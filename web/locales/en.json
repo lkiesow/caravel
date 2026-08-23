@@ -336,10 +336,11 @@
   "expenses.balances.owes": "owes {amount}",
   "expenses.balances.even": "even",
   "expenses.balances.settled": "Everyone is settled up.",
-  "expenses.balances.transfer": "{from} pays {to} {amount}",
+  "expenses.balances.transfer": "{from} pays {to}",
   "expenses.balances.unattributed": "{amount} is not counted here: nobody is recorded as having paid it.",
   "expenses.onlyFor": "Only for {people}",
   "expenses.shares.you": "you",
   "expenses.shares.former": "someone no longer on the trip",
-  "expenses.form.shareAll": "Split with everyone"
+  "expenses.form.shareAll": "Split with everyone",
+  "expenses.summaryHeading": "Summary"
 }

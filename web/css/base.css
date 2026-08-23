@@ -2884,16 +2884,24 @@ button {
 }
 
 .expenses__row-title,
-.expenses__row-payer {
+.expenses__row-payer,
+.expenses__row-shares {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.expenses__row-payer {
+.expenses__row-payer,
+.expenses__row-shares {
   font-size: 0.8125rem;
   color: var(--color-text-muted);
+}
+
+/* The share line only appears when an expense was *not* split with everyone,
+   so it is the exceptional row and reads as one. */
+.expenses__row-shares {
+  font-style: italic;
 }
 
 .expenses__row-amount {
@@ -3057,10 +3065,25 @@ button {
   color: var(--color-text-muted);
 }
 
+/* `display: flex` here outranks the UA stylesheet's `[hidden] { display: none }`
+   -- specificity, not order -- so hiding the group with the attribute silently
+   did nothing until this rule was added. Any flex or grid container that is
+   ever toggled with `hidden` needs the same. */
+.expenses__shares-group[hidden] {
+  display: none;
+}
+
 .expenses__shares-group {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem 1rem;
+  /* Indented under the toggle it belongs to, so the relationship is visible
+     without a border or a box around it. */
+  padding-left: 1.25rem;
+}
+
+.expenses__share-all {
+  color: var(--color-text);
 }
 
 /* Row, not the stacked label-above-input the sibling fields use: the label

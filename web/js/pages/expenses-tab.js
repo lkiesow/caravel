@@ -1,5 +1,5 @@
 import { api } from "../api.js";
-import { t, translatePage } from "../i18n.js";
+import { t, translatePage, getLocale } from "../i18n.js";
 import { icon } from "../icon.js";
 import { confirmDialog } from "../components/dialog.js";
 import { renderMenu } from "../components/menu.js";
@@ -61,15 +61,20 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
   function render() {
     container.innerHTML = `
       <div class="expenses">
+        <!-- Total at the top because it is the headline number; who paid, the
+             nets and the transfers all sit below the rows and the form, because
+             they are conclusions drawn from them. Reading a balance before
+             seeing what it is made of is what made the subset case
+             inexplicable. -->
         <div class="expenses__summary">
           <span class="expenses__total-label" data-i18n="expenses.total"></span>
           <span class="expenses__total"></span>
         </div>
-        ${shared ? `<div class="expenses__payers"></div>` : ""}
-        ${shared ? `<div class="expenses__balances"></div>` : ""}
         <div class="expenses__days"></div>
         <p class="expenses__empty" data-i18n="expenses.empty" hidden></p>
         ${readOnly ? "" : `<div class="editor-card expenses__form-card"></div>`}
+        ${shared ? `<div class="expenses__payers"></div>` : ""}
+        ${shared ? `<div class="expenses__balances"></div>` : ""}
       </div>
     `;
     translatePage(container);
@@ -219,6 +224,43 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
     return heading;
   }
 
+  // The people an expense was shared with, as a readable list -- or null when
+  // it was shared with the whole trip, which needs no explaining.
+  //
+  // Intl.ListFormat rather than joining with commas: "Anna, Ben and you" needs
+  // a conjunction that differs per language, and the browser already knows it.
+  //
+  // Given getLocale() explicitly, unlike the money and date formatters in
+  // format.js, which take the browser's locale. The distinction is real: a
+  // thousands separator is a preference about how *you* like numbers, but the
+  // word "and" is part of a translated sentence. Left on the browser locale
+  // this produced "Nur für Other User and dich" -- an English conjunction
+  // inside German copy.
+  function subsetShareNames(expense) {
+    const ids = expense.share_user_ids || [];
+    if (!members.length || ids.length >= members.length) return null;
+
+    const names = [];
+    let unknown = 0;
+    for (const id of ids) {
+      const member = members.find((m) => m.user_id === id);
+      if (!member) unknown++;
+      else names.push(member.is_self ? t("expenses.shares.you") : member.display_name);
+    }
+    // Somebody in the share set who has since left the trip is not in the
+    // member list. Naming only the people we can name would understate the
+    // split, which is the exact confusion this line exists to remove, so their
+    // presence is stated instead of dropped.
+    if (unknown > 0) names.push(t("expenses.shares.former"));
+    if (!names.length) return null;
+
+    try {
+      return new Intl.ListFormat(getLocale(), { style: "long", type: "conjunction" }).format(names);
+    } catch {
+      return names.join(", ");
+    }
+  }
+
   // What the reading user owes for one expense. `share_minor` is null when they
   // are not among the people it was for, which is a different statement from a
   // share of zero and reads differently.
@@ -269,6 +311,7 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
       <span class="expenses__row-main">
         <span class="expenses__row-title"></span>
         ${shared ? `<span class="expenses__row-payer"></span>` : ""}
+        ${shared ? `<span class="expenses__row-shares"></span>` : ""}
       </span>
       <span class="expenses__row-amount"></span>
       <span class="expenses__row-actions"></span>
@@ -291,6 +334,18 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
         name: payerLabel({ user_id: expense.payer_user_id, display_name: expense.payer_display_name }),
       });
       payerEl.textContent = `${paidBy} · ${shareLabel(expense)}`;
+    }
+
+    // Who the expense was for, but only when that is not everybody. This is the
+    // line the balances were missing: with three people on a trip and an
+    // expense shared by two of them, the rows gave no way to see where the
+    // final numbers came from. An expense split with the whole trip says
+    // nothing here, which keeps the common case as quiet as it was.
+    const sharesEl = li.querySelector(".expenses__row-shares");
+    if (sharesEl) {
+      const names = subsetShareNames(expense);
+      if (names) sharesEl.textContent = t("expenses.onlyFor", { people: names });
+      else sharesEl.hidden = true;
     }
 
     if (!readOnly) {
@@ -356,8 +411,17 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
           </select>
         </label>
         <div class="expenses__shares">
-          <span id="expense-shares-label" data-i18n="expenses.form.shares"></span>
-          <div class="expenses__shares-group" role="group" aria-labelledby="expense-shares-label">
+          <!-- Everything-splits-evenly is the overwhelmingly common case, so it
+               is one checkbox and the member list only appears when somebody
+               actually wants a subset. The form used to show every member's
+               checkbox on every expense, which was a row of controls to read
+               past for a decision almost nobody was making. -->
+          <label class="expenses__share-choice expenses__share-all">
+            <input type="checkbox" name="shareAll" checked />
+            <span data-i18n="expenses.form.shareAll"></span>
+          </label>
+          <span id="expense-shares-label" data-i18n="expenses.form.shares" hidden></span>
+          <div class="expenses__shares-group" role="group" aria-labelledby="expense-shares-label" hidden>
             ${members
               .map(
                 (m) => `<label class="expenses__share-choice">
@@ -406,6 +470,21 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
       box.nextElementSibling.textContent = m.is_self ? t("expenses.payer.me", { name: m.display_name }) : m.display_name;
     });
 
+    const shareAll = form.elements.shareAll;
+    const shareGroup = card.querySelector(".expenses__shares-group");
+    const shareGroupLabel = card.querySelector("#expense-shares-label");
+    function syncShareGroup() {
+      const choosing = shareAll && !shareAll.checked;
+      if (shareGroup) shareGroup.hidden = !choosing;
+      if (shareGroupLabel) shareGroupLabel.hidden = !choosing;
+      // Opening the picker starts from everyone rather than from nothing: it is
+      // a list to narrow, not one to build from scratch.
+      if (choosing && !shareBoxes.some((b) => b.checked)) {
+        for (const box of shareBoxes) box.checked = true;
+      }
+    }
+    shareAll?.addEventListener("change", syncShareGroup);
+
     if (isEditing) {
       form.elements.title.value = editing.title;
       form.elements.amount.value = majorUnits(editing.amount_minor);
@@ -416,10 +495,12 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
       // whoever opened the form.
       if (form.elements.payer) form.elements.payer.value = editing.payer_user_id || "";
       // The server sends the *effective* set, so an expense that was never
-      // pinned arrives listing everybody and every box is ticked -- which is
-      // exactly what it means. Saving it unchanged sends an empty set back and
-      // it stays unpinned; see sharesFromForm.
-      for (const box of shareBoxes) box.checked = (editing.share_user_ids || []).includes(box.value);
+      // pinned arrives listing everybody -- which is exactly what it means, and
+      // the toggle stays on "everyone". A genuine subset opens the picker with
+      // its own people ticked.
+      const editingIDs = editing.share_user_ids || [];
+      for (const box of shareBoxes) box.checked = editingIDs.includes(box.value);
+      if (shareAll) shareAll.checked = shareBoxes.every((b) => b.checked);
     } else {
       // A new expense defaults to today, clamped into the trip's own dates when
       // it has them: entering yesterday's dinner is a correction, entering one
@@ -430,7 +511,9 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
       // A new expense is for everyone by default: splitting the whole trip is
       // the common case, and narrowing it is the deliberate act.
       for (const box of shareBoxes) box.checked = true;
+      if (shareAll) shareAll.checked = true;
     }
+    syncShareGroup();
     if (error) {
       errorEl.textContent = error;
       errorEl.hidden = false;
@@ -456,8 +539,11 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
       if (!spentOn) return fail(t("expenses.error.date"));
       // Unticking everybody has no meaning -- an expense for nobody cannot be
       // split -- and the server would read an empty set as "everyone", so it
-      // is refused here rather than silently doing the opposite.
-      if (shareBoxes.length && !shareBoxes.some((b) => b.checked)) return fail(t("expenses.error.shares"));
+      // is refused here rather than silently doing the opposite. Only asked
+      // when the picker is open; the toggle cannot express "nobody".
+      if (shareAll && !shareAll.checked && !shareBoxes.some((b) => b.checked)) {
+        return fail(t("expenses.error.shares"));
+      }
 
       const body = {
         title,
@@ -489,7 +575,7 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
     // somebody joins the trip -- so an unrelated edit does not quietly pin an
     // expense that was never pinned.
     function sharesFromForm() {
-      if (!shareBoxes.length) return [];
+      if (!shareBoxes.length || (shareAll && shareAll.checked)) return [];
       const checked = shareBoxes.filter((b) => b.checked);
       if (checked.length === shareBoxes.length) return [];
       return checked.map((b) => b.value);

@@ -206,7 +206,11 @@ down.
   "documents" → "files" rename included a `0006` table rename and dropped the
   `/trips/:id/documents` URL outright rather than redirecting it.
 - **Number and date formatting follows the *browser* locale, not the app's.**
-  (Stage 17 Milestone 3.) `format.js` calls `Intl` with an undefined locale
+  (Stage 17 Milestone 3; narrowed by the Milestone 6 follow-up, which fixed the
+  one case that was not merely cosmetic -- `Intl.ListFormat` now takes
+  `getLocale()`, because it rendered "Nur für Other User *and* dich", an English
+  conjunction inside German copy. What is left is the money and date formatters,
+  where the browser locale is a defensible choice rather than a bug.) `format.js` calls `Intl` with an undefined locale
   throughout -- `formatDateRange`, the itinerary day headings, and now
   `formatMoney` -- which is a deliberate, pre-existing decision, documented in
   that file. Money makes the consequence louder than dates did: with the app

@@ -465,7 +465,9 @@ CREATE TABLE expense_shares (
   the create and update bodies, replacing the set inside `WithTx` — rather than
   through per-share endpoints.
 - UI: a member checkbox group on the expense form, hidden entirely on a
-  single-member trip.
+  single-member trip. (Revised by the Milestone 6 follow-up below: the group
+  collapses behind a "Split with everyone" toggle, and rows state a subset
+  share set explicitly.)
 
 **Verification.** Go tests for the remainder distribution (the 1000-across-3
 case, and a zero-exponent currency), a share naming a non-member → 400, the
@@ -612,6 +614,57 @@ errors from the app.
 Not re-verified here: a read-only viewer seeing the balances. It renders in the
 same `shared`-gated place as the payer summary, which *was* checked from a real
 viewer session in Milestone 4, and Milestone 7's spec covers the viewer case.
+
+**Follow-up (same milestone).** Using the tab on a three-person trip showed that
+a subset expense made the final numbers impossible to follow: a row said "Paid
+by Anna · your share €30.00" and never said who else was in it, so the balances
+looked like they came from nowhere. Two changes, plus a bug each turned up.
+
+*Rows state the share set when it is not everybody.* A third line, "Only for
+Other User and you", italic and muted, present only for a strict subset — the
+everyday all-in expense says nothing extra, which is what keeps the common case
+quiet. The three-person trip now reads end to end: Taxi €60 for two is €30
+each, Groceries €45 for three is €15 each, so Demo paid €105, owes €45 and is
+owed €60. Every number in the balance is derivable from the rows above it.
+
+Dropping shares altogether was considered and rejected — it was the simpler
+option and would have made the balance *wrong* rather than merely less
+expressive: Cleo would be charged a third of a taxi she never took, and the
+settle-up line would confidently tell her to pay it. The confusion was
+presentation, so it was fixed in presentation.
+
+*The share picker collapses behind "Split with everyone", ticked by default.*
+The form previously showed a checkbox per member on every expense — a row of
+controls to read past for a decision almost nobody makes. Unticking reveals the
+list, pre-ticked with everyone, because it is a set to narrow rather than build.
+
+*The summary blocks moved below the rows and the form.* The total stays at the
+top as the headline; Who paid, the nets and the transfers are conclusions and
+now read after what they are drawn from. Previously the balance sat above the
+expenses it summarised.
+
+Two bugs found while checking it, both by looking rather than by reasoning:
+
+- **`display: flex` outranks `[hidden]`.** The share group has
+  `display: flex`, which beats the UA stylesheet's `[hidden] { display: none }`
+  on specificity, so hiding it by attribute silently did nothing and the picker
+  stayed visible. Needed an explicit `.expenses__shares-group[hidden]` rule.
+  Worth remembering for any flex or grid container toggled with `hidden`.
+- **`Intl.ListFormat` needs the app's locale, not the browser's.** It rendered
+  "Nur für Other User **and** dich" — an English conjunction inside German
+  copy. Passed `getLocale()` explicitly. This is a real distinction from the
+  money and date formatters, which stay on the browser locale (see the backlog
+  entry from Milestone 3): a thousands separator is a preference about how you
+  like numbers, but "and" is part of a translated sentence.
+
+Verified by hand at 324×756 in both locales: the subset line appears only on the
+subset row and reads "Only for Other User and you" / "Nur für Other User und
+dich"; three-name lists punctuate correctly in both ("Cleo, Other User, and
+you" / "Cleo, Other User und dich"); the picker is collapsed by default and
+expands pre-ticked; editing a subset expense reopens it expanded with exactly
+its people ticked, while editing an all-in expense reopens collapsed; the DOM
+order is total → rows → form → who paid → balances; no horizontal overflow and
+no console errors. `make ci` and `make test-ui` green.
 
 ## 7. Coverage, seed and documentation
 

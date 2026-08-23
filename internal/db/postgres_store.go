@@ -473,6 +473,7 @@ func (s *postgresStore) CreateTrip(ctx context.Context, p CreateTripParams) (Tri
 		StartDate: nullDate(p.StartDate),
 		EndDate:   nullDate(p.EndDate),
 		Subtitle:  nullString(p.Subtitle),
+		Currency:  p.Currency,
 		CreatedAt: p.CreatedAt.UTC(),
 		UpdatedAt: p.UpdatedAt.UTC(),
 	})
@@ -506,6 +507,7 @@ func (s *postgresStore) ListTripsForUser(ctx context.Context, userID string) ([]
 				EndDate:        datePtr(row.EndDate),
 				PreviewImageID: strPtr(row.PreviewImageID),
 				Subtitle:       strPtr(row.Subtitle),
+				Currency:       row.Currency,
 				CreatedAt:      row.CreatedAt,
 				UpdatedAt:      row.UpdatedAt,
 			},
@@ -525,6 +527,7 @@ func (s *postgresStore) UpdateTrip(ctx context.Context, p UpdateTripParams) (Tri
 		StartDate: nullDate(p.StartDate),
 		EndDate:   nullDate(p.EndDate),
 		Subtitle:  nullString(p.Subtitle),
+		Currency:  p.Currency,
 		UpdatedAt: p.UpdatedAt.UTC(),
 	})
 	if err != nil {
@@ -657,6 +660,92 @@ func postgresMediaAssetToDomain(m postgresgen.MediaAsset) MediaAsset {
 	}
 }
 
+func (s *postgresStore) CreateExpense(ctx context.Context, p CreateExpenseParams) (Expense, error) {
+	spentOn, err := time.Parse(dateLayout, p.SpentOn)
+	if err != nil {
+		return Expense{}, err
+	}
+	row, err := s.q.CreateExpense(ctx, postgresgen.CreateExpenseParams{
+		ID:          p.ID,
+		TripID:      p.TripID,
+		Title:       p.Title,
+		AmountMinor: p.AmountMinor,
+		SpentOn:     spentOn,
+		PayerUserID: nullString(p.PayerUserID),
+		CreatedAt:   p.CreatedAt.UTC(),
+	})
+	if err != nil {
+		return Expense{}, err
+	}
+	return postgresExpenseToDomain(row), nil
+}
+
+func (s *postgresStore) GetExpenseByID(ctx context.Context, id string) (Expense, error) {
+	row, err := s.q.GetExpenseByID(ctx, id)
+	if err != nil {
+		return Expense{}, mapNotFound(err)
+	}
+	return postgresExpenseToDomain(row), nil
+}
+
+func (s *postgresStore) ListExpensesByTrip(ctx context.Context, tripID string) ([]Expense, error) {
+	rows, err := s.q.ListExpensesByTrip(ctx, tripID)
+	if err != nil {
+		return nil, err
+	}
+	expenses := make([]Expense, len(rows))
+	for i, row := range rows {
+		expenses[i] = postgresExpenseToDomain(row)
+	}
+	return expenses, nil
+}
+
+func (s *postgresStore) SumExpensesByTrip(ctx context.Context, tripID string) (int64, error) {
+	return s.q.SumExpensesByTrip(ctx, tripID)
+}
+
+func (s *postgresStore) UpdateExpense(ctx context.Context, p UpdateExpenseParams) (Expense, error) {
+	spentOn, err := time.Parse(dateLayout, p.SpentOn)
+	if err != nil {
+		return Expense{}, err
+	}
+	row, err := s.q.UpdateExpense(ctx, postgresgen.UpdateExpenseParams{
+		ID:          p.ID,
+		TripID:      p.TripID,
+		Title:       p.Title,
+		AmountMinor: p.AmountMinor,
+		SpentOn:     spentOn,
+		PayerUserID: nullString(p.PayerUserID),
+	})
+	if err != nil {
+		return Expense{}, mapNotFound(err)
+	}
+	return postgresExpenseToDomain(row), nil
+}
+
+func (s *postgresStore) DeleteExpense(ctx context.Context, id, tripID string) (bool, error) {
+	n, err := s.q.DeleteExpense(ctx, postgresgen.DeleteExpenseParams{ID: id, TripID: tripID})
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+// spent_on is a real DATE here and TEXT in sqlite, so this is where the two
+// dialects are brought back to the same "YYYY-MM-DD" string the domain type
+// promises. Same treatment as postgresItineraryDayToDomain.
+func postgresExpenseToDomain(e postgresgen.Expense) Expense {
+	return Expense{
+		ID:          e.ID,
+		TripID:      e.TripID,
+		Title:       e.Title,
+		AmountMinor: e.AmountMinor,
+		SpentOn:     e.SpentOn.Format(dateLayout),
+		PayerUserID: strPtr(e.PayerUserID),
+		CreatedAt:   e.CreatedAt,
+	}
+}
+
 func postgresTripToDomain(t postgresgen.Trip) Trip {
 	return Trip{
 		ID:             t.ID,
@@ -666,6 +755,7 @@ func postgresTripToDomain(t postgresgen.Trip) Trip {
 		EndDate:        datePtr(t.EndDate),
 		PreviewImageID: strPtr(t.PreviewImageID),
 		Subtitle:       strPtr(t.Subtitle),
+		Currency:       t.Currency,
 		CreatedAt:      t.CreatedAt,
 		UpdatedAt:      t.UpdatedAt,
 	}

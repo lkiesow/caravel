@@ -11,9 +11,9 @@ import (
 )
 
 const createTrip = `-- name: CreateTrip :one
-INSERT INTO trips (id, owner_id, title, start_date, end_date, subtitle, created_at, updated_at)
-VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-RETURNING id, owner_id, title, start_date, end_date, preview_image_id, created_at, updated_at, subtitle
+INSERT INTO trips (id, owner_id, title, start_date, end_date, subtitle, currency, created_at, updated_at)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+RETURNING id, owner_id, title, start_date, end_date, preview_image_id, created_at, updated_at, subtitle, currency
 `
 
 type CreateTripParams struct {
@@ -23,6 +23,7 @@ type CreateTripParams struct {
 	StartDate sql.NullString `json:"start_date"`
 	EndDate   sql.NullString `json:"end_date"`
 	Subtitle  sql.NullString `json:"subtitle"`
+	Currency  string         `json:"currency"`
 	CreatedAt string         `json:"created_at"`
 	UpdatedAt string         `json:"updated_at"`
 }
@@ -35,6 +36,7 @@ func (q *Queries) CreateTrip(ctx context.Context, arg CreateTripParams) (Trip, e
 		arg.StartDate,
 		arg.EndDate,
 		arg.Subtitle,
+		arg.Currency,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -49,6 +51,7 @@ func (q *Queries) CreateTrip(ctx context.Context, arg CreateTripParams) (Trip, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Subtitle,
+		&i.Currency,
 	)
 	return i, err
 }
@@ -74,7 +77,7 @@ func (q *Queries) DeleteTrip(ctx context.Context, arg DeleteTripParams) (int64, 
 }
 
 const getTripByID = `-- name: GetTripByID :one
-SELECT id, owner_id, title, start_date, end_date, preview_image_id, created_at, updated_at, subtitle FROM trips WHERE id = ?1
+SELECT id, owner_id, title, start_date, end_date, preview_image_id, created_at, updated_at, subtitle, currency FROM trips WHERE id = ?1
 `
 
 func (q *Queries) GetTripByID(ctx context.Context, id string) (Trip, error) {
@@ -90,12 +93,13 @@ func (q *Queries) GetTripByID(ctx context.Context, id string) (Trip, error) {
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Subtitle,
+		&i.Currency,
 	)
 	return i, err
 }
 
 const listTripsForUser = `-- name: ListTripsForUser :many
-SELECT t.id, t.owner_id, t.title, t.start_date, t.end_date, t.preview_image_id, t.created_at, t.updated_at, t.subtitle,
+SELECT t.id, t.owner_id, t.title, t.start_date, t.end_date, t.preview_image_id, t.created_at, t.updated_at, t.subtitle, t.currency,
        CAST(CASE WHEN t.owner_id = ?1 THEN 'owner' ELSE m.role END AS TEXT) AS role,
        u.username AS owner_username,
        u.display_name AS owner_display_name,
@@ -117,6 +121,7 @@ type ListTripsForUserRow struct {
 	CreatedAt        string         `json:"created_at"`
 	UpdatedAt        string         `json:"updated_at"`
 	Subtitle         sql.NullString `json:"subtitle"`
+	Currency         string         `json:"currency"`
 	Role             string         `json:"role"`
 	OwnerUsername    string         `json:"owner_username"`
 	OwnerDisplayName string         `json:"owner_display_name"`
@@ -149,6 +154,7 @@ func (q *Queries) ListTripsForUser(ctx context.Context, userID string) ([]ListTr
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Subtitle,
+			&i.Currency,
 			&i.Role,
 			&i.OwnerUsername,
 			&i.OwnerDisplayName,
@@ -171,7 +177,7 @@ const setTripPreviewImage = `-- name: SetTripPreviewImage :one
 UPDATE trips
 SET preview_image_id = ?1, updated_at = ?2
 WHERE id = ?3
-RETURNING id, owner_id, title, start_date, end_date, preview_image_id, created_at, updated_at, subtitle
+RETURNING id, owner_id, title, start_date, end_date, preview_image_id, created_at, updated_at, subtitle, currency
 `
 
 type SetTripPreviewImageParams struct {
@@ -193,6 +199,7 @@ func (q *Queries) SetTripPreviewImage(ctx context.Context, arg SetTripPreviewIma
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Subtitle,
+		&i.Currency,
 	)
 	return i, err
 }
@@ -203,9 +210,10 @@ SET title = ?1,
     start_date = ?2,
     end_date = ?3,
     subtitle = ?4,
-    updated_at = ?5
-WHERE id = ?6
-RETURNING id, owner_id, title, start_date, end_date, preview_image_id, created_at, updated_at, subtitle
+    currency = ?5,
+    updated_at = ?6
+WHERE id = ?7
+RETURNING id, owner_id, title, start_date, end_date, preview_image_id, created_at, updated_at, subtitle, currency
 `
 
 type UpdateTripParams struct {
@@ -213,6 +221,7 @@ type UpdateTripParams struct {
 	StartDate sql.NullString `json:"start_date"`
 	EndDate   sql.NullString `json:"end_date"`
 	Subtitle  sql.NullString `json:"subtitle"`
+	Currency  string         `json:"currency"`
 	UpdatedAt string         `json:"updated_at"`
 	ID        string         `json:"id"`
 }
@@ -223,6 +232,7 @@ func (q *Queries) UpdateTrip(ctx context.Context, arg UpdateTripParams) (Trip, e
 		arg.StartDate,
 		arg.EndDate,
 		arg.Subtitle,
+		arg.Currency,
 		arg.UpdatedAt,
 		arg.ID,
 	)
@@ -237,6 +247,7 @@ func (q *Queries) UpdateTrip(ctx context.Context, arg UpdateTripParams) (Trip, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Subtitle,
+		&i.Currency,
 	)
 	return i, err
 }

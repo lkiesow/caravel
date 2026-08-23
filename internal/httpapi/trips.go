@@ -191,6 +191,10 @@ func (s *Server) handleCreateTrip(w http.ResponseWriter, r *http.Request) {
 		StartDate: req.StartDate,
 		EndDate:   req.EndDate,
 		Subtitle:  req.Subtitle,
+		// The trip currency is not settable at create time yet -- the form has
+		// no control for it, and every expense is denominated in it, so it can
+		// be changed later in trip settings without invalidating anything.
+		Currency:  db.DefaultCurrency,
 		CreatedAt: now,
 		UpdatedAt: now,
 	})
@@ -231,6 +235,11 @@ func (s *Server) handleUpdateTrip(w http.ResponseWriter, r *http.Request) {
 		StartDate: req.StartDate,
 		EndDate:   req.EndDate,
 		Subtitle:  req.Subtitle,
+		// Carried over from the loaded trip rather than taken from the request:
+		// UpdateTrip writes every column it names, so leaving this out would
+		// blank the currency on every rename. The request gains a field of its
+		// own when the UI does.
+		Currency:  trip.Currency,
 		UpdatedAt: time.Now().UTC(),
 	})
 	if err != nil {

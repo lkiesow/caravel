@@ -23,6 +23,7 @@ type Querier interface {
 	CreateAuthIdentity(ctx context.Context, arg CreateAuthIdentityParams) (AuthIdentity, error)
 	CreateChecklist(ctx context.Context, arg CreateChecklistParams) (Checklist, error)
 	CreateChecklistItem(ctx context.Context, arg CreateChecklistItemParams) (ChecklistItem, error)
+	CreateExpense(ctx context.Context, arg CreateExpenseParams) (Expense, error)
 	CreateFile(ctx context.Context, arg CreateFileParams) (File, error)
 	CreateItem(ctx context.Context, arg CreateItemParams) (Item, error)
 	CreateItemDate(ctx context.Context, arg CreateItemDateParams) (ItemDate, error)
@@ -34,6 +35,7 @@ type Querier interface {
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteChecklist(ctx context.Context, arg DeleteChecklistParams) (int64, error)
 	DeleteChecklistItem(ctx context.Context, arg DeleteChecklistItemParams) (int64, error)
+	DeleteExpense(ctx context.Context, arg DeleteExpenseParams) (int64, error)
 	DeleteExpiredSessions(ctx context.Context, now time.Time) error
 	DeleteFile(ctx context.Context, arg DeleteFileParams) (int64, error)
 	DeleteItem(ctx context.Context, arg DeleteItemParams) (int64, error)
@@ -64,6 +66,7 @@ type Querier interface {
 	GetAppSetting(ctx context.Context, name string) (string, error)
 	GetAuthIdentityByProvider(ctx context.Context, arg GetAuthIdentityByProviderParams) (AuthIdentity, error)
 	GetChecklistByID(ctx context.Context, id string) (Checklist, error)
+	GetExpenseByID(ctx context.Context, id string) (Expense, error)
 	GetFileByID(ctx context.Context, id string) (File, error)
 	GetItemByID(ctx context.Context, id string) (Item, error)
 	GetItemLocationByItemID(ctx context.Context, itemID string) (ItemLocation, error)
@@ -89,6 +92,13 @@ type Querier interface {
 	// A NULL owner_user_id matches nobody, which is the intended failure. See
 	// migration 0010.
 	ListChecklistsByTrip(ctx context.Context, arg ListChecklistsByTripParams) ([]Checklist, error)
+	// Newest spending first, and created_at breaks the tie so two expenses on the
+	// same day have a stable order rather than whatever the planner returns.
+	//
+	// No visibility predicate, unlike the file and checklist listings: every
+	// expense on a trip is visible to everyone on it. That is deliberate -- hidden
+	// rows in a shared ledger make an incorrect total look correct.
+	ListExpensesByTrip(ctx context.Context, tripID string) ([]Expense, error)
 	ListItemDatesByItem(ctx context.Context, itemID string) ([]ItemDate, error)
 	ListItemFiles(ctx context.Context, arg ListItemFilesParams) ([]File, error)
 	ListItemLinksByItem(ctx context.Context, itemID string) ([]ItemLink, error)
@@ -200,6 +210,16 @@ type Querier interface {
 	// renumbering an entry that belongs to a different day.
 	SetItineraryEntrySortOrder(ctx context.Context, arg SetItineraryEntrySortOrderParams) (int64, error)
 	SetTripPreviewImage(ctx context.Context, arg SetTripPreviewImageParams) (Trip, error)
+	// The total the trip has spent, in minor units. Answered by the database
+	// rather than by summing the list in Go, so a client showing a page of rows
+	// still gets the whole total. COALESCE because SUM over no rows is NULL.
+	//
+	// The CAST is not decoration. Without it sqlc cannot type the expression and
+	// generates a method returning interface{} in both dialects, which compiles
+	// and then needs a type assertion at every call site -- and the underlying
+	// type differs per dialect, so the assertion would be right in one and panic
+	// in the other. Same trick as the role column in ListTripsForUser.
+	SumExpensesByTrip(ctx context.Context, tripID string) (int64, error)
 	TouchSession(ctx context.Context, arg TouchSessionParams) error
 	UpdateAuthIdentityPassword(ctx context.Context, arg UpdateAuthIdentityPasswordParams) error
 	// Editing an item after the fact. Write-once was the wrong lifetime here too,
@@ -208,6 +228,10 @@ type Querier interface {
 	// Renaming a list, which had no endpoint at all before Stage 14 Milestone 8: a
 	// title was write-once, so fixing a typo meant deleting the list and its items.
 	UpdateChecklistTitle(ctx context.Context, arg UpdateChecklistTitleParams) (Checklist, error)
+	// The trip_id predicate is not redundant with the id: it is what stops an
+	// expense id from one trip being edited through another trip authorization.
+	// The same belt as DeleteChecklist and DeleteExpense below.
+	UpdateExpense(ctx context.Context, arg UpdateExpenseParams) (Expense, error)
 	// A note is the only thing about a file that can change after upload: it is
 	// the readable name a file gets when its own filename is a storage blob, so
 	// write-once was the wrong lifetime for it. Scoped by (id, trip_id) exactly

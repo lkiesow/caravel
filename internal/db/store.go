@@ -56,6 +56,7 @@ type CreateTripParams struct {
 	StartDate *string
 	EndDate   *string
 	Subtitle  *string
+	Currency  string
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -69,6 +70,7 @@ type UpdateTripParams struct {
 	StartDate *string
 	EndDate   *string
 	Subtitle  *string
+	Currency  string
 	UpdatedAt time.Time
 }
 
@@ -84,6 +86,28 @@ type CreateFileParams struct {
 	SizeBytes   int64
 	UploadedAt  time.Time
 	Note        *string
+}
+
+type CreateExpenseParams struct {
+	ID          string
+	TripID      string
+	Title       string
+	AmountMinor int64
+	SpentOn     string
+	PayerUserID *string
+	CreatedAt   time.Time
+}
+
+// UpdateExpenseParams keeps TripID where UpdateTripParams dropped its OwnerID:
+// here it is not an authorization shortcut but the thing that stops an expense
+// id belonging to one trip from being edited through a role held on another.
+type UpdateExpenseParams struct {
+	ID          string
+	TripID      string
+	Title       string
+	AmountMinor int64
+	SpentOn     string
+	PayerUserID *string
 }
 
 type CreateChecklistParams struct {
@@ -348,6 +372,19 @@ type Store interface {
 	SetChecklistItemChecked(ctx context.Context, id, checklistID string, checked bool) (ChecklistItem, error)
 	UpdateChecklistItemText(ctx context.Context, id, checklistID, text string) (ChecklistItem, error)
 	DeleteChecklistItem(ctx context.Context, id, checklistID string) (bool, error)
+
+	// Expenses. No reading user is threaded through any of these, unlike the
+	// file and checklist listings: every expense on a trip is visible to
+	// everyone on it, so there is nothing per-reader to filter.
+	CreateExpense(ctx context.Context, p CreateExpenseParams) (Expense, error)
+	GetExpenseByID(ctx context.Context, id string) (Expense, error)
+	ListExpensesByTrip(ctx context.Context, tripID string) ([]Expense, error)
+	// SumExpensesByTrip totals the trip in minor units, answered by the
+	// database rather than by summing what a caller happens to be listing.
+	SumExpensesByTrip(ctx context.Context, tripID string) (int64, error)
+	UpdateExpense(ctx context.Context, p UpdateExpenseParams) (Expense, error)
+	// DeleteExpense reports whether a matching (id, tripID) expense was deleted.
+	DeleteExpense(ctx context.Context, id, tripID string) (bool, error)
 
 	// WithTx runs fn with a Store bound to a single transaction, committing
 	// on success and rolling back if fn returns an error.

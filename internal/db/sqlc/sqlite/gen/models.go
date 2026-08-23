@@ -41,6 +41,16 @@ type ChecklistItem struct {
 	CreatedAt   string `json:"created_at"`
 }
 
+type Expense struct {
+	ID          string         `json:"id"`
+	TripID      string         `json:"trip_id"`
+	Title       string         `json:"title"`
+	AmountMinor int64          `json:"amount_minor"`
+	SpentOn     string         `json:"spent_on"`
+	PayerUserID sql.NullString `json:"payer_user_id"`
+	CreatedAt   string         `json:"created_at"`
+}
+
 type File struct {
 	ID          string         `json:"id"`
 	TripID      string         `json:"trip_id"`
@@ -143,6 +153,7 @@ type Trip struct {
 	CreatedAt      string         `json:"created_at"`
 	UpdatedAt      string         `json:"updated_at"`
 	Subtitle       sql.NullString `json:"subtitle"`
+	Currency       string         `json:"currency"`
 }
 
 type TripMember struct {

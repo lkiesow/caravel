@@ -261,6 +261,7 @@ func (s seedCtx) newTrip(scenarioName, title string, start, end *string, subtitl
 		StartDate: start,
 		EndDate:   end,
 		Subtitle:  ptr(subtitle),
+		Currency:  db.DefaultCurrency,
 		CreatedAt: now,
 		UpdatedAt: now,
 	})

@@ -1,6 +1,9 @@
 package db
 
-import "time"
+import (
+	"slices"
+	"time"
+)
 
 // Domain types are dialect-agnostic. Both the sqlite and postgres Store
 // implementations convert their sqlc-generated rows (which have divergent
@@ -54,8 +57,57 @@ type Trip struct {
 	EndDate        *string
 	PreviewImageID *string
 	Subtitle       *string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	// Currency is the ISO 4217 code every expense on this trip is denominated
+	// in — one per trip, never per expense; see migration 0011. Never empty:
+	// the column has a default and ValidCurrency gates every write.
+	Currency  string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// Currencies are the codes a trip may be denominated in, the same shape as
+// config.SearchProviders. A short list rather than all of ISO 4217, because
+// every entry is one more option in a select nobody wants to scroll — and
+// adding one is a one-line change here, not a migration, which is why the
+// column carries no CHECK constraint.
+var Currencies = []string{
+	"EUR", "USD", "GBP", "CHF", "SEK", "NOK", "DKK",
+	"PLN", "CZK", "ISK", "JPY", "CAD", "AUD",
+}
+
+// ValidCurrency reports whether code is one of Currencies. Callers accepting a
+// currency from a request body go through this rather than storing what they
+// were given: an unknown code would reach the client as a formatting failure
+// three screens away from the field that caused it.
+func ValidCurrency(code string) bool {
+	return slices.Contains(Currencies, code)
+}
+
+// DefaultCurrency is what a trip is created with when the request names none,
+// and matches the column default in migration 0011.
+const DefaultCurrency = "EUR"
+
+// Expense is one thing that was paid for on a trip.
+//
+// AmountMinor is an integer in the minor unit of the trip's currency — cents
+// for EUR, whole yen for JPY, which has no minor unit. Money is never a float
+// anywhere in this codebase; see migration 0011 for why.
+//
+// SpentOn is a "YYYY-MM-DD" string, for the reason given on Trip.StartDate
+// above.
+//
+// PayerUserID is who paid, and is nil when that account has since been
+// deleted. Unlike a personal file's owner, nil here does not hide the row: the
+// expense is still visible and still counts toward the trip total. It is the
+// balances view that has to say it cannot attribute it.
+type Expense struct {
+	ID          string
+	TripID      string
+	Title       string
+	AmountMinor int64
+	SpentOn     string
+	PayerUserID *string
+	CreatedAt   time.Time
 }
 
 // TripRole is what a user may do on one trip. The three values are ordered —

@@ -232,6 +232,7 @@ func (s *sqliteStore) CreateTrip(ctx context.Context, p CreateTripParams) (Trip,
 		StartDate: nullString(p.StartDate),
 		EndDate:   nullString(p.EndDate),
 		Subtitle:  nullString(p.Subtitle),
+		Currency:  p.Currency,
 		CreatedAt: formatTime(p.CreatedAt),
 		UpdatedAt: formatTime(p.UpdatedAt),
 	})
@@ -265,6 +266,7 @@ func (s *sqliteStore) ListTripsForUser(ctx context.Context, userID string) ([]Tr
 				EndDate:        strPtr(row.EndDate),
 				PreviewImageID: strPtr(row.PreviewImageID),
 				Subtitle:       strPtr(row.Subtitle),
+				Currency:       row.Currency,
 				CreatedAt:      parseTime(row.CreatedAt),
 				UpdatedAt:      parseTime(row.UpdatedAt),
 			},
@@ -284,6 +286,7 @@ func (s *sqliteStore) UpdateTrip(ctx context.Context, p UpdateTripParams) (Trip,
 		StartDate: nullString(p.StartDate),
 		EndDate:   nullString(p.EndDate),
 		Subtitle:  nullString(p.Subtitle),
+		Currency:  p.Currency,
 		UpdatedAt: formatTime(p.UpdatedAt),
 	})
 	if err != nil {
@@ -1188,6 +1191,81 @@ func sqliteItemDateToDomain(d sqlitegen.ItemDate) ItemDate {
 	}
 }
 
+func (s *sqliteStore) CreateExpense(ctx context.Context, p CreateExpenseParams) (Expense, error) {
+	row, err := s.q.CreateExpense(ctx, sqlitegen.CreateExpenseParams{
+		ID:          p.ID,
+		TripID:      p.TripID,
+		Title:       p.Title,
+		AmountMinor: p.AmountMinor,
+		SpentOn:     p.SpentOn,
+		PayerUserID: nullString(p.PayerUserID),
+		CreatedAt:   formatTime(p.CreatedAt),
+	})
+	if err != nil {
+		return Expense{}, err
+	}
+	return sqliteExpenseToDomain(row), nil
+}
+
+func (s *sqliteStore) GetExpenseByID(ctx context.Context, id string) (Expense, error) {
+	row, err := s.q.GetExpenseByID(ctx, id)
+	if err != nil {
+		return Expense{}, mapNotFound(err)
+	}
+	return sqliteExpenseToDomain(row), nil
+}
+
+func (s *sqliteStore) ListExpensesByTrip(ctx context.Context, tripID string) ([]Expense, error) {
+	rows, err := s.q.ListExpensesByTrip(ctx, tripID)
+	if err != nil {
+		return nil, err
+	}
+	expenses := make([]Expense, len(rows))
+	for i, row := range rows {
+		expenses[i] = sqliteExpenseToDomain(row)
+	}
+	return expenses, nil
+}
+
+func (s *sqliteStore) SumExpensesByTrip(ctx context.Context, tripID string) (int64, error) {
+	return s.q.SumExpensesByTrip(ctx, tripID)
+}
+
+func (s *sqliteStore) UpdateExpense(ctx context.Context, p UpdateExpenseParams) (Expense, error) {
+	row, err := s.q.UpdateExpense(ctx, sqlitegen.UpdateExpenseParams{
+		ID:          p.ID,
+		TripID:      p.TripID,
+		Title:       p.Title,
+		AmountMinor: p.AmountMinor,
+		SpentOn:     p.SpentOn,
+		PayerUserID: nullString(p.PayerUserID),
+	})
+	if err != nil {
+		return Expense{}, mapNotFound(err)
+	}
+	return sqliteExpenseToDomain(row), nil
+}
+
+func (s *sqliteStore) DeleteExpense(ctx context.Context, id, tripID string) (bool, error) {
+	n, err := s.q.DeleteExpense(ctx, sqlitegen.DeleteExpenseParams{ID: id, TripID: tripID})
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+func sqliteExpenseToDomain(e sqlitegen.Expense) Expense {
+	return Expense{
+		ID:          e.ID,
+		TripID:      e.TripID,
+		Title:       e.Title,
+		AmountMinor: e.AmountMinor,
+		SpentOn:     e.SpentOn,
+		PayerUserID: strPtr(e.PayerUserID),
+		CreatedAt:   parseTime(e.CreatedAt),
+	}
+}
+
 func sqliteTripToDomain(t sqlitegen.Trip) Trip {
 	return Trip{
 		ID:             t.ID,
@@ -1197,6 +1275,7 @@ func sqliteTripToDomain(t sqlitegen.Trip) Trip {
 		EndDate:        strPtr(t.EndDate),
 		PreviewImageID: strPtr(t.PreviewImageID),
 		Subtitle:       strPtr(t.Subtitle),
+		Currency:       t.Currency,
 		CreatedAt:      parseTime(t.CreatedAt),
 		UpdatedAt:      parseTime(t.UpdatedAt),
 	}

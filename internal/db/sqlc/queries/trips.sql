@@ -1,6 +1,6 @@
 -- name: CreateTrip :one
-INSERT INTO trips (id, owner_id, title, start_date, end_date, subtitle, created_at, updated_at)
-VALUES (sqlc.arg(id), sqlc.arg(owner_id), sqlc.arg(title), sqlc.arg(start_date), sqlc.arg(end_date), sqlc.arg(subtitle), sqlc.arg(created_at), sqlc.arg(updated_at))
+INSERT INTO trips (id, owner_id, title, start_date, end_date, subtitle, currency, created_at, updated_at)
+VALUES (sqlc.arg(id), sqlc.arg(owner_id), sqlc.arg(title), sqlc.arg(start_date), sqlc.arg(end_date), sqlc.arg(subtitle), sqlc.arg(currency), sqlc.arg(created_at), sqlc.arg(updated_at))
 RETURNING *;
 
 -- name: GetTripByID :one
@@ -31,6 +31,7 @@ SET title = sqlc.arg(title),
     start_date = sqlc.arg(start_date),
     end_date = sqlc.arg(end_date),
     subtitle = sqlc.arg(subtitle),
+    currency = sqlc.arg(currency),
     updated_at = sqlc.arg(updated_at)
 WHERE id = sqlc.arg(id)
 RETURNING *;

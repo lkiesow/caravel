@@ -42,10 +42,29 @@ down.
 
 ## Planned features
 
-- **Expenses / cost-splitting.** **(soon)** (Stage 01.) A new `expenses` table
-  referencing `trip_id` and optionally `item_id`, with no changes to existing
-  tables. The *splitting* half only means anything once several people share a
-  trip.
+- **Expenses / cost-splitting: what Stage 17 leaves out.** **In progress** --
+  Stage 17 is building this, so the entry records only what it deliberately
+  does *not* cover. The schema and store landed in Milestone 1: an `expenses`
+  table (title, `amount_minor` as an integer, `spent_on`, `payer_user_id`) plus
+  a `currency` column on `trips`.
+    - **Settlement payments.** A recorded payment between two members that
+      drives a balance back to zero. Left out because it is the part most
+      likely to want redesign once somebody has used the rest, and balances are
+      useful without it.
+    - **Expense categories.** A fixed vocabulary (lodging, food, transport...)
+      with i18n keys, so totals can group by something. Wanted; the choice was
+      to spend this stage's depth on splitting instead. Note the constraint if
+      it is picked up: free text cannot be translated, so a fixed list with
+      keys is the option that works in German.
+    - **Linking an expense to a location.** The original Stage 01 sketch had an
+      optional `item_id`, which would give a per-location cost on the location
+      view. Dropped from Stage 17 with the other non-minimal fields; it is one
+      nullable column and a select.
+    - **Per-expense currency, and refunds.** One currency per trip is a
+      deliberate simplification: per-expense makes every total *and* every
+      balance per-currency. `amount_minor` also has a `CHECK (amount_minor >
+      0)`, so a refund cannot be entered as a negative row -- lifting that
+      means deciding what a negative expense does to a split.
 - **SearXNG as a search backend.** (Stage 16 Milestone 8.) Planned for that
   milestone and dropped: nobody had an instance to test against, and a backend
   verified only against a fake is a backend nobody should trust. Everything

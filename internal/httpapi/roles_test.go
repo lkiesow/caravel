@@ -45,6 +45,7 @@ type roleFixture struct {
 	fileID      string
 	mediaID     string
 	dayID       string
+	expenseID   string
 }
 
 // A 1x1 PNG, so the image pipeline has something valid to decode.
@@ -91,6 +92,11 @@ func setupRole(t *testing.T, role db.TripRole) *roleFixture {
 		t.Fatalf("upload media: got %d, body %s", w.Code, w.Body.String())
 	}
 	f.mediaID = decode[map[string]any](t, w)["id"].(string)
+
+	f.expenseID = ts.mustCreate(
+		http.MethodPost, "/api/trips/"+f.tripID+"/expenses", owner,
+		`{"title":"Owner's ferry","amount_minor":1500,"spent_on":"2026-08-20"}`, http.StatusCreated,
+	)
 
 	// An explicit itinerary day, so the /api/itinerary/days/{dayId} routes have
 	// a real row to aim at. Days inside a trip's date range are synthesized and
@@ -171,6 +177,7 @@ func roleRoutes() []route {
 		{http.MethodGet, trip("/itinerary"), lit(""), db.RoleViewer},
 		{http.MethodGet, trip("/files"), lit(""), db.RoleViewer},
 		{http.MethodGet, trip("/checklists"), lit(""), db.RoleViewer},
+		{http.MethodGet, trip("/expenses"), lit(""), db.RoleViewer},
 		{http.MethodGet, item(""), lit(""), db.RoleViewer},
 		{http.MethodGet, item("/files"), lit(""), db.RoleViewer},
 		{http.MethodGet, func(f *roleFixture) string { return "/api/files/" + f.fileID + "/download" }, lit(""), db.RoleViewer},
@@ -182,6 +189,7 @@ func roleRoutes() []route {
 		{http.MethodPost, trip("/media/url"), lit(`{"url":"https://example.com/x.png"}`), db.RoleEditor},
 		{http.MethodPost, trip("/items"), lit(`{"title":"new","category":"site","type":"landmark"}`), db.RoleEditor},
 		{http.MethodPost, trip("/checklists"), lit(`{"title":"new list"}`), db.RoleEditor},
+		{http.MethodPost, trip("/expenses"), lit(`{"title":"new expense","amount_minor":250,"spent_on":"2026-08-21"}`), db.RoleEditor},
 		{http.MethodPut, trip("/itinerary/days/2026-08-21"), lit(`{"notes":"n"}`), db.RoleEditor},
 		{http.MethodPatch, item(""), lit(`{"title":"edited","category":"site","type":"landmark"}`), db.RoleEditor},
 		{http.MethodPut, item("/location"), lit(`{"lat":1,"lng":2}`), db.RoleEditor},
@@ -190,6 +198,8 @@ func roleRoutes() []route {
 		{http.MethodPost, item("/dates"), lit(`{"start_date":"2026-08-20"}`), db.RoleEditor},
 		{http.MethodPatch, func(f *roleFixture) string { return "/api/files/" + f.fileID }, lit(`{"note":"n"}`), db.RoleEditor},
 		{http.MethodPost, func(f *roleFixture) string { return "/api/checklists/" + f.checklistID + "/items" }, lit(`{"text":"t"}`), db.RoleEditor},
+		{http.MethodPatch, func(f *roleFixture) string { return "/api/expenses/" + f.expenseID },
+			lit(`{"title":"edited","amount_minor":1600,"spent_on":"2026-08-20"}`), db.RoleEditor},
 		{http.MethodPost, func(f *roleFixture) string { return "/api/itinerary/days/" + f.dayID + "/entries" },
 			func(f *roleFixture) string { return `{"item_id":"` + f.itemID + `"}` }, db.RoleEditor},
 		// Deletes, last because they destroy the fixture — but each row gets a
@@ -197,6 +207,7 @@ func roleRoutes() []route {
 		{http.MethodDelete, item(""), lit(""), db.RoleEditor},
 		{http.MethodDelete, func(f *roleFixture) string { return "/api/files/" + f.fileID }, lit(""), db.RoleEditor},
 		{http.MethodDelete, func(f *roleFixture) string { return "/api/checklists/" + f.checklistID }, lit(""), db.RoleEditor},
+		{http.MethodDelete, func(f *roleFixture) string { return "/api/expenses/" + f.expenseID }, lit(""), db.RoleEditor},
 		{http.MethodDelete, func(f *roleFixture) string { return "/api/itinerary/days/" + f.dayID }, lit(""), db.RoleEditor},
 
 		// Owner only.
@@ -223,7 +234,7 @@ func TestRoleMatrix(t *testing.T) {
 						t.Errorf("%s %s as stranger: got %d, want 404 — body %s",
 							rt.method, path, w.Code, w.Body.String())
 					}
-					for _, secret := range []string{"Owner's trip", "Owner's location", "Packing", "secret.txt", "owner's file", "arrive"} {
+					for _, secret := range []string{"Owner's trip", "Owner's location", "Packing", "secret.txt", "owner's file", "arrive", "Owner's ferry"} {
 						if strings.Contains(w.Body.String(), secret) {
 							t.Errorf("%s %s leaked %q to a stranger: %s", rt.method, path, secret, w.Body.String())
 						}

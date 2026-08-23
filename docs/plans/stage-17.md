@@ -218,6 +218,57 @@ unknown currency → 400, a payer who is not on the trip → 400, an absent paye
 defaulting to the caller, and `total_minor` matching the rows it was computed
 from.
 
+**Done.** Landed as planned, with one design reversal and two additions.
+
+*The planned "absent payer defaults to the caller" is gone; the server never
+fills the payer in.* A test written straight from the plan failed and was right
+to: Go cannot distinguish an absent `*string` from an explicit `null`, so
+"absent means me" also means "`null` means me" — and there would then be no way
+to record an expense somebody outside the trip paid for. The default was also
+outright wrong on update, where a PATCH replaces every field it names: editing
+a title would have reassigned somebody else's expense to whoever edited it. A
+rule that has to differ per verb to stay safe is the wrong rule, so defaulting
+to yourself moves to the client, where the form has a visible default. Absent
+or null now means unattributed in both verbs, with no asymmetry to document.
+
+*The response carries `payer_display_name`.* Planned as `payer_user_id` only,
+on the assumption the client would resolve names from the members list. It
+cannot: somebody who paid and then left the trip is no longer a member, so a
+client-side lookup renders a blank name for a payer who is perfectly well
+recorded. Resolved server-side through a small per-response cache, so a list of
+twenty expenses paid by two people costs two lookups. There is a test for the
+paid-then-left case specifically.
+
+*The authorization matrix was extended, not duplicated.* `roles_test.go`
+already tables every trip-scoped route against all four kinds of caller, so the
+four expense routes became four rows there (plus an expense in its fixture and
+its title in the leak list), and the requires-a-session list in
+`ownership_test.go` gained the list route. Writing a private matrix in
+`expenses_test.go` would have been a second, weaker copy of the same policy.
+
+Also landed: `currency` on `tripRequest`/`tripResponse`, optional in both verbs,
+where absent means the shipped default on create and *the trip's current value*
+on update — not the default, or renaming a trip priced in yen would reset it to
+euros. `handleListTrips` builds its response inline and needed the field
+separately; that is the second inline site Milestone 1's test flagged, and it
+would otherwise have shipped an empty currency in the trips list.
+
+**Verified.** `make ci` green. `expenses_test.go` covers the seven validation
+messages (each asserted by message, since a form that says "amount is required"
+when the date is missing sends the user to the wrong field), nothing being
+written by a refusal, the payer being exactly what the request said, the
+membership check refusing a stranger and then accepting the same body once they
+are a member, an explicit null payer still counting toward the total, the total
+agreeing with the rows it was computed from, list order, a cross-trip PATCH and
+DELETE answering 404 with the row left intact, a viewer reading the whole
+ledger by content rather than by status, and the currency lifecycle including
+`XYZ`/`eur`/`""` refused. Beyond the tests: every endpoint was exercised
+against the running dev server on a throwaway JPY trip — the zero-exponent case
+the client will have to format — confirming 201/200/400 bodies by hand, then the
+trip was deleted and the seeded scenarios left at their original seven. The
+Playwright suite was run as the regression net for the widened trip response
+and the new routes: 91 passed, 3 skipped (assist, unconfigured locally).
+
 ## 3. The Expenses tab
 
 - `{ key: "expenses", icon: <new>, overflow: true }` added to `TRIP_TABS`

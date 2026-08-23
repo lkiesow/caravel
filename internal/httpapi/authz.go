@@ -151,6 +151,61 @@ func (s *Server) loadChecklist(w http.ResponseWriter, r *http.Request, min db.Tr
 	return checklist, role, true
 }
 
+// loadExpense fetches the expense named by {expenseId} and authorizes against
+// its trip.
+//
+// Nothing follows the authorization, which is the whole difference from
+// loadChecklist and loadFile: those re-check a personal row's owner, because
+// holding an id is not access to somebody's private list. An expense has no
+// personal state to protect — everyone on the trip may see every expense on it
+// — so a role on the trip is the entire question.
+func (s *Server) loadExpense(w http.ResponseWriter, r *http.Request, min db.TripRole) (db.Expense, db.TripRole, bool) {
+	expense, err := s.Store.GetExpenseByID(r.Context(), chi.URLParam(r, "expenseId"))
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "expense not found")
+		} else {
+			writeError(w, http.StatusInternalServerError, "could not load expense")
+		}
+		return db.Expense{}, "", false
+	}
+	_, role, ok := s.authorizeTrip(w, r, expense.TripID, min, "expense not found")
+	if !ok {
+		return db.Expense{}, "", false
+	}
+	return expense, role, true
+}
+
+// requireTripMember confirms that userID holds some role on trip, writing the
+// error response itself if not. A nil userID is allowed and means nobody, which
+// is a legitimate value for an expense payer.
+//
+// This is requireSameTrip's problem in a different shape: the id arrives in a
+// request body, so no route param has authorized it, and without this check any
+// user id at all could be recorded as having paid for something on a trip they
+// have nothing to do with. 400 rather than 403 or 404 — the caller is
+// authorized, the request is what is wrong.
+//
+// Note this asks whether the *named* user has a role, not the caller, so it
+// cannot go through tripRole: that reads the user from the request context.
+func (s *Server) requireTripMember(w http.ResponseWriter, r *http.Request, trip db.Trip, userID *string) bool {
+	if userID == nil {
+		return true
+	}
+	if trip.OwnerID == *userID {
+		return true
+	}
+	if _, err := s.Store.GetTripMember(r.Context(), trip.ID, *userID); err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			writeError(w, http.StatusBadRequest, "that person is not on this trip")
+		} else {
+			writeError(w, http.StatusInternalServerError, "could not check trip membership")
+		}
+		return false
+	}
+	return true
+}
+
 // loadFile fetches the file named by {fileId} and authorizes against its trip.
 func (s *Server) loadFile(w http.ResponseWriter, r *http.Request, min db.TripRole) (db.File, db.TripRole, bool) {
 	file, err := s.Store.GetFileByID(r.Context(), chi.URLParam(r, "fileId"))

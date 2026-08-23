@@ -256,6 +256,11 @@ func (s *Server) buildRouter() chi.Router {
 				r.Get("/checklists", s.handleListChecklists)
 				r.Post("/checklists", s.handleCreateChecklist)
 
+				// Reading the ledger needs only viewer: everyone on a trip may
+				// see what it cost, including someone who cannot change it.
+				r.Get("/expenses", s.handleListExpenses)
+				r.Post("/expenses", s.handleCreateExpense)
+
 				// Reading the member list needs only viewer: everyone on a
 				// trip may see who else is on it. The writes are owner-only,
 				// except that handleRemoveMember also serves "leave trip" and
@@ -290,6 +295,16 @@ func (s *Server) buildRouter() chi.Router {
 			// would make an absent field ambiguous.
 			r.Put("/items/{itemId}/text", s.handleUpdateChecklistItemText)
 			r.Delete("/items/{itemId}", s.handleDeleteChecklistItem)
+		})
+
+		r.Route("/expenses/{expenseId}", func(r chi.Router) {
+			r.Use(auth.RequireAuth)
+			// No visibility route and no per-field endpoints: an expense is
+			// four fields that are edited together, so PATCH carries all of
+			// them. See the note on expenseRequest for what an absent payer
+			// means, which differs between create and update.
+			r.Patch("/", s.handleUpdateExpense)
+			r.Delete("/", s.handleDeleteExpense)
 		})
 
 		r.Route("/media/{mediaId}", func(r chi.Router) {

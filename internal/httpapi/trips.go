@@ -45,6 +45,10 @@ type tripResponse struct {
 	// trip nobody else can see, personal versus trip-visible is a question with
 	// only one possible answer.
 	MemberCount int64 `json:"member_count"`
+	// Currency is the ISO 4217 code every expense on this trip is denominated
+	// in. Always sent, so the client never has to assume one to format an
+	// amount.
+	Currency string `json:"currency"`
 }
 
 func (s *Server) tripToResponse(ctx context.Context, t db.Trip, role db.TripRole) tripResponse {
@@ -58,6 +62,7 @@ func (s *Server) tripToResponse(ctx context.Context, t db.Trip, role db.TripRole
 		CreatedAt:      t.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:      t.UpdatedAt.UTC().Format(time.RFC3339),
 		Role:           string(role),
+		Currency:       t.Currency,
 	}
 	resp.PreviewImageURL = s.resolveImageURL(ctx, t.PreviewImageID)
 	// One extra count on a single-trip response. A failure leaves it at zero,
@@ -119,6 +124,7 @@ func (s *Server) handleListTrips(w http.ResponseWriter, r *http.Request) {
 			UpdatedAt:      t.UpdatedAt.UTC().Format(time.RFC3339),
 			Role:           string(t.Role),
 			MemberCount:    t.MemberCount,
+			Currency:       t.Currency,
 		}
 		item.PreviewImageURL = s.resolveImageURL(r.Context(), t.PreviewImageID)
 		if t.Role != db.RoleOwner {
@@ -134,6 +140,12 @@ type tripRequest struct {
 	StartDate *string `json:"start_date"`
 	EndDate   *string `json:"end_date"`
 	Subtitle  *string `json:"subtitle"`
+	// Currency is optional in both verbs, and absent means different things:
+	// the shipped default on create, and "leave it alone" on update. A pointer
+	// rather than a string because readJSON refuses unknown fields but cannot
+	// tell an omitted string from an empty one, and an empty currency is not a
+	// value any caller should be able to write.
+	Currency *string `json:"currency"`
 }
 
 func (req tripRequest) validate() error {
@@ -145,6 +157,12 @@ func (req tripRequest) validate() error {
 	}
 	if err := validateDate(req.EndDate); err != nil {
 		return err
+	}
+	// Checked against the allowlist rather than merely for shape: an
+	// unrecognised code would otherwise surface as a formatting failure in the
+	// expenses tab, screens away from the field that caused it.
+	if req.Currency != nil && !db.ValidCurrency(*req.Currency) {
+		return errors.New("unsupported currency")
 	}
 	// An inverted range isn't just cosmetic: the trip header renders it
 	// verbatim ("20 Aug – 1 Aug 2026"), and handleGetItinerary's
@@ -158,6 +176,15 @@ func (req tripRequest) validate() error {
 		}
 	}
 	return nil
+}
+
+// currencyOrDefault resolves an optional currency from a request body. The
+// value has already been checked by tripRequest.validate.
+func currencyOrDefault(requested *string, fallback string) string {
+	if requested == nil {
+		return fallback
+	}
+	return *requested
 }
 
 func validateDate(d *string) error {
@@ -191,10 +218,7 @@ func (s *Server) handleCreateTrip(w http.ResponseWriter, r *http.Request) {
 		StartDate: req.StartDate,
 		EndDate:   req.EndDate,
 		Subtitle:  req.Subtitle,
-		// The trip currency is not settable at create time yet -- the form has
-		// no control for it, and every expense is denominated in it, so it can
-		// be changed later in trip settings without invalidating anything.
-		Currency:  db.DefaultCurrency,
+		Currency:  currencyOrDefault(req.Currency, db.DefaultCurrency),
 		CreatedAt: now,
 		UpdatedAt: now,
 	})
@@ -235,11 +259,11 @@ func (s *Server) handleUpdateTrip(w http.ResponseWriter, r *http.Request) {
 		StartDate: req.StartDate,
 		EndDate:   req.EndDate,
 		Subtitle:  req.Subtitle,
-		// Carried over from the loaded trip rather than taken from the request:
-		// UpdateTrip writes every column it names, so leaving this out would
-		// blank the currency on every rename. The request gains a field of its
-		// own when the UI does.
-		Currency:  trip.Currency,
+		// Falls back to the trip's current value, not to the shipped default:
+		// UpdateTrip writes every column it names, so a request that says
+		// nothing about currency must leave it as it was rather than resetting
+		// a trip priced in yen back to euros.
+		Currency:  currencyOrDefault(req.Currency, trip.Currency),
 		UpdatedAt: time.Now().UTC(),
 	})
 	if err != nil {

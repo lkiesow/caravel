@@ -240,6 +240,7 @@ func TestOwnedRoutesRequireAuth(t *testing.T) {
 		{http.MethodGet, "/api/trips/" + o.tripID},
 		{http.MethodGet, "/api/items/" + o.itemID},
 		{http.MethodGet, "/api/trips/" + o.tripID + "/checklists"},
+		{http.MethodGet, "/api/trips/" + o.tripID + "/expenses"},
 		{http.MethodGet, "/api/files/" + o.fileID + "/download"},
 		{http.MethodGet, "/api/media/" + o.mediaID + "/file"},
 	} {

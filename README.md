@@ -8,6 +8,20 @@ day-by-day itinerary, and attach documents and photos along the way.
 
 ## Quick start
 
+With Docker or Podman, and nothing else installed:
+
+```sh
+docker compose up -d
+```
+
+Then open [http://localhost:8080](http://localhost:8080) and register — a fresh
+instance with no accounts always allows the first one, and it becomes the admin.
+Use `docker-compose.postgres.yml` instead to run against Postgres rather than
+SQLite. (Until the first image is published, add `--build` and uncomment the
+`build:` line, or the pull fails with a bare `403 Forbidden`.)
+
+From source, which is also the development path:
+
 ```sh
 make run
 ```

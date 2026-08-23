@@ -124,6 +124,15 @@ check, i18n key parity, `go test`. Don't rely on CI to catch it first.
   for churn — an unsubstituted `sqlc.arg(...)` compiles fine and fails at
   runtime.
 
+- **Building the image.** `docker build --build-arg VERSION="$(scripts/version.sh)"
+  -t caravel .` — the argument matters, because `.git` is not in the build
+  context, so without it the binary calls itself `unknown`. With **podman**, add
+  `--format docker` or the `HEALTHCHECK` is silently dropped (it is not an OCI
+  instruction; podman warns, in the middle of a lot of build output). The image
+  is distroless, so there is no shell inside: `caravel -health` is what the
+  healthcheck runs, and `podman logs` rather than `exec` is how you see what a
+  container is doing.
+
 - **Brand assets are generated, not hand-edited.** Two scripts own them, both
   run by hand with committed output (like the icon sprite below):
 

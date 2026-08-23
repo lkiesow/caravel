@@ -375,15 +375,21 @@ down.
 Nothing here is needed to keep developing; all of it is needed before anyone
 else runs this.
 
-- **A Dockerfile and an image-publishing workflow.** **(soon)** (Stage 18
-  Milestone 4 landed the two compose files; the Dockerfile is Milestone 7 and
-  the publishing workflow Milestone 8 of the same stage, so this entry should be
-  deleted when those land.) `docker-compose.yml` (SQLite) and
-  `docker-compose.postgres.yml` both exist and both reference
-  `ghcr.io/lkiesow/caravel:latest`, which nothing publishes yet -- so neither
-  app service can actually start, and pulling reports a bare `403 Forbidden`
-  rather than saying the image is missing. Until then `build: .` is the only
-  working path.
+- **An image-publishing workflow.** **(soon)** (Stage 18 Milestone 7 landed the
+  Dockerfile; publishing is Milestone 8 of the same stage, so this entry should
+  be deleted when that lands.) The image builds and runs -- 23.6 MB, distroless,
+  non-root, verified end to end with both compose files -- but nothing pushes it
+  anywhere, so `ghcr.io/lkiesow/caravel:latest` still 403s and both compose
+  files need `build: .` uncommented to work from a clone.
+
+- **`HEALTHCHECK` is invisible to a podman build.** (Stage 18 Milestone 7.)
+  `podman build` defaults to the OCI image format, which has no HEALTHCHECK
+  instruction, so it drops ours with a warning nobody reads in the middle of a
+  build log -- `--format docker` is required. CI uses docker, so published
+  images carry it; anyone building locally with podman gets an image whose
+  health is silently unknown. Options: mention it in the docs only (done), or
+  add a `make image` target that passes the right flag for whichever tool is
+  installed, the way `scripts/test_postgres.sh` already does for compose.
 
 - **The squash is a one-way door, and nothing enforces it.** (Stage 18
   Milestone 6.) The schema is one `0001_init` pair per dialect now, and any

@@ -1,0 +1,42 @@
+# Everything the build does not need. Two reasons this matters beyond speed: a
+# fat context is slow to send for every build, and anything reaching the context
+# can reach an image layer — which for credentials is permanent, since a key in a
+# published layer has to be rotated rather than deleted.
+#
+# Note what is NOT excluded: web/ is embedded into the binary by embed.go, so the
+# build needs it.
+
+# Local databases, uploads and build output.
+data/
+uploads/
+bin/
+.dev/
+
+# Node tooling and test artefacts (the app ships no npm dependencies).
+node_modules/
+test-results/
+playwright-report/
+blob-report/
+.playwright-mcp/
+.cache/
+
+# Secrets. Broadly rather than by exact name: the failure is silent and
+# permanent.
+.env
+.env.*
+credentials.yaml
+credentials.yml
+*.credentials
+
+# History and docs: the version is passed in as a build argument (see the
+# Dockerfile), so .git is not needed to stamp the binary.
+.git/
+.github/
+docs/
+plans/
+README.md
+CLAUDE.md
+
+# Editor and OS noise.
+*.swp
+.DS_Store

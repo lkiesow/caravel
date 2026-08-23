@@ -149,12 +149,16 @@ resolves to navy on light and the lightened navy on dark, so callers never pick
 between the two (the same shape as `--color-danger` / `--color-danger-fg`).
 
 Two things found on the way that were not in the plan. **`.woff2` has no entry
-in Go's MIME table**, so `http.FileServer` would serve the fonts as
-`application/octet-stream`; `router.go` now registers it beside the
-`.webmanifest` line. Note honestly what is *not* proven: a developer machine has
-`/etc/mime.types`, from which Go picks the type up anyway, so the new assertion
-passes with or without that line and only the container will show the
-difference — Milestone 7 has to check it there. And the app's **description had
+in Go's MIME table**, so `http.FileServer` falls back to the system
+`/etc/mime.types`; `router.go` now registers it beside the `.webmanifest` line.
+Two corrections to what this paragraph originally claimed, both from Milestone 7
+actually checking: the assertion cannot exercise the registration (a developer
+machine has `/etc/mime.types`), and **the container has that file too** —
+`gcr.io/distroless/static` ships it, woff2 line included, and the image serves
+`font/woff2` with the registration removed. So the line is belt and braces
+rather than load-bearing, kept because it makes the served type a property of
+this program rather than of the base image. The `.webmanifest` half *is*
+load-bearing: no `/etc/mime.types` lists that extension. And the app's **description had
 drifted into three copies**; all three now carry the brand's own sub-line, with
 a test that they agree.
 
@@ -581,6 +585,59 @@ builds its databases from scratch every run.
   Getting this wrong is how a context reaches hundreds of megabytes and how a
   credentials file reaches a layer.
 - Then make the compose app services real and verify the SQLite one end to end.
+
+**Done.** A two-stage `Dockerfile`: `golang:1.26` builds a static binary
+(`CGO_ENABLED=0`, which `modernc.org/sqlite` makes possible), and
+`gcr.io/distroless/static:nonroot` runs it as uid 65532. **23.6 MB**, and
+`podman history` shows nothing in it but the binary, two empty directories and
+the base layers — no source, no `node_modules`, no credentials.
+
+Three things the plan did not anticipate:
+
+- **The healthcheck needed somewhere to live.** A distroless image has no curl,
+  no wget and no shell to run them from, and moving the check to compose does
+  not help, since it runs in the same container. So the binary checks itself:
+  `caravel -health` asks `/api/health` on the local port and exits 0 or 1. It
+  deliberately does not call `config.Load`, so an unrelated malformed variable
+  cannot make a healthy server look sick.
+- **The data directories needed ownership without a shell.** No `RUN mkdir` is
+  possible in the runtime stage, so the build stage creates them and they are
+  copied in with `--chown=nonroot:nonroot`. That matters because an empty named
+  volume inherits the ownership of the image directory it covers — otherwise the
+  server could not write its own database.
+- **`podman build` silently drops `HEALTHCHECK`** unless given
+  `--format docker`, because the instruction is not part of the OCI image spec.
+  It warns, but a warning in a hundred lines of build output is easy to miss.
+  Documented; CI builds with docker, where it is honoured.
+
+**And a correction, which is the part worth reading.** Milestone 1 registered
+`.woff2` in Go's MIME table and justified it with "a distroless container has no
+`/etc/mime.types`, so the image is the only place this would have broken". That
+was wrong, and this milestone is where it was checked: distroless **ships** that
+file, woff2 line included, and an image built with the registration removed
+still serves `font/woff2`. The line stays — it makes the served type a property
+of this program rather than of the base image, and a `scratch` image genuinely
+has no such file — but it is belt and braces, not load-bearing, and the comments
+in `router.go`, `brand.spec.js` and the Milestone 1 account above now say so.
+The `.webmanifest` half *is* load-bearing: no `/etc/mime.types` lists that
+extension.
+
+Verified by running the thing, not by reading it. On the image directly: healthy
+per its own healthcheck; `/api/health` reporting the stamped version; the
+embedded frontend serving `/`, the CSS, the JS, the brand mark and the icon
+sprite with correct content types, plus the SPA fallback on a deep link;
+registering the first account on an empty instance and getting `is_admin: true`
+(the Milestone 4 first-run claim, confirmed); creating a trip; uploading a JPEG
+and finding it on the uploads volume; then **removing the container and
+recreating it** — login, trip and uploaded image all still there, and
+registration now closed because a user exists.
+
+Then both compose files, with the local build tagged as the image they name —
+which also closes what Milestone 4 could not verify. `docker-compose.yml` comes
+up healthy on SQLite. `docker-compose.postgres.yml` brings up app and database
+together, the app logs `db=postgres`, and it registers, creates a trip, and
+**lists locations** — the exact request that returned 500 on Postgres until
+Milestone 3 — against a database it migrated to version 1 with 19 tables.
 
 ## 8. Publish images to GHCR
 

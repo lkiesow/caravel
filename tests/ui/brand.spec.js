@@ -9,10 +9,11 @@
 //
 // One caveat, since it is the kind of thing that reads as covered when it is
 // not: the woff2 content type passes here whether or not router.go registers
-// it, because Go's mime package falls back to the system /etc/mime.types and a
-// developer machine has one. The explicit registration exists for the image,
-// which does not - so this assertion is the guard for whatever environment the
-// suite runs against, and Milestone 7 has to check the container itself.
+// it, because Go's mime package falls back to the system /etc/mime.types, which
+// both a developer machine and the published image have. (Stage 18 Milestone 1
+// assumed the image would not; Milestone 7 checked, and it does.) So this
+// assertion guards the served type in whatever environment the suite runs
+// against, but it does not exercise the registration.
 import { test, expect } from "@playwright/test";
 import { blockExternalRequests, APP_ORIGIN } from "./helpers/scenarios.js";
 

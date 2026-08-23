@@ -20,13 +20,20 @@ import (
 )
 
 func init() {
-	// Go's mime package doesn't know these extensions, so http.FileServer
-	// would otherwise serve manifest.webmanifest as text/plain and the brand
-	// fonts as application/octet-stream. Note that a developer machine will not
-	// show the woff2 omission: mime falls back to the system /etc/mime.types,
-	// which has the entry. A distroless container has no such file, so the
-	// built image is the only place it would have broken - which also means
-	// tests/ui/brand.spec.js cannot prove this line matters, and says so.
+	// Go's mime package has neither extension in its builtin table, so
+	// http.FileServer would fall back to the system /etc/mime.types - and
+	// serve manifest.webmanifest as text/plain if that file is missing or has
+	// no entry for it.
+	//
+	// The webmanifest line is load-bearing: no /etc/mime.types anywhere lists
+	// that extension. The woff2 line is belt and braces, and worth being honest
+	// about: it was added in Stage 18 Milestone 1 on the theory that the
+	// container would lack /etc/mime.types, and Milestone 7 disproved that -
+	// gcr.io/distroless/static ships the file, woff2 line included, and the
+	// image serves font/woff2 with this line removed. It stays because it makes
+	// the served type a property of this program rather than of whatever base
+	// image someone builds on (a scratch image has no such file), but nothing
+	// currently depends on it.
 	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
 	_ = mime.AddExtensionType(".woff2", "font/woff2")
 }

@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -18,7 +20,42 @@ import (
 	"caravel/internal/storagefs"
 )
 
+// health is the container's HEALTHCHECK, and the reason it lives in this binary
+// rather than in a shell command: the image is distroless, so there is no curl,
+// no wget and no shell to run them from. `caravel -health` asks the server on
+// this host whether it is up, which is exactly what an external check would do.
+//
+// Deliberately does not go through config.Load: a health check that fails
+// because some unrelated variable is malformed would report the wrong thing,
+// and the only setting it needs is the port.
+func health() int {
+	port := os.Getenv("CARAVEL_PORT")
+	if port == "" {
+		port = "8080"
+	}
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get("http://127.0.0.1:" + port + "/api/health")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "health: %v\n", err)
+		return 1
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		// /api/health answers 503 when the database ping fails, which is a
+		// server that is listening but cannot serve - unhealthy, not healthy.
+		fmt.Fprintf(os.Stderr, "health: HTTP %d\n", resp.StatusCode)
+		return 1
+	}
+	return 0
+}
+
 func main() {
+	healthOnly := flag.Bool("health", false, "check whether the server on this host is healthy, then exit (used by the container HEALTHCHECK)")
+	flag.Parse()
+	if *healthOnly {
+		os.Exit(health())
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("config: %v", err)

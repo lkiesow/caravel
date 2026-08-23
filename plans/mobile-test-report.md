@@ -13,7 +13,7 @@ not its verdicts; `stage-04.md`'s "Report triage" section has the full
 finding-by-finding breakdown of what reproduced and what didn't. This
 document instead records the *outcome*: what was fixed, how it was verified,
 and what remains open. Screenshots from both the original test and this
-follow-up are gitignored (`docs/plans/mobile-fresh-*.png`) — they're
+follow-up are gitignored (`plans/mobile-fresh-*.png`) — they're
 throwaway dev artifacts regenerated per test run, not durable evidence, so
 findings are written up as prose here instead.
 

@@ -1,7 +1,7 @@
 # Stage 18 — Release readiness: brand, containers, docs site
 
-*Milestone 9 moves this file: `docs/plans/` becomes `plans/`, so that `docs/`
-can be the documentation site's source. Until then it lives here.*
+*Milestone 9 moved this file: `docs/plans/` became `plans/`, so that `docs/`
+can be the documentation site's source.*
 
 ## Context
 
@@ -739,6 +739,112 @@ desktop and 324px, in both palettes; the hero compared against the mockup; no
 third-party font or asset request in DevTools; and after the first push, the
 live Pages URL. Note explicitly if 0.0.57 forced any workaround — that is the
 evaluation the user asked for.
+
+**Done.** The site exists, builds clean and is wired to Pages; what follows is
+what actually landed and where Zensical 0.0.57 needed working around.
+
+*The move.* `git mv docs/plans plans` (21 files, all recorded as renames), then
+the three non-plan files that named the old path: `CLAUDE.md`, `.gitignore`'s
+`mobile-fresh-*.png` rule, and the comment in
+`web/js/components/assist-panel.js`. Also `plans/mobile-test-report.md`, which
+quotes that gitignore rule — not one of the three the plan counted, but it names
+a live rule rather than history, so it was updated too. The stage plans'
+own cross-references to `docs/plans/...` were left alone: they are historical
+prose describing where those files were when the sentence was written, and
+rewriting them would make the record less accurate, not more.
+
+*Fonts.* `scripts/gen_brand_fonts.py` now writes **two** destinations,
+`web/fonts/` and `docs/assets/fonts/`, in one run. The site can only read files
+under its own `docs_dir`, so it needs its own copy; making the generator own
+both is what stops the site drifting to an older subset than the app. The
+`web/fonts/` output came out byte-identical, which is the reproducibility claim
+the script makes being checked rather than assumed.
+
+*The landing page.* `docs/index.md` carries `template: home.html`, and
+`overrides/home.html` extends `base.html` — the mechanism verified during
+planning, and it works. It overrides `hero`, which sits *outside* `md-main` in
+`base.html` and so runs full-bleed, then empties `container` so no empty article
+renders under it. Content per the checkpoint asked before building: the hero
+from the mockup plus three feature cards (Plan it / Map it / Split it), with the
+headline and sub-line being the same strings as `auth.hero.title` and
+`auth.hero.subtitle` in `web/locales/en.json`, so the landing page and the login
+screen a visitor reaches after deploying say the same thing. The card icons are
+three inlined Lucide paths rather than a fourth copy of the sprite. The buttons
+are the mock's pair — filled blue primary, outlined secondary — sharing tokens
+with the login screen, and the secondary is "View on GitHub" rather than "Read
+the docs" because the docs are what the header and sidebar already are.
+
+*Docs content.* Rather than placeholder pages, `docs/install.md` is a real page,
+built from the README's already-verified compose quick start plus what Stage 18
+established elsewhere: the two dialects and that there is no migration path
+between them, the `/data`-and-`/uploads`-together backup rule, upgrading, the
+pre-Stage-18 database warning from Milestone 6, and `/api/health` reporting the
+stamped version from Milestone 7. Milestone 10 expands this rather than starting
+it. Both landing-page buttons resolve; nothing shipped that exists only to be
+replaced.
+
+*Four Zensical 0.0.57 findings*, which is the evaluation that was asked for. The
+verdict is **keep it** — none of these is structural, and the fallback to
+mkdocs-material was not needed.
+1. `base.html`'s `htmltitle` block already guards on `not page.is_homepage`, but
+   the flag is falsy for `docs/index.md`, so the landing page came out titled
+   "Caravel - Caravel". Worked around by overriding the block in `home.html`;
+   there is a comment saying to drop it and re-check if a later release fixes
+   the flag.
+2. The skip link takes the first entry of the page's table of contents, which
+   comes from markdown — so on a page whose content block is empty it points at
+   an anchor that does not exist. Fixed by putting that id on the hero's `<h1>`,
+   with a comment tying the two together.
+3. No `exclude_docs` or `not_in_nav`: everything under `docs/` becomes a page,
+   so `docs/assets/brand/README.md` built as an orphan and landed in the search
+   index. `search: {exclude: true}` in its frontmatter works and is what it now
+   carries.
+4. `zensical serve` **panics** (a Rust `invariant` in `workflow/cached.rs`) when
+   a concurrent `zensical build --clean` removes the cache underneath it. Hit by
+   running `make docs` while a serve was up. Noted in `CLAUDE.md`.
+
+*A bug of my own, caught by measuring.* Material sets a 125% root font size, so
+every `rem` on the site is 1.25× what the number reads as: the feature grid's
+`minmax(15rem, 1fr)` minimum was 300px, not 240px, and overflowed a 324px
+viewport by a pixel. Fixed with `minmax(min(100%, 15rem), 1fr)`, which cannot
+exceed its column whatever the root size is. Also: the theme logo was initially
+pointed at the cream `mark-light.svg`, invisible on the modern variant's frosted
+header — the header is now the navy `mark.svg` rendered as a CSS mask, so one
+file follows the palette, the same trick `.brand-mark` uses in the app.
+
+*One deliberate non-change.* Zensical's "modern" variant gives the header a
+frosted translucent ground of its own rather than filling it with
+`--md-primary-fg-color`, so the navy chrome the app uses does not reach the site
+header. Left as it is: overriding a theme's own header treatment is how a site
+breaks on its generator's next release, and the masked mark carries the brand
+there instead. `brand.css` says so at the point where it would otherwise look
+like a bug.
+
+*Verified.* `make ci` green. `zensical build --clean --strict` clean, and
+`--strict` proven load-bearing rather than decorative: with a deliberate dead
+link the build exits **1** with the flag and **0** without it, so CI without it
+would have published the broken link. Eleven structural assertions on the two
+workflows all pass (both build strictly, the pinned versions match between the
+PR gate and the deploy, `pages`/`id-token` permissions exact, artifact path
+`site`, concurrency cancels in progress, the docs job runs on pull requests and
+is its own job). Both palettes inspected at 1280×900 and 324×756. **Zero
+off-origin requests** on both pages — no font CDN, and notably no
+`api.github.com` either, despite that host appearing in the theme bundle.
+Montserrat 700 confirmed *actually rendering* rather than merely named:
+`document.fonts` reports it loaded and it measures 437.4px against the
+fallback's 416.6px for the same string; weight 500 correctly stays unloaded,
+since nothing on the site uses it. Contrast measured against both endpoints of
+the hero's gradient (a single `backgroundColor` walk cannot see through a
+gradient, so the worse endpoint is the number that counts): light 12.2 title and
+lockup, 19.7 sub-line, 12.2 outlined secondary; dark 17.8, 14.9, 17.8; the
+filled primary is 5.2 in both. All above 4.5. Worth recording that a first pass
+at this reported 1.07 for the secondary button and was wrong — it was reading a
+colour mid-way through my own 120ms transition, not a real defect.
+
+*Not verifiable here.* Whether GitHub Pages actually deploys. Pages has to be
+enabled once by hand for the repository, with the source set to GitHub Actions —
+no workflow can do that — and until it is, the deploy step fails. The first push
+to `main` settles it.
 
 ## 10. The reference documentation
 

@@ -30,6 +30,28 @@ jobs:
       - name: Test
         run: go test ./...
 
+  # The documentation site, built the way the deploy workflow builds it.
+  #
+  # Its own job, and on pull requests too, so a dead link or a nav entry
+  # pointing at a file that was renamed fails the change that caused it rather
+  # than the deploy that follows it. Strict mode is what makes that a failure
+  # instead of a warning. The version is pinned to the same 0.0.x as
+  # .github/workflows/docs.yml -- if you bump one, bump both, or the build that
+  # gates a PR is not the build that publishes.
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - run: pip install zensical==0.0.57
+
+      - name: Build the site
+        run: zensical build --clean --strict
+
   # The same Go tests, against Postgres instead of SQLite.
   #
   # Its own job for the same reason as `ui` below: a database service is more

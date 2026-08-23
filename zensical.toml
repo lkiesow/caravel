@@ -1,0 +1,81 @@
+# The project website and documentation: one site, a hero landing page at the
+# root with the documentation underneath.
+#
+#   make docs        build into site/ (gitignored)
+#   make docs-serve  build, serve and rebuild on change
+#
+# Built with Zensical, the successor to mkdocs-material. The version is pinned
+# in .github/workflows/docs.yml rather than floating: this is a 0.0.x generator
+# and its output can change between patch releases, which on a published site
+# means a layout shifting under a deploy nobody touched.
+
+[project]
+site_name = "Caravel"
+site_description = "Self-hosted trip planning that keeps the map, the plan and the group in sync."
+site_url = "https://lkiesow.github.io/caravel/"
+site_author = "Lars Kiesow"
+repo_url = "https://github.com/lkiesow/caravel"
+repo_name = "lkiesow/caravel"
+edit_uri = "edit/main/docs/"
+copyright = "Caravel is free software under the terms in the repository."
+
+# Explicit rather than inferred from the file tree: the order below is the
+# order somebody meets these things, which alphabetical order is not. Pages
+# added under docs/ without an entry here still build, they just do not appear
+# in the navigation -- so a new page needs a line adding.
+nav = [
+  { "Home" = "index.md" },
+  { Install = "install.md" },
+]
+
+extra_css = ["assets/stylesheets/brand.css"]
+
+[project.theme]
+custom_dir = "overrides"
+language = "en"
+logo = "assets/brand/mark.svg"
+favicon = "assets/brand/favicon.svg"
+
+# No Google Fonts. The app is self-hosted and does not phone out for a
+# typeface; a website that documents it should not either. The self-hosted
+# Montserrat subset is declared in brand.css, from the same files the app
+# serves -- see scripts/gen_brand_fonts.py, which writes both copies.
+font = false
+
+features = [
+  "content.action.edit",
+  "content.code.annotate",
+  "content.code.copy",
+  "navigation.footer",
+  "navigation.indexes",
+  "navigation.instant",
+  "navigation.instant.prefetch",
+  "navigation.sections",
+  "navigation.top",
+  "navigation.tracking",
+  "search.highlight",
+  "toc.follow",
+]
+
+# Follow the reader's system preference first, with a manual override in both
+# directions -- the same three-state behaviour the app's own theme toggle has.
+[[project.theme.palette]]
+media = "(prefers-color-scheme)"
+toggle.icon = "lucide/sun-moon"
+toggle.name = "Switch to light mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to system preference"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/github"
+link = "https://github.com/lkiesow/caravel"

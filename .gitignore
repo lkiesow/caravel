@@ -6,7 +6,7 @@
 # Playwright/vim scratch from local UI testing. The mobile screenshots are
 # throwaway dev artifacts — findings get written up in the stage plan instead of
 # committing ~400K of PNGs per test round.
-/docs/plans/mobile-fresh-*.png
+/plans/mobile-fresh-*.png
 *.swp
 .cache/
 .playwright-mcp/
@@ -31,3 +31,7 @@
 /*.credentials
 /.env
 /.env.*
+
+# The generated documentation site (see zensical.toml). Built output, not
+# sources: GitHub Pages builds it from CI, and locally it is `make docs`.
+/site/

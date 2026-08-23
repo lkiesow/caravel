@@ -1,4 +1,4 @@
-.PHONY: run build test dev dev-restart dev-marker dev-version dev-seed dev-reset vet check-js check-i18n check-env test-ui test-postgres ci
+.PHONY: run build test dev dev-restart dev-marker dev-version dev-seed dev-reset vet check-js check-i18n check-env test-ui test-postgres ci docs docs-serve
 
 # The build's identity, stamped into the binary at link time and reported by the
 # startup banner and GET /api/health — so "which build is this server running?"
@@ -107,3 +107,23 @@ test-ui:
 	$(PW_ENV) npx playwright test $(PW_ARGS)
 
 ci: build vet check-js check-i18n check-env test
+
+# The project website and documentation (docs/, zensical.toml, overrides/).
+#
+# Deliberately not part of `make ci`: that gate is the app, and it should not
+# need a Python site generator installed to tell you whether the Go code is
+# broken. The equivalent check runs as its own job in .github/workflows/ci.yml,
+# so a dead link still fails a pull request -- but if you changed anything under
+# docs/, run this before committing rather than finding out from CI.
+#
+# Strict mode, matching CI: a dead link or an unresolved reference is an error,
+# not a line of output nobody reads.
+#
+#   pip install 'zensical==0.0.57'   (the version the deploy workflow pins)
+docs:
+	zensical build --clean --strict
+
+# Serves the site and rebuilds on change, at http://localhost:8000. Note this
+# is a different port from the app's 8080, so both can run at once.
+docs-serve:
+	zensical serve

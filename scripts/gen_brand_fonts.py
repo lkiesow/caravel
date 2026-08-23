@@ -73,7 +73,20 @@ def build(source_dir, out_dir):
         sys.exit(f"missing {LICENSE_FILE} — the licence must ship with the fonts")
 
 
+# Two destinations, one generator. The app serves the faces from web/fonts/
+# (embedded into the binary); the documentation site can only reach files under
+# its own docs_dir, so it needs its own copy. Writing both here is what stops
+# the site drifting to an older subset than the app -- the alternative, copying
+# by hand after a coverage change, is exactly the step that gets forgotten.
+DESTINATIONS = [
+    ("web", "fonts"),
+    ("docs", "assets", "fonts"),
+]
+
+
 if __name__ == "__main__":
-    out = os.path.join(os.path.dirname(__file__), "..", "web", "fonts")
-    build(SOURCE_DIR, out)
-    print("fonts written to", os.path.normpath(out))
+    root = os.path.join(os.path.dirname(__file__), "..")
+    for parts in DESTINATIONS:
+        out = os.path.join(root, *parts)
+        build(SOURCE_DIR, out)
+        print("fonts written to", os.path.normpath(out))

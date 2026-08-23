@@ -1,0 +1,358 @@
+/* The site's half of the brand. Deliberately the same values as the app's
+   web/css/base.css -- same navy, same cream, same accent, same typeface -- so
+   the landing page and the login screen a visitor lands on after deploying
+   read as one product rather than two. When one moves, move the other.
+
+   Everything here is either a brand token, a Material variable pointed at one,
+   or the landing page's own layout. No general restyling of the documentation:
+   the theme is good, and a site that fights its own generator is a site that
+   breaks on the next release. */
+
+/* ------------------------------------------------------------------------
+   The brand face
+
+   The same subset the app serves, from the same generator
+   (scripts/gen_brand_fonts.py writes web/fonts/ and docs/assets/fonts/ in one
+   run). Self-hosted for the same reason: no third-party request from either
+   half of the project. font-display: swap, so a blocked font degrades to the
+   system stack rather than to nothing.
+   ------------------------------------------------------------------------ */
+
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../fonts/montserrat-500.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("../fonts/montserrat-700.woff2") format("woff2");
+}
+
+:root {
+  --brand-navy: #23304f;
+  --brand-navy-light: #5470a8;
+  --brand-cream: #faf7f2;
+  --brand-blue: #2563eb;
+  --font-brand: "Montserrat", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* theme.font is false in zensical.toml, which leaves these unset, so the
+     body stack is ours to name -- and it is the app's, not Inter's. */
+  --md-text-font: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --md-code-font: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* The brand navy, pointed at Material's primary tokens.
+   Worth knowing what this does and does not reach: Zensical's "modern" variant
+   gives the header a frosted translucent ground of its own rather than filling
+   it with --md-primary-fg-color, so these tokens colour the accents that use
+   them and leave the header alone. That is left as it is deliberately -- a
+   navy bar would mean overriding the theme's own header treatment, and a site
+   that fights its generator breaks on the generator's next release. The mark
+   in the header carries the brand instead. */
+[data-md-color-scheme="default"],
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: var(--brand-navy);
+  --md-primary-fg-color--light: var(--brand-navy-light);
+  --md-primary-fg-color--dark: #1a2438;
+  --md-primary-bg-color: var(--brand-cream);
+  --md-primary-bg-color--light: rgba(250, 247, 242, 0.7);
+  --md-accent-fg-color: var(--brand-blue);
+}
+
+/* Links and in-page accents follow the app's accent, which is the brand's app
+   blue -- and on a dark ground the same lightened blue the app switches to,
+   because #2563eb on near-black is under 4.5:1. */
+[data-md-color-scheme="default"] {
+  --md-typeset-a-color: var(--brand-blue);
+}
+
+[data-md-color-scheme="slate"] {
+  --md-typeset-a-color: #60a5fa;
+  --md-accent-fg-color: #60a5fa;
+}
+
+/* Headings in the brand face, body copy in the system stack: the same split
+   the app makes. Prose stays in the face a reader's OS already renders well at
+   small sizes; the things that carry the brand are set in Montserrat. */
+/* The mark in the header, as a mask rather than the <img> the theme emits: one
+   file that follows the palette, the same trick .brand-mark uses in the app.
+   The alternative is a light copy and a dark copy of the same shape, which is
+   two files to keep in step and one to forget. */
+.md-header__button.md-logo img,
+.md-nav__button.md-logo img {
+  display: none;
+}
+
+.md-header__button.md-logo,
+.md-nav__button.md-logo {
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  background-color: currentColor;
+  -webkit-mask: url("../brand/mark.svg") center / contain no-repeat;
+  mask: url("../brand/mark.svg") center / contain no-repeat;
+}
+
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3 {
+  font-family: var(--font-brand);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* ------------------------------------------------------------------------
+   The landing page
+
+   Rendered by overrides/home.html, which is selected by the frontmatter in
+   docs/index.md. Scoped under .home so none of it can leak into a docs page.
+   ------------------------------------------------------------------------ */
+
+.home {
+  --home-measure: 61rem;
+}
+
+/* The hero, from the mockup: copy on the left, the sail standing in the space
+   to the right of it. One grid rather than a card, so the ground runs the full
+   width and the sail can bleed off the top and right edges of it. */
+.home__hero {
+  position: relative;
+  overflow: hidden;
+  padding: clamp(2.5rem, 7vw, 5rem) clamp(1.25rem, 5vw, 3.5rem);
+  background: linear-gradient(135deg, var(--brand-cream), var(--md-default-bg-color) 70%);
+}
+
+[data-md-color-scheme="slate"] .home__hero {
+  /* The mock's near-black: darker than the page's own background on purpose,
+     so the hero reads as the ground the page stands on. */
+  background: linear-gradient(135deg, #101014, var(--md-default-bg-color) 70%);
+}
+
+.home__hero-inner {
+  position: relative;
+  max-width: var(--home-measure);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+/* Decorative, and aria-hidden in the markup. Sized off the hero rather than
+   the viewport, and pushed mostly off the right edge: the shape reads as a
+   whole sail cropped by the frame, which is what the mock does. */
+/* The base placement is the narrow one, where the hero is a single column
+   barely wider than the headline: the sail is pushed mostly off the right edge
+   and kept faint, because at this width there is no empty space for it to
+   stand in and anything stronger reads as noise under the copy. The same
+   decision the app's own login hero makes at the same widths. */
+.home__sail {
+  position: absolute;
+  top: 4%;
+  right: -32%;
+  height: 72%;
+  width: auto;
+  aspect-ratio: 1;
+  /* A mask, like the header lockup and the app's own watermark: one file for
+     both palettes instead of a light and a dark copy that can diverge. The
+     mark's boom carries opacity .72, and a mask honours it, so the two shapes
+     keep their weighting. */
+  background-color: currentColor;
+  -webkit-mask: url("../brand/mark.svg") center / contain no-repeat;
+  mask: url("../brand/mark.svg") center / contain no-repeat;
+  color: var(--brand-navy);
+  opacity: 0.07;
+  pointer-events: none;
+}
+
+[data-md-color-scheme="slate"] .home__sail {
+  /* The same navy needs far more alpha on near-black to register at all. */
+  opacity: 0.4;
+}
+
+/* Wide enough that the copy stops well short of the right edge -- which is the
+   space the sail was drawn to stand in. Sized off the hero rather than the
+   viewport, and deliberately short of filling it: at full height the shape
+   stops reading as a watermark and starts being the right-hand half of the
+   page. */
+@media (min-width: 50rem) {
+  .home__sail {
+    top: -4%;
+    right: -4%;
+    height: 96%;
+    opacity: 0.13;
+  }
+
+  [data-md-color-scheme="slate"] .home__sail {
+    opacity: 0.45;
+  }
+}
+
+.home__lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-brand);
+  font-weight: 700;
+  font-size: 0.9375rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--brand-navy);
+}
+
+[data-md-color-scheme="slate"] .home__lockup {
+  color: var(--brand-cream);
+}
+
+/* The mark as a mask rather than an <img>, so one file follows the palette
+   instead of needing a light and a dark copy -- the same trick .brand-mark
+   uses in the app. */
+.home__mark {
+  display: inline-block;
+  width: 1.6em;
+  height: 1.6em;
+  background: currentColor;
+  -webkit-mask: url("../brand/mark.svg") center / contain no-repeat;
+  mask: url("../brand/mark.svg") center / contain no-repeat;
+}
+
+.home__title {
+  margin: 0;
+  font-family: var(--font-brand);
+  font-weight: 700;
+  /* A clamp rather than a breakpoint: the headline has to survive 324px, the
+     narrowest phone this project tests against. */
+  font-size: clamp(2.25rem, 6.5vw, 3.75rem);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--brand-navy);
+  max-width: 14ch;
+  text-wrap: balance;
+}
+
+[data-md-color-scheme="slate"] .home__title {
+  color: var(--brand-cream);
+}
+
+.home__subtitle {
+  margin: 0;
+  max-width: 38ch;
+  font-size: 1.125rem;
+  line-height: 1.5;
+  color: var(--md-default-fg-color--light);
+}
+
+/* The mock's button pair: a filled blue primary and an outlined secondary. The
+   same treatment as the login screen's submit and register-switch buttons --
+   that pairing is the reason .btn-secondary got extracted there. */
+.home__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.home__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Comfortably over the 44px tap floor the app's own mobile rule enforces. */
+  min-height: 2.875rem;
+  padding: 0 1.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid transparent;
+  font-family: var(--font-brand);
+  font-weight: 700;
+  font-size: 0.9375rem;
+  text-decoration: none;
+  transition: background-color 120ms, color 120ms, border-color 120ms;
+}
+
+.home__btn--primary {
+  background: var(--brand-blue);
+  color: #ffffff;
+}
+
+.home__btn--primary:hover,
+.home__btn--primary:focus {
+  background: #1d4ed8;
+  color: #ffffff;
+}
+
+.home__btn--secondary {
+  border-color: var(--brand-navy);
+  color: var(--brand-navy);
+}
+
+.home__btn--secondary:hover,
+.home__btn--secondary:focus {
+  background: var(--brand-navy);
+  color: var(--brand-cream);
+}
+
+[data-md-color-scheme="slate"] .home__btn--secondary {
+  border-color: var(--brand-cream);
+  color: var(--brand-cream);
+}
+
+[data-md-color-scheme="slate"] .home__btn--secondary:hover,
+[data-md-color-scheme="slate"] .home__btn--secondary:focus {
+  background: var(--brand-cream);
+  color: var(--brand-navy);
+}
+
+/* Three cards under the hero, naming what the app does. auto-fit rather than a
+   media query, so they go three-up, two-up and one-up on their own.
+
+   The min is wrapped in min(100%, ...) rather than being a bare 15rem, which is
+   what stops the track being wider than the container it sits in: Material sets
+   a 125% root font size, so 15rem is 300px here rather than the 240px the
+   number reads as, and on a 324px phone that overflowed the page by a pixel.
+   min(100%, ...) makes the minimum unable to exceed the column regardless of
+   what the root size turns out to be. */
+.home__features {
+  max-width: var(--home-measure);
+  margin: 0 auto;
+  padding: clamp(2rem, 5vw, 3.5rem) clamp(1.25rem, 5vw, 3.5rem);
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+}
+
+.home__feature {
+  padding: 1.5rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.75rem;
+  background: var(--md-default-bg-color);
+}
+
+.home__feature svg {
+  width: 1.75rem;
+  height: 1.75rem;
+  color: var(--brand-blue);
+}
+
+[data-md-color-scheme="slate"] .home__feature svg {
+  color: #60a5fa;
+}
+
+.home__feature h2 {
+  margin: 0.75rem 0 0.5rem;
+  font-family: var(--font-brand);
+  font-weight: 700;
+  font-size: 1.125rem;
+  color: var(--md-default-fg-color);
+}
+
+.home__feature p {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--md-default-fg-color--light);
+}

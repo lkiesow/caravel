@@ -1,3 +1,13 @@
+---
+# These are the rules for using the brand set, kept beside the files they
+# describe rather than in the documentation nav -- the audience is somebody
+# reaching for an asset, not somebody installing the app. It is not in
+# zensical.toml's nav for that reason, and excluded from search so it does not
+# surface above the pages that answer a reader's actual question.
+search:
+  exclude: true
+---
+
 # Caravel brand assets (direction 2d — folded sail)
 
 Palette: navy `#23304F` (ink on light grounds), lightened navy `#5470A8` (ink on dark grounds),

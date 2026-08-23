@@ -403,6 +403,38 @@ else runs this.
   review), or leaving it to judgement. Worth deciding before the first release
   rather than after.
 
+- **GitHub Pages has to be enabled by hand, once.** **(soon)** (Stage 18
+  Milestone 9.) `.github/workflows/docs.yml` builds and deploys the site, but
+  Pages must be switched on for the repository with the source set to *GitHub
+  Actions* -- no workflow can do that for itself, and until it is done the
+  deploy step fails while the build passes. Remove this entry once the live URL
+  answers.
+
+- **The Zensical pin needs periodic review, in two files.** (Stage 18 Milestone
+  9.) `zensical==0.0.57` is pinned in `.github/workflows/docs.yml` and in
+  `ci.yml`'s `docs` job, deliberately, because a 0.0.x generator can change its
+  output between patch releases. That means the site silently stops receiving
+  fixes until somebody bumps it -- including the two 0.0.57 bugs `home.html`
+  currently works around (the `page.is_homepage` flag being falsy for
+  `docs/index.md`, and the skip link pointing at a markdown-derived anchor that
+  an emptied content block does not render). When bumping, drop the workarounds
+  and re-check the landing page title and skip link.
+
+- **The site ships a font face it never loads.** (Stage 18 Milestone 9.)
+  `scripts/gen_brand_fonts.py` writes both weights to `docs/assets/fonts/`, but
+  nothing on the site uses Montserrat 500 -- `document.fonts` confirms it stays
+  unloaded, so it costs a committed 17 KiB and no request. Harmless, and the
+  cost of the alternative is a generator whose two destinations differ. Revisit
+  if a docs page ever wants the 500, or trim it if none ever does.
+
+- **Nothing tests the documentation site's rendering.** (Stage 18 Milestone 9.)
+  `zensical build --strict` catches dead links and unresolved references, which
+  is what CI gates on, but the landing page's layout, contrast and both-palette
+  behaviour were verified by hand with the Playwright MCP tools -- there is no
+  committed assertion, unlike `tests/ui/brand.spec.js` for the app. A spec
+  would need the built site served, which the Playwright config does not do
+  today. Worth it if the landing page grows; overkill for one page.
+
 - **S3-compatible object storage.** Swap the `internal/storagefs` `Blob`
   implementation from local filesystem to S3-compatible (MinIO, Backblaze, and
   so on); the interface already isolates callers from the backend.

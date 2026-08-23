@@ -37,7 +37,7 @@ import { getCurrentUser } from "../session.js";
 // unknown key -- a server newer than this file -- falls back to something
 // generic rather than rendering a raw key at the user. And it is the only way
 // scripts/i18n.py can see these keys at all: they arrive at runtime, and its
-// scanner cannot follow a variable into t(). See docs/plans/todo.md.
+// scanner cannot follow a variable into t(). See plans/todo.md.
 const PROGRESS_KEYS = new Set([
   "assist.progress.thinking",
   "assist.progress.searching",

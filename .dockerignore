@@ -40,3 +40,9 @@ CLAUDE.md
 # Editor and OS noise.
 *.swp
 .DS_Store
+
+# The documentation site: sources, generator config and build output. None of
+# it reaches the binary.
+overrides/
+site/
+zensical.toml

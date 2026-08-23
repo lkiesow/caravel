@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+<!--
+  The landing page. Selected by `template: home.html` in docs/index.md's
+  frontmatter, which is Zensical's per-page template hook.
+
+  Two blocks are overridden. `hero` sits outside md-main in base.html, so
+  anything put there runs the full width of the viewport -- which is what the
+  hero's ground and the bleeding sail need. `container` is then emptied, since
+  the whole page lives in the hero block and the default content area would
+  otherwise render an empty article under it. `hide: [navigation, toc]` in the
+  frontmatter takes care of the two sidebars.
+
+  The copy here is the app's own: the headline and sub-line are the same strings
+  as auth.hero.title and auth.hero.subtitle in web/locales/en.json, so the
+  landing page and the login screen a visitor reaches after deploying say the
+  same thing. The site is English-only; the app is not.
+
+  The three card icons are inlined Lucide paths rather than pulled from
+  web/icons/lucide-sprite.svg -- the site can only read files under docs/, and
+  three <path> elements are not worth a fourth copy of an asset.
+-->
+
+<!--
+  Zensical 0.0.57 has a `not page.is_homepage` guard in base.html's htmltitle
+  block, but the flag is falsy for docs/index.md, so the landing page comes out
+  as "Caravel - Caravel". Overriding the block is the workaround; drop it and
+  re-check the title if a later release fixes the flag.
+-->
+{% block htmltitle %}
+  <title>{{ config.site_name }} - {{ config.site_description }}</title>
+{% endblock %}
+
+{% block hero %}
+  <div class="home">
+    <section class="home__hero">
+      <span class="home__sail" aria-hidden="true"></span>
+      <div class="home__hero-inner">
+        <span class="home__lockup">
+          <span class="home__mark" aria-hidden="true"></span>
+          Caravel
+        </span>
+        <!--
+          The id is the anchor base.html's skip link points at: it takes the
+          first entry of the page's table of contents, which comes from the
+          `# Caravel` heading in docs/index.md. That heading is not rendered
+          here (the content block is empty), so without this the skip link
+          would dangle. Rename the heading in index.md and this has to follow.
+        -->
+        <h1 class="home__title" id="caravel">Every trip, one place.</h1>
+        <p class="home__subtitle">
+          Self-hosted trip planning that keeps the map, the plan and the group
+          in sync.
+        </p>
+        <div class="home__actions">
+          <a class="home__btn home__btn--primary" href="{{ 'install/' | url }}">
+            Deploy Caravel
+          </a>
+          <a class="home__btn home__btn--secondary" href="{{ config.repo_url }}">
+            View on GitHub
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section class="home__features">
+      <div class="home__feature">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round"
+             stroke-linejoin="round" aria-hidden="true">
+          <path d="M8 2v4"/><path d="M16 2v4"/>
+          <rect width="18" height="18" x="3" y="4" rx="2"/>
+          <path d="M3 10h18"/>
+        </svg>
+        <h2>Plan it</h2>
+        <p>
+          A day-by-day itinerary, with the documents, photos and packing lists
+          for each day attached to it rather than scattered across a chat.
+        </p>
+      </div>
+
+      <div class="home__feature">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round"
+             stroke-linejoin="round" aria-hidden="true">
+          <path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/>
+          <circle cx="12" cy="10" r="3"/>
+        </svg>
+        <h2>Map it</h2>
+        <p>
+          Every place to visit, stay at and travel between on one map, with
+          addresses looked up for you and coordinates you can correct by hand.
+        </p>
+      </div>
+
+      <div class="home__feature">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round"
+             stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 2v20"/>
+          <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+        </svg>
+        <h2>Split it</h2>
+        <p>
+          Shared expenses recorded as they happen, in the currency they happened
+          in, and a settle-up that says who owes whom at the end.
+        </p>
+      </div>
+    </section>
+  </div>
+{% endblock %}
+
+{% block container %}{% endblock %}

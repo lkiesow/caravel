@@ -12,7 +12,7 @@ otherwise.
 - Use plan mode to scope the stage before writing any code. Explore the
   actual current code rather than assuming prior stages' behavior still
   holds — line numbers, function names, and even file existence drift.
-- Land the approved plan as `docs/plans/stage-NN.md` (next sequential
+- Land the approved plan as `plans/stage-NN.md` (next sequential
   number) *before* implementation starts. Structure: a Context section
   (why this stage exists), one numbered section per milestone, a Build
   order, a Workflow section restating the loop below, and a Verification
@@ -33,11 +33,11 @@ For each milestone, in order:
    counts, accessible names, `window.location.pathname`, `go test`
    coverage — a passing test is stronger evidence than a matching
    screenshot. Regenerate screenshots only as a last resort (they're
-   gitignored, not committed — see `docs/plans/stage-04.md`'s note).
-3. **Update `docs/plans/stage-NN.md`** — add a "**Done.**" paragraph to
+   gitignored, not committed — see `plans/stage-04.md`'s note).
+3. **Update `plans/stage-NN.md`** — add a "**Done.**" paragraph to
    that milestone's section describing what actually landed (including
    any deviation from the plan) and how it was verified. Then update
-   `docs/plans/todo.md` in both directions: remove any entry this
+   `plans/todo.md` in both directions: remove any entry this
    milestone actually implemented (don't let it linger as if still
    outstanding), and add anything the milestone surfaced but deferred.
 4. **Commit** — one commit per milestone (a milestone that needed a
@@ -64,7 +64,7 @@ removes that checkpoint.
 Always run `make ci` locally before committing — build, vet, JS syntax
 check, i18n key parity, `go test`. Don't rely on CI to catch it first.
 
-## Planning documents (`docs/plans/`)
+## Planning documents (`plans/`)
 
 - `stage-NN.md` — one per stage, the plan plus a running "Done" account of
   what actually landed per milestone (see the workflow above).
@@ -124,6 +124,29 @@ check, i18n key parity, `go test`. Don't rely on CI to catch it first.
   for churn — an unsubstituted `sqlc.arg(...)` compiles fine and fails at
   runtime.
 
+- **The documentation site has four traps worth knowing.** All four cost time
+  in Stage 18.
+  - **The Zensical version is pinned in two files** —
+    `.github/workflows/docs.yml` (the deploy) and the `docs` job in
+    `.github/workflows/ci.yml` (the PR gate). Bump both together, or the build
+    that gates a change is not the build that publishes it.
+  - **`--strict` is load-bearing.** Without it a dead internal link is a line
+    of output and a zero exit code; with it the build fails. Both call sites
+    pass it, and `make docs` does too. Verified by adding a dead link on
+    purpose: exit 1 with the flag, exit 0 without.
+  - **Material sets a 125% root font size**, so every `rem` on the site is
+    1.25× what the number reads as. A `minmax(15rem, ...)` grid track is 300px,
+    not 240px, which overflowed the page at 324px. Wrap grid minimums in
+    `min(100%, ...)` rather than trusting the arithmetic.
+  - **Anything under `docs/` becomes a page.** Zensical 0.0.57 has no
+    `exclude_docs`/`not_in_nav`, so a stray `README.md` in an assets folder
+    builds and lands in the search index. `search: {exclude: true}` in its
+    frontmatter is the available lever (it works); leaving it out of the nav
+    only hides it from the sidebar.
+  Also note `zensical serve` **panics** if a concurrent `zensical build
+  --clean` wipes the cache underneath it — so do not run `make docs` while a
+  `make docs-serve` is up.
+
 - **Building the image.** `docker build --build-arg VERSION="$(scripts/version.sh)"
   -t caravel .` — the argument matters, because `.git` is not in the build
   context, so without it the binary calls itself `unknown`. With **podman**, add
@@ -181,7 +204,14 @@ check, i18n key parity, `go test`. Don't rely on CI to catch it first.
   purpose. Sessions survive, so re-seeding won't log you out of the browser
   you're testing in.
 - `make ci` — the same checks CI runs: build, vet, JS syntax, i18n parity,
-  `go test`.
+  `go test`. Deliberately **does not** build the documentation site: that gate
+  is the app, and it should not need a Python site generator installed to tell
+  you whether the Go code compiles.
+- `make docs` / `make docs-serve` — the project website and documentation
+  (`docs/`, `zensical.toml`, `overrides/`), built into `site/` (gitignored) or
+  served at `localhost:8000`. Run `make docs` before committing anything under
+  `docs/` — CI has its own job for it, but finding a dead link locally is
+  cheaper.
 - Mobile testing convention: 324×756 (the user's phone's native
   resolution), verified via the Playwright MCP tools against a running
   `make dev` server.

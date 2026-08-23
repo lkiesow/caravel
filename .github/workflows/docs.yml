@@ -1,0 +1,53 @@
+# Builds the project website and documentation and publishes it to GitHub
+# Pages. Based on the workflow template Zensical ships (zensical new), with two
+# changes: the zensical version is pinned, and the build runs in strict mode.
+#
+# Pinned rather than floating on `pip install zensical`, because this is a 0.0.x
+# generator whose output can change between patch releases -- and an unreviewed
+# layout change arriving with an unrelated docs commit is exactly the kind of
+# surprise a published site should not have. Bumping it is a deliberate commit.
+#
+# Note that Pages has to be enabled for the repository once, by hand, with the
+# source set to GitHub Actions. No workflow can do that for you; until it is
+# done, this job fails at the deploy step.
+name: docs
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time, and let a newer commit supersede an older one that is
+# still building: the site is a single published state, not a queue.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - run: pip install zensical==0.0.57
+      # Strict, so a dead link or an unresolved reference fails the deploy
+      # rather than shipping. The same build runs on pull requests in ci.yml,
+      # which is where a broken link is supposed to be caught first.
+      - run: zensical build --clean --strict
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+      - uses: actions/deploy-pages@v5
+        id: deployment

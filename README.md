@@ -36,7 +36,8 @@ default for local/self-hosted use.
 | `CARAVEL_DB_DSN` | `data/caravel.db` | SQLite file path, or a Postgres connection string (e.g. `postgres://user:pass@host:5432/caravel?sslmode=disable`) |
 | `CARAVEL_UPLOAD_DIR` | `uploads` | Where uploaded images/documents are stored |
 | `CARAVEL_WEB_DIR` | *(unset)* | If set, serves frontend files live from this directory instead of the binary's embedded copy — the dev workflow (see `make dev`) |
-| `CARAVEL_OPEN_SIGNUP` | `true` | Whether `/api/auth/register` accepts new accounts. Set to `false` after creating your accounts on a instance you don't want open to the public |
+| `CARAVEL_TEST_DB_DRIVER` | `sqlite` | *Tests only.* Set to `postgres` (with `CARAVEL_TEST_DB_DSN`) to run `go test ./...` against the other dialect — see `make test-postgres` and `internal/dbtest` |
+| `CARAVEL_TEST_DB_DSN` | *(unset)* | *Tests only.* The Postgres server the tests create a schema in, per test |
 | `CARAVEL_GEOCODER_URL` | OpenStreetMap Nominatim | Address-search endpoint. Set it empty to switch address search off entirely — the API then reports the capability as absent and the UI hides the control |
 
 ## AI assistant (optional, off by default)

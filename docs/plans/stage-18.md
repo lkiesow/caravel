@@ -400,6 +400,44 @@ Two files at the repo root, both usable by a stranger with only Docker:
 Ordering note: the app service may reference an image that does not exist yet;
 Milestone 7 makes it real.
 
+**Done.** `docker-compose.yml` is the SQLite case (one service, two named
+volumes, `restart: unless-stopped`, `build: .` commented in) and
+`docker-compose.postgres.yml` — whose `db` service arrived early, in Milestone 3
+— gained its app service, pointed at `db` and gated on
+`depends_on: condition: service_healthy`. Both reference
+`ghcr.io/lkiesow/caravel:latest`, which does not exist yet; pulling it today
+fails with a bare `403 Forbidden` rather than anything about "not found", so
+until Milestone 8 publishes, `build: .` is the usable path and the docs should
+say so. The optional `.env` uses the `path:`/`required: false` form, verified to
+work on this box's podman-compose 1.6.0 rather than assumed.
+
+**The find, and it is the reason this milestone was worth more than typing two
+YAML files.** The first draft set `CARAVEL_OPEN_SIGNUP` in both files, with a
+comment describing the first-run sequence from the README. **That variable does
+not exist.** Stage 14 Milestone 5 deleted it, deliberately, because registration
+became a runtime setting and two sources for one answer means the admin screen
+can contradict the server. The README had been documenting it for four stages,
+including an instruction ("set it to true, register, set it back") that could not
+work. What actually happens is better: `registrationAllowed` lets the first
+account register on an instance with no users at all, and that account becomes
+the admin. So the README row is gone, both compose files describe the real
+behaviour, and the two test-only variables from Milestone 3 are documented.
+
+Rather than fix that by hand and hope, `scripts/check_env_vars.py` now runs in
+`make ci` (`make check-env`): every `CARAVEL_*` name the compose files or the
+README mention must be one the Go source actually reads, and every one it reads
+must be documented. Proven by putting the mistake back — it fails with
+`docker-compose.yml sets CARAVEL_OPEN_SIGNUP, which the app never reads`. It
+deliberately strips comments first, since both compose files now discuss the
+removed variable on purpose.
+
+Verified: both files parse (`compose config`); the `db` service still starts
+alone, reports healthy and creates no app container, which is what
+`make test-postgres` depends on; that whole run is still green with the app
+service present; `make ci` green. What is **not** verified, and cannot be until
+Milestone 7: that either app service actually starts, since there is no image.
+Both are checked end to end there.
+
 ## 5. A Postgres job in CI
 
 - A `postgres` job in `.github/workflows/ci.yml` with a `services: postgres:`

@@ -385,14 +385,16 @@ down.
 Nothing here is needed to keep developing; all of it is needed before anyone
 else runs this.
 
-- **A Dockerfile, a compose file, and an image-publishing workflow.** **(soon)**
-  None of the three exists today (`.github/workflows/` holds only `ci.yml`).
-  Wanted: a multi-stage Dockerfile, a GitHub Actions workflow that builds and
-  pushes images automatically — modelled on
-  `lkiesow/audiobook-notifier`'s `.github/workflows/publish-docker-image.yaml` —
-  and a `docker-compose.yml`. The compose file does double duty: it is also the
-  Postgres service the dialect-coverage entry above needs, so writing it once
-  serves deployment and testing both.
+- **A Dockerfile and an image-publishing workflow.** **(soon)** (Stage 18
+  Milestone 4 landed the two compose files; the Dockerfile is Milestone 7 and
+  the publishing workflow Milestone 8 of the same stage, so this entry should be
+  deleted when those land.) `docker-compose.yml` (SQLite) and
+  `docker-compose.postgres.yml` both exist and both reference
+  `ghcr.io/lkiesow/caravel:latest`, which nothing publishes yet -- so neither
+  app service can actually start, and pulling reports a bare `403 Forbidden`
+  rather than saying the image is missing. Until then `build: .` is the only
+  working path.
+
 - **Squash the migrations before the first real release.** **(soon)** There are
   now **ten** files per dialect (`0001_init` through `0010_add_checklist_visibility`,
   in both `internal/db/migrations/sqlite/` and `.../postgres/`). Since nobody has

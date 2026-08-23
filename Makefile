@@ -1,4 +1,4 @@
-.PHONY: run build test dev dev-restart dev-marker dev-version dev-seed dev-reset vet check-js check-i18n test-ui test-postgres ci
+.PHONY: run build test dev dev-restart dev-marker dev-version dev-seed dev-reset vet check-js check-i18n check-env test-ui test-postgres ci
 
 # The build's identity, stamped into the binary at link time and reported by the
 # startup banner and GET /api/health — so "which build is this server running?"
@@ -81,6 +81,12 @@ check-js:
 check-i18n:
 	python3 scripts/check_i18n.py
 
+# Every CARAVEL_* variable the compose files and the README name has to be one
+# the app actually reads, and vice versa. See the script: a setting that is
+# silently ignored is worse than one that fails loudly.
+check-env:
+	python3 scripts/check_env_vars.py
+
 # Playwright UI suite (Firefox), headless by default. Drives a *running* server —
 # start one with `make dev-restart` and seed it with `make dev-reset FORCE=1`
 # first. Not part of `make ci`: it needs a browser and a live server, so CI runs
@@ -100,4 +106,4 @@ PW_ARGS = $(if $(GREP),--grep "$(GREP)")$(if $(UI), --ui)$(if $(HEADED), --heade
 test-ui:
 	$(PW_ENV) npx playwright test $(PW_ARGS)
 
-ci: build vet check-js check-i18n test
+ci: build vet check-js check-i18n check-env test

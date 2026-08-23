@@ -2,7 +2,8 @@
 #
 # Two jobs, which is why it exists separately from docker-compose.yml:
 #
-#   1. Deployment, for anyone who would rather run Postgres than SQLite.
+#   1. Deployment, for anyone who would rather run Postgres than SQLite. Same
+#      app as docker-compose.yml, pointed at a Postgres service instead.
 #   2. A database for the test suite and for CI. `go test ./...` runs against
 #      SQLite by default; pointed at this service it exercises the *other*
 #      dialect, which nothing did before Stage 18. See `make test-postgres`.
@@ -12,6 +13,38 @@
 #   podman compose -f docker-compose.postgres.yml up -d db
 #   docker compose -f docker-compose.postgres.yml up -d db
 services:
+  caravel:
+    image: ghcr.io/lkiesow/caravel:latest
+    # build: .    # to build from this checkout instead: up -d --build
+    ports:
+      - "8080:8080"
+    environment:
+      CARAVEL_DB_DRIVER: postgres
+      # The hostname is the service name below, and sslmode=disable is right
+      # for a link that never leaves the compose network. Change the password
+      # here and in the db service together, or move both to .env.
+      CARAVEL_DB_DSN: postgres://caravel:caravel@db:5432/caravel?sslmode=disable
+      CARAVEL_UPLOAD_DIR: /uploads
+      # No registration setting here on purpose: it is a runtime setting an
+      # admin changes in the app, not an environment variable (there was a
+      # CARAVEL_OPEN_SIGNUP once; Stage 14 removed it rather than have two
+      # sources for one answer). A fresh instance with no accounts lets the
+      # first one register regardless, and that account becomes the admin who
+      # decides whether the door stays open.
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      # Uploads only: the database lives in the db service's volume. Both still
+      # have to be backed up together - rows reference files by id.
+      - caravel-uploads:/uploads
+    depends_on:
+      db:
+        # Waits for "accepting connections", not merely for the container to
+        # exist; see the healthcheck below.
+        condition: service_healthy
+    restart: unless-stopped
+
   db:
     image: postgres:17-alpine
     environment:
@@ -37,3 +70,4 @@ services:
 
 volumes:
   caravel-pgdata:
+  caravel-uploads:

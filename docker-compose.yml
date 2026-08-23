@@ -1,0 +1,50 @@
+# Caravel, the simple way: one container, SQLite, two volumes.
+#
+#   docker compose up -d          # or: podman compose up -d
+#
+# Then open http://localhost:8080 and register: a fresh instance with no
+# accounts always allows the first one, and it becomes the admin. Whether anyone
+# else may register is a setting in the app after that.
+#
+# Prefer Postgres? Use docker-compose.postgres.yml instead. SQLite is the right
+# choice for a household; Postgres is worth it if you already run one.
+services:
+  caravel:
+    image: ghcr.io/lkiesow/caravel:latest
+    # Building from this checkout instead of pulling a published image:
+    #   docker compose up -d --build
+    # after uncommenting the next line.
+    # build: .
+    ports:
+      - "8080:8080"
+    environment:
+      # The database and uploads live on the volumes below; these are the
+      # image's own defaults, repeated here only because they are the two paths
+      # the volumes have to agree with.
+      CARAVEL_DB_DSN: /data/caravel.db
+      CARAVEL_UPLOAD_DIR: /uploads
+      # No registration setting here on purpose: it is a runtime setting an
+      # admin changes in the app, not an environment variable (there was a
+      # CARAVEL_OPEN_SIGNUP once; Stage 14 removed it rather than have two
+      # sources for one answer). A fresh instance with no accounts lets the
+      # first one register regardless, and that account becomes the admin who
+      # decides whether the door stays open.
+      # The optional AI assistant and address search are configured with
+      # environment variables too - see the documentation. Anything secret
+      # belongs in .env rather than in this file, which is meant to be
+      # committed.
+    env_file:
+      # Optional: docker compose reads it if it exists, and does not complain
+      # when it does not. .env is gitignored.
+      - path: .env
+        required: false
+    volumes:
+      # Both, or neither: the database references uploaded files by id, so a
+      # backup of one without the other restores to broken links.
+      - caravel-data:/data
+      - caravel-uploads:/uploads
+    restart: unless-stopped
+
+volumes:
+  caravel-data:
+  caravel-uploads:

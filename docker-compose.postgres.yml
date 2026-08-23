@@ -1,0 +1,39 @@
+# Caravel on Postgres.
+#
+# Two jobs, which is why it exists separately from docker-compose.yml:
+#
+#   1. Deployment, for anyone who would rather run Postgres than SQLite.
+#   2. A database for the test suite and for CI. `go test ./...` runs against
+#      SQLite by default; pointed at this service it exercises the *other*
+#      dialect, which nothing did before Stage 18. See `make test-postgres`.
+#
+# The db service is startable on its own, which is what the test run does:
+#
+#   podman compose -f docker-compose.postgres.yml up -d db
+#   docker compose -f docker-compose.postgres.yml up -d db
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: caravel
+      POSTGRES_PASSWORD: caravel
+      POSTGRES_DB: caravel
+    ports:
+      # Published so a test run on the host can reach it. An instance that only
+      # ever talks to the app container does not need this line.
+      - "5432:5432"
+    healthcheck:
+      # Anything depending on this waits for "accepting connections", not for
+      # "container started": Postgres restarts itself once during first-time
+      # initialisation, so a naive wait connects to the initdb instance and
+      # then loses it.
+      test: ["CMD-SHELL", "pg_isready -U caravel -d caravel"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - caravel-pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  caravel-pgdata:

@@ -2,11 +2,11 @@ package auth_test
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 
 	"caravel/internal/auth"
 	"caravel/internal/db"
+	"caravel/internal/dbtest"
 )
 
 // SetPassword is the seeder's primitive (cmd/seed's ensureUser), so it gets a
@@ -77,13 +77,9 @@ func TestChangePasswordEndsEverySession(t *testing.T) {
 func newService(t *testing.T) (*auth.Service, db.Store) {
 	t.Helper()
 
-	conn, err := db.Open("sqlite", filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	t.Cleanup(func() { conn.Close() })
+	driver, conn := dbtest.Open(t)
 
-	store, err := db.NewStore("sqlite", conn)
+	store, err := db.NewStore(driver, conn)
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}

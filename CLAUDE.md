@@ -87,6 +87,15 @@ check, i18n key parity, `go test`. Don't rely on CI to catch it first.
   `internal/db/sqlc/queries/*.sql`, run `sqlc generate` by hand from
   `internal/db/sqlc/` to regenerate the dialect packages — there's no
   automation for that step, and it's easy to forget one dialect.
+- **A query change can now be tested on both dialects.** `make test-postgres`
+  runs the whole Go suite against a Postgres container
+  (`docker-compose.postgres.yml`, and `podman compose` works too);
+  `internal/dbtest` is what picks the dialect up from `CARAVEL_TEST_DB_DRIVER`.
+  Worth doing for anything touching `internal/db` or the queries: Stage 18
+  Milestone 3 found that `sqlc.narg` without a `CAST` produces SQL Postgres
+  refuses outright, which had made every location list a 500 on that dialect
+  while every test stayed green. `KEEP=1` leaves the container up between runs.
+
 - **`sqlc`'s SQLite parser has three traps, all of which report the error in
   the wrong place.** Learned the hard way in Stage 14; each cost real time
   because the reported line points at correct SQL.

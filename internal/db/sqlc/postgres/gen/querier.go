@@ -122,6 +122,12 @@ type Querier interface {
 	// in Go: they are not "far away", they are unmeasurable, and the caller has
 	// to be able to tell those apart.
 	ListItemLocationsByTrip(ctx context.Context, tripID string) ([]ListItemLocationsByTripRow, error)
+	// The CAST around the optional category is required, not decoration. Without
+	// it the generated Postgres query reads AND ($2 IS NULL OR category = $2) with
+	// an untyped parameter, and the server refuses it at prepare time: could not
+	// determine data type of parameter $2 (SQLSTATE 42P08). SQLite is happy either
+	// way, which is why this shipped broken -- see internal/dbtest.
+	// CAST rather than the :: form because both dialects have to parse this file.
 	ListItemsByTrip(ctx context.Context, arg ListItemsByTripParams) ([]Item, error)
 	ListItineraryDaysByTrip(ctx context.Context, tripID string) ([]ItineraryDay, error)
 	// Entries of one day, in their stored order. Used to number a new entry and to
@@ -175,8 +181,9 @@ type Querier interface {
 	// LOWER on both sides rather than ILIKE or a bare LIKE: sqlite's LIKE is
 	// case-insensitive for ASCII while postgres' is case-sensitive, and ILIKE is
 	// not valid sqlite. Normalising explicitly is the only way to get the same
-	// behaviour from one statement in both dialects, which matters more than usual
-	// here since nothing in this project ever runs the postgres one.
+	// behaviour from one statement in both dialects. Verified since Stage 18: with
+	// the lowercasing removed, TestSearchUsers fails on postgres and still passes
+	// on sqlite -- see internal/dbtest and `make test-postgres`.
 	//
 	// Two tooling constraints shaped this statement, both worth knowing before
 	// editing it:

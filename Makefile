@@ -1,4 +1,4 @@
-.PHONY: run build test dev dev-restart dev-marker dev-version dev-seed dev-reset vet check-js check-i18n test-ui ci
+.PHONY: run build test dev dev-restart dev-marker dev-version dev-seed dev-reset vet check-js check-i18n test-ui test-postgres ci
 
 # The build's identity, stamped into the binary at link time and reported by the
 # startup banner and GET /api/health — so "which build is this server running?"
@@ -64,6 +64,16 @@ test:
 
 vet:
 	go vet ./...
+
+# The same Go tests against Postgres instead of SQLite. Not part of `make ci`:
+# it needs a container (or a Postgres you point CARAVEL_TEST_DB_DSN at), so CI
+# runs it as its own job, the same split as test-ui.
+#
+#   make test-postgres                     bring the container up, test, stop it
+#   make test-postgres KEEP=1              leave it running for the next run
+#   make test-postgres ARGS="-run Search"  pass flags through to go test
+test-postgres:
+	@scripts/test_postgres.sh
 
 check-js:
 	scripts/check_js.sh

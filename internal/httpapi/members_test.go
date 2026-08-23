@@ -294,14 +294,15 @@ func TestSearchUsers(t *testing.T) {
 	if got := names(search("ertra")); len(got) != 1 || got[0] != "bertram" {
 		t.Errorf("search \"ertra\" returned %v — substring matching is what makes display names findable", got)
 	}
-	// Case-insensitive. Read this assertion for what it is: on sqlite it passes
-	// whether or not the LOWER() normalisation works, because sqlite's LIKE is
-	// already case-insensitive for ASCII. Measured, not assumed — dropping the
-	// lowercasing in likeContains leaves this test green. So it documents the
-	// contract and would catch a regression on postgres, where LIKE *is* case
-	// sensitive, but it is not evidence that the normalisation does anything
-	// today. Nothing in this project runs the postgres dialect (see todo.md),
-	// and this is a concrete example of what that gap costs.
+	// Case-insensitive. On sqlite this passes whether or not the LOWER()
+	// normalisation works, because sqlite's LIKE is already case-insensitive
+	// for ASCII — so on sqlite alone the assertion documents the contract
+	// without proving it.
+	//
+	// Stage 18 closed that gap and this line is now the example of what the
+	// second dialect buys: with the lowercasing removed from likeContains, this
+	// test fails under `make test-postgres` and still passes under `make test`.
+	// Measured both ways, with a revert that compiles.
 	if got := names(search("ANNA")); len(got) != 2 {
 		t.Errorf("search \"ANNA\" returned %v, want the same as \"anna\"", got)
 	}

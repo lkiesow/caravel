@@ -321,37 +321,15 @@ down.
   project scoped to gesture/mobile specs**, not a second full run of the sweeps —
   those are about markup and CSS, where a second engine mostly buys duplicate
   failures and doubles the CI job.
-- **Nothing ever runs the Postgres dialect.** `sqlc generate` emits both dialects
-  and `internal/db` has a hand-written adapter for each, but every test, the
-  seeder and the dev server run SQLite: no local Postgres, no compose file, no
-  Postgres job in CI. So the Postgres half of any query change is verified only
-  by compiling — which catches a type error and nothing else. A wrong column
-  order, a dialect-specific NULL or timestamp difference, or an adapter that maps
-  the wrong field would ship green. Stage 14 is the strongest argument: it added
-  four migration pairs (`0007`-`0010`), a new `trip_members` table, new columns
-  on two existing tables and new list predicates on all of them, and *the only
-  evidence the Postgres half of any of it is correct is that it compiles*. Twice
-  in that stage a hand-written adapter silently dropped a field on read in
-  **both** dialects, which a compile cannot see and only the SQLite tests caught.
-  A measured example of it costing something: `SearchUsers` lowercases its
-  pattern to match a `LOWER()` on the column, which is the only thing making the
-  search case-insensitive **on Postgres** — sqlite's `LIKE` is already
-  case-insensitive for ASCII, so removing the normalisation entirely leaves
-  `TestSearchUsers` green. Cheapest fix that would mean something: a CI job with
-  a `postgres` service container running `go test ./...` against it, which needs
-  `newTestServerWithStore` to take the driver from an env var instead of
-  hard-coding `"sqlite"`. (The compose file below would supply the container.)
-- **`tests/ui/contrast.js` cannot measure an unauthenticated screen.** (Stage 18
-  Milestone 2.) It logs in as `demo` before navigating, so the login screen --
-  now the app's hero, and the one screen every visitor sees -- is the single
-  route it cannot report on. Two things were needed to check the hero by hand
-  and both belong in the tool: a `--no-login` mode, and a way to measure text
-  over a *translucent layer behind it* rather than over its own background. The
-  second is the interesting half. The watermark is a masked element under the
-  copy, so `backgroundColor` says nothing about it; what worked was rendering
-  the hero with the copy hidden and sampling every pixel inside each text box
-  from the screenshot, which is a stronger measurement than the flattening the
-  tool does today and would subsume it.
+- **The Postgres dialect runs locally, but not in CI.** **(soon)** (Stage 18
+  Milestone 3 built the harness; the CI job is Milestone 5 of the same stage, so
+  this entry should be deleted when that lands -- it is here in case it does
+  not.) `internal/dbtest` takes the dialect from `CARAVEL_TEST_DB_DRIVER` and
+  `make test-postgres` runs the whole suite against a container, which is what
+  found the two real bugs that stage records. What is still missing is anything
+  that runs it *automatically*: a green PR still says nothing about Postgres.
+  Note also that the seeder and the dev server remain SQLite-only, so no
+  *manual* testing has ever exercised the other dialect -- only `go test` has.
 
 - **Contrast is measured but not asserted.** `tests/ui/contrast.js` reports
   ratios and has a `--min` flag, but nothing runs it in CI, so a regression like

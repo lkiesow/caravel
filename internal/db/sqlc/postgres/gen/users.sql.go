@@ -204,8 +204,9 @@ type SearchUsersRow struct {
 // LOWER on both sides rather than ILIKE or a bare LIKE: sqlite's LIKE is
 // case-insensitive for ASCII while postgres' is case-sensitive, and ILIKE is
 // not valid sqlite. Normalising explicitly is the only way to get the same
-// behaviour from one statement in both dialects, which matters more than usual
-// here since nothing in this project ever runs the postgres one.
+// behaviour from one statement in both dialects. Verified since Stage 18: with
+// the lowercasing removed, TestSearchUsers fails on postgres and still passes
+// on sqlite -- see internal/dbtest and `make test-postgres`.
 //
 // Two tooling constraints shaped this statement, both worth knowing before
 // editing it:

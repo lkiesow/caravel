@@ -7,9 +7,15 @@ RETURNING *;
 SELECT * FROM items WHERE id = sqlc.arg(id);
 
 -- name: ListItemsByTrip :many
+-- The CAST around the optional category is required, not decoration. Without
+-- it the generated Postgres query reads AND ($2 IS NULL OR category = $2) with
+-- an untyped parameter, and the server refuses it at prepare time: could not
+-- determine data type of parameter $2 (SQLSTATE 42P08). SQLite is happy either
+-- way, which is why this shipped broken -- see internal/dbtest.
+-- CAST rather than the :: form because both dialects have to parse this file.
 SELECT * FROM items
 WHERE trip_id = sqlc.arg(trip_id)
-  AND (sqlc.narg(category) IS NULL OR category = sqlc.narg(category))
+  AND (CAST(sqlc.narg(category) AS text) IS NULL OR category = CAST(sqlc.narg(category) AS text))
 ORDER BY sort_order, created_at;
 
 -- name: UpdateItem :one

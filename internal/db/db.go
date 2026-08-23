@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 
@@ -65,7 +66,9 @@ func openPostgres(dsn string) (*sql.DB, error) {
 	if err := conn.Ping(); err != nil {
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
-	if err := migratePostgres(conn); err != nil {
+	// Migrations run on their own connection pool, which is closed the moment
+	// they finish - see migratePostgres for why that matters.
+	if err := migratePostgres(dsn); err != nil {
 		return nil, fmt.Errorf("migrate postgres: %w", err)
 	}
 	return conn, nil
@@ -94,19 +97,54 @@ func migrateSQLite(conn *sql.DB) error {
 	return runMigrations(m)
 }
 
-func migratePostgres(conn *sql.DB) error {
+// migratePostgres opens a pool of its own rather than borrowing the caller's,
+// and closes it when the migrations are done.
+//
+// The reason is not tidiness. golang-migrate's Postgres driver checks a
+// dedicated connection out of whatever pool it is given (it needs one, for the
+// advisory lock that stops two instances migrating at once) and only returns it
+// when the migrator is closed. Handed the application's pool, that connection
+// is never given back: every server holds an extra idle Postgres connection for
+// its whole life, and - the way this was found - every test in a run holds one
+// too, until the server refuses new clients at 100. Its own pool means
+// m.Close() can close both the connection and the pool, because neither is
+// anyone else's.
+//
+// Takes a DSN rather than a *sql.DB for exactly that reason: there is no way to
+// hand back a borrowed connection, so it must not borrow one.
+func migratePostgres(dsn string) error {
+	migrationConn, err := sql.Open("pgx", dsn)
+	if err != nil {
+		return fmt.Errorf("open postgres for migrations: %w", err)
+	}
+	// One connection is all the migrator uses, and a second would only sit
+	// idle for as long as this function runs.
+	migrationConn.SetMaxOpenConns(1)
+
 	src, err := iofs.New(postgresMigrations, "migrations/postgres")
 	if err != nil {
+		migrationConn.Close()
 		return err
 	}
-	target, err := postgres.WithInstance(conn, &postgres.Config{})
+	target, err := postgres.WithInstance(migrationConn, &postgres.Config{})
 	if err != nil {
+		migrationConn.Close()
 		return err
 	}
 	m, err := migrate.NewWithInstance("iofs", src, "postgres", target)
 	if err != nil {
+		migrationConn.Close()
 		return err
 	}
+	// m.Close() closes the source and the database driver, and the driver
+	// closes both its held connection and migrationConn. Reported rather than
+	// ignored: a failure here is a leaked connection, which is the bug this
+	// function was restructured to fix.
+	defer func() {
+		if srcErr, dbErr := m.Close(); srcErr != nil || dbErr != nil {
+			log.Printf("caravel: closing the postgres migrator: source=%v database=%v", srcErr, dbErr)
+		}
+	}()
 	return runMigrations(m)
 }
 

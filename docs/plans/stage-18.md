@@ -301,6 +301,88 @@ Two test files open a database, both hard-coding SQLite:
   that is only case-insensitive on SQLite. Each fix gets a line in the Done
   paragraph — that list is the milestone's real output.
 
+**Done.** `internal/dbtest` decides the dialect from `CARAVEL_TEST_DB_DRIVER`,
+with a schema per test on Postgres and the old file-per-test on SQLite, and both
+former call sites (`internal/httpapi/testing_test.go`,
+`internal/auth/auth_test.go`) go through it. The `search_path` route the plan
+was unsure about works exactly as hoped — verified before building on it: pgx
+applies it, golang-migrate targets that schema, all 19 tables land inside it and
+nothing leaks into `public`. The database-per-test fallback was not needed.
+`make test-postgres` (via `scripts/test_postgres.sh`) brings the container up,
+sweeps leftovers, runs the suite and stops the container again; `KEEP=1` leaves
+it up.
+
+**The bugs it found, which is the point.**
+
+1. **`ListItemsByTrip` never worked on Postgres at all.** `sqlc.narg` generated
+   `AND ($2 IS NULL OR category = $2)` with an untyped parameter, which Postgres
+   refuses at prepare time (`could not determine data type of parameter $2`,
+   SQLSTATE 42P08) — so *every* location list on a Postgres instance was a 500.
+   Fixed with `CAST(... AS text)` in the query source (portable; the `::` form
+   would not parse as SQLite), and regenerated. A side benefit: sqlc can now
+   type the parameter, so `Category interface{}` became `sql.NullString` in both
+   dialects — the adapters were already passing `nullString(...)`, which the
+   `interface{}` had been silently accepting.
+
+   Four tests failed on this one bug, and **one of them failed silently**:
+   `tripTypeVocabulary` deliberately swallows list errors, so on Postgres the
+   assistant simply received an empty type vocabulary and invented duplicates.
+   No error, no log, wrong behaviour — precisely the failure mode this milestone
+   existed to expose.
+
+2. **Every Caravel server holds a Postgres connection forever.** golang-migrate's
+   driver checks a dedicated connection out of the pool it is handed (for its
+   advisory lock) and returns it only when the migrator is closed — and
+   `db.Open` never closed one. In production that is one idle connection per
+   server, easy to miss. In tests it is one per migrated database, and the run
+   died at the 100th with "sorry, too many clients already" in whichever test
+   happened to be running. `migratePostgres` now takes a DSN instead of a
+   `*sql.DB` and runs on a pool it owns and closes, with
+   `TestMigrationsDoNotHoldAConnection` asserting the property.
+
+Two bugs of the harness's own are worth recording because both produced
+misleading failures. A **shared counter raced across processes**: `go test ./...`
+runs each package as its own binary, so `internal/auth` and `internal/httpapi`
+both started at `caravel_test_1`, and a "drop any stale schema first" line then
+deleted the other package's database mid-migration. Schema names now carry the
+pid and random bytes, and the sweep for leftovers moved to the script, where
+nothing is concurrent. And **a pool per test exhausted the server** before any
+dialect difference could be seen; one shared admin pool plus small per-test
+pools fixed that.
+
+Verified: `make ci` green (SQLite unaffected), and `make test-postgres` green.
+The plan's requested proof, done with a revert that **compiles** — the
+`without.sh` trap caught me twice on the way, both times reporting a build
+failure that could have been read as a test failure: with the lowercasing
+removed from `likeContains`, `TestSearchUsers` **fails on Postgres and passes on
+SQLite**, same code both times. That is the demonstration that this job means
+something. The leak test was likewise proven against a compiling revert (one
+connection held, versus zero).
+
+Two now-false comments were corrected rather than left: `queries/users.sql` and
+`members_test.go` both said nothing in the project ever runs the Postgres
+dialect. The first version of the leak test also had to be rewritten — it
+counted *every* connection to the database, so it passed alone and failed in a
+full run where other packages' pools moved the number; it now counts by
+`application_name`.
+
+Deviation from the plan's order: Milestone 4's `docker-compose.postgres.yml` was
+written here, since this milestone needs a database. Only the `db` service
+exists so far; the app service arrives with the image in Milestone 7. Also worth
+knowing for later: this machine has **podman, not docker** — see the
+environment note above.
+
+> **Environment note, found in Milestone 3:** this machine has **podman**
+> (5.8.4, rootless) and **no docker**, and no `psql`/`pg_dump` client either.
+> `podman compose` delegates to `podman-compose` and takes the same arguments,
+> so the compose files below work unchanged; `scripts/test_postgres.sh` picks
+> whichever of the two is installed. Two consequences for later milestones:
+> the Milestone 6 schema dumps have to run `pg_dump` *inside* the container,
+> and the Milestone 7 image is built with `podman build` locally while CI
+> builds it with docker — so the Dockerfile must not rely on anything
+> docker-specific (no BuildKit-only syntax without checking podman supports
+> it).
+
 ## 4. A compose file per dialect
 
 Two files at the repo root, both usable by a stranger with only Docker:

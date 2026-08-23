@@ -14,6 +14,7 @@ import (
 
 	"caravel/internal/auth"
 	"caravel/internal/db"
+	"caravel/internal/dbtest"
 	"caravel/internal/storagefs"
 )
 
@@ -62,13 +63,11 @@ func newTestServerWith(t *testing.T, wrap func(db.Store) db.Store, adjust func(*
 
 	dir := t.TempDir()
 
-	conn, err := db.Open("sqlite", filepath.Join(dir, "test.db"))
-	if err != nil {
-		t.Fatalf("open test db: %v", err)
-	}
-	t.Cleanup(func() { conn.Close() })
+	// The dialect is dbtest's decision, not this file's: the same tests run on
+	// SQLite by default and on Postgres under CARAVEL_TEST_DB_DRIVER.
+	driver, conn := dbtest.Open(t)
 
-	store, err := db.NewStore("sqlite", conn)
+	store, err := db.NewStore(driver, conn)
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}

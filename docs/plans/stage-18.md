@@ -509,6 +509,57 @@ depending on compose being installed on the runner.
   now.
 - Fix `todo.md`'s stale "ten files" count as part of removing the entry.
 
+**Done.** Twelve migration pairs per dialect are now one `0001_init` pair per
+dialect, comments and all. The plan's instruction to "require them to be
+identical" needed refining, because a raw dump comparison cannot answer the
+question: the squashed file keeps its prose *inside* the `CREATE TABLE` bodies,
+so `.schema` differs on almost every line while the schema does not. Three
+checks were used instead, and each found something the others would not.
+
+**1. `sqlc generate` must produce no diff.** This is the strongest evidence
+available, because sqlc reads the migrations as its schema: if the generated Go
+is byte-identical, then every column, type and nullability sqlc can see is
+unchanged. It was *not* identical at first — the Postgres file had converted
+`item_dates.start_time` to `TIME` (the old chain used `TEXT`, since the app
+stores a wall-clock `"HH:MM"` string), which would have changed the Go type to
+`sql.NullTime`. Caught, reverted, commented in place so nobody "fixes" it again.
+Column order is preserved exactly as the old chain left it — appended columns
+stay appended — which is what makes the zero-diff check possible at all.
+
+**2. A structural comparison of two live databases.** `scripts/compare_sqlite_schema.py`
+(new, kept for the next squash) diffs tables, columns, indexes and foreign-key
+actions between an old-chain database and a squashed one: **identical, 19
+tables**. On Postgres, `pg_dump --schema-only` from inside the container (no
+client on this host) plus a metadata query left exactly two differences, both
+understood and both improvements:
+
+- `documents_pkey`, `documents_trip_id_fkey` and `documents_item_id_fkey`
+  survived on the `files` table, because Postgres's `ALTER TABLE ... RENAME TO`
+  does not rename constraints. The squash names them `files_*`. Checked that
+  nothing in the Go source references a constraint name before accepting this.
+- `trips`' column *numbering* shifts by one, because `DROP COLUMN notes` leaves
+  a dropped-column slot in Postgres's `attnum` and the squash has no gap. The
+  relative order of the columns is identical, which is what `SELECT *` depends
+  on.
+
+**3. The tests, on both dialects.** `make ci` green, `make test-postgres` green,
+and a full `make test-ui` green against a database rebuilt by
+`make dev-reset FORCE=1` and reseeded.
+
+One thing the plan invited that turned out to be impossible: migration 0009
+suggested making `files.owner_user_id` NOT NULL "when the migrations are
+squashed". It cannot be. `NOT NULL` contradicts its own `ON DELETE SET NULL`,
+which is the behaviour that matters — deleting an account must not delete a
+trip's files. The column stays nullable and the comment now says why, so the
+suggestion does not get re-attempted.
+
+**Operationally:** any database created before this stage refuses to start, with
+`no migration found for version 12: read down for version 12 ... file does not
+exist`. Diagnosable, but it does not say "recreate the database", so the
+documentation milestones have to. Nobody has deployed this, which is the whole
+licence for doing it now; `make dev-reset FORCE=1` is the fix locally, and CI
+builds its databases from scratch every run.
+
 ## 7. A multi-stage Dockerfile
 
 - Builder on `golang:1.26`, `CGO_ENABLED=0` (`modernc.org/sqlite` is pure Go),

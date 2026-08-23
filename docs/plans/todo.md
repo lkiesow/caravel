@@ -385,15 +385,17 @@ else runs this.
   rather than saying the image is missing. Until then `build: .` is the only
   working path.
 
-- **Squash the migrations before the first real release.** **(soon)** There are
-  now **twelve** files per dialect (`0001_init` through `0012_add_expense_shares`,
-  in both `internal/db/migrations/sqlite/` and `.../postgres/`). Since nobody has
-  deployed this yet, collapsing them into a single `0001_init` is safe — and
-  stops being safe the moment someone has, which is why it wants doing before the
-  Docker images above are actually published. Now cheaper than when this was
-  written: Stage 18 Milestones 3 and 5 mean the Postgres `0001_init` can be
-  *executed* rather than hand-written and hoped for, both locally
-  (`make test-postgres`) and on every PR.
+- **The squash is a one-way door, and nothing enforces it.** (Stage 18
+  Milestone 6.) The schema is one `0001_init` pair per dialect now, and any
+  database created before that refuses to start: `no migration found for version
+  12`. That is correct and nobody has such a database -- but the same reasoning
+  says this must never happen again once images are published, and there is no
+  mechanism preventing it. A future squash would silently brick every deployed
+  instance. Options: a comment at the top of `0001_init` (weak), a check in CI
+  that the migration count only ever grows (cheap, catches the mistake in
+  review), or leaving it to judgement. Worth deciding before the first release
+  rather than after.
+
 - **S3-compatible object storage.** Swap the `internal/storagefs` `Blob`
   implementation from local filesystem to S3-compatible (MinIO, Backblaze, and
   so on); the interface already isolates callers from the backend.

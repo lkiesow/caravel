@@ -320,5 +320,10 @@
   "expenses.error.amount": "Gib einen Betrag ein, zum Beispiel {example}.",
   "expenses.error.date": "Wähle den Tag der Ausgabe.",
   "trip.form.currency": "Währung",
-  "trip.form.currencyHint": "Alle Ausgaben dieser Reise werden in dieser Währung erfasst. Eine Änderung rechnet bereits erfasste Beträge nicht um."
+  "trip.form.currencyHint": "Alle Ausgaben dieser Reise werden in dieser Währung erfasst. Eine Änderung rechnet bereits erfasste Beträge nicht um.",
+  "expenses.whoPaid": "Wer bezahlt hat",
+  "expenses.paidBy": "Bezahlt von {name}",
+  "expenses.payer.none": "Niemand auf der Reise",
+  "expenses.payer.me": "{name} (du)",
+  "expenses.form.payer": "Bezahlt von"
 }

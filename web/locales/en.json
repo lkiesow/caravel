@@ -320,5 +320,10 @@
   "expenses.error.amount": "Enter an amount, for example {example}.",
   "expenses.error.date": "Pick the day it was spent.",
   "trip.form.currency": "Currency",
-  "trip.form.currencyHint": "Every expense on this trip is recorded in this currency. Changing it does not convert amounts already recorded."
+  "trip.form.currencyHint": "Every expense on this trip is recorded in this currency. Changing it does not convert amounts already recorded.",
+  "expenses.whoPaid": "Who paid",
+  "expenses.paidBy": "Paid by {name}",
+  "expenses.payer.none": "Nobody on the trip",
+  "expenses.payer.me": "{name} (you)",
+  "expenses.form.payer": "Paid by"
 }

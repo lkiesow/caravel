@@ -146,10 +146,10 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
     } else if (tab === "checklists") {
       renderChecklistList(content, trip.id, { readOnly: !canEdit(trip), shared: isShared(trip) });
     } else if (tab === "expenses") {
-      // Only readOnly: an expense has no per-row visibility, so there is
-      // nothing for `shared` to change here the way it does for files and
-      // checklists.
-      renderExpensesTab(content, trip, { readOnly: !canEdit(trip) });
+      // `shared` here does not mean visibility, as it does for files and
+      // checklists — every expense is visible to everyone on the trip. It means
+      // "is who paid a real question", which on a solo trip it is not.
+      renderExpensesTab(content, trip, { readOnly: !canEdit(trip), shared: isShared(trip) });
     } else if (tab === "members") {
       renderMembersTab(content, trip, {
         // Keeps `trip.member_count` current for the other tabs. Mutated in

@@ -13,8 +13,16 @@ import { formatMoney, parseMoney, moneyPlaceholder, moneyExample, currencyExpone
 // No visibility grouping, unlike files and checklists — every expense on a trip
 // is visible to everyone on it, deliberately, because hidden rows in a shared
 // ledger make an incorrect total look correct. So there are no sections and no
-// per-row permission questions: `readOnly` is the only axis, and it comes from
-// the trip role like every other tab's.
+// per-row permission questions: `readOnly` is one axis and comes from the trip
+// role like every other tab's.
+//
+// `shared` is the other, and it decides whether *who paid* is a question worth
+// asking. On a solo trip the answer is always you: the select would have one
+// option, the payer line under every row would say the same name, and the
+// per-person summary would be a table with one row in it. So all three appear
+// only when somebody else is on the trip — the same reasoning file-list.js and
+// checklist-list.js use for their visibility controls, applied to a different
+// question.
 //
 // One form for both verbs rather than an inline editor per row. An expense is
 // three fields that are edited together, so a row that expanded into a copy of
@@ -24,10 +32,24 @@ import { formatMoney, parseMoney, moneyPlaceholder, moneyExample, currencyExpone
 // The total comes from the server (`total_minor`), not from summing the rows
 // here. That keeps one implementation of the arithmetic, and it stays right
 // even if this ever shows part of a longer list.
-export async function renderExpensesTab(container, trip, { readOnly = false } = {}) {
+export async function renderExpensesTab(container, trip, { readOnly = false, shared = false } = {}) {
   renderLoading(container);
 
   let data = await api.get(`/trips/${trip.id}/expenses`);
+  // Everyone who could have paid. Fetched only when it is going to be offered:
+  // on a solo trip this is a request whose answer is a list of one, and the
+  // endpoint needs only viewer so a read-only member can still load it to
+  // render the names beside the rows.
+  let members = [];
+  if (shared) {
+    try {
+      members = await api.get(`/trips/${trip.id}/members`);
+    } catch {
+      // A failed member list must not take the ledger down with it: the amounts
+      // are the point, and the payer select falls back to "just me" below.
+      members = [];
+    }
+  }
   // The expense being edited, or null when the form is an add form.
   let editing = null;
   // Kept across re-renders so a failed save can say why without the message
@@ -43,6 +65,7 @@ export async function renderExpensesTab(container, trip, { readOnly = false } = 
           <span class="expenses__total-label" data-i18n="expenses.total"></span>
           <span class="expenses__total"></span>
         </div>
+        ${shared ? `<div class="expenses__payers"></div>` : ""}
         <div class="expenses__days"></div>
         <p class="expenses__empty" data-i18n="expenses.empty" hidden></p>
         ${readOnly ? "" : `<div class="editor-card expenses__form-card"></div>`}
@@ -52,8 +75,53 @@ export async function renderExpensesTab(container, trip, { readOnly = false } = 
 
     container.querySelector(".expenses__total").textContent = formatMoney(data.total_minor, currency());
     container.querySelector(".expenses__empty").hidden = data.expenses.length > 0;
+    if (shared) renderPayers(container.querySelector(".expenses__payers"));
     renderDays(container.querySelector(".expenses__days"));
     if (!readOnly) renderForm(container.querySelector(".expenses__form-card"));
+  }
+
+  // Who paid, and how much of the total each of them covered. The rows come
+  // from the server already grouped and ordered (see payerTotals in
+  // internal/httpapi/expenses.go), so nothing here decides what anybody paid.
+  //
+  // Not shown at all until there is something to show: a trip whose only
+  // expenses are unattributed would otherwise render a one-row table restating
+  // the total.
+  function renderPayers(parent) {
+    parent.replaceChildren();
+    const rows = data.payers || [];
+    if (!rows.length || (rows.length === 1 && !rows[0].user_id)) return;
+
+    const heading = document.createElement("p");
+    heading.className = "expenses__payers-heading";
+    heading.textContent = t("expenses.whoPaid");
+    parent.appendChild(heading);
+
+    const list = document.createElement("ul");
+    list.className = "expenses__payers-list";
+    for (const row of rows) {
+      const li = document.createElement("li");
+      li.className = "expenses__payer";
+      const name = document.createElement("span");
+      name.className = "expenses__payer-name";
+      name.textContent = payerLabel(row);
+      if (!row.user_id) name.classList.add("expenses__payer-name--none");
+      const paid = document.createElement("span");
+      paid.className = "expenses__payer-paid";
+      paid.textContent = formatMoney(row.paid_minor, currency());
+      li.append(name, paid);
+      list.appendChild(li);
+    }
+    parent.appendChild(list);
+  }
+
+  // What to call a payer. A null id is an expense nobody is recorded as having
+  // paid for -- an account that has since been deleted, or somebody outside the
+  // trip -- and it gets a plain label rather than a blank, because an empty
+  // name reads as a rendering bug rather than as a fact about the row.
+  function payerLabel(row) {
+    if (!row.user_id) return t("expenses.payer.none");
+    return row.display_name || t("expenses.payer.none");
   }
 
   // Grouped by spent_on, in the order the server sent (newest day first), so
@@ -95,7 +163,10 @@ export async function renderExpensesTab(container, trip, { readOnly = false } = 
     li.dataset.expenseId = expense.id;
     if (editing && editing.id === expense.id) li.classList.add("expenses__row--editing");
     li.innerHTML = `
-      <span class="expenses__row-title"></span>
+      <span class="expenses__row-main">
+        <span class="expenses__row-title"></span>
+        ${shared ? `<span class="expenses__row-payer"></span>` : ""}
+      </span>
       <span class="expenses__row-amount"></span>
       <span class="expenses__row-actions"></span>
     `;
@@ -103,6 +174,15 @@ export async function renderExpensesTab(container, trip, { readOnly = false } = 
     // is a title containing markup.
     li.querySelector(".expenses__row-title").textContent = expense.title;
     li.querySelector(".expenses__row-amount").textContent = formatMoney(expense.amount_minor, currency());
+    // A second line under the title rather than a fourth column: at 324px the
+    // row already gives the amount and the menu fixed width, and a name is the
+    // piece that would have had to truncate to nothing.
+    const payerEl = li.querySelector(".expenses__row-payer");
+    if (payerEl) {
+      payerEl.textContent = t("expenses.paidBy", {
+        name: payerLabel({ user_id: expense.payer_user_id, display_name: expense.payer_display_name }),
+      });
+    }
 
     if (!readOnly) {
       renderMenu(li.querySelector(".expenses__row-actions"), {
@@ -157,6 +237,17 @@ export async function renderExpensesTab(container, trip, { readOnly = false } = 
           <span data-i18n="expenses.form.date"></span>
           <input type="date" name="spentOn" required />
         </label>
+        ${
+          shared && members.length
+            ? `<label>
+          <span data-i18n="expenses.form.payer"></span>
+          <select name="payer">
+            ${members.map((m) => `<option value="${m.user_id}"></option>`).join("")}
+            <option value=""></option>
+          </select>
+        </label>`
+            : ""
+        }
         <div class="btn-row">
           <button type="submit" class="btn btn-primary">${icon("check")} <span data-i18n="${isEditing ? "common.save" : "expenses.add"}"></span></button>
           ${isEditing ? `<button type="button" class="btn btn-secondary" data-action="cancel">${icon("x")} <span data-i18n="common.cancel"></span></button>` : ""}
@@ -173,15 +264,35 @@ export async function renderExpensesTab(container, trip, { readOnly = false } = 
     form.elements.amount.placeholder = moneyPlaceholder(currency());
     const errorEl = card.querySelector(".item-form__error");
 
+    // Option labels as text, not interpolated markup: a display name is
+    // whatever somebody typed into their profile.
+    if (form.elements.payer) {
+      const options = [...form.elements.payer.options];
+      members.forEach((m, i) => {
+        options[i].textContent = m.is_self ? t("expenses.payer.me", { name: m.display_name }) : m.display_name;
+      });
+      // The last option is the deliberate "nobody": an expense somebody outside
+      // the trip paid for. Absent from the list until now, because Milestone 3
+      // could only produce it by omitting the field.
+      options[options.length - 1].textContent = t("expenses.payer.none");
+    }
+
     if (isEditing) {
       form.elements.title.value = editing.title;
       form.elements.amount.value = majorUnits(editing.amount_minor);
       form.elements.spentOn.value = editing.spent_on;
+      // The expense's own payer, not the person editing. If they have since
+      // left the trip they are not in the select at all, and the value falls
+      // through to "nobody" rather than silently reassigning the expense to
+      // whoever opened the form.
+      if (form.elements.payer) form.elements.payer.value = editing.payer_user_id || "";
     } else {
       // A new expense defaults to today, clamped into the trip's own dates when
       // it has them: entering yesterday's dinner is a correction, entering one
       // outside the trip entirely is usually a typo.
       form.elements.spentOn.value = defaultDate();
+      // Defaults to you, which is what the server deliberately does not do.
+      if (form.elements.payer) form.elements.payer.value = getCurrentUser()?.id || "";
     }
     if (error) {
       errorEl.textContent = error;
@@ -211,12 +322,13 @@ export async function renderExpensesTab(container, trip, { readOnly = false } = 
         title,
         amount_minor: amountMinor,
         spent_on: spentOn,
-        // The payer is always sent explicitly. The server deliberately has no
-        // default (see internal/httpapi/expenses.go), so "I paid for this" is
-        // this client's decision to make -- and Milestone 4 turns it into a
-        // control rather than an assumption. On edit the existing payer is kept
-        // rather than reassigned to whoever is editing.
-        payer_user_id: isEditing ? editing.payer_user_id : getCurrentUser()?.id || null,
+        // Always sent explicitly: the server deliberately has no default (see
+        // internal/httpapi/expenses.go), so "who paid" is this client's
+        // decision. On a shared trip it is the select's value, empty meaning
+        // nobody; on a solo trip there is no control and it is always you, and
+        // when editing there it is the payer the expense already had rather
+        // than whoever opened the form.
+        payer_user_id: payerFromForm(form),
       };
 
       try {
@@ -229,6 +341,12 @@ export async function renderExpensesTab(container, trip, { readOnly = false } = 
       error = null;
       await reload();
     });
+
+    function payerFromForm(form) {
+      if (form.elements.payer) return form.elements.payer.value || null;
+      if (isEditing) return editing.payer_user_id;
+      return getCurrentUser()?.id || null;
+    }
 
     function fail(message) {
       error = message;

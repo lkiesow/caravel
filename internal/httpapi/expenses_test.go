@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"testing"
 	"time"
 
@@ -30,6 +31,11 @@ type expenseList struct {
 		PayerUserID      *string `json:"payer_user_id"`
 		PayerDisplayName *string `json:"payer_display_name"`
 	} `json:"expenses"`
+	Payers []struct {
+		UserID      *string `json:"user_id"`
+		DisplayName *string `json:"display_name"`
+		PaidMinor   int64   `json:"paid_minor"`
+	} `json:"payers"`
 }
 
 func (ts *testServer) listExpenses(cookie *http.Cookie, tripID string) expenseList {
@@ -385,5 +391,136 @@ func TestTripCurrencyThroughTheAPI(t *testing.T) {
 	w = ts.do(http.MethodPost, "/api/trips", cookie, `{"title":"Bad","currency":"XYZ"}`)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("create with an unsupported currency: got %d, want 400", w.Code)
+	}
+}
+
+// Per-person totals, which the server owns for the same reason it owns
+// total_minor: an aggregate should have one implementation. Milestone 6's
+// balances are this grouping with a division on top, so two places deciding
+// what somebody paid is how a ledger and a balance come to disagree.
+func TestPerPersonTotals(t *testing.T) {
+	ts := newTestServer(t)
+	owner := ts.login("owner")
+	ts.login("bram")
+	ts.login("cleo")
+	tripID := ts.createTrip(owner, "Iceland")
+
+	ids := map[string]string{}
+	for _, name := range []string{"owner", "bram", "cleo"} {
+		user, err := ts.Store.GetUserByUsername(context.Background(), name)
+		if err != nil {
+			t.Fatalf("look up %s: %v", name, err)
+		}
+		ids[name] = user.ID
+		if name != "owner" {
+			if _, err := ts.Store.UpsertTripMember(context.Background(), tripID, user.ID, db.RoleEditor, time.Now().UTC()); err != nil {
+				t.Fatalf("add %s: %v", name, err)
+			}
+		}
+	}
+
+	pay := func(title string, amount int64, payer string) {
+		t.Helper()
+		body := `{"title":"` + title + `","amount_minor":` + strconv.FormatInt(amount, 10) + `,"spent_on":"2026-08-20"`
+		if payer == "" {
+			body += `,"payer_user_id":null}`
+		} else {
+			body += `,"payer_user_id":"` + ids[payer] + `"}`
+		}
+		ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/expenses", owner, body, http.StatusCreated)
+	}
+
+	// Two expenses for one person, to prove they are summed rather than listed
+	// twice, and an unattributed pair, to prove they collapse into one row.
+	pay("Hostel", 4000, "bram")
+	pay("Dinner", 2000, "bram")
+	pay("Bus", 5000, "owner")
+	pay("Parking", 300, "")
+	pay("Tip", 200, "")
+
+	list := ts.listExpenses(owner, tripID)
+	if list.TotalMinor != 11500 {
+		t.Errorf("total_minor: got %d, want 11500", list.TotalMinor)
+	}
+	if len(list.Payers) != 3 {
+		t.Fatalf("got %d payer rows, want 3 (bram, owner, unattributed) -- %+v", len(list.Payers), list.Payers)
+	}
+
+	// Most paid first: bram 6000, owner 5000, unattributed 500.
+	wantOrder := []struct {
+		name string
+		paid int64
+	}{{"bram", 6000}, {"owner", 5000}, {"", 500}}
+	for i, want := range wantOrder {
+		got := list.Payers[i]
+		if want.name == "" {
+			if got.UserID != nil || got.DisplayName != nil {
+				t.Errorf("payers[%d]: expected the unattributed row, got %v/%v", i, got.UserID, got.DisplayName)
+			}
+		} else {
+			if got.DisplayName == nil || *got.DisplayName != want.name {
+				t.Errorf("payers[%d]: name got %v, want %q", i, got.DisplayName, want.name)
+			}
+			if got.UserID == nil || *got.UserID != ids[want.name] {
+				t.Errorf("payers[%d]: id got %v, want %q", i, got.UserID, ids[want.name])
+			}
+		}
+		if got.PaidMinor != want.paid {
+			t.Errorf("payers[%d] (%s): paid got %d, want %d", i, want.name, got.PaidMinor, want.paid)
+		}
+	}
+
+	// The rows must account for every expense: a grouping that drops one is a
+	// summary that quietly disagrees with the ledger above it.
+	var summed int64
+	for _, p := range list.Payers {
+		summed += p.PaidMinor
+	}
+	if summed != list.TotalMinor {
+		t.Errorf("payer rows sum to %d, but the trip total is %d", summed, list.TotalMinor)
+	}
+
+	// Somebody on the trip who has paid nothing is absent by design: this
+	// answers "who paid", and a row of zero answers nothing. Cleo is a member
+	// and has paid for nothing.
+	for _, p := range list.Payers {
+		if p.UserID != nil && *p.UserID == ids["cleo"] {
+			t.Errorf("cleo has paid nothing and should not appear in payers: %+v", p)
+		}
+	}
+}
+
+// A tie must not reshuffle between reloads: without a deterministic
+// tie-breaker the summary reorders itself for two people who paid the same.
+func TestPerPersonTotalsAreStableOnATie(t *testing.T) {
+	ts := newTestServer(t)
+	owner := ts.login("owner")
+	ts.login("zoe")
+	ts.login("adam")
+	tripID := ts.createTrip(owner, "Iceland")
+
+	for _, name := range []string{"zoe", "adam"} {
+		user, err := ts.Store.GetUserByUsername(context.Background(), name)
+		if err != nil {
+			t.Fatalf("look up %s: %v", name, err)
+		}
+		if _, err := ts.Store.UpsertTripMember(context.Background(), tripID, user.ID, db.RoleEditor, time.Now().UTC()); err != nil {
+			t.Fatalf("add %s: %v", name, err)
+		}
+		// zoe first, adam second, so insertion order and alphabetical order
+		// disagree -- otherwise the test would pass on either rule.
+		ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/expenses", owner,
+			`{"title":"`+name+`s round","amount_minor":1000,"spent_on":"2026-08-20","payer_user_id":"`+user.ID+`"}`,
+			http.StatusCreated)
+	}
+
+	for i := 0; i < 3; i++ {
+		list := ts.listExpenses(owner, tripID)
+		if len(list.Payers) != 2 {
+			t.Fatalf("got %d payer rows, want 2", len(list.Payers))
+		}
+		if got := *list.Payers[0].DisplayName; got != "adam" {
+			t.Errorf("read %d: first payer on a tie is %q, want the alphabetically first (adam)", i, got)
+		}
 	}
 }

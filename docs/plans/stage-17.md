@@ -375,6 +375,67 @@ update. Driven by hand in Firefox against `make dev` at **324×756** and at
 re-checks membership, plus a manual pass on a two-member trip driving the
 seeded `other` account.
 
+**Done.** Landed with one deliberate departure from the plan.
+
+*The per-person totals are computed server-side, not in the client.* The plan
+implied a client-side summary; this is plain integer addition, so summing in JS
+would have been exact and easy. It is on the server anyway because **Milestone
+6's balances are this same grouping with a division on top** — two places
+deciding what somebody paid is precisely how a ledger and a balance come to
+disagree. `GET .../expenses` now carries a `payers` array
+(`payerTotals` in `internal/httpapi/expenses.go`), reusing the payer-name cache
+the rows already populated, so the extra rows cost no extra lookups.
+
+Two details in that grouping worth keeping:
+
+- **The order is deterministic** — most paid first, then by name, unattributed
+  last. Without the tie-break the summary reshuffles between reloads whenever
+  two people have paid the same amount, and `TestPerPersonTotalsAreStableOnATie`
+  pins it with names whose insertion order and alphabetical order disagree, so
+  it cannot pass on the wrong rule.
+- **Somebody who has paid nothing is absent.** The section answers "who paid",
+  and a row of zero answers nothing. They become interesting in Milestone 6,
+  where paying nothing is exactly what puts them in debt.
+
+*All three payer affordances are gated on `shared`, not just the select.* On a
+solo trip the select would hold one option, the line under every row would
+repeat the same name, and the summary would be a one-row table restating the
+total. `trip-detail-page.js` passes `isShared(trip)` — the same flag files and
+checklists use for visibility, here meaning "is who paid a real question".
+Importantly the *data* is unaffected: a solo trip still records you as the
+payer, so a trip that later gains a member has correct history rather than a
+pile of unattributed rows.
+
+The row shows the payer as a second line under the title rather than a fourth
+column: at 324px the amount and the ⋮ already take fixed width, and a name is
+the piece that would have had to truncate to nothing.
+
+**Verified.** `make ci` and `make test-ui` green. Two new Go tests cover the
+grouping — two expenses for one person summing rather than listing twice, two
+unattributed ones collapsing into a single row, the rows summing to
+`total_minor` (a grouping that drops one is a summary that quietly disagrees
+with the ledger above it), a paid-nothing member being absent, and the tie
+ordering. By hand in Firefox at 324×756, on a two-member trip driving the
+seeded `other` account:
+
+- The summary reads Other User €60.00 / Demo User €50.00 / *Nobody on the trip*
+  €3.00 against a €113.00 total, the unattributed row rendering in italic
+  because it is a fact rather than a person. No horizontal overflow, and every
+  row stays inside the viewport with the title stacked over the payer line.
+- The select defaults to "Demo User (you)", and **resets to you after an add**
+  rather than keeping the last person picked. Creating with Other User selected
+  attributes it to them and regroups the summary (Other User → €120.40).
+- Editing an expense paid by somebody else **preselects them, not the editor**,
+  and changing only the title leaves the payer and amount untouched. This is the
+  case Milestone 2's payer rule exists to protect.
+- On a solo trip: no summary, no payer lines, no select — but a newly added
+  expense is still attributed to Demo User.
+- As a **read-only viewer** (`other`, demoted for the check): sees the German
+  summary ("Wer bezahlt hat", "Niemand auf der Reise") and per-row "Bezahlt von
+  …", with no form and no row menus.
+- `60,40` typed with a comma parsed to `6040`. Zero console errors or warnings.
+  Both scratch trips deleted; the seeded scenarios are back at seven.
+
 ## 5. Shares: who an expense was for
 
 Migration pair `0012_add_expense_shares`, both dialects:

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -42,14 +43,38 @@ type expenseResponse struct {
 	CreatedAt        string  `json:"created_at"`
 }
 
-// expenseListResponse carries the currency and the total alongside the rows.
-// Both are on the envelope rather than left to the client: the total is summed
-// by the database, so it stays right even for a client showing part of the
-// list, and a currency sent explicitly is one the client never has to infer.
+// payerTotalResponse is what one person has paid across the whole trip.
+//
+// Server-side rather than summed in the client, for the same reason
+// total_minor is: an aggregate should have one implementation. This one is
+// plain integer addition today, but Milestone 6's balances are the same
+// grouping with a division on top, and having two places that decide what
+// somebody paid is how the ledger and the balance come to disagree.
+//
+// UserID and DisplayName are both nullable, and both nil on the row standing
+// for expenses with no payer -- which is one row, not one per unattributed
+// expense.
+type payerTotalResponse struct {
+	UserID      *string `json:"user_id"`
+	DisplayName *string `json:"display_name"`
+	PaidMinor   int64   `json:"paid_minor"`
+}
+
+// expenseListResponse carries the currency, the total and the per-person totals
+// alongside the rows. All three are on the envelope rather than left to the
+// client: the total is summed by the database, so it stays right even for a
+// client showing part of the list, and a currency sent explicitly is one the
+// client never has to infer.
 type expenseListResponse struct {
 	Currency   string            `json:"currency"`
 	TotalMinor int64             `json:"total_minor"`
 	Expenses   []expenseResponse `json:"expenses"`
+	// Payers holds one row per person who has actually paid for something,
+	// plus at most one for the unattributed expenses. Somebody on the trip who
+	// has paid nothing is deliberately absent: this answers "who paid", and a
+	// list of zeroes answers nothing. They appear in Milestone 6's balances,
+	// where paying nothing is exactly what makes them interesting.
+	Payers []payerTotalResponse `json:"payers"`
 }
 
 // payerNamer resolves payer ids to display names for one response, caching so
@@ -146,6 +171,53 @@ func (req expenseRequest) validate() error {
 	return nil
 }
 
+// payerTotals groups expenses by who paid, in a stable order: most paid first,
+// then by name, with the unattributed row last wherever its amount would put
+// it. Deterministic ordering matters more than it looks -- without it the
+// summary reshuffles on every reload for two people who paid the same amount.
+func payerTotals(ctx context.Context, expenses []db.Expense, names *payerNamer) []payerTotalResponse {
+	// Keyed by id, with the empty string standing for "nobody". Safe as a
+	// sentinel because a user id is a UUID and never empty.
+	totals := map[string]int64{}
+	order := []string{}
+	for _, e := range expenses {
+		key := ""
+		if e.PayerUserID != nil {
+			key = *e.PayerUserID
+		}
+		if _, seen := totals[key]; !seen {
+			order = append(order, key)
+		}
+		totals[key] += e.AmountMinor
+	}
+
+	rows := make([]payerTotalResponse, 0, len(order))
+	for _, key := range order {
+		row := payerTotalResponse{PaidMinor: totals[key]}
+		if key != "" {
+			id := key
+			row.UserID = &id
+			row.DisplayName = names.name(ctx, &id)
+		}
+		rows = append(rows, row)
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		if rows[i].PaidMinor != rows[j].PaidMinor {
+			return rows[i].PaidMinor > rows[j].PaidMinor
+		}
+		// A nil name sorts last, so the unattributed row does not jump above a
+		// named person who paid the same amount.
+		if (rows[i].DisplayName == nil) != (rows[j].DisplayName == nil) {
+			return rows[j].DisplayName == nil
+		}
+		if rows[i].DisplayName == nil {
+			return false
+		}
+		return *rows[i].DisplayName < *rows[j].DisplayName
+	})
+	return rows
+}
+
 func (s *Server) handleListExpenses(w http.ResponseWriter, r *http.Request) {
 	trip, _, ok := s.loadTrip(w, r, db.RoleViewer)
 	if !ok {
@@ -171,6 +243,9 @@ func (s *Server) handleListExpenses(w http.ResponseWriter, r *http.Request) {
 		Currency:   trip.Currency,
 		TotalMinor: total,
 		Expenses:   rows,
+		// The same namer, so the per-person rows cost no extra lookups: every
+		// payer has already been resolved building the rows above.
+		Payers: payerTotals(r.Context(), expenses, namer),
 	})
 }
 

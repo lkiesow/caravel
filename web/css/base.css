@@ -2873,12 +2873,27 @@ button {
   border-radius: var(--radius);
 }
 
-.expenses__row-title {
+/* The title and the payer share one flexible column, stacked. min-width: 0 is
+   load-bearing on both: without it the flex item sizes to its longest line and
+   the ellipsis never engages. */
+.expenses__row-main {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.expenses__row-title,
+.expenses__row-payer {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.expenses__row-payer {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
 }
 
 .expenses__row-amount {
@@ -2911,6 +2926,55 @@ button {
 
 .expenses__empty {
   color: var(--color-text-muted);
+}
+
+/* Who paid, under the trip total. A plain two-column list rather than a table:
+   it is a handful of name/amount pairs, and a table would bring header
+   semantics that say nothing here. */
+.expenses__payers {
+  margin-bottom: 1rem;
+}
+
+.expenses__payers-heading {
+  margin: 0 0 0.375rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.expenses__payers-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.expenses__payer {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.9375rem;
+}
+
+.expenses__payer-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The unattributed row is a fact, not a person, so it reads as one. */
+.expenses__payer-name--none {
+  font-style: italic;
+  color: var(--color-text-muted);
+}
+
+.expenses__payer-paid {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 

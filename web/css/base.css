@@ -2977,6 +2977,74 @@ button {
   white-space: nowrap;
 }
 
+/* Balances. Reuses .expenses__payers-heading for its section headings -- both
+   are "a small label over a list of name/amount pairs", and a second rule
+   saying the same thing is how the two come to disagree. */
+.expenses__balances {
+  margin-bottom: 1rem;
+}
+
+.expenses__balance-list,
+.expenses__transfer-list {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.expenses__balance {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.9375rem;
+}
+
+.expenses__balance-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.expenses__balance-net {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* No colour on credit or debt, deliberately.
+   
+   The palette has no green -- the app's one success line uses --color-text on
+   an accent tint -- and --color-danger is a *background* token, so painting a
+   debt with it would be wrong twice over: the wrong variable, and red for
+   something that is not an error. Owing a friend twelve euros after a holiday
+   is the normal state of a shared trip, not a warning.
+   
+   So the words carry the meaning ("owes" / "is owed"), which also means this
+   reads identically to somebody who cannot distinguish two hues. Only the
+   settled case is toned down, because "even" is the row you can skip. */
+.expenses__balance-net--credit,
+.expenses__balance-net--debt {
+  font-weight: 600;
+}
+
+.expenses__balance-net--even {
+  color: var(--color-text-muted);
+}
+
+.expenses__transfer {
+  font-size: 0.9375rem;
+}
+
+.expenses__balances-settled,
+.expenses__balances-note {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
 /* Who an expense is shared by: a wrapping row of checkboxes inside the form.
    Deliberately not .setting-choices, which is a segmented single-choice control
    -- this is a multi-select, and borrowing a control that looks like one radio

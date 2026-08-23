@@ -66,6 +66,7 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
           <span class="expenses__total"></span>
         </div>
         ${shared ? `<div class="expenses__payers"></div>` : ""}
+        ${shared ? `<div class="expenses__balances"></div>` : ""}
         <div class="expenses__days"></div>
         <p class="expenses__empty" data-i18n="expenses.empty" hidden></p>
         ${readOnly ? "" : `<div class="editor-card expenses__form-card"></div>`}
@@ -76,6 +77,7 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
     container.querySelector(".expenses__total").textContent = formatMoney(data.total_minor, currency());
     container.querySelector(".expenses__empty").hidden = data.expenses.length > 0;
     if (shared) renderPayers(container.querySelector(".expenses__payers"));
+    if (shared) renderBalances(container.querySelector(".expenses__balances"));
     renderDays(container.querySelector(".expenses__days"));
     if (!readOnly) renderForm(container.querySelector(".expenses__form-card"));
   }
@@ -122,6 +124,99 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
   function payerLabel(row) {
     if (!row.user_id) return t("expenses.payer.none");
     return row.display_name || t("expenses.payer.none");
+  }
+
+  // Who owes whom. Every number here comes from the server (see
+  // computeBalances in internal/httpapi/expense_balances.go) -- recomputing a
+  // balance in the client would be a second implementation of the rounding rule
+  // in splitAmount, and the two would eventually disagree about what somebody
+  // owes depending on which screen they were looking at.
+  //
+  // Two sections: where everyone stands, and what would settle it. The second
+  // is advice, not a record: nothing here marks a debt as paid, which is why
+  // the heading says "to settle up" rather than anything more official.
+  function renderBalances(parent) {
+    parent.replaceChildren();
+    const balances = data.balances;
+    if (!balances) return;
+
+    // A trip where nobody owes anybody renders the heading and the "settled"
+    // line, not an empty box: "you are square" is worth saying.
+    const unsettled = (balances.people || []).some((p) => p.net_minor !== 0);
+    if (!unsettled && !balances.unattributed_minor) {
+      if (!data.expenses.length) return;
+      const settled = document.createElement("p");
+      settled.className = "expenses__balances-settled";
+      settled.textContent = t("expenses.balances.settled");
+      parent.append(headingEl(t("expenses.balances.heading")), settled);
+      return;
+    }
+
+    parent.appendChild(headingEl(t("expenses.balances.heading")));
+
+    const list = document.createElement("ul");
+    list.className = "expenses__balance-list";
+    for (const person of balances.people || []) {
+      const li = document.createElement("li");
+      li.className = "expenses__balance";
+      const name = document.createElement("span");
+      name.className = "expenses__balance-name";
+      name.textContent = person.display_name || t("expenses.payer.none");
+      const value = document.createElement("span");
+      value.className = "expenses__balance-net";
+      // Rendered as a direction plus a positive amount rather than a signed
+      // number: "owes 12.50" is read correctly first time, where "-12.50"
+      // needs the reader to work out whose sign convention it is.
+      if (person.net_minor > 0) {
+        value.textContent = t("expenses.balances.isOwed", { amount: formatMoney(person.net_minor, currency()) });
+        value.classList.add("expenses__balance-net--credit");
+      } else if (person.net_minor < 0) {
+        value.textContent = t("expenses.balances.owes", { amount: formatMoney(-person.net_minor, currency()) });
+        value.classList.add("expenses__balance-net--debt");
+      } else {
+        value.textContent = t("expenses.balances.even");
+        value.classList.add("expenses__balance-net--even");
+      }
+      li.append(name, value);
+      list.appendChild(li);
+    }
+    parent.appendChild(list);
+
+    if ((balances.transfers || []).length) {
+      parent.appendChild(headingEl(t("expenses.balances.settleHeading")));
+      const transfers = document.createElement("ul");
+      transfers.className = "expenses__transfer-list";
+      for (const transfer of balances.transfers) {
+        const li = document.createElement("li");
+        li.className = "expenses__transfer";
+        li.textContent = t("expenses.balances.transfer", {
+          from: transfer.from_display_name || t("expenses.payer.none"),
+          to: transfer.to_display_name || t("expenses.payer.none"),
+          amount: formatMoney(transfer.amount_minor, currency()),
+        });
+        transfers.appendChild(li);
+      }
+      parent.appendChild(transfers);
+    }
+
+    // Said out loud rather than folded into the numbers above: an expense
+    // nobody is recorded as paying cannot be attributed, so it is left out of
+    // the balance entirely. Splitting it would be a confidently wrong number.
+    if (balances.unattributed_minor) {
+      const note = document.createElement("p");
+      note.className = "expenses__balances-note";
+      note.textContent = t("expenses.balances.unattributed", {
+        amount: formatMoney(balances.unattributed_minor, currency()),
+      });
+      parent.appendChild(note);
+    }
+  }
+
+  function headingEl(text) {
+    const heading = document.createElement("p");
+    heading.className = "expenses__payers-heading";
+    heading.textContent = text;
+    return heading;
   }
 
   // What the reading user owes for one expense. `share_minor` is null when they

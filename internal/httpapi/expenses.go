@@ -84,9 +84,15 @@ type expenseListResponse struct {
 	// Payers holds one row per person who has actually paid for something,
 	// plus at most one for the unattributed expenses. Somebody on the trip who
 	// has paid nothing is deliberately absent: this answers "who paid", and a
-	// list of zeroes answers nothing. They appear in Milestone 6's balances,
-	// where paying nothing is exactly what makes them interesting.
+	// list of zeroes answers nothing. Balances below is where paying nothing
+	// becomes interesting, and that one does list everybody.
 	Payers []payerTotalResponse `json:"payers"`
+	// Balances is who owes whom, computed server-side so the rounding rule in
+	// splitAmount has exactly one implementation. Sent on every listing rather
+	// than behind its own endpoint: it is derived from the expenses, the shares
+	// and the member list, all of which this handler has already loaded, so a
+	// separate route would re-read the same three things.
+	Balances balancesResponse `json:"balances"`
 }
 
 // payerNamer resolves payer ids to display names for one response, caching so
@@ -338,13 +344,24 @@ func (s *Server) handleListExpenses(w http.ResponseWriter, r *http.Request) {
 	for i, e := range expenses {
 		rows[i] = namer.toResponse(r.Context(), e, effectiveShares(byExpense[e.ID], participants), me.ID)
 	}
+	// The effective share set per expense, which is what the balance arithmetic
+	// needs and what the rows above were already built from.
+	effective := map[string][]string{}
+	for _, e := range expenses {
+		effective[e.ID] = effectiveShares(byExpense[e.ID], participants)
+	}
+
 	writeJSON(w, http.StatusOK, expenseListResponse{
 		Currency:   trip.Currency,
 		TotalMinor: total,
 		Expenses:   rows,
-		// The same namer, so the per-person rows cost no extra lookups: every
-		// payer has already been resolved building the rows above.
+		// The same namer throughout, so the per-person rows and the balances
+		// cost no extra lookups: every payer was resolved building the rows
+		// above, and the balance names come from the same cache.
 		Payers: payerTotals(r.Context(), expenses, namer),
+		Balances: computeBalances(expenses, effective, participants, func(id string) *string {
+			return namer.name(r.Context(), &id)
+		}),
 	})
 }
 

@@ -329,5 +329,13 @@
   "expenses.form.shares": "Shared by",
   "expenses.yourShare": "your share {amount}",
   "expenses.notShared": "not shared with you",
-  "expenses.error.shares": "Choose at least one person to share this with."
+  "expenses.error.shares": "Choose at least one person to share this with.",
+  "expenses.balances.heading": "Where everyone stands",
+  "expenses.balances.settleHeading": "To settle up",
+  "expenses.balances.isOwed": "is owed {amount}",
+  "expenses.balances.owes": "owes {amount}",
+  "expenses.balances.even": "even",
+  "expenses.balances.settled": "Everyone is settled up.",
+  "expenses.balances.transfer": "{from} pays {to} {amount}",
+  "expenses.balances.unattributed": "{amount} is not counted here: nobody is recorded as having paid it."
 }

@@ -549,6 +549,70 @@ with a remainder, a case where a subset share list excludes the payer, and one
 containing an unattributed expense — asserting it is reported rather than
 folded in.
 
+**Done.** Landed as planned, in the list response rather than a sibling
+endpoint: the balance is derived from the expenses, the shares and the member
+list, all of which `handleListExpenses` has already loaded, so a separate route
+would re-read the same three things to answer a question nobody asks
+separately.
+
+*The unattributed rule had to be stronger than the plan stated.* The plan said
+such an expense is "excluded from the balance". Excluding only its **paid** side
+is not enough: its shares would still put people in debt to nobody, so the nets
+would sum to minus the unattributed total rather than to zero, and every
+transfer suggestion built on that is arithmetic about money that does not
+exist. Both sides are excluded, and the total is reported separately.
+
+*Two invariants are asserted rather than assumed*, as helpers every balance test
+calls:
+
+- **Every net sums to zero.** If it does not, somebody is owed money nobody
+  owes.
+- **Following every suggested transfer leaves everyone at zero**, with never
+  more transfers than one fewer than the number of people involved. Greedy
+  largest-debtor against largest-creditor is not guaranteed to be the
+  theoretical minimum — that problem is NP-hard — but that bound is what
+  matters when the group is four friends rather than a bank.
+
+*Nets render as a direction plus a positive amount* ("owes €12.50"), not as a
+signed number: "−12.50" makes the reader work out whose sign convention it is.
+And **no colour** distinguishes credit from debt. The palette has no green —
+the app's one success line is `--color-text` on an accent tint — and
+`--color-danger` is a *background* token, so painting a debt with it would be
+wrong twice: the wrong variable, and red for something that is not an error.
+Owing a friend twelve euros after a holiday is the normal state of a shared
+trip. The words carry it, which also means it reads identically to somebody who
+cannot distinguish two hues.
+
+**Verified.** `make ci` and `make test-ui` green. Unit tests cover the symmetric
+two-person case, a three-person remainder, a share set that **excludes the
+payer** (who is then owed the whole amount — the case that catches an
+implementation assuming the payer always shares), an unattributed expense
+reported rather than absorbed, a participant who has neither paid nor owes
+still appearing (a balance that omitted them would read as "settled up" when it
+might mean "we forgot them") and appearing in no transfer, somebody who paid and
+then **left** the trip still being owed, a four-person ledger with mixed
+subsets, a settled trip suggesting nothing (an empty list, not null), and
+determinism across five reads. Two HTTP-level tests cover the wiring and the
+solo case.
+
+One of those tests failed first and was wrong to: it compared structs holding
+`*string`, so it tested pointer identity rather than values. The fixture now
+caches name pointers the way `payerNamer` does in production.
+
+By hand in Firefox at 324×756 on a two-member trip, both locales: 13333 paid by
+one person and split two ways gives nets of +6667 and −6667 summing to zero, one
+suggested transfer, and a €3.00 unattributed expense reported on its own line
+("nobody is recorded as having paid it") rather than folded in. German renders
+"Wie es steht" / "Zum Ausgleichen" / "schuldet €66.67". Settling the debt with a
+matching expense drops the transfer count to zero, and once the unattributed
+expense is deleted the section collapses to "Everyone is settled up." A solo
+trip renders no balances block at all. No horizontal overflow, and no console
+errors from the app.
+
+Not re-verified here: a read-only viewer seeing the balances. It renders in the
+same `shared`-gated place as the payer summary, which *was* checked from a real
+viewer session in Milestone 4, and Milestone 7's spec covers the viewer case.
+
 ## 7. Coverage, seed and documentation
 
 - **Expenses in a seed scenario.** Added to an existing multi-member scenario

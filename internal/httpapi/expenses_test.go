@@ -34,6 +34,21 @@ type expenseList struct {
 		ShareUserIDs     []string `json:"share_user_ids"`
 		ShareMinor       *int64   `json:"share_minor"`
 	} `json:"expenses"`
+	Balances struct {
+		People []struct {
+			UserID      string  `json:"user_id"`
+			DisplayName *string `json:"display_name"`
+			PaidMinor   int64   `json:"paid_minor"`
+			OwedMinor   int64   `json:"owed_minor"`
+			NetMinor    int64   `json:"net_minor"`
+		} `json:"people"`
+		Transfers []struct {
+			FromUserID  string `json:"from_user_id"`
+			ToUserID    string `json:"to_user_id"`
+			AmountMinor int64  `json:"amount_minor"`
+		} `json:"transfers"`
+		UnattributedMinor int64 `json:"unattributed_minor"`
+	} `json:"balances"`
 	Payers []struct {
 		UserID      *string `json:"user_id"`
 		DisplayName *string `json:"display_name"`
@@ -784,5 +799,89 @@ func TestDeletingAnExpenseDeletesItsShares(t *testing.T) {
 	}
 	if len(stored) != 0 {
 		t.Errorf("shares survived their expense: %v", stored)
+	}
+}
+
+// The balances reach the client, over the real handler, with the real share
+// resolution behind them. The arithmetic itself is covered in
+// expense_balances_test.go; this is about the wiring.
+func TestBalancesOverHTTP(t *testing.T) {
+	ts := newTestServer(t)
+	owner := ts.login("owner")
+	ts.login("bram")
+	ts.login("cleo")
+	tripID, ids := tripWithThree(t, ts, owner)
+
+	// Owner pays 1000 for everyone, and an unattributed 300 nobody is credited
+	// for. Cleo pays nothing.
+	ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/expenses", owner,
+		`{"title":"Petrol","amount_minor":1000,"spent_on":"2026-08-20","payer_user_id":"`+ids["owner"]+`"}`,
+		http.StatusCreated)
+	ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/expenses", owner,
+		`{"title":"Parking","amount_minor":300,"spent_on":"2026-08-20","payer_user_id":null}`,
+		http.StatusCreated)
+
+	list := ts.listExpenses(owner, tripID)
+	b := list.Balances
+
+	if b.UnattributedMinor != 300 {
+		t.Errorf("unattributed_minor: got %d, want 300", b.UnattributedMinor)
+	}
+	if len(b.People) != 3 {
+		t.Fatalf("want a row for all three participants, got %+v", b.People)
+	}
+
+	var netTotal int64
+	byID := map[string]int64{}
+	for _, p := range b.People {
+		netTotal += p.NetMinor
+		byID[p.UserID] = p.NetMinor
+		if p.DisplayName == nil {
+			t.Errorf("balance row for %s has no display name", p.UserID)
+		}
+	}
+	if netTotal != 0 {
+		t.Errorf("nets sum to %d, want 0 -- the unattributed 300 must not reach anybody", netTotal)
+	}
+	// 1000 across three: the owner is owed 1000 minus their own 334 or 333.
+	if byID[ids["owner"]] <= 0 {
+		t.Errorf("the owner paid for everyone and should be owed money, got %d", byID[ids["owner"]])
+	}
+	for _, name := range []string{"bram", "cleo"} {
+		if byID[ids[name]] >= 0 {
+			t.Errorf("%s paid nothing and should owe money, got %d", name, byID[ids[name]])
+		}
+	}
+
+	// Following the transfers settles everybody.
+	remaining := map[string]int64{}
+	for _, p := range b.People {
+		remaining[p.UserID] = p.NetMinor
+	}
+	for _, tr := range b.Transfers {
+		remaining[tr.FromUserID] += tr.AmountMinor
+		remaining[tr.ToUserID] -= tr.AmountMinor
+	}
+	for id, left := range remaining {
+		if left != 0 {
+			t.Errorf("%s is %d from settled after the suggested transfers", id, left)
+		}
+	}
+}
+
+// A solo trip has nothing to balance, and must not claim otherwise.
+func TestBalancesOnASoloTrip(t *testing.T) {
+	ts := newTestServer(t)
+	owner := ts.login("owner")
+	tripID := ts.createTrip(owner, "Iceland")
+	ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/expenses", owner,
+		`{"title":"Coffee","amount_minor":420,"spent_on":"2026-08-20"}`, http.StatusCreated)
+
+	b := ts.listExpenses(owner, tripID).Balances
+	if len(b.People) != 1 || b.People[0].NetMinor != 0 {
+		t.Errorf("a solo trip balances to zero, got %+v", b.People)
+	}
+	if len(b.Transfers) != 0 {
+		t.Errorf("nothing to settle on a solo trip, got %+v", b.Transfers)
 	}
 }

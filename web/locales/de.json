@@ -329,5 +329,13 @@
   "expenses.form.shares": "Geteilt von",
   "expenses.yourShare": "dein Anteil {amount}",
   "expenses.notShared": "nicht mit dir geteilt",
-  "expenses.error.shares": "Wähle mindestens eine Person, mit der geteilt wird."
+  "expenses.error.shares": "Wähle mindestens eine Person, mit der geteilt wird.",
+  "expenses.balances.heading": "Wie es steht",
+  "expenses.balances.settleHeading": "Zum Ausgleichen",
+  "expenses.balances.isOwed": "bekommt {amount}",
+  "expenses.balances.owes": "schuldet {amount}",
+  "expenses.balances.even": "ausgeglichen",
+  "expenses.balances.settled": "Alle sind ausgeglichen.",
+  "expenses.balances.transfer": "{from} zahlt {to} {amount}",
+  "expenses.balances.unattributed": "{amount} sind hier nicht berücksichtigt: dafür ist niemand als Zahler erfasst."
 }

@@ -49,6 +49,21 @@ func (q *Queries) CreateExpense(ctx context.Context, arg CreateExpenseParams) (E
 	return i, err
 }
 
+const createExpenseShare = `-- name: CreateExpenseShare :exec
+INSERT INTO expense_shares (expense_id, user_id)
+VALUES (?1, ?2)
+`
+
+type CreateExpenseShareParams struct {
+	ExpenseID string `json:"expense_id"`
+	UserID    string `json:"user_id"`
+}
+
+func (q *Queries) CreateExpenseShare(ctx context.Context, arg CreateExpenseShareParams) error {
+	_, err := q.db.ExecContext(ctx, createExpenseShare, arg.ExpenseID, arg.UserID)
+	return err
+}
+
 const deleteExpense = `-- name: DeleteExpense :execrows
 DELETE FROM expenses WHERE id = ?1 AND trip_id = ?2
 `
@@ -64,6 +79,18 @@ func (q *Queries) DeleteExpense(ctx context.Context, arg DeleteExpenseParams) (i
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const deleteExpenseSharesByExpense = `-- name: DeleteExpenseSharesByExpense :exec
+DELETE FROM expense_shares WHERE expense_id = ?1
+`
+
+// The share set is replaced as a whole rather than patched member by member, so
+// an update deletes and reinserts inside one transaction. Two people editing
+// the same expense then produce one set or the other, never a mixture.
+func (q *Queries) DeleteExpenseSharesByExpense(ctx context.Context, expenseID string) error {
+	_, err := q.db.ExecContext(ctx, deleteExpenseSharesByExpense, expenseID)
+	return err
 }
 
 const getExpenseByID = `-- name: GetExpenseByID :one
@@ -83,6 +110,65 @@ func (q *Queries) GetExpenseByID(ctx context.Context, id string) (Expense, error
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const listExpenseSharesByExpense = `-- name: ListExpenseSharesByExpense :many
+SELECT user_id FROM expense_shares WHERE expense_id = ?1 ORDER BY user_id
+`
+
+func (q *Queries) ListExpenseSharesByExpense(ctx context.Context, expenseID string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listExpenseSharesByExpense, expenseID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var user_id string
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listExpenseSharesByTrip = `-- name: ListExpenseSharesByTrip :many
+SELECT s.expense_id, s.user_id FROM expense_shares s
+JOIN expenses e ON e.id = s.expense_id
+WHERE e.trip_id = ?1
+ORDER BY s.expense_id, s.user_id
+`
+
+// Every share on a trip in one query. The list endpoint needs the shares for
+// each of its rows, and asking per expense is a query per row.
+func (q *Queries) ListExpenseSharesByTrip(ctx context.Context, tripID string) ([]ExpenseShare, error) {
+	rows, err := q.db.QueryContext(ctx, listExpenseSharesByTrip, tripID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ExpenseShare
+	for rows.Next() {
+		var i ExpenseShare
+		if err := rows.Scan(&i.ExpenseID, &i.UserID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listExpensesByTrip = `-- name: ListExpensesByTrip :many

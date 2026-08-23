@@ -23,6 +23,7 @@ type Querier interface {
 	CreateChecklist(ctx context.Context, arg CreateChecklistParams) (Checklist, error)
 	CreateChecklistItem(ctx context.Context, arg CreateChecklistItemParams) (ChecklistItem, error)
 	CreateExpense(ctx context.Context, arg CreateExpenseParams) (Expense, error)
+	CreateExpenseShare(ctx context.Context, arg CreateExpenseShareParams) error
 	CreateFile(ctx context.Context, arg CreateFileParams) (File, error)
 	CreateItem(ctx context.Context, arg CreateItemParams) (Item, error)
 	CreateItemDate(ctx context.Context, arg CreateItemDateParams) (ItemDate, error)
@@ -35,6 +36,10 @@ type Querier interface {
 	DeleteChecklist(ctx context.Context, arg DeleteChecklistParams) (int64, error)
 	DeleteChecklistItem(ctx context.Context, arg DeleteChecklistItemParams) (int64, error)
 	DeleteExpense(ctx context.Context, arg DeleteExpenseParams) (int64, error)
+	// The share set is replaced as a whole rather than patched member by member, so
+	// an update deletes and reinserts inside one transaction. Two people editing
+	// the same expense then produce one set or the other, never a mixture.
+	DeleteExpenseSharesByExpense(ctx context.Context, expenseID string) error
 	DeleteExpiredSessions(ctx context.Context, now string) error
 	DeleteFile(ctx context.Context, arg DeleteFileParams) (int64, error)
 	DeleteItem(ctx context.Context, arg DeleteItemParams) (int64, error)
@@ -91,6 +96,10 @@ type Querier interface {
 	// A NULL owner_user_id matches nobody, which is the intended failure. See
 	// migration 0010.
 	ListChecklistsByTrip(ctx context.Context, arg ListChecklistsByTripParams) ([]Checklist, error)
+	ListExpenseSharesByExpense(ctx context.Context, expenseID string) ([]string, error)
+	// Every share on a trip in one query. The list endpoint needs the shares for
+	// each of its rows, and asking per expense is a query per row.
+	ListExpenseSharesByTrip(ctx context.Context, tripID string) ([]ExpenseShare, error)
 	// Newest spending first, and created_at breaks the tie so two expenses on the
 	// same day have a stable order rather than whatever the planner returns.
 	//

@@ -124,6 +124,14 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
     return row.display_name || t("expenses.payer.none");
   }
 
+  // What the reading user owes for one expense. `share_minor` is null when they
+  // are not among the people it was for, which is a different statement from a
+  // share of zero and reads differently.
+  function shareLabel(expense) {
+    if (expense.share_minor === null || expense.share_minor === undefined) return t("expenses.notShared");
+    return t("expenses.yourShare", { amount: formatMoney(expense.share_minor, currency()) });
+  }
+
   // Grouped by spent_on, in the order the server sent (newest day first), so
   // the grouping never disagrees with the sort.
   function renderDays(parent) {
@@ -177,11 +185,17 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
     // A second line under the title rather than a fourth column: at 324px the
     // row already gives the amount and the menu fixed width, and a name is the
     // piece that would have had to truncate to nothing.
+    //
+    // It carries who paid and what the reader themselves owes, which is the one
+    // number a person reading a shared ledger is actually looking for. The
+    // whole split is not spelled out per row -- that is what the balances are
+    // for.
     const payerEl = li.querySelector(".expenses__row-payer");
     if (payerEl) {
-      payerEl.textContent = t("expenses.paidBy", {
+      const paidBy = t("expenses.paidBy", {
         name: payerLabel({ user_id: expense.payer_user_id, display_name: expense.payer_display_name }),
       });
+      payerEl.textContent = `${paidBy} · ${shareLabel(expense)}`;
     }
 
     if (!readOnly) {
@@ -245,7 +259,20 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
             ${members.map((m) => `<option value="${m.user_id}"></option>`).join("")}
             <option value=""></option>
           </select>
-        </label>`
+        </label>
+        <div class="expenses__shares">
+          <span id="expense-shares-label" data-i18n="expenses.form.shares"></span>
+          <div class="expenses__shares-group" role="group" aria-labelledby="expense-shares-label">
+            ${members
+              .map(
+                (m) => `<label class="expenses__share-choice">
+              <input type="checkbox" name="share" value="${m.user_id}" />
+              <span></span>
+            </label>`
+              )
+              .join("")}
+          </div>
+        </div>`
             : ""
         }
         <div class="btn-row">
@@ -277,6 +304,13 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
       options[options.length - 1].textContent = t("expenses.payer.none");
     }
 
+    // Share checkboxes, labelled the same way as the payer options.
+    const shareBoxes = [...card.querySelectorAll('[name="share"]')];
+    shareBoxes.forEach((box, i) => {
+      const m = members[i];
+      box.nextElementSibling.textContent = m.is_self ? t("expenses.payer.me", { name: m.display_name }) : m.display_name;
+    });
+
     if (isEditing) {
       form.elements.title.value = editing.title;
       form.elements.amount.value = majorUnits(editing.amount_minor);
@@ -286,6 +320,11 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
       // through to "nobody" rather than silently reassigning the expense to
       // whoever opened the form.
       if (form.elements.payer) form.elements.payer.value = editing.payer_user_id || "";
+      // The server sends the *effective* set, so an expense that was never
+      // pinned arrives listing everybody and every box is ticked -- which is
+      // exactly what it means. Saving it unchanged sends an empty set back and
+      // it stays unpinned; see sharesFromForm.
+      for (const box of shareBoxes) box.checked = (editing.share_user_ids || []).includes(box.value);
     } else {
       // A new expense defaults to today, clamped into the trip's own dates when
       // it has them: entering yesterday's dinner is a correction, entering one
@@ -293,6 +332,9 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
       form.elements.spentOn.value = defaultDate();
       // Defaults to you, which is what the server deliberately does not do.
       if (form.elements.payer) form.elements.payer.value = getCurrentUser()?.id || "";
+      // A new expense is for everyone by default: splitting the whole trip is
+      // the common case, and narrowing it is the deliberate act.
+      for (const box of shareBoxes) box.checked = true;
     }
     if (error) {
       errorEl.textContent = error;
@@ -317,6 +359,10 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
       if (!title) return fail(t("expenses.error.title"));
       if (amountMinor === null) return fail(t("expenses.error.amount", { example: moneyExample(currency()) }));
       if (!spentOn) return fail(t("expenses.error.date"));
+      // Unticking everybody has no meaning -- an expense for nobody cannot be
+      // split -- and the server would read an empty set as "everyone", so it
+      // is refused here rather than silently doing the opposite.
+      if (shareBoxes.length && !shareBoxes.some((b) => b.checked)) return fail(t("expenses.error.shares"));
 
       const body = {
         title,
@@ -329,6 +375,7 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
         // when editing there it is the payer the expense already had rather
         // than whoever opened the form.
         payer_user_id: payerFromForm(form),
+        share_user_ids: sharesFromForm(),
       };
 
       try {
@@ -341,6 +388,17 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
       error = null;
       await reload();
     });
+
+    // Everybody ticked is sent as an empty list, not as the full list. Both
+    // mean "everyone" today, but only the empty one *keeps* meaning it when
+    // somebody joins the trip -- so an unrelated edit does not quietly pin an
+    // expense that was never pinned.
+    function sharesFromForm() {
+      if (!shareBoxes.length) return [];
+      const checked = shareBoxes.filter((b) => b.checked);
+      if (checked.length === shareBoxes.length) return [];
+      return checked.map((b) => b.value);
+    }
 
     function payerFromForm(form) {
       if (form.elements.payer) return form.elements.payer.value || null;

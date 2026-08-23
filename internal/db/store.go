@@ -386,6 +386,21 @@ type Store interface {
 	// DeleteExpense reports whether a matching (id, tripID) expense was deleted.
 	DeleteExpense(ctx context.Context, id, tripID string) (bool, error)
 
+	// Expense shares: who an expense was for. An expense with no shares is
+	// for everyone on the trip, resolved by the caller rather than stored --
+	// see migration 0012.
+	//
+	// The set is replaced wholesale rather than patched, so callers run
+	// DeleteExpenseSharesByExpense and then CreateExpenseShare inside one
+	// WithTx.
+	CreateExpenseShare(ctx context.Context, expenseID, userID string) error
+	DeleteExpenseSharesByExpense(ctx context.Context, expenseID string) error
+	// ListExpenseShareUsers returns the user ids sharing one expense, sorted.
+	ListExpenseShareUsers(ctx context.Context, expenseID string) ([]string, error)
+	// ListExpenseSharesByTrip returns every share on a trip, so a listing
+	// costs one query rather than one per expense.
+	ListExpenseSharesByTrip(ctx context.Context, tripID string) ([]ExpenseShare, error)
+
 	// WithTx runs fn with a Store bound to a single transaction, committing
 	// on success and rolling back if fn returns an error.
 	WithTx(ctx context.Context, fn func(Store) error) error

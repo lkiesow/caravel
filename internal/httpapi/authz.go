@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"slices"
 
 	"caravel/internal/auth"
 	"caravel/internal/db"
@@ -204,6 +205,28 @@ func (s *Server) requireTripMember(w http.ResponseWriter, r *http.Request, trip 
 		return false
 	}
 	return true
+}
+
+// tripParticipantIDs is everyone who holds a role on a trip: the owner, who has
+// no trip_members row (see migration 0007), plus every member. Sorted, so
+// anything derived from it is deterministic.
+//
+// This is what "everyone on the trip" means when an expense names no shares,
+// and it is also the set a named share has to belong to. Fetched once and
+// checked against, rather than asking requireTripMember per id: a share list is
+// several ids and that would be a query each.
+func (s *Server) tripParticipantIDs(ctx context.Context, trip db.Trip) ([]string, error) {
+	members, err := s.Store.ListTripMembers(ctx, trip.ID)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(members)+1)
+	ids = append(ids, trip.OwnerID)
+	for _, m := range members {
+		ids = append(ids, m.UserID)
+	}
+	slices.Sort(ids)
+	return ids, nil
 }
 
 // loadFile fetches the file named by {fileId} and authorizes against its trip.

@@ -471,6 +471,63 @@ CREATE TABLE expense_shares (
 case, and a zero-exponent currency), a share naming a non-member → 400, the
 empty-list-means-everyone rule, and the cascade on expense delete.
 
+**Done.** Landed as planned. Three things the plan did not spell out.
+
+*"Everybody ticked" is stored as no rows, and that had to be enforced on both
+sides.* The plan said an empty set means everyone; what it did not say is what
+happens when a client sends the *full* list. Both mean everyone today, but only
+the empty one keeps meaning it when somebody joins the trip — so `resolveShares`
+collapses a set naming every participant back to nil, and the client sends `[]`
+whenever every box is ticked. Without that pair, saving an unrelated edit
+(fixing a typo in a title) would silently pin an expense that was never pinned,
+with nothing to tell anyone it had happened. There is a Go test for the
+collapse and a by-hand check against the database for the round trip.
+
+*The response sends the effective share set, not the stored one.* An expense
+with no rows comes back listing everyone, so the empty-means-everyone rule has
+exactly one implementation — `effectiveShares`, on the server — and the client
+cannot disagree with it. It also means the checkbox group prefills correctly
+with no special case.
+
+*Each row carries `share_minor`, the reading user's own share.* Without it the
+milestone changes nothing anyone can see: the checkbox group would write data
+with no visible consequence. `null` (rendered "not shared with you") is
+deliberately distinct from a share of zero.
+
+Also: `splitAmount` lives in its own file with its own test, because it is the
+one piece of arithmetic in this stage that can silently lose money.
+
+**Verified.** `make ci` and `make test-ui` green. The split has a property test
+rather than a table of cases: for every amount in a spread from 1 to
+999,999,999 across 1–7 people, the shares must sum to exactly the amount *and*
+no two shares may differ by more than one unit — the second half is what makes
+it an equal split rather than merely a total-preserving one. Plus the named
+case (1000 across three is 334/333/333), independence from input order (a split
+that depended on it would give two different balances for one ledger), a
+zero-exponent currency, and a duplicated id not doubling a share.
+
+At the HTTP level: no shares meaning everyone; a member added later sharing
+past expenses retroactively (the migration comment's stated consequence, now
+pinned); a subset pinning the expense, with somebody outside it getting `null`
+rather than zero; naming everybody storing no rows *and* still including a
+fourth member who joins afterwards; a share naming a non-member refused 400
+**with the expense not created** — create and shares are one transaction, so a
+rejected set cannot leave the expense behind; an update replacing the set
+rather than adding to it, and back to implicit via `[]`; and the delete cascade.
+
+By hand in Firefox at 324×756, German, on a two-member trip: an amount of
+**1001** split two ways shows "dein Anteil €5.01" to one participant and 500 to
+the other — 500 + 501 = 1001 exactly, with the odd cent going to a deterministic
+person rather than to whoever the database happened to return first. Unticking
+yourself produced "nicht mit dir geteilt" on that row; the boxes reset to all
+ticked after an add; editing the subset expense preselected only its person;
+saving the unpinned one untouched left **zero** stored rows (checked in SQLite,
+not inferred); unticking everybody was refused with "Wähle mindestens eine
+Person…" and wrote nothing. On a solo trip the share set is just you and your
+share is the whole amount. Each checkbox row is exactly 44px tall, the tap-target
+floor, with no horizontal overflow. Zero console errors. Deleting the trips left
+no orphaned `expense_shares` rows; the seeded scenarios are back at seven.
+
 ## 6. Balances
 
 - A balances section in the tab: net per person — what they paid minus what

@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"net/http"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -24,12 +25,14 @@ type expenseList struct {
 	Currency   string `json:"currency"`
 	TotalMinor int64  `json:"total_minor"`
 	Expenses   []struct {
-		ID               string  `json:"id"`
-		Title            string  `json:"title"`
-		AmountMinor      int64   `json:"amount_minor"`
-		SpentOn          string  `json:"spent_on"`
-		PayerUserID      *string `json:"payer_user_id"`
-		PayerDisplayName *string `json:"payer_display_name"`
+		ID               string   `json:"id"`
+		Title            string   `json:"title"`
+		AmountMinor      int64    `json:"amount_minor"`
+		SpentOn          string   `json:"spent_on"`
+		PayerUserID      *string  `json:"payer_user_id"`
+		PayerDisplayName *string  `json:"payer_display_name"`
+		ShareUserIDs     []string `json:"share_user_ids"`
+		ShareMinor       *int64   `json:"share_minor"`
 	} `json:"expenses"`
 	Payers []struct {
 		UserID      *string `json:"user_id"`
@@ -522,5 +525,264 @@ func TestPerPersonTotalsAreStableOnATie(t *testing.T) {
 		if got := *list.Payers[0].DisplayName; got != "adam" {
 			t.Errorf("read %d: first payer on a tie is %q, want the alphabetically first (adam)", i, got)
 		}
+	}
+}
+
+// tripWithThree returns a trip owned by `owner` plus two editors, and the three
+// user ids by username. The shape most share tests need.
+func tripWithThree(t *testing.T, ts *testServer, owner *http.Cookie) (tripID string, ids map[string]string) {
+	t.Helper()
+	tripID = ts.createTrip(owner, "Iceland")
+	ids = map[string]string{}
+	for _, name := range []string{"owner", "bram", "cleo"} {
+		user, err := ts.Store.GetUserByUsername(context.Background(), name)
+		if err != nil {
+			t.Fatalf("look up %s: %v", name, err)
+		}
+		ids[name] = user.ID
+		if name != "owner" {
+			if _, err := ts.Store.UpsertTripMember(context.Background(), tripID, user.ID, db.RoleEditor, time.Now().UTC()); err != nil {
+				t.Fatalf("add %s: %v", name, err)
+			}
+		}
+	}
+	return tripID, ids
+}
+
+// An expense naming no shares is for everyone on the trip, and the response
+// says so explicitly rather than sending an empty list for the client to
+// interpret. The rule lives in one place, on the server.
+func TestExpenseWithNoSharesIsForEveryone(t *testing.T) {
+	ts := newTestServer(t)
+	owner := ts.login("owner")
+	ts.login("bram")
+	ts.login("cleo")
+	tripID, ids := tripWithThree(t, ts, owner)
+
+	ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/expenses", owner,
+		`{"title":"Petrol","amount_minor":1000,"spent_on":"2026-08-20","payer_user_id":"`+ids["owner"]+`"}`,
+		http.StatusCreated)
+
+	list := ts.listExpenses(owner, tripID)
+	got := list.Expenses[0]
+	if len(got.ShareUserIDs) != 3 {
+		t.Fatalf("share_user_ids: got %v, want all three participants", got.ShareUserIDs)
+	}
+	for _, name := range []string{"owner", "bram", "cleo"} {
+		if !slices.Contains(got.ShareUserIDs, ids[name]) {
+			t.Errorf("share_user_ids is missing %s", name)
+		}
+	}
+	// 1000 across three, and the reader is whoever asked.
+	if got.ShareMinor == nil {
+		t.Fatal("share_minor: got nil, want the reader's own share")
+	}
+	if *got.ShareMinor != 334 && *got.ShareMinor != 333 {
+		t.Errorf("share_minor: got %d, want 334 or 333", *got.ShareMinor)
+	}
+}
+
+// The retroactive half of that rule, which the migration comment calls out: a
+// member added later shares in expenses recorded before they arrived, because
+// nothing was written down at the time.
+func TestNewMemberSharesPastExpenses(t *testing.T) {
+	ts := newTestServer(t)
+	owner := ts.login("owner")
+	ts.login("bram")
+	tripID := ts.createTrip(owner, "Iceland")
+
+	ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/expenses", owner,
+		`{"title":"Ferry","amount_minor":1000,"spent_on":"2026-08-20"}`, http.StatusCreated)
+	if got := ts.listExpenses(owner, tripID).Expenses[0]; len(got.ShareUserIDs) != 1 {
+		t.Fatalf("on a solo trip the share set should be just the owner, got %v", got.ShareUserIDs)
+	}
+
+	bram, err := ts.Store.GetUserByUsername(context.Background(), "bram")
+	if err != nil {
+		t.Fatalf("look up bram: %v", err)
+	}
+	if _, err := ts.Store.UpsertTripMember(context.Background(), tripID, bram.ID, db.RoleEditor, time.Now().UTC()); err != nil {
+		t.Fatalf("add bram: %v", err)
+	}
+
+	got := ts.listExpenses(owner, tripID).Expenses[0]
+	if len(got.ShareUserIDs) != 2 {
+		t.Errorf("after adding a member the share set should be both, got %v", got.ShareUserIDs)
+	}
+	if got.ShareMinor == nil || *got.ShareMinor != 500 {
+		t.Errorf("share_minor: got %v, want 500 once the expense is split two ways", got.ShareMinor)
+	}
+}
+
+// Naming a subset pins the expense to those people.
+func TestExpenseSharedWithASubset(t *testing.T) {
+	ts := newTestServer(t)
+	owner := ts.login("owner")
+	ts.login("bram")
+	ts.login("cleo")
+	tripID, ids := tripWithThree(t, ts, owner)
+
+	ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/expenses", owner,
+		`{"title":"Two tickets","amount_minor":1000,"spent_on":"2026-08-20","payer_user_id":"`+ids["owner"]+`",`+
+			`"share_user_ids":["`+ids["owner"]+`","`+ids["bram"]+`"]}`, http.StatusCreated)
+
+	got := ts.listExpenses(owner, tripID).Expenses[0]
+	if len(got.ShareUserIDs) != 2 || slices.Contains(got.ShareUserIDs, ids["cleo"]) {
+		t.Errorf("share_user_ids: got %v, want owner and bram only", got.ShareUserIDs)
+	}
+	if got.ShareMinor == nil || *got.ShareMinor != 500 {
+		t.Errorf("share_minor for the owner: got %v, want 500", got.ShareMinor)
+	}
+
+	// Somebody outside the share set has no share of it at all, which is
+	// different from having a share of zero.
+	cleo := ts.session(ids["cleo"])
+	fromCleo := ts.listExpenses(cleo, tripID).Expenses[0]
+	if fromCleo.ShareMinor != nil {
+		t.Errorf("cleo is not sharing this expense, so share_minor should be null, got %d", *fromCleo.ShareMinor)
+	}
+}
+
+// A set naming everybody is stored as no rows, so it keeps meaning "everyone"
+// when the trip grows. Otherwise saving an unrelated edit would silently pin an
+// expense that was never pinned, with nothing to tell the client it happened.
+func TestSharingWithEveryoneStaysImplicit(t *testing.T) {
+	ts := newTestServer(t)
+	owner := ts.login("owner")
+	ts.login("bram")
+	ts.login("cleo")
+	tripID, ids := tripWithThree(t, ts, owner)
+
+	expenseID := ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/expenses", owner,
+		`{"title":"Fuel","amount_minor":900,"spent_on":"2026-08-20","share_user_ids":["`+
+			ids["owner"]+`","`+ids["bram"]+`","`+ids["cleo"]+`"]}`, http.StatusCreated)
+
+	stored, err := ts.Store.ListExpenseShareUsers(context.Background(), expenseID)
+	if err != nil {
+		t.Fatalf("list shares: %v", err)
+	}
+	if len(stored) != 0 {
+		t.Errorf("naming everybody should store no rows, got %v", stored)
+	}
+
+	// And it behaves as everyone: a fourth person joins and is included.
+	ts.login("dana")
+	dana, err := ts.Store.GetUserByUsername(context.Background(), "dana")
+	if err != nil {
+		t.Fatalf("look up dana: %v", err)
+	}
+	if _, err := ts.Store.UpsertTripMember(context.Background(), tripID, dana.ID, db.RoleEditor, time.Now().UTC()); err != nil {
+		t.Fatalf("add dana: %v", err)
+	}
+	if got := ts.listExpenses(owner, tripID).Expenses[0]; len(got.ShareUserIDs) != 4 {
+		t.Errorf("share set after a fourth member joined: got %v, want all four", got.ShareUserIDs)
+	}
+}
+
+func TestExpenseShareMustBeOnTheTrip(t *testing.T) {
+	ts := newTestServer(t)
+	owner := ts.login("owner")
+	ts.login("outsider")
+	tripID := ts.createTrip(owner, "Iceland")
+
+	outsider, err := ts.Store.GetUserByUsername(context.Background(), "outsider")
+	if err != nil {
+		t.Fatalf("look up outsider: %v", err)
+	}
+	w := ts.do(http.MethodPost, "/api/trips/"+tripID+"/expenses", owner,
+		`{"title":"Ferry","amount_minor":1000,"spent_on":"2026-08-20","share_user_ids":["`+outsider.ID+`"]}`)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("sharing with an outsider: got %d, want 400 -- body %s", w.Code, w.Body.String())
+	}
+	// The refusal wrote nothing: the expense and its shares are one
+	// transaction, so a rejected share set cannot leave the expense behind.
+	if list := ts.listExpenses(owner, tripID); len(list.Expenses) != 0 {
+		t.Errorf("a refused share set still created the expense: %+v", list.Expenses)
+	}
+}
+
+// Updating replaces the whole set rather than adding to it: the request states
+// who the expense is for, so anybody it does not name is no longer among them.
+func TestUpdateReplacesTheShareSet(t *testing.T) {
+	ts := newTestServer(t)
+	owner := ts.login("owner")
+	ts.login("bram")
+	ts.login("cleo")
+	tripID, ids := tripWithThree(t, ts, owner)
+
+	expenseID := ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/expenses", owner,
+		`{"title":"Dinner","amount_minor":900,"spent_on":"2026-08-20","share_user_ids":["`+
+			ids["owner"]+`","`+ids["bram"]+`"]}`, http.StatusCreated)
+
+	w := ts.do(http.MethodPatch, "/api/expenses/"+expenseID, owner,
+		`{"title":"Dinner","amount_minor":900,"spent_on":"2026-08-20","share_user_ids":["`+ids["cleo"]+`"]}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("patch: got %d, body %s", w.Code, w.Body.String())
+	}
+	stored, err := ts.Store.ListExpenseShareUsers(context.Background(), expenseID)
+	if err != nil {
+		t.Fatalf("list shares: %v", err)
+	}
+	if len(stored) != 1 || stored[0] != ids["cleo"] {
+		t.Errorf("share set after the patch: got %v, want cleo only", stored)
+	}
+
+	// And back to everyone, by sending an empty set.
+	w = ts.do(http.MethodPatch, "/api/expenses/"+expenseID, owner,
+		`{"title":"Dinner","amount_minor":900,"spent_on":"2026-08-20","share_user_ids":[]}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("patch back to everyone: got %d, body %s", w.Code, w.Body.String())
+	}
+	stored, err = ts.Store.ListExpenseShareUsers(context.Background(), expenseID)
+	if err != nil {
+		t.Fatalf("list shares: %v", err)
+	}
+	if len(stored) != 0 {
+		t.Errorf("an empty set should store no rows, got %v", stored)
+	}
+}
+
+// A duplicated id is redundant rather than wrong, so it is ignored -- but it
+// must not double that person's weight in the split, which is what would happen
+// if it reached splitAmount.
+func TestDuplicateShareIDsDoNotDoubleAShare(t *testing.T) {
+	ts := newTestServer(t)
+	owner := ts.login("owner")
+	ts.login("bram")
+	ts.login("cleo")
+	tripID, ids := tripWithThree(t, ts, owner)
+
+	ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/expenses", owner,
+		`{"title":"Taxi","amount_minor":1000,"spent_on":"2026-08-20","share_user_ids":["`+
+			ids["owner"]+`","`+ids["owner"]+`","`+ids["bram"]+`"]}`, http.StatusCreated)
+
+	got := ts.listExpenses(owner, tripID).Expenses[0]
+	if len(got.ShareUserIDs) != 2 {
+		t.Errorf("share_user_ids: got %v, want two distinct people", got.ShareUserIDs)
+	}
+	if got.ShareMinor == nil || *got.ShareMinor != 500 {
+		t.Errorf("share_minor: got %v, want 500 -- a repeated id must not weight the split", got.ShareMinor)
+	}
+}
+
+func TestDeletingAnExpenseDeletesItsShares(t *testing.T) {
+	ts := newTestServer(t)
+	owner := ts.login("owner")
+	ts.login("bram")
+	ts.login("cleo")
+	tripID, ids := tripWithThree(t, ts, owner)
+
+	expenseID := ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/expenses", owner,
+		`{"title":"Museum","amount_minor":600,"spent_on":"2026-08-20","share_user_ids":["`+ids["bram"]+`"]}`,
+		http.StatusCreated)
+	if w := ts.do(http.MethodDelete, "/api/expenses/"+expenseID, owner, ""); w.Code != http.StatusNoContent {
+		t.Fatalf("delete: got %d", w.Code)
+	}
+	stored, err := ts.Store.ListExpenseShareUsers(context.Background(), expenseID)
+	if err != nil {
+		t.Fatalf("list shares: %v", err)
+	}
+	if len(stored) != 0 {
+		t.Errorf("shares survived their expense: %v", stored)
 	}
 }

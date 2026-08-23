@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
+	"caravel/internal/auth"
 	"caravel/internal/db"
 )
 
@@ -40,7 +42,17 @@ type expenseResponse struct {
 	// a client-side lookup would render a blank name for a payer who is still
 	// perfectly well recorded.
 	PayerDisplayName *string `json:"payer_display_name"`
-	CreatedAt        string  `json:"created_at"`
+	// ShareUserIDs is who this expense was for, always the *effective* set:
+	// an expense with no stored shares comes back listing everyone on the trip
+	// rather than an empty array. So the client never implements the
+	// empty-means-everyone rule, and cannot disagree with the server about it.
+	ShareUserIDs []string `json:"share_user_ids"`
+	// ShareMinor is what one of those people owes for this expense, from
+	// splitAmount -- the reading user's own share when they are among them, and
+	// absent when they are not. The whole map is not sent: the client shows
+	// "your share", and the balances endpoint is where the full picture lives.
+	ShareMinor *int64 `json:"share_minor"`
+	CreatedAt  string `json:"created_at"`
 }
 
 // payerTotalResponse is what one person has paid across the whole trip.
@@ -107,8 +119,10 @@ func (p *payerNamer) name(ctx context.Context, userID *string) *string {
 	return name
 }
 
-func (p *payerNamer) toResponse(ctx context.Context, e db.Expense) expenseResponse {
-	return expenseResponse{
+// toResponse builds one row. shareIDs is the effective share set, already
+// resolved by the caller, and readerID is whose share to report.
+func (p *payerNamer) toResponse(ctx context.Context, e db.Expense, shareIDs []string, readerID string) expenseResponse {
+	resp := expenseResponse{
 		ID:               e.ID,
 		TripID:           e.TripID,
 		Title:            e.Title,
@@ -116,8 +130,13 @@ func (p *payerNamer) toResponse(ctx context.Context, e db.Expense) expenseRespon
 		SpentOn:          e.SpentOn,
 		PayerUserID:      e.PayerUserID,
 		PayerDisplayName: p.name(ctx, e.PayerUserID),
+		ShareUserIDs:     shareIDs,
 		CreatedAt:        e.CreatedAt.UTC().Format(time.RFC3339),
 	}
+	if share, ok := splitAmount(e.AmountMinor, shareIDs)[readerID]; ok {
+		resp.ShareMinor = &share
+	}
+	return resp
 }
 
 // expenseRequest is the body of both create and update.
@@ -147,6 +166,12 @@ type expenseRequest struct {
 	AmountMinor *int64  `json:"amount_minor"`
 	SpentOn     string  `json:"spent_on"`
 	PayerUserID *string `json:"payer_user_id"`
+	// ShareUserIDs is who the expense was for. Absent or empty means everyone
+	// on the trip, and stores no rows at all -- so a member added later shares
+	// in it too. Naming a subset pins it to those people. Every id must hold a
+	// role on the trip; duplicates are ignored rather than refused, since a
+	// repeated name is redundant rather than wrong.
+	ShareUserIDs []string `json:"share_user_ids"`
 }
 
 func (req expenseRequest) validate() error {
@@ -218,6 +243,63 @@ func payerTotals(ctx context.Context, expenses []db.Expense, names *payerNamer) 
 	return rows
 }
 
+// resolveShares checks a requested share set against the trip and returns what
+// to store: nil for "everyone", which is stored as no rows at all.
+//
+// Writes the error response itself when an id names somebody who is not on the
+// trip. 400 rather than 403, for the same reason requireTripMember does: the
+// caller is authorized, the request is what is wrong.
+func (s *Server) resolveShares(w http.ResponseWriter, r *http.Request, trip db.Trip, requested []string) ([]string, bool) {
+	requested = dedupeIDs(requested)
+	if len(requested) == 0 {
+		return nil, true
+	}
+
+	participants, err := s.tripParticipantIDs(r.Context(), trip)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not check trip membership")
+		return nil, false
+	}
+	for _, id := range requested {
+		if !slices.Contains(participants, id) {
+			writeError(w, http.StatusBadRequest, "an expense cannot be shared with somebody who is not on this trip")
+			return nil, false
+		}
+	}
+
+	// A set naming everybody is stored as no rows, so it keeps behaving as
+	// "everyone" when the trip gains a member. Otherwise saving an unrelated
+	// edit would silently pin an expense that was never pinned -- and the
+	// client has no way to tell it had happened.
+	if len(requested) == len(participants) {
+		return nil, true
+	}
+	return requested, true
+}
+
+// writeShares replaces an expense's share set. Runs inside the caller's
+// transaction: a half-written set is a wrong split, not a missing one.
+func writeShares(ctx context.Context, store db.Store, expenseID string, shareIDs []string) error {
+	if err := store.DeleteExpenseSharesByExpense(ctx, expenseID); err != nil {
+		return err
+	}
+	for _, id := range shareIDs {
+		if err := store.CreateExpenseShare(ctx, expenseID, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// effectiveShares is the empty-means-everyone rule, in the one place that
+// implements it. stored is what the table holds for an expense.
+func effectiveShares(stored, participants []string) []string {
+	if len(stored) > 0 {
+		return stored
+	}
+	return participants
+}
+
 func (s *Server) handleListExpenses(w http.ResponseWriter, r *http.Request) {
 	trip, _, ok := s.loadTrip(w, r, db.RoleViewer)
 	if !ok {
@@ -233,11 +315,28 @@ func (s *Server) handleListExpenses(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not list expenses")
 		return
 	}
+	// Every share on the trip in one query, then grouped here: asking per
+	// expense would be a query per row.
+	shares, err := s.Store.ListExpenseSharesByTrip(r.Context(), trip.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not list expenses")
+		return
+	}
+	participants, err := s.tripParticipantIDs(r.Context(), trip)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not list expenses")
+		return
+	}
+	byExpense := map[string][]string{}
+	for _, share := range shares {
+		byExpense[share.ExpenseID] = append(byExpense[share.ExpenseID], share.UserID)
+	}
 
+	me, _ := auth.UserFromContext(r.Context())
 	namer := s.newPayerNamer()
 	rows := make([]expenseResponse, len(expenses))
 	for i, e := range expenses {
-		rows[i] = namer.toResponse(r.Context(), e)
+		rows[i] = namer.toResponse(r.Context(), e, effectiveShares(byExpense[e.ID], participants), me.ID)
 	}
 	writeJSON(w, http.StatusOK, expenseListResponse{
 		Currency:   trip.Currency,
@@ -268,21 +367,36 @@ func (s *Server) handleCreateExpense(w http.ResponseWriter, r *http.Request) {
 	if !s.requireTripMember(w, r, trip, req.PayerUserID) {
 		return
 	}
+	shareIDs, ok := s.resolveShares(w, r, trip, req.ShareUserIDs)
+	if !ok {
+		return
+	}
 
-	expense, err := s.Store.CreateExpense(r.Context(), db.CreateExpenseParams{
-		ID:          uuid.NewString(),
-		TripID:      trip.ID,
-		Title:       strings.TrimSpace(req.Title),
-		AmountMinor: *req.AmountMinor,
-		SpentOn:     req.SpentOn,
-		PayerUserID: req.PayerUserID,
-		CreatedAt:   time.Now().UTC(),
+	// One transaction for the expense and its shares. A create that half
+	// succeeded would leave an expense split between the wrong people, which
+	// is worse than one that failed: the total still looks right.
+	var expense db.Expense
+	err := s.Store.WithTx(r.Context(), func(store db.Store) error {
+		created, err := store.CreateExpense(r.Context(), db.CreateExpenseParams{
+			ID:          uuid.NewString(),
+			TripID:      trip.ID,
+			Title:       strings.TrimSpace(req.Title),
+			AmountMinor: *req.AmountMinor,
+			SpentOn:     req.SpentOn,
+			PayerUserID: req.PayerUserID,
+			CreatedAt:   time.Now().UTC(),
+		})
+		if err != nil {
+			return err
+		}
+		expense = created
+		return writeShares(r.Context(), store, created.ID, shareIDs)
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not create expense")
 		return
 	}
-	writeJSON(w, http.StatusCreated, s.newPayerNamer().toResponse(r.Context(), expense))
+	s.writeExpense(w, r, trip, expense, http.StatusCreated)
 }
 
 func (s *Server) handleUpdateExpense(w http.ResponseWriter, r *http.Request) {
@@ -308,14 +422,28 @@ func (s *Server) handleUpdateExpense(w http.ResponseWriter, r *http.Request) {
 	if !s.requireTripMember(w, r, trip, req.PayerUserID) {
 		return
 	}
+	shareIDs, ok := s.resolveShares(w, r, trip, req.ShareUserIDs)
+	if !ok {
+		return
+	}
 
-	updated, err := s.Store.UpdateExpense(r.Context(), db.UpdateExpenseParams{
-		ID:          expense.ID,
-		TripID:      expense.TripID,
-		Title:       strings.TrimSpace(req.Title),
-		AmountMinor: *req.AmountMinor,
-		SpentOn:     req.SpentOn,
-		PayerUserID: req.PayerUserID,
+	var updated db.Expense
+	err = s.Store.WithTx(r.Context(), func(store db.Store) error {
+		changed, err := store.UpdateExpense(r.Context(), db.UpdateExpenseParams{
+			ID:          expense.ID,
+			TripID:      expense.TripID,
+			Title:       strings.TrimSpace(req.Title),
+			AmountMinor: *req.AmountMinor,
+			SpentOn:     req.SpentOn,
+			PayerUserID: req.PayerUserID,
+		})
+		if err != nil {
+			return err
+		}
+		updated = changed
+		// Replaced wholesale rather than patched: the request states who the
+		// expense is for, so anybody it does not name is no longer among them.
+		return writeShares(r.Context(), store, expense.ID, shareIDs)
 	})
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
@@ -325,7 +453,25 @@ func (s *Server) handleUpdateExpense(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	writeJSON(w, http.StatusOK, s.newPayerNamer().toResponse(r.Context(), updated))
+	s.writeExpense(w, r, trip, updated, http.StatusOK)
+}
+
+// writeExpense is the shared tail of the handlers returning a single expense:
+// the response needs the effective share set, and resolving that in two places
+// invited one of them to drift. Same reasoning as writeChecklist.
+func (s *Server) writeExpense(w http.ResponseWriter, r *http.Request, trip db.Trip, e db.Expense, status int) {
+	stored, err := s.Store.ListExpenseShareUsers(r.Context(), e.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load expense shares")
+		return
+	}
+	participants, err := s.tripParticipantIDs(r.Context(), trip)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load trip members")
+		return
+	}
+	me, _ := auth.UserFromContext(r.Context())
+	writeJSON(w, status, s.newPayerNamer().toResponse(r.Context(), e, effectiveShares(stored, participants), me.ID))
 }
 
 func (s *Server) handleDeleteExpense(w http.ResponseWriter, r *http.Request) {

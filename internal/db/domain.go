@@ -110,6 +110,15 @@ type Expense struct {
 	CreatedAt   time.Time
 }
 
+// ExpenseShare records that one person is among those an expense was for. No
+// amount: the split is equal among the rows present and computed when read, so
+// there is exactly one place that decides what a share is worth. No rows for an
+// expense means everyone on the trip. See migration 0012.
+type ExpenseShare struct {
+	ExpenseID string
+	UserID    string
+}
+
 // TripRole is what a user may do on one trip. The three values are ordered —
 // owner outranks editor outranks viewer — and AtLeast is the only comparison
 // callers should use, so the ordering lives here rather than being re-derived

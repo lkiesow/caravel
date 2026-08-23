@@ -325,5 +325,9 @@
   "expenses.paidBy": "Bezahlt von {name}",
   "expenses.payer.none": "Niemand auf der Reise",
   "expenses.payer.me": "{name} (du)",
-  "expenses.form.payer": "Bezahlt von"
+  "expenses.form.payer": "Bezahlt von",
+  "expenses.form.shares": "Geteilt von",
+  "expenses.yourShare": "dein Anteil {amount}",
+  "expenses.notShared": "nicht mit dir geteilt",
+  "expenses.error.shares": "Wähle mindestens eine Person, mit der geteilt wird."
 }

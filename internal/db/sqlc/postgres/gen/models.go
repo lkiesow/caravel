@@ -52,6 +52,11 @@ type Expense struct {
 	CreatedAt   time.Time      `json:"created_at"`
 }
 
+type ExpenseShare struct {
+	ExpenseID string `json:"expense_id"`
+	UserID    string `json:"user_id"`
+}
+
 type File struct {
 	ID          string         `json:"id"`
 	TripID      string         `json:"trip_id"`

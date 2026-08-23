@@ -325,5 +325,9 @@
   "expenses.paidBy": "Paid by {name}",
   "expenses.payer.none": "Nobody on the trip",
   "expenses.payer.me": "{name} (you)",
-  "expenses.form.payer": "Paid by"
+  "expenses.form.payer": "Paid by",
+  "expenses.form.shares": "Shared by",
+  "expenses.yourShare": "your share {amount}",
+  "expenses.notShared": "not shared with you",
+  "expenses.error.shares": "Choose at least one person to share this with."
 }

@@ -2977,6 +2977,36 @@ button {
   white-space: nowrap;
 }
 
+/* Who an expense is shared by: a wrapping row of checkboxes inside the form.
+   Deliberately not .setting-choices, which is a segmented single-choice control
+   -- this is a multi-select, and borrowing a control that looks like one radio
+   group would say the wrong thing about it. */
+.expenses__shares {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.expenses__shares-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+
+/* Row, not the stacked label-above-input the sibling fields use: the label
+   belongs beside its box. The 44px min-height is the tap target -- a checkbox
+   and one name is a small thing to hit on a phone. */
+.expenses__share-choice {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: 44px;
+  color: var(--color-text);
+}
+
 
 
 @media (max-width: 640px) {

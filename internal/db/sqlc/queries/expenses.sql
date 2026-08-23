@@ -44,3 +44,24 @@ RETURNING *;
 
 -- name: DeleteExpense :execrows
 DELETE FROM expenses WHERE id = sqlc.arg(id) AND trip_id = sqlc.arg(trip_id);
+
+-- name: CreateExpenseShare :exec
+INSERT INTO expense_shares (expense_id, user_id)
+VALUES (sqlc.arg(expense_id), sqlc.arg(user_id));
+
+-- name: ListExpenseSharesByExpense :many
+SELECT user_id FROM expense_shares WHERE expense_id = sqlc.arg(expense_id) ORDER BY user_id;
+
+-- Every share on a trip in one query. The list endpoint needs the shares for
+-- each of its rows, and asking per expense is a query per row.
+-- name: ListExpenseSharesByTrip :many
+SELECT s.expense_id, s.user_id FROM expense_shares s
+JOIN expenses e ON e.id = s.expense_id
+WHERE e.trip_id = sqlc.arg(trip_id)
+ORDER BY s.expense_id, s.user_id;
+
+-- The share set is replaced as a whole rather than patched member by member, so
+-- an update deletes and reinserts inside one transaction. Two people editing
+-- the same expense then produce one set or the other, never a mixture.
+-- name: DeleteExpenseSharesByExpense :exec
+DELETE FROM expense_shares WHERE expense_id = sqlc.arg(expense_id);

@@ -734,6 +734,30 @@ func (s *postgresStore) DeleteExpense(ctx context.Context, id, tripID string) (b
 // spent_on is a real DATE here and TEXT in sqlite, so this is where the two
 // dialects are brought back to the same "YYYY-MM-DD" string the domain type
 // promises. Same treatment as postgresItineraryDayToDomain.
+func (s *postgresStore) CreateExpenseShare(ctx context.Context, expenseID, userID string) error {
+	return s.q.CreateExpenseShare(ctx, postgresgen.CreateExpenseShareParams{ExpenseID: expenseID, UserID: userID})
+}
+
+func (s *postgresStore) DeleteExpenseSharesByExpense(ctx context.Context, expenseID string) error {
+	return s.q.DeleteExpenseSharesByExpense(ctx, expenseID)
+}
+
+func (s *postgresStore) ListExpenseShareUsers(ctx context.Context, expenseID string) ([]string, error) {
+	return s.q.ListExpenseSharesByExpense(ctx, expenseID)
+}
+
+func (s *postgresStore) ListExpenseSharesByTrip(ctx context.Context, tripID string) ([]ExpenseShare, error) {
+	rows, err := s.q.ListExpenseSharesByTrip(ctx, tripID)
+	if err != nil {
+		return nil, err
+	}
+	shares := make([]ExpenseShare, len(rows))
+	for i, row := range rows {
+		shares[i] = ExpenseShare{ExpenseID: row.ExpenseID, UserID: row.UserID}
+	}
+	return shares, nil
+}
+
 func postgresExpenseToDomain(e postgresgen.Expense) Expense {
 	return Expense{
 		ID:          e.ID,

@@ -1254,6 +1254,30 @@ func (s *sqliteStore) DeleteExpense(ctx context.Context, id, tripID string) (boo
 	return n > 0, nil
 }
 
+func (s *sqliteStore) CreateExpenseShare(ctx context.Context, expenseID, userID string) error {
+	return s.q.CreateExpenseShare(ctx, sqlitegen.CreateExpenseShareParams{ExpenseID: expenseID, UserID: userID})
+}
+
+func (s *sqliteStore) DeleteExpenseSharesByExpense(ctx context.Context, expenseID string) error {
+	return s.q.DeleteExpenseSharesByExpense(ctx, expenseID)
+}
+
+func (s *sqliteStore) ListExpenseShareUsers(ctx context.Context, expenseID string) ([]string, error) {
+	return s.q.ListExpenseSharesByExpense(ctx, expenseID)
+}
+
+func (s *sqliteStore) ListExpenseSharesByTrip(ctx context.Context, tripID string) ([]ExpenseShare, error) {
+	rows, err := s.q.ListExpenseSharesByTrip(ctx, tripID)
+	if err != nil {
+		return nil, err
+	}
+	shares := make([]ExpenseShare, len(rows))
+	for i, row := range rows {
+		shares[i] = ExpenseShare{ExpenseID: row.ExpenseID, UserID: row.UserID}
+	}
+	return shares, nil
+}
+
 func sqliteExpenseToDomain(e sqlitegen.Expense) Expense {
 	return Expense{
 		ID:          e.ID,

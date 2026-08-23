@@ -39,6 +39,10 @@ export const TRIP_TABS = [
   { key: "itinerary", icon: "calendar" },
   { key: "checklists", icon: "list-checks" },
   { key: "files", icon: "file-text", overflow: true },
+  // Expenses is an overflow tab because eight tabs cannot share a phone row,
+  // and it is placed here rather than next to the planning tabs to keep the
+  // invariant above: every overflow tab after every primary one.
+  { key: "expenses", icon: "wallet", overflow: true },
   { key: "members", icon: "users", overflow: true },
   { key: "settings", icon: "settings", overflow: true },
 ];

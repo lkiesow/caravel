@@ -205,6 +205,21 @@ down.
   question. Precedent for going all the way down: Stage 11 Milestone 1's
   "documents" → "files" rename included a `0006` table rename and dropped the
   `/trips/:id/documents` URL outright rather than redirecting it.
+- **Number and date formatting follows the *browser* locale, not the app's.**
+  (Stage 17 Milestone 3.) `format.js` calls `Intl` with an undefined locale
+  throughout -- `formatDateRange`, the itinerary day headings, and now
+  `formatMoney` -- which is a deliberate, pre-existing decision, documented in
+  that file. Money makes the consequence louder than dates did: with the app
+  switched to German, a total still renders as EUR 97.55 rather than 97,55 EUR,
+  and a day heading still reads Thu 20 Aug. Nothing is *wrong* -- the numbers
+  and dates are right and unambiguous -- but the app claims to be in German
+  while formatting as though it were not. The fix is to pass `getLocale()` (or
+  the resolved locale behind "auto") to every `Intl` constructor, which is a
+  handful of call sites in one file. What it needs first is a decision: the
+  browser locale is arguably the *better* source for number formats, because it
+  is what the rest of that person's computer does, and someone reading a German
+  UI may still want their own separators.
+
 - **A rendered note has no shared styling between the two places it appears.**
   (Stage 15 Milestone 3.) The editor's preview and the view page produce
   identical HTML — both from `renderNotesHTML` — but sit in different containers:

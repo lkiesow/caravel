@@ -303,5 +303,22 @@
   "assist.acceptAll": "Accept all",
   "assist.dismissAll": "Dismiss all",
   "assist.outstanding": "{count} suggestion",
-  "assist.outstanding_plural": "{count} suggestions"
+  "assist.outstanding_plural": "{count} suggestions",
+  "trip.tabs.expenses": "Expenses",
+  "expenses.total": "Total",
+  "expenses.empty": "Nothing recorded yet.",
+  "expenses.addHeading": "Add an expense",
+  "expenses.editHeading": "Edit expense",
+  "expenses.add": "Add expense",
+  "expenses.edit": "Edit",
+  "expenses.rowActions": "Expense actions",
+  "expenses.deleteConfirm": "Delete this expense? This cannot be undone.",
+  "expenses.form.title": "What was it for",
+  "expenses.form.amount": "Amount ({currency})",
+  "expenses.form.date": "Date",
+  "expenses.error.title": "Say what the money was spent on.",
+  "expenses.error.amount": "Enter an amount, for example {example}.",
+  "expenses.error.date": "Pick the day it was spent.",
+  "trip.form.currency": "Currency",
+  "trip.form.currencyHint": "Every expense on this trip is recorded in this currency. Changing it does not convert amounts already recorded."
 }

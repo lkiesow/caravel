@@ -1,6 +1,7 @@
 import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
+import { CURRENCIES } from "../format.js";
 
 // Renders a create/edit form for a trip into `container`. Pass an existing
 // trip object to edit it in place, or null to create a new one.
@@ -33,6 +34,13 @@ export function renderTripForm(container, trip, { onSaved, onCancel, showActions
         <span data-i18n="trip.form.subtitle"></span>
         <input type="text" name="subtitle" />
       </label>
+      <label>
+        <span data-i18n="trip.form.currency"></span>
+        <select name="currency">
+          ${CURRENCIES.map((code) => `<option value="${code}">${code}</option>`).join("")}
+        </select>
+      </label>
+      <p class="trip-form__hint" data-i18n="trip.form.currencyHint"></p>
       ${
         showActions
           ? `
@@ -55,6 +63,10 @@ export function renderTripForm(container, trip, { onSaved, onCancel, showActions
     form.startDate.value = trip.start_date ?? "";
     form.endDate.value = trip.end_date ?? "";
     form.subtitle.value = trip.subtitle ?? "";
+    // Falls back to the first option rather than to a literal: the server's
+    // default and this list's first entry are the same code, and naming it
+    // twice is how they drift.
+    form.currency.value = trip.currency || CURRENCIES[0];
   }
 
   // Keep the end-date picker from offering days before the start date at
@@ -95,6 +107,7 @@ export function renderTripForm(container, trip, { onSaved, onCancel, showActions
       start_date: form.startDate.value || null,
       end_date: form.endDate.value || null,
       subtitle: form.subtitle.value || null,
+      currency: form.currency.value,
     };
 
     try {

@@ -295,6 +295,70 @@ the More menu at that width, a created expense renders with the correctly
 formatted amount, the total matches, and a viewer session sees no controls.
 `make ci` covers i18n parity.
 
+**Done.** Landed as planned. Four things worth recording.
+
+*The amount example in the error message had to become currency-aware.* The
+first version read "Enter an amount, for example 12.50." — which a JPY trip
+showed after refusing exactly that, since yen has no minor unit. Found by
+typing it. The message now takes an `{example}` derived from the currency
+(`moneyExample` in `format.js`), so a yen trip is told "for example 1200".
+
+*Parsing is done on the string, not through `parseFloat`.* `parseFloat("12.55")
+* 100` is `1254.9999999999998`; `Math.round` covers that one case, but the class
+of bug has no business near money. `parseMoney` pads the fraction and
+concatenates, which is exact by construction, and refuses more decimals than
+the currency has rather than silently rounding — "12.567" EUR is not 12.57 with
+any confidence. It accepts a comma as well as a dot, because a German-speaking
+user types the separator their keyboard gives them.
+
+*The currency `<select>` joined the existing input rule in `base.css` rather
+than adding a fourth copy.* The backlog's "three near-identical input rules"
+entry stays open, but this milestone did not widen it — `.trip-form select` was
+added to the rule that already styles `.members-add select`.
+
+*`menu.spec.js` failed, correctly, and needed updating.* Both its `TAB_ORDER`
+and `OVERFLOW_LABELS` spell the tab labels out rather than importing them from
+`trip-tabs.js` — deliberately, per that file's own comment, since an imported
+list cannot disagree with the source. An eighth tab is exactly the change those
+lists exist to catch, so both gained "Expenses"/"Ausgaben" in the overflow
+group. Its "checklists before files" assertion still holds.
+
+Deferred, and now in the backlog: `Intl` is called with an undefined locale
+throughout `format.js`, so with the app in German a total still renders as
+"€97.55" rather than "97,55 €". That is pre-existing and deliberate (dates do
+the same), but money makes it louder.
+
+**Verified.** `make ci` green; `make test-ui` green after the `menu.spec.js`
+update. Driven by hand in Firefox against `make dev` at **324×756** and at
+1280×800, in both locales, with assertions rather than screenshots:
+
+- At 324px the row still holds the four primary tabs, the page does not scroll
+  horizontally, and the More menu lists Files → **Expenses** → Members →
+  Settings. At 1280px all eight show in the row in the same relative order, and
+  the More slot computes to `display: none`.
+- On a **JPY** trip: total renders `JP¥0`, the amount placeholder is `0` not
+  `0.00`, the label reads "Amount (JPY)", and `12.50` is refused with the
+  currency-appropriate example. On a **EUR** trip: `€85.05` for
+  45.00 + 32.55 + 7.50, grouped newest-day-first with two rows sharing a day.
+- A created expense really carries a payer (`payer_display_name: "Demo User"`)
+  even though the server has no default — the client's explicit default works.
+  Editing preserves the existing payer rather than reassigning it to whoever
+  edited, and the JPY amount round-trips into the form as `1200`, not `12.00`.
+- Edit mode: heading switches, fields prefill, Cancel appears, and the row
+  being edited takes the accent border (`rgb(37, 99, 235)`). Saving returns the
+  form to add mode and the total updates.
+- Delete goes through `confirmDialog` and drops the total by exactly the row's
+  amount.
+- German: `12,50` parses to `1250`, and a 58-character German title truncates
+  with an ellipsis while the amount stays fully visible — the intended priority,
+  since an expense with an unreadable number records nothing.
+- **Read-only from a real viewer session** (the seeded `other` account added as
+  a viewer, not by trusting the flag): sees all five rows and the total, has no
+  form and no row menus, and a `POST` attempted from the console is refused
+  **403** — so hiding the controls is a courtesy, not the boundary.
+- Zero console errors or warnings throughout. Both scratch trips were deleted
+  afterwards; the seeded scenarios are back at their original seven.
+
 ## 4. Who paid, and per-person totals
 
 - A "paid by" select on the add and edit forms, listing the trip's members

@@ -669,6 +669,7 @@ button {
 
 .trip-form input,
 .trip-form textarea,
+.trip-form select,
 .password-form input,
 .members-add input,
 .members-add select,
@@ -2795,6 +2796,121 @@ button {
 
 .member-card__trigger:hover {
   color: var(--color-text);
+}
+
+
+/* A hint under a field, explaining what it does rather than what to type -
+   today the trip currency, whose consequence (existing amounts are not
+   converted) is not guessable from the control. Muted and small like a label,
+   but not inside one: it describes the field above it, and a label wrapping
+   both would make the sentence part of the field's accessible name. */
+.trip-form__hint {
+  margin: -0.25rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+/* Expenses (Stage 17).
+
+   The total sits above the rows rather than after them: it is the number you
+   opened the tab for, and a running total at the bottom of a long list is one
+   you have to scroll to find. */
+.expenses__summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.expenses__total-label {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+/* Tabular numerals so a column of amounts lines up on the decimal point
+   instead of wobbling with the width of each digit. */
+.expenses__total {
+  font-size: 1.25rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.expenses__day {
+  margin-bottom: 1rem;
+}
+
+.expenses__day-heading {
+  margin: 0 0 0.375rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.expenses__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+/* Three columns: what it was for, what it cost, and the ⋮. The title takes the
+   slack and truncates, because the amount must never be the thing that gets
+   cut off - an expense with an unreadable number is not a record of anything. */
+.expenses__row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.expenses__row-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.expenses__row-amount {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* The row currently loaded into the form below, so pressing Edit on the third
+   row of a long list leaves something pointing back at which one it was. */
+.expenses__row--editing {
+  border-color: var(--color-accent);
+}
+
+.expenses__row-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: var(--radius);
+}
+
+.expenses__row-trigger:hover {
+  color: var(--color-text);
+}
+
+.expenses__empty {
+  color: var(--color-text-muted);
 }
 
 

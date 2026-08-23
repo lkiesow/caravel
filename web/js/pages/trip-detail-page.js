@@ -8,6 +8,7 @@ import { renderFileList } from "../components/file-list.js";
 import { renderChecklistList } from "../components/checklist-list.js";
 import { renderSettingsTab } from "./settings-tab.js";
 import { renderMembersTab } from "./members-tab.js";
+import { renderExpensesTab } from "./expenses-tab.js";
 import { canEdit, canManageMembers, isShared, isViewer } from "../trip-role.js";
 import { TRIP_TABS, OVERFLOW_TRIP_TABS } from "../trip-tabs.js";
 import { renderMenu } from "../components/menu.js";
@@ -144,6 +145,11 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
       renderFileList(content, `/trips/${trip.id}/files`, { readOnly: !canEdit(trip), shared: isShared(trip) });
     } else if (tab === "checklists") {
       renderChecklistList(content, trip.id, { readOnly: !canEdit(trip), shared: isShared(trip) });
+    } else if (tab === "expenses") {
+      // Only readOnly: an expense has no per-row visibility, so there is
+      // nothing for `shared` to change here the way it does for files and
+      // checklists.
+      renderExpensesTab(content, trip, { readOnly: !canEdit(trip) });
     } else if (tab === "members") {
       renderMembersTab(content, trip, {
         // Keeps `trip.member_count` current for the other tabs. Mutated in

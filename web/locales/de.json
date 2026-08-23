@@ -303,5 +303,22 @@
   "assist.acceptAll": "Alle übernehmen",
   "assist.dismissAll": "Alle verwerfen",
   "assist.outstanding": "{count} Vorschlag",
-  "assist.outstanding_plural": "{count} Vorschläge"
+  "assist.outstanding_plural": "{count} Vorschläge",
+  "trip.tabs.expenses": "Ausgaben",
+  "expenses.total": "Gesamt",
+  "expenses.empty": "Noch nichts erfasst.",
+  "expenses.addHeading": "Ausgabe hinzufügen",
+  "expenses.editHeading": "Ausgabe bearbeiten",
+  "expenses.add": "Hinzufügen",
+  "expenses.edit": "Bearbeiten",
+  "expenses.rowActions": "Aktionen für Ausgabe",
+  "expenses.deleteConfirm": "Diese Ausgabe löschen? Das kann nicht rückgängig gemacht werden.",
+  "expenses.form.title": "Wofür war es",
+  "expenses.form.amount": "Betrag ({currency})",
+  "expenses.form.date": "Datum",
+  "expenses.error.title": "Gib an, wofür das Geld ausgegeben wurde.",
+  "expenses.error.amount": "Gib einen Betrag ein, zum Beispiel {example}.",
+  "expenses.error.date": "Wähle den Tag der Ausgabe.",
+  "trip.form.currency": "Währung",
+  "trip.form.currencyHint": "Alle Ausgaben dieser Reise werden in dieser Währung erfasst. Eine Änderung rechnet bereits erfasste Beträge nicht um."
 }

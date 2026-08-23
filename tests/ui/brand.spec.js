@@ -137,3 +137,103 @@ test.describe("brand assets", () => {
     expect(offOrigin, `the login screen fetched ${offOrigin.length} off-origin URL(s)`).toEqual([]);
   });
 });
+
+// The header lockup and the login hero (Stage 18 Milestone 2). The hero is the
+// app's front door, so what is asserted here is what a stranger sees: the
+// headline, the mark behind it being decorative, and the brand face actually
+// reaching the two places that are branding rather than chrome.
+test.describe("the login hero", () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+
+  for (const theme of ["light", "dark"]) {
+    test(`renders the lockup, headline and watermark (${theme})`, async ({ page }) => {
+      await blockExternalRequests(page);
+      await page.addInitScript((t) => localStorage.setItem("caravel.theme", t), theme);
+      await page.goto("/");
+
+      // One h1, and it is the hero's headline - the form's own title is an h2,
+      // so the page has a single top-level heading rather than two competing
+      // ones.
+      const h1 = page.locator("h1");
+      await expect(h1).toHaveCount(1);
+      await expect(h1).toHaveClass(/auth-hero__title/);
+      await expect(h1).not.toBeEmpty();
+      await expect(page.locator(".auth-form h2")).not.toBeEmpty();
+
+      // The mark appears twice - in the lockup and as the watermark - and
+      // neither may contribute an accessible name, since the wordmark beside
+      // it already says "Caravel". A screen reader announcing the app three
+      // times is the failure this prevents.
+      const marks = page.locator(".auth-hero .brand-mark");
+      await expect(marks).toHaveCount(2);
+      for (let i = 0; i < 2; i++) {
+        await expect(marks.nth(i)).toHaveAttribute("aria-hidden", "true");
+      }
+
+      const rendered = await page.evaluate((expectedTheme) => {
+        const title = document.querySelector(".auth-hero__title");
+        const wordmark = document.querySelector(".app-brand--hero .app-brand__wordmark");
+        const watermark = document.querySelector(".auth-hero__watermark");
+        const wm = getComputedStyle(watermark);
+        return {
+          theme: document.documentElement.dataset.theme,
+          expectedTheme,
+          titleFont: getComputedStyle(title).fontFamily,
+          wordmarkFont: getComputedStyle(wordmark).fontFamily,
+          wordmarkTracking: getComputedStyle(wordmark).letterSpacing,
+          // The mask is what paints the mark, and it takes its colour from
+          // background-color: a missing mask would leave a filled rectangle.
+          watermarkMask: wm.maskImage || wm.webkitMaskImage,
+          watermarkOpacity: Number(wm.opacity),
+          watermarkWidth: watermark.getBoundingClientRect().width,
+        };
+      }, theme);
+
+      expect(rendered.theme).toBe(theme);
+      expect(rendered.titleFont).toContain("Montserrat");
+      expect(rendered.wordmarkFont).toContain("Montserrat");
+      // The tracked wordmark from the brand rules (~0.17em at 18px).
+      expect(parseFloat(rendered.wordmarkTracking)).toBeGreaterThan(2);
+      expect(rendered.watermarkMask).toContain("mark.svg");
+      // Decorative, so it must stay faint - and present, so it must not be
+      // invisible either. Both directions have been wrong during this
+      // milestone: the mark's own `width: 1em` first collapsed it to 16px.
+      expect(rendered.watermarkOpacity).toBeGreaterThan(0.05);
+      expect(rendered.watermarkOpacity).toBeLessThan(0.6);
+      expect(rendered.watermarkWidth).toBeGreaterThan(100);
+    });
+  }
+});
+
+test.describe("the app header", () => {
+  test("carries the lockup and links home", async ({ page }) => {
+    await blockExternalRequests(page);
+    await page.goto("/trips");
+
+    const brand = page.locator(".app-header .app-brand");
+    // The link's accessible name comes from the wordmark alone: the mark is
+    // aria-hidden, so this is "Caravel" and not "Caravel Caravel".
+    await expect(brand).toHaveAccessibleName("Caravel");
+    await expect(brand).toHaveAttribute("href", "/trips");
+    await expect(page.locator(".app-header .brand-mark")).toHaveAttribute("aria-hidden", "true");
+
+    const font = await page.evaluate(
+      () => getComputedStyle(document.querySelector(".app-brand__wordmark")).fontFamily
+    );
+    expect(font).toContain("Montserrat");
+  });
+
+  test("navigates without a full page load", async ({ page }) => {
+    await blockExternalRequests(page);
+    await page.goto("/settings");
+    // data-link hands the click to the router; without it the browser would
+    // reload the whole app, which is slower and loses in-page state. Proven by
+    // the document surviving the navigation.
+    await page.evaluate(() => {
+      window.__stillTheSameDocument = true;
+    });
+    await page.locator(".app-header .app-brand").click();
+    await expect(page).toHaveURL(/\/trips$/);
+    expect(await page.evaluate(() => window.__stillTheSameDocument)).toBe(true);
+  });
+});

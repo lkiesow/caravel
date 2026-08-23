@@ -31,43 +31,60 @@ export function renderLoginPage(container) {
 
       container.innerHTML = `
         <div class="auth-screen">
-          <form class="auth-form" novalidate>
-            <h1 data-i18n="${mode === "login" ? "auth.login.title" : "auth.register.title"}"></h1>
-            <p class="auth-form__error" role="alert" hidden></p>
+          <!-- The hero is the app's front door and its only marketing surface:
+               an instance owner sends somebody a link and this is what loads.
+               The mark repeats large behind the copy as a watermark, which is
+               decorative - the lockup above the heading already names the app. -->
+          <div class="auth-hero">
+            <span class="auth-hero__watermark brand-mark" aria-hidden="true"></span>
+            <div class="auth-hero__intro">
+              <span class="app-brand app-brand--hero">
+                <span class="brand-mark" aria-hidden="true"></span>
+                <span class="app-brand__wordmark">${t("app.name")}</span>
+              </span>
+              <h1 class="auth-hero__title" data-i18n="auth.hero.title"></h1>
+              <p class="auth-hero__subtitle" data-i18n="auth.hero.subtitle"></p>
+            </div>
+            <form class="auth-form" novalidate>
+              <!-- h2, not h1: the hero's headline is the page's one h1, and the
+                   form's own title says which of the two things this form does. -->
+              <h2 data-i18n="${mode === "login" ? "auth.login.title" : "auth.register.title"}"></h2>
+              <p class="auth-form__error" role="alert" hidden></p>
 
-            <label>
-              <span data-i18n="auth.login.username"></span>
-              <input type="text" name="username" autocomplete="username" required />
-            </label>
+              <label>
+                <span data-i18n="auth.login.username"></span>
+                <input type="text" name="username" autocomplete="username" required />
+              </label>
 
-            ${
-              mode === "register"
-                ? `<label>
-                     <span data-i18n="auth.register.displayName"></span>
-                     <input type="text" name="displayName" autocomplete="name" />
-                   </label>`
-                : ""
-            }
+              ${
+                mode === "register"
+                  ? `<label>
+                       <span data-i18n="auth.register.displayName"></span>
+                       <input type="text" name="displayName" autocomplete="name" />
+                     </label>`
+                  : ""
+              }
 
-            <label>
-              <span data-i18n="auth.login.password"></span>
-              <input type="password" name="password" autocomplete="${mode === "login" ? "current-password" : "new-password"}" required minlength="8" />
-            </label>
+              <label>
+                <span data-i18n="auth.login.password"></span>
+                <input type="password" name="password" autocomplete="${mode === "login" ? "current-password" : "new-password"}" required minlength="8" />
+              </label>
 
-            <button type="submit" class="btn btn-primary">${icon(mode === "login" ? "log-in" : "check")} <span data-i18n="${mode === "login" ? "auth.login.submit" : "auth.register.submit"}"></span></button>
+              <button type="submit" class="btn btn-primary">${icon(mode === "login" ? "log-in" : "check")} <span data-i18n="${mode === "login" ? "auth.login.submit" : "auth.register.submit"}"></span></button>
 
-            ${
-              // On a closed instance there is nothing to switch *to*, so the
-              // whole line goes rather than leaving a dangling "Don't have an
-              // account?" with no answer.
-              openSignup || mode === "register"
-                ? `<p class="auth-form__switch">
-              <span data-i18n="${mode === "login" ? "auth.login.noAccount" : "auth.register.haveAccount"}"></span>
-              <button type="button" class="link-button" data-action="switch-mode" data-i18n="${mode === "login" ? "auth.login.registerLink" : "auth.register.loginLink"}"></button>
-            </p>`
-                : ""
-            }
-          </form>
+              ${
+                // On a closed instance there is nothing to switch *to*, so the
+                // whole line goes rather than leaving a dangling "Don't have an
+                // account?" with no answer.
+                openSignup || mode === "register"
+                  ? `<p class="auth-form__switch">
+                <span data-i18n="${mode === "login" ? "auth.login.noAccount" : "auth.register.haveAccount"}"></span>
+                <button type="button" class="btn btn-secondary auth-form__switch-btn" data-action="switch-mode" data-i18n="${mode === "login" ? "auth.login.registerLink" : "auth.register.loginLink"}"></button>
+              </p>`
+                  : ""
+              }
+            </form>
+          </div>
         </div>
       `;
       translatePage(container);

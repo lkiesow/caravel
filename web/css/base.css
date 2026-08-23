@@ -70,6 +70,14 @@
      ink" and never picks between the two above -- the same split, and for the
      same reason, as --color-danger / --color-danger-fg. */
   --brand-ink: var(--brand-navy);
+  /* The wordmark and the display headings, which are *not* the same colour as
+     the mark: the committed lockups pair a navy mark with a navy wordmark on
+     light grounds, but a lightened-navy mark with a near-cream wordmark on dark
+     ones (see the fills in web/brand/lockup-horizontal-dark.svg). Following
+     that is also what keeps the dark heading clear of the contrast floor --
+     lightened navy on near-black measures 3.3:1, which passes for large text
+     and only just. */
+  --brand-wordmark: var(--brand-navy);
 
   /* The wordmark and the display headings. Montserrat is a geometric sans and
      the fallback is not, so a swap is visible -- which is the intended
@@ -111,6 +119,7 @@
   /* Navy on near-black is unreadable; the brand's own dark-ground ink is the
      lightened one, which is what the dark lockups use. */
   --brand-ink: var(--brand-navy-light);
+  --brand-wordmark: var(--brand-cream);
   /* Native widgets the app doesn't paint itself - scrollbars, date pickers,
      the file-input button - follow this rather than the OS, which is the whole
      point of an in-app override. */
@@ -273,22 +282,195 @@ a:visited {
   stroke-linejoin: round;
 }
 
+/* The mark, painted as a mask rather than an inline <svg> or an <img>.
+   background-color: currentColor makes it follow the surrounding text colour
+   (so it themes for free, and a hover or a muted context takes it along), and
+   the mask keeps the boom's 72% opacity because the source file expresses it
+   as fill-opacity, which a mask reads as alpha. The alternative - inlining the
+   two paths in JS - would put the geometry in a second place, competing with
+   scripts/gen_icons.py. Sized by font-size so a caller scales it with `width`
+   or with the text around it.
+
+   Declared before its users on purpose: `width: 1em` here and the watermark's
+   own `width` below are both single-class selectors, so source order is what
+   decides which wins. */
+.brand-mark {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  flex: none;
+  background-color: currentColor;
+  -webkit-mask: url("/brand/mark.svg") center / contain no-repeat;
+  mask: url("/brand/mark.svg") center / contain no-repeat;
+}
+
 .auth-screen {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
   padding: 3rem 1rem;
 }
 
+/* The hero, and the app's only marketing surface. One group: the copy and the
+   form share a single card, so the form is not a second panel floating under
+   empty space. */
+.auth-hero {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  max-width: 64rem;
+  display: grid;
+  gap: 2.5rem;
+  align-items: center;
+  /* More vertical room than horizontal: this is a banner, and the copy needs
+     air above and below it to read as one. */
+  padding: clamp(2rem, 6vw, 4.5rem) clamp(1.5rem, 5vw, 3.5rem);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  --auth-form-column: 21rem;
+  /* A wash rather than a flat fill, cream into the page's own background, so
+     the card reads as paper without inventing a second surface colour. */
+  background: linear-gradient(135deg, var(--brand-cream), var(--color-bg) 70%);
+}
+
+:root[data-theme="dark"] .auth-hero {
+  /* The mock's near-black, which is darker than --color-bg on purpose: the
+     hero should read as a ground the app sits on rather than as a card. */
+  background: linear-gradient(135deg, #101014, var(--color-bg) 70%);
+}
+
+/* The sail, large and decorative (aria-hidden in the markup). Placed so that
+   it reads as a *whole shape*: sitting it behind the form instead chops it into
+   fragments, which is what the first attempt at this hero looked like.
+
+   The base placement is the narrow one, where the hero is a single column
+   barely wider than the copy: the sail is pushed mostly off the right edge and
+   kept faint enough not to fight the words. */
+.auth-hero__watermark {
+  position: absolute;
+  top: 6%;
+  right: -30%;
+  height: 84%;
+  width: auto;
+  aspect-ratio: 1;
+  color: var(--brand-navy);
+  /* Fainter than the wide placement: with the form frameless and the column
+     single, the sail passes behind the fields here, and anything stronger
+     reads as noise under the inputs. */
+  opacity: 0.07;
+  pointer-events: none;
+}
+
+:root[data-theme="dark"] .auth-hero__watermark {
+  /* The same navy has to be much more present on near-black to read at all:
+     the light theme's alpha over a dark ground is nothing. */
+  opacity: 0.32;
+}
+
+/* Wide enough for two columns, so there is a gap between the copy and the
+   form - and that is where the sail goes, standing at full height and bleeding
+   off the top edge. Offset from the right by the form column's width plus a
+   margin, so it stops *before* the fields: with the form frameless there is no
+   card for it to hide behind, and a boom crossing an input reads as a glitch
+   rather than as a watermark. Tied to the column variable so the two cannot
+   drift apart. */
+@media (min-width: 56rem) {
+  .auth-hero {
+    grid-template-columns: 1fr var(--auth-form-column);
+    /* A floor rather than a height: the form grows by a field in register
+       mode, and by an error line when a login fails, and the band should
+       absorb that instead of jumping. Note the sail is sized off the hero's
+       height, so this sets its scale too - much more and it starts crowding
+       the headline. */
+    min-height: 26rem;
+  }
+
+  .auth-hero__watermark {
+    top: -10%;
+    right: calc(var(--auth-form-column) + 1.5rem);
+    height: 120%;
+    opacity: 0.15;
+  }
+
+  :root[data-theme="dark"] .auth-hero__watermark {
+    opacity: 0.5;
+  }
+}
+
+.auth-hero__intro {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: start;
+}
+
+.app-brand--hero .brand-mark {
+  font-size: 1.75rem;
+}
+
+.auth-hero__title {
+  margin: 0;
+  font-family: var(--font-brand);
+  font-weight: 700;
+  /* Big, but it has to survive "Jede Reise an einem Ort." at 324px - hence a
+     clamp rather than a desktop size with a breakpoint under it. */
+  font-size: clamp(2rem, 6vw, 3.25rem);
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  color: var(--brand-wordmark);
+  /* The mock breaks the headline after the comma. Balancing the lines gets
+     there without a <br> that both translations would have to agree on - and
+     it keeps working for German, where the words fall differently. The
+     max-width is a cap on the measure, not the mechanism. */
+  max-width: 14ch;
+  text-wrap: balance;
+}
+
+.auth-hero__subtitle {
+  margin: 0;
+  max-width: 34ch;
+  font-size: 1.0625rem;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+/* Frameless: the fields sit directly on the hero rather than in a panel of
+   their own, which would be a card inside a card. The inputs carry their own
+   borders, so "fill this in" is still obvious. */
 .auth-form {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
   width: 100%;
-  max-width: 22rem;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 0.5rem;
-  padding: 1.5rem;
+  max-width: var(--auth-form-column, 21rem);
+}
+
+.auth-form h2 {
+  margin: 0 0 0.25rem;
+  font-family: var(--font-brand);
+  font-size: 1.25rem;
+}
+
+/* The register switch, as the mock's outlined secondary under the filled
+   primary. It was a bare link before; the treatment is what the pair on the
+   landing page uses too. The question above it is the label, so the two stack
+   rather than sitting on one line. */
+.auth-form__switch {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: stretch;
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.auth-form__switch-btn {
+  width: 100%;
 }
 
 .auth-form label {
@@ -369,6 +551,40 @@ a:visited {
   gap: 1rem;
   padding: 1rem;
   border-bottom: 1px solid var(--color-border);
+}
+
+/* The lockup: mark plus tracked uppercase wordmark, per
+   docs/assets/brand/README.md (Montserrat 700, ~0.17em tracking). In the
+   header it is also the link home. */
+.app-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--brand-ink);
+  text-decoration: none;
+}
+
+.app-brand:visited {
+  color: var(--brand-ink);
+}
+
+.app-brand .brand-mark {
+  font-size: 1.5rem;
+}
+
+.app-brand__wordmark {
+  color: var(--brand-wordmark);
+  font-family: var(--font-brand);
+  font-weight: 700;
+  font-size: 1.125rem;
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+}
+
+.app-brand:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+  border-radius: var(--radius);
 }
 
 .user-menu-slot {
@@ -2046,7 +2262,10 @@ button {
   .location-view__maps-link,
   .checklist-item label,
   .location-form label.location-form__checkbox,
-  .setting-choice {
+  .setting-choice,
+  /* The header lockup became a link in Stage 18 Milestone 2, which made it a
+     tap target: 24px tall before this, which routes.spec.js caught. */
+  .app-brand {
     min-height: var(--tap-min);
   }
 

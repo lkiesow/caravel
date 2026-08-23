@@ -329,6 +329,18 @@ down.
   a `postgres` service container running `go test ./...` against it, which needs
   `newTestServerWithStore` to take the driver from an env var instead of
   hard-coding `"sqlite"`. (The compose file below would supply the container.)
+- **`tests/ui/contrast.js` cannot measure an unauthenticated screen.** (Stage 18
+  Milestone 2.) It logs in as `demo` before navigating, so the login screen --
+  now the app's hero, and the one screen every visitor sees -- is the single
+  route it cannot report on. Two things were needed to check the hero by hand
+  and both belong in the tool: a `--no-login` mode, and a way to measure text
+  over a *translucent layer behind it* rather than over its own background. The
+  second is the interesting half. The watermark is a masked element under the
+  copy, so `backgroundColor` says nothing about it; what worked was rendering
+  the hero with the copy hidden and sampling every pixel inside each text box
+  from the screenshot, which is a stronger measurement than the flattening the
+  tool does today and would subsume it.
+
 - **Contrast is measured but not asserted.** `tests/ui/contrast.js` reports
   ratios and has a `--min` flag, but nothing runs it in CI, so a regression like
   Stage 07's 2.54:1 primary button would only be found by someone running it.

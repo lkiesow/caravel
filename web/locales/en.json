@@ -1,5 +1,7 @@
 {
   "app.name": "Caravel",
+  "auth.hero.title": "Every trip, one place.",
+  "auth.hero.subtitle": "Self-hosted trip planning that keeps the map, the plan and the group in sync.",
   "auth.login.title": "Log in",
   "auth.login.username": "Username",
   "auth.login.password": "Password",

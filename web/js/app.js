@@ -63,7 +63,14 @@ let onLocaleChanged = null;
 async function renderAuthenticated(user) {
   app.innerHTML = `
     <header class="app-header">
-      <strong>${t("app.name")}</strong>
+      <!-- The lockup, and a link home: the mark is decorative (the wordmark
+           beside it already names the app, so a second accessible name would
+           be read twice), and data-link lets the router handle the click
+           instead of the browser reloading the whole app. -->
+      <a class="app-brand" href="/trips" data-link>
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="app-brand__wordmark">${t("app.name")}</span>
+      </a>
       <div class="user-menu-slot"></div>
     </header>
     <main id="main"></main>

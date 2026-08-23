@@ -211,6 +211,57 @@ already renders the login screen from a fresh context and is the natural home.
 A screenshot pass against the mockups for the judgement call, but assertions for
 the record.
 
+**Done.** The header is the lockup from the second mockup — the mark as a CSS
+mask (so `background-color: currentColor` themes it for free and the boom keeps
+its 72% opacity, without a second copy of the geometry in JS), plus the tracked
+uppercase wordmark, and it is now a link home through the router's `data-link`.
+
+The hero took four rounds, and the plan's guess about its shape was wrong in a
+way worth recording. Planned: copy left, form right. Built that first, and the
+form card sat *on top of* the sail and chopped it into unrecognisable shards. So
+the second attempt made the hero a pure banner with the form as a separate card
+below — faithful to the mockup, but the review call was that the detached card
+floated under empty space, which it did. Third: the form moved inside the hero
+as one group, and four arrangements of the sail were rendered and compared
+(behind the form, in the gap between copy and form, a centred stack, and
+mirrored on the left). The gap won, with the form made **frameless** — no card
+inside a card, the inputs' own borders carry it. That last change moved the sail
+again: with no card to tuck behind, its boom crossed the inputs and read as a
+glitch, so it now stops short of the fields, offset by
+`calc(var(--auth-form-column) + 1.5rem)` — one variable owns the form column's
+width so the grid and the sail cannot drift apart. Last round: more vertical
+room, as a `min-height` floor rather than a height, since the form grows by a
+field in register mode and by a line when a login fails.
+
+Deviations worth naming. **`.btn-secondary` already existed** and is exactly the
+mockup's outlined treatment, so the plan's `.btn-outline` was not added; the
+register switch uses it instead of the bare link it was. **A second token,
+`--brand-wordmark`**, splits the wordmark and headings from the mark: the
+committed dark lockup pairs a `#5470A8` mark with a near-cream wordmark, and
+following that took the dark heading from 3.26:1 — passing for large text, but
+only just — to 15:1. The mark alone keeps `--brand-ink`.
+
+Two real bugs, both found by the existing suite rather than by looking, and both
+in the new header link: a `margin-right: -0.17em` meant to absorb the wordmark's
+trailing tracking made the anchor's content 3px wider than its box (23 overflow
+failures), and a 24px-tall link missed the 44px tap floor at phone width (23
+more). The first is fixed by dropping the compensation, the second by adding
+`.app-brand` to the narrow-viewport tap-target rule.
+
+Verified: `make ci` green; the full UI suite green (105 passed, 3 skipped — the
+skips are `assist.spec.js`, which needs the assistant configured); new
+`tests/ui/brand.spec.js` cases covering both themes (one `h1` and it is the
+hero's, the form's title an `h2`, both marks `aria-hidden`, Montserrat actually
+computed on the headline and wordmark, the watermark's mask present and its
+opacity inside sane bounds, the header link's accessible name being "Caravel"
+rather than "Caravel Caravel", and that clicking it routes without a document
+reload). Contrast measured rather than assumed, worst-case per theme and
+viewport by sampling the real pixels behind every text box with the copy hidden:
+headline 9.5–15.7:1, sub-line 5.6–6.5:1, form heading 15.0–17.4:1, field labels
+6.4–7.6:1, no failures. That needed ad-hoc tooling, because `contrast.js` logs
+in before it measures and so cannot reach the login screen — noted in
+`todo.md`. German at 324px checked for overflow (0px) in both themes.
+
 ## 3. Run the Go test suite against Postgres
 
 Two test files open a database, both hard-coding SQLite:

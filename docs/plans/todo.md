@@ -42,29 +42,39 @@ down.
 
 ## Planned features
 
-- **Expenses / cost-splitting: what Stage 17 leaves out.** **In progress** --
-  Stage 17 is building this, so the entry records only what it deliberately
-  does *not* cover. The schema and store landed in Milestone 1: an `expenses`
-  table (title, `amount_minor` as an integer, `spent_on`, `payer_user_id`) plus
-  a `currency` column on `trips`.
+- **Expenses: what Stage 17 left out.** (Stage 17.) The feature shipped --
+  expenses, per-trip currency, who paid, per-expense share sets, per-person
+  totals and balances with suggested transfers. What it deliberately does not
+  do:
     - **Settlement payments.** A recorded payment between two members that
-      drives a balance back to zero. Left out because it is the part most
-      likely to want redesign once somebody has used the rest, and balances are
-      useful without it.
+      drives a balance back to zero. The settle-up list is advice; nothing marks
+      it done. Left out because it is the part most likely to want redesign once
+      somebody has used the rest, and balances are useful without it. Note the
+      workaround people will find on their own: recording the settlement as an
+      expense paid by the debtor and shared only with the creditor does balance
+      the books, which may be enough.
     - **Expense categories.** A fixed vocabulary (lodging, food, transport...)
-      with i18n keys, so totals can group by something. Wanted; the choice was
-      to spend this stage's depth on splitting instead. Note the constraint if
-      it is picked up: free text cannot be translated, so a fixed list with
-      keys is the option that works in German.
+      with i18n keys, so totals can group by something. Wanted; the stage spent
+      its depth on splitting instead. The constraint to remember: free text
+      cannot be translated, so a fixed list with keys is the option that works
+      in German.
     - **Linking an expense to a location.** The original Stage 01 sketch had an
       optional `item_id`, which would give a per-location cost on the location
-      view. Dropped from Stage 17 with the other non-minimal fields; it is one
-      nullable column and a select.
+      view. One nullable column and a select.
     - **Per-expense currency, and refunds.** One currency per trip is a
       deliberate simplification: per-expense makes every total *and* every
-      balance per-currency. `amount_minor` also has a `CHECK (amount_minor >
-      0)`, so a refund cannot be entered as a negative row -- lifting that
-      means deciding what a negative expense does to a split.
+      balance per-currency. `amount_minor` also carries
+      `CHECK (amount_minor > 0)`, so a refund cannot be entered as a negative
+      row -- lifting that means deciding what a negative expense does to a
+      split.
+    - **A trip-level total on the trip card.** The trips list says nothing about
+      what a trip cost. One `SUM` per row, so the cost is a query per card
+      unless the list query grows a join.
+    - **Unequal shares.** Shares are equal among the people named; somebody who
+      ate more cannot be given a bigger slice. Would mean a weight or an amount
+      per share row, which the schema deliberately avoids today because two
+      sources of truth for one number drift.
+
 - **SearXNG as a search backend.** (Stage 16 Milestone 8.) Planned for that
   milestone and dropped: nobody had an instance to test against, and a backend
   verified only against a fake is a backend nobody should trust. Everything
@@ -256,6 +266,12 @@ down.
       configuration rather than seed data. CI asserts the capability is on
       before running the suite, because a spec that skips silently reads as a
       pass.
+      Stage 17 Milestone 7 added `expenses.spec.js`, a fourth: its own trip, and
+      it *adds a second member to that trip* rather than borrowing a seeded
+      shared one, so the payer, share and balance paths are covered without
+      touching the memberships other specs read. That closes the expenses flow;
+      the location and trip editors, checklists and the itinerary are still
+      uncovered.
     - **The register page**, which no spec renders. Stage 14 Milestone 9's
       `unauthenticated.spec.js` covers the *login* screen from a fresh
       unauthenticated context, but the register form only appears when open
@@ -276,14 +292,24 @@ down.
   goes on investigating a filter that works perfectly.
 
   The specs that *write* already solve this for themselves by creating their
-  own trip (`files.spec.js`, and now `assist.spec.js`), but nothing protects
-  the seeded scenarios from a person. Options, none obviously best: have
-  `make test-ui` reseed first, which is a big hammer and would wipe anything
-  else in the dev database; have the suite assert the seed is pristine before
-  running and say so plainly when it is not, which is cheap and turns a
+  own trip (`files.spec.js`, `assist.spec.js`, `expenses.spec.js`), but nothing
+  protects the seeded scenarios from a person. Options, none obviously best:
+  have `make test-ui` reseed first, which is a big hammer and would wipe
+  anything else in the dev database; have the suite assert the seed is pristine
+  before running and say so plainly when it is not, which is cheap and turns a
   confusing failure into an instruction; or seed a scenario specifically for
   poking at by hand and point people at it. The middle one is probably the
   right size.
+
+  **It happened again in Stage 17**, and the shape is worth recording because it
+  was not extra locations this time: `file row overflow menu` failed because the
+  seeded `cascade` trip had gained *members* -- a stray `pwtest` and a stray
+  `other` -- and that spec asserts the trip is solo, since visibility controls
+  only render on a shared trip. Nothing about files or menus had changed. Two
+  lessons for whatever gets built: the check has to cover memberships and not
+  just child rows, and a diff against a freshly seeded database
+  (`CARAVEL_DB_DSN=/tmp/x.db go run ./cmd/seed`, then compare) is what actually
+  identified it -- a cheap trick worth writing into the tooling.
 
 - **Add a Chromium project for gesture specs.** **(soon)** (Stage 13 Milestone
   1.) `playwright.config.js` runs Firefox alone, but Playwright's `isMobile` —

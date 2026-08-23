@@ -2402,7 +2402,12 @@ button {
   }
 
   .checklist-card__trigger,
-  .checklist-item__trigger {
+  .checklist-item__trigger,
+  /* Same reason as its two siblings and as the itinerary reorder buttons: the
+     blanket `button` rule gives an icon-only trigger its height but nothing
+     gives it a width, so this one measured 13.3x44 until the tap-target sweep
+     started visiting the expenses route. */
+  .expenses__row-trigger {
     min-width: var(--tap-min);
   }
 }

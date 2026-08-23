@@ -724,6 +724,56 @@ paid €105, owes €49.73 and is owed €55.27.
   location, per-expense currency, refunds and negative amounts, and a
   trip-level total on the trip card.
 
+**Done.** All four parts landed, and two of them found bugs.
+
+*The seeded ledger goes into the `full` scenario*, which already has `other` as
+an editor — a ledger on a solo trip would exercise none of the interesting
+paths. Four expenses, one of each shape worth looking at: split with the whole
+trip, paid by the other person, shared with a subset, and one nobody is recorded
+as paying. Deterministic ids like everything else there, so re-seeding replaces
+the ledger rather than piling up a second one — checked by seeding twice into a
+throwaway database and counting.
+
+*`expenses.spec.js` is the fourth self-isolating spec*, and adds a shape the
+other three do not: it creates its own trip **and adds a second member to it**,
+so the payer, share and balance paths are covered without borrowing a seeded
+shared trip. Five tests: the add/edit/delete lifecycle with the total tracked
+through each step; an unparseable amount and an over-precise one both refused
+with nothing written; JPY driving the placeholder, the label and the rendered
+amount (asserting `1,200` and *not* `12.00`); a shared trip showing who paid, a
+subset row saying who it was for, and a balance that follows from the rows, read
+from both participants' own sessions; and a viewer reading everything, being
+offered nothing that writes, and being refused **403** by the server when they
+try anyway.
+
+*Adding `expenses` to the sweeps' `TRIP_TABS` was not in the plan and earned
+its place immediately.* That one-line change puts the new tab into the heading,
+accessible-name, route and tap-target sweeps, and the tap-target sweep failed at
+once: the row's ⋮ measured **13.3×44px**. The blanket `button` rule gives an
+icon-only control its height and nothing gives it a width — the exact bug
+`base.css` already documents for the file row, the checklist row and the
+itinerary reorder buttons, now fixed the same way. Four rows' worth of
+under-sized controls that no amount of looking at the page would have revealed.
+
+**A digression that turned out to matter.** The two `file row overflow menu`
+failures reported in the Milestone 6 follow-up were mine to explain more
+precisely, and I had them wrong: I attributed them to manual testing in general.
+The actual cause was three stray *memberships* on seeded trips — `pwtest` on the
+`cascade` and `full` trips and `other` on `cascade` — where the seeder adds
+`other` to `full` and `one-pin` and nothing else. `pwtest` is seeded as an
+account precisely so `settings.spec.js` can break and repair its password; it is
+never given a trip. Identified by seeding a throwaway database and diffing the
+membership tables, then fixed through the API rather than by reseeding, so the
+hand-entered expenses in the Iceland trip survived. The backlog's seeded-data
+entry now records the shape, because it was memberships rather than the extra
+locations it predicted.
+
+**Verified.** `make ci` green. `make test-ui` green — 96 passing, 3 skipped
+(assist, unconfigured locally), including the five new tests and the four sweeps
+that now cover the expenses route. The seeder was exercised against a throwaway
+database twice over to prove both its output and its idempotence, leaving the
+dev database untouched.
+
 ---
 
 ## Build order

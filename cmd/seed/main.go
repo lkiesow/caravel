@@ -535,6 +535,21 @@ func seedFull(s seedCtx) error {
 		return err
 	}
 
+	// A ledger with one of each interesting shape: split with the whole trip,
+	// paid by the other person rather than the owner, shared with a subset (so
+	// the row carries its "Only for ..." line and the balance does not follow
+	// from the amounts alone), and one nobody is recorded as paying, which the
+	// balances report rather than absorb.
+	if err := s.addExpenses("full", trip.ID, []expenseSpec{
+		{key: "hotel", title: "Hótel Reykjavík, two nights", amount: 34000, dayOff: 0, payer: "owner"},
+		{key: "fuel", title: "Fuel, Route 1", amount: 8750, dayOff: 1, payer: "other"},
+		{key: "lagoon", title: "Blue Lagoon, one ticket", amount: 12750, dayOff: 1, payer: "owner",
+			shares: []string{"other"}},
+		{key: "parking", title: "Parking, unknown who paid", amount: 300, dayOff: 2},
+	}); err != nil {
+		return err
+	}
+
 	itemImageID, err := s.addImage("full", trip.ID, "banff-moraine-lake.jpg")
 	if err != nil {
 		return err
@@ -593,6 +608,59 @@ func seedFull(s seedCtx) error {
 
 // seedOnePin has a single mappable location, so the map's bounds are a point
 // rather than a box — the degenerate-zoom case.
+// expenseSpec is one seeded expense. payer and shares name people by the same
+// keys the scenarios use for readability -- "owner", "other", or "" for nobody.
+type expenseSpec struct {
+	key    string
+	title  string
+	amount int64
+	dayOff int
+	payer  string
+	shares []string
+}
+
+// addExpenses seeds a trip ledger. Worth having for the same reason the
+// checklists are seeded: the tab is hard to judge empty, and the interesting
+// cases are the ones nobody creates by accident -- an expense shared with a
+// subset of the trip, and one nobody is recorded as paying.
+//
+// Deterministic ids like everything else here, so re-seeding replaces the rows
+// rather than piling up a second ledger.
+func (s seedCtx) addExpenses(scenarioName, tripID string, specs []expenseSpec) error {
+	now := time.Now().UTC()
+	person := map[string]string{"owner": s.ownerID, "other": s.otherID}
+	for _, spec := range specs {
+		expenseID := seedID(scenarioName, "expense", spec.key)
+		var payer *string
+		if id, ok := person[spec.payer]; ok {
+			payer = ptr(id)
+		}
+		if _, err := s.store.CreateExpense(s.ctx, db.CreateExpenseParams{
+			ID:          expenseID,
+			TripID:      tripID,
+			Title:       spec.title,
+			AmountMinor: spec.amount,
+			SpentOn:     day(baseDate, spec.dayOff),
+			PayerUserID: payer,
+			CreatedAt:   now,
+		}); err != nil {
+			return fmt.Errorf("create expense %s: %w", spec.key, err)
+		}
+		// No share rows means everyone on the trip, so the common case writes
+		// nothing at all -- see migration 0012.
+		for _, who := range spec.shares {
+			id, ok := person[who]
+			if !ok {
+				return fmt.Errorf("expense %s: unknown share %q", spec.key, who)
+			}
+			if err := s.store.CreateExpenseShare(s.ctx, expenseID, id); err != nil {
+				return fmt.Errorf("share expense %s with %s: %w", spec.key, who, err)
+			}
+		}
+	}
+	return nil
+}
+
 // addMember puts `other` on a trip, so the UI suite has a real shared trip to
 // drive rather than having to create one itself — and so the trips list shows
 // both a shared card and owned ones side by side.

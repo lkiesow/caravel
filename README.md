@@ -118,6 +118,33 @@ answers with what it found.
 
 The effective values are printed at startup when the assistant is enabled.
 
+## Expenses
+
+Each trip has an Expenses tab: what something cost, who paid, and who it was
+for. There is nothing to configure.
+
+**One currency per trip**, chosen when you create it and changeable in the trip
+settings (EUR by default). Every amount is stored as a whole number of the
+currency's smallest unit — cents for EUR, whole yen for JPY — so nothing is ever
+a fraction of a cent out. Changing a trip's currency does **not** convert the
+amounts already recorded, so a foreign-currency purchase is best entered as the
+converted amount.
+
+**Every expense on a trip is visible to everyone on it**, including viewers.
+There is deliberately no private expense: hidden rows in a shared ledger make an
+incorrect total look correct.
+
+On a trip you are sharing, an expense also records **who paid** and **who it was
+for**. By default it is split evenly between everybody; unticking "Split with
+everyone" lets you pin it to some of them, and rows split that way say so, so
+the totals can be followed back to the expenses they came from. From that,
+Caravel works out where everyone stands and suggests a short set of payments
+that settles up. An expense nobody is recorded as having paid is left out of
+those balances and reported separately, rather than being split between people
+who may not owe it.
+
+Nothing here marks a debt as paid — the settle-up list is advice, not a record.
+
 ## Database
 
 SQLite is the zero-config default — nothing to install, the file is created

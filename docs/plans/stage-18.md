@@ -656,6 +656,50 @@ Milestone 3 — against a database it migrated to version 1 with 19 tables.
   `docker buildx build` and the YAML's validity. The first push to `main`
   confirms the rest, and that is the accepted risk.
 
+**Done.** `.github/workflows/publish-docker-image.yaml`, modelled on
+`lkiesow/audiobook-notifier`'s workflow of the same name — its actual contents
+were read rather than recalled — with three deliberate differences: narrower
+triggers (main, `v*` tags, `workflow_dispatch`, where the model builds on every
+push, because a branch push producing a near-`latest` image publishes something
+nobody reviewed), two architectures, and the `VERSION` build argument the health
+endpoint needs. Tags are `latest` on the default branch only, the short SHA
+always, and semver on a tag. `ghcr.io/${{ github.repository }}` resolves to the
+image both compose files already name.
+
+**The Dockerfile changed too, and this is the part worth keeping.** It now
+cross-compiles instead of emulating: the build stage is pinned to
+`--platform=$BUILDPLATFORM` and passes `TARGETOS`/`TARGETARCH` to `go build`. An
+emulated arm64 `go build` under QEMU takes minutes; this takes as long as any
+other build, and QEMU is then only needed for the runtime layer. That is
+available to a Go program and not to most languages, so it is worth stating
+rather than assuming.
+
+Verified locally, which turned out to cover more than the plan expected:
+
+- The arm64 image contains a genuine `ELF 64-bit ARM aarch64, statically linked`
+  binary, and — since this machine has `qemu-aarch64` registered — it **runs**:
+  the emulated container answers `/api/health` with its stamped version. That is
+  a real check of the foreign-architecture image, not an inspection of metadata.
+- One `podman build --platform linux/amd64,linux/arm64 --manifest` produces a
+  single OCI image index listing both platforms, which is what
+  `build-push-action` does with `platforms:`.
+- The amd64 image still runs and reports healthy after the cross-compile change.
+- `yamllint` clean, and a structural check on the workflow: triggers, exactly
+  `contents: read` / `packages: write`, both platforms, `push: true`, the
+  `VERSION` argument wired to the resolved tag, the layer cache, `latest` gated
+  on the default branch, no secret beyond `GITHUB_TOKEN`, and the image name
+  matching the compose files.
+
+**Still unverified, as the plan predicted:** that the push itself succeeds —
+authentication, package visibility, and whether the repository's Actions settings
+permit `packages: write`. The first run on `main` settles it. Two things to
+expect there: GHCR packages are **private by default**, so the package's
+visibility has to be set to public once (a click in the repository's package
+settings, not something a workflow can do), and until then `docker compose pull`
+keeps failing with the same bare `403 Forbidden` an unpublished image gives.
+The README and both compose files now describe that symptom rather than saying
+"not published yet", since that phrasing would go stale the moment this lands.
+
 ## 9. The site: Zensical, GitHub Pages, and the hero landing page
 
 Structure first, content in Milestone 10.

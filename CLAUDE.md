@@ -133,6 +133,12 @@ check, i18n key parity, `go test`. Don't rely on CI to catch it first.
   healthcheck runs, and `podman logs` rather than `exec` is how you see what a
   container is doing.
 
+  The Dockerfile **cross-compiles** rather than emulating: the build stage is
+  pinned to `$BUILDPLATFORM` and passes `TARGETARCH` to `go build`, so an arm64
+  image builds at native speed. Both architectures at once, locally:
+  `podman build --platform linux/amd64,linux/arm64 --manifest caravel:multi .`
+  (docker uses `buildx build --platform ...`, which is what CI does).
+
 - **Brand assets are generated, not hand-edited.** Two scripts own them, both
   run by hand with committed output (like the icon sprite below):
 

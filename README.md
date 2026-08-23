@@ -17,8 +17,9 @@ docker compose up -d
 Then open [http://localhost:8080](http://localhost:8080) and register — a fresh
 instance with no accounts always allows the first one, and it becomes the admin.
 Use `docker-compose.postgres.yml` instead to run against Postgres rather than
-SQLite. (Until the first image is published, add `--build` and uncomment the
-`build:` line, or the pull fails with a bare `403 Forbidden`.)
+SQLite. (If the pull fails with `403 Forbidden`, no image has been published for
+this repository yet — uncomment the `build:` line and add `--build` to build it
+from the checkout.)
 
 From source, which is also the development path:
 

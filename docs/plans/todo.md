@@ -375,12 +375,13 @@ down.
 Nothing here is needed to keep developing; all of it is needed before anyone
 else runs this.
 
-- **An image-publishing workflow.** **(soon)** (Stage 18 Milestone 7 landed the
-  Dockerfile; publishing is Milestone 8 of the same stage, so this entry should
-  be deleted when that lands.) The image builds and runs -- 23.6 MB, distroless,
-  non-root, verified end to end with both compose files -- but nothing pushes it
-  anywhere, so `ghcr.io/lkiesow/caravel:latest` still 403s and both compose
-  files need `build: .` uncommented to work from a clone.
+- **The published image needs to be made public, once.** **(soon)** (Stage 18
+  Milestone 8.) GHCR packages are private by default, and no workflow can change
+  that: after the first successful publish, the package's visibility has to be
+  switched to public by hand in the repository's package settings. Until then an
+  anonymous `docker compose pull` fails with the same bare `403 Forbidden` that
+  an unpublished image gives, which is indistinguishable from "the workflow never
+  ran". Worth checking the first time somebody who is not the owner tries to pull.
 
 - **`HEALTHCHECK` is invisible to a podman build.** (Stage 18 Milestone 7.)
   `podman build` defaults to the OCI image format, which has no HEALTHCHECK

@@ -6,7 +6,11 @@
 # Both work; nothing here is BuildKit-specific. The compose files pass the same
 # argument, and the publishing workflow passes the resolved tag.
 
-FROM golang:1.26 AS build
+# --platform=$BUILDPLATFORM pins the build stage to the *builder's* architecture
+# and cross-compiles from there, rather than emulating the target. For a Go
+# binary that is a large difference: an emulated arm64 `go build` under QEMU
+# takes minutes, and this takes as long as any other build.
+FROM --platform=$BUILDPLATFORM golang:1.26 AS build
 
 WORKDIR /src
 
@@ -22,10 +26,16 @@ COPY . .
 # would honestly but uselessly call itself "unknown".
 ARG VERSION=unknown
 
+# Supplied by the builder for each requested platform. Defaulted so a plain
+# `docker build` with no platform flag still works.
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+
 # CGO off because modernc.org/sqlite is pure Go: the result is a static binary
-# that runs on a distroless base with no libc at all. -w -s drop DWARF and the
-# symbol table, which this binary has no use for in production.
-RUN CGO_ENABLED=0 GOOS=linux go build \
+# that runs on a distroless base with no libc at all, and cross-compiles without
+# a toolchain per architecture. -w -s drop DWARF and the symbol table, which
+# this binary has no use for in production.
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
         -ldflags "-w -s -X caravel/internal/buildinfo.Version=${VERSION}" \
         -o /caravel ./cmd/caravel
 

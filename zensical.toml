@@ -25,7 +25,20 @@ copyright = "Caravel is free software under the terms in the repository."
 # in the navigation -- so a new page needs a line adding.
 nav = [
   { "Home" = "index.md" },
-  { Install = "install.md" },
+  { "Getting started" = [
+    { Install = "getting-started/install.md" },
+    { "First run" = "getting-started/first-run.md" },
+  ] },
+  { Configuration = [
+    { "Server and database" = "configuration/server.md" },
+    { "The assistant" = "configuration/assistant.md" },
+    { "Address search" = "configuration/address-search.md" },
+  ] },
+  { "Running it" = [
+    { "Backup and restore" = "running/backup.md" },
+    { Upgrading = "running/upgrading.md" },
+    { "Behind a reverse proxy" = "running/reverse-proxy.md" },
+  ] },
 ]
 
 extra_css = ["assets/stylesheets/brand.css"]

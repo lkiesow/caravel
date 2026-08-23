@@ -690,15 +690,20 @@ Verified locally, which turned out to cover more than the plan expected:
   on the default branch, no secret beyond `GITHUB_TOKEN`, and the image name
   matching the compose files.
 
-**Still unverified, as the plan predicted:** that the push itself succeeds —
-authentication, package visibility, and whether the repository's Actions settings
-permit `packages: write`. The first run on `main` settles it. Two things to
-expect there: GHCR packages are **private by default**, so the package's
-visibility has to be set to public once (a click in the repository's package
-settings, not something a workflow can do), and until then `docker compose pull`
-keeps failing with the same bare `403 Forbidden` an unpublished image gives.
-The README and both compose files now describe that symptom rather than saying
-"not published yet", since that phrasing would go stale the moment this lands.
+**Was still unverified at the time, as the plan predicted:** that the push
+itself succeeds — authentication, package visibility, and whether the
+repository's Actions settings permit `packages: write`.
+
+*Settled during Milestone 10, and it all works.* Walking the install page from a
+clean clone pulled `ghcr.io/lkiesow/caravel:latest` successfully. Checked
+directly against the registry with an **anonymous** token: the manifest reads
+`200`, the tag list is `latest`, `sha-34b7f67`, `sha-65a5afb`, and the index
+lists `linux/amd64` and `linux/arm64`. So the workflow authenticated and pushed
+on both pushes to `main`, the multi-arch index is real rather than inferred from
+a local build, and the package is publicly readable — the manual visibility
+switch this paragraph warned about was either unnecessary or already done. The
+`403 Forbidden` wording in the README was therefore stale and has been replaced
+with what is actually true.
 
 ## 9. The site: Zensical, GitHub Pages, and the hero landing page
 
@@ -841,10 +846,11 @@ filled primary is 5.2 in both. All above 4.5. Worth recording that a first pass
 at this reported 1.07 for the secondary button and was wrong — it was reading a
 colour mid-way through my own 120ms transition, not a real defect.
 
-*Not verifiable here.* Whether GitHub Pages actually deploys. Pages has to be
-enabled once by hand for the repository, with the source set to GitHub Actions —
-no workflow can do that — and until it is, the deploy step fails. The first push
-to `main` settles it.
+*Settled during Milestone 10.* Pages was enabled and the site is live:
+<https://lkiesow.github.io/caravel/> answers 200 with the title this milestone's
+`htmltitle` override produces, the hero markup is in the response, and
+`/install/` — the path as of this milestone — answers 200 too. So the workflow
+authenticates, builds and deploys.
 
 ## 10. The reference documentation
 
@@ -877,6 +883,104 @@ copied from the README, which may already have drifted.
 **Verify:** follow the install page literally, from a clean clone in a scratch
 directory, on both compose files — a page nobody walked through is a guess. The
 build stays clean and the nav has no orphans.
+
+**Done.** Nine pages under `docs/`, in three nav sections, and a README cut from
+253 lines to 70.
+
+*Structure*, per the checkpoint asked before writing: **Getting started**
+(Install, First run), **Configuration** (Server and database, The assistant,
+Address search), **Running it** (Backup and restore, Upgrading, Behind a reverse
+proxy). Grouped rather than flat because Milestone 11's feature tour becomes a
+fourth section instead of eight more top-level entries. `docs/install.md` moved
+to `docs/getting-started/install.md` and the landing page's primary button
+followed.
+
+*The README* slimmed to a front door: banner, what it is, the one-command quick
+start, a link to the site, the development targets, a short architecture note.
+Everything reference-shaped now lives in exactly one place. That was the point —
+the drift this stage already found once (a `CARAVEL_OPEN_SIGNUP` documented for
+four stages after it was deleted) is what two copies of a config table buys you.
+
+*Written from the code, and that mattered five times.*
+1. **The plan's own First-run bullet was wrong.** It said to set
+   `CARAVEL_OPEN_SIGNUP=true`, register, set it `false`. That variable survives
+   only inside a comment in `internal/httpapi/settings.go` explaining its own
+   removal. The real mechanism is `registrationAllowed`: the setting lives in
+   `app_settings`, and a fresh instance with **zero users** allows a
+   registration regardless, so a new deployment cannot be bricked behind its own
+   default.
+2. **The screen is "Administration", not "Settings → Instance"** as my first
+   draft said, it is reached from the user menu, and there are **three** ways to
+   let somebody in, not two — the draft missed *Add an account*, which needs
+   nothing switched on and is the most controlled route. Labels taken from
+   `web/locales/en.json` and `admin-page.js` rather than invented.
+3. **The reverse-proxy page's headline fact is one convention gets wrong.**
+   `clientIP` reads `RemoteAddr` only and never `X-Forwarded-For`, so behind a
+   proxy all three per-address rate limiters (login 10/min, geocode 20/min,
+   assist 6/min) become instance-wide. That is documented as a table of what
+   each limit means with and without a proxy. `X-Forwarded-Proto` *is* honoured,
+   and only ever adds `Secure` to the cookie, never removes it.
+4. **The assistant's rate-limit explanation was muddled in my first draft** —
+   I wrote that the per-address limit "does not see ten browser tabs as ten
+   clients", which reads as a loophole when it is the opposite. The real point
+   is that per-address means ten people on ten addresses get ten allowances, so
+   `CARAVEL_ASSIST_MAX_CONCURRENT` is the only thing that caps a bill.
+5. **"A sub-path is not supported" was checked before claiming it**: every asset
+   in `index.html` is an absolute root path, the service worker registers at
+   `/sw.js`, and the router matches raw `window.location.pathname` with no base
+   prefix. True, and now true on the evidence rather than by convention.
+
+Every number was checked against its source rather than copied from the README:
+the eight assist limits against `assist.DefaultLimits()` and
+`DefaultAssistRateLimit`/`DefaultAssistMaxConcurrent`, the limiter windows
+against `NewRouter`, the upload caps (50 MB documents, 15 MB images) against
+`files.go` and `media.go`, and the security headers against `securityHeaders`
+— which also confirmed there is **no** HSTS and **no** CSP, so the page says so
+and puts HSTS at the proxy where it belongs.
+
+*`scripts/check_env_vars.py` had to move with the docs*, and then caught me.
+Its contract was "every `CARAVEL_*` the app reads is documented in `README.md`",
+which broke the moment the tables left. It now gathers the documented set from
+`README.md` **and** every page under `docs/`. It then failed on my own first-run
+page, which names `CARAVEL_OPEN_SIGNUP` in backticks in order to say it is gone —
+the same deliberate mention the compose files get away with by having their
+comments stripped. Rather than un-backticking a variable name, there is now a
+one-name `DOCUMENTED_AS_REMOVED` set with a comment saying that the
+"documented but never read" half of the check is off for those names only, and
+that deleting an entry is how it comes back on.
+
+*Walked literally, from a clean clone, on both compose files* — which is the
+verification the plan insisted on, and it earned its keep. `git clone` into a
+scratch directory, then `podman compose up -d`: pulled and answered
+`{"status":"ok","version":"latest"}`. Then the first-run page's claims, each
+checked rather than assumed: the login screen offers **"Create one"** (the exact
+label the page tells the reader to press), the first registration returns 200,
+that account comes back `is_admin: true`, registration closes behind it
+(`open_signup: false`), a second registration is refused **403**, and the
+Administration screen's headings are exactly `Administration` / `Accounts` /
+`Add an account` / `Registration` with the toggle reading "Anyone can register an
+account". Then `podman compose -f docker-compose.postgres.yml up -d`: healthy,
+first registration 200, and the `pg_dump` command from the backup page run
+verbatim — 1011 lines, 19 `CREATE TABLE`s, the new user in it. Torn down with
+no leftover containers or volumes.
+
+**The walkthrough caught a bad backup recipe, which is the best possible thing
+for it to have caught.** My first draft hardcoded `-v caravel_data:/data`. The
+real volumes are `walkthrough_caravel-data` — hyphen, not underscore, and
+prefixed with the compose project — so a reader copy-pasting it would have got
+two *newly created empty* volumes and an archive of nothing, reporting success.
+A backup doc that silently backs up nothing is the worst version of wrong. The
+page now says to run `docker volume ls` first, and explains the prefix. The
+recipe was then rewritten again after testing: writing the archive through a
+second bind mount works on Docker but fails under rootless Podman
+(`Permission denied`, user-namespace mapping), so it now tars to **stdout** and
+lets the caller's shell redirect — no host mount, works on both. Restore
+direction included. Both commands were run.
+
+*Verified.* `make ci` green (including the rewritten `check_env_vars.py`),
+`zensical build --clean --strict` clean with no orphaned nav entries. Plus the
+two open questions from earlier milestones settled — see the added notes on
+Milestones 8 and 9.
 
 ## 11. The feature tour, and finish the backlog
 

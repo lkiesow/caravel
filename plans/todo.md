@@ -375,14 +375,6 @@ down.
 Nothing here is needed to keep developing; all of it is needed before anyone
 else runs this.
 
-- **The published image needs to be made public, once.** **(soon)** (Stage 18
-  Milestone 8.) GHCR packages are private by default, and no workflow can change
-  that: after the first successful publish, the package's visibility has to be
-  switched to public by hand in the repository's package settings. Until then an
-  anonymous `docker compose pull` fails with the same bare `403 Forbidden` that
-  an unpublished image gives, which is indistinguishable from "the workflow never
-  ran". Worth checking the first time somebody who is not the owner tries to pull.
-
 - **`HEALTHCHECK` is invisible to a podman build.** (Stage 18 Milestone 7.)
   `podman build` defaults to the OCI image format, which has no HEALTHCHECK
   instruction, so it drops ours with a warning nobody reads in the middle of a
@@ -403,12 +395,14 @@ else runs this.
   review), or leaving it to judgement. Worth deciding before the first release
   rather than after.
 
-- **GitHub Pages has to be enabled by hand, once.** **(soon)** (Stage 18
-  Milestone 9.) `.github/workflows/docs.yml` builds and deploys the site, but
-  Pages must be switched on for the repository with the source set to *GitHub
-  Actions* -- no workflow can do that for itself, and until it is done the
-  deploy step fails while the build passes. Remove this entry once the live URL
-  answers.
+- **`auth.SetPassword`'s doc comment is wrong.** (Stage 18 Milestone 10.) It
+  says the function is "deliberately not reachable from any HTTP route" and that
+  it exists for `cmd/seed` -- but `handleAdminResetPassword` calls it, which is
+  how an admin resets somebody's password. The behaviour is right and
+  deliberate (an admin reset leaves sessions alone, unlike a self-service
+  change, and `admin.resetPasswordPrompt` tells the admin so); only the comment
+  is stale, and it is the kind of comment somebody trusts when reasoning about
+  session invalidation. One-line fix.
 
 - **The Zensical pin needs periodic review, in two files.** (Stage 18 Milestone
   9.) `zensical==0.0.57` is pinned in `.github/workflows/docs.yml` and in

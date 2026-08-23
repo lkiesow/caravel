@@ -249,7 +249,14 @@ more). The first is fixed by dropping the compensation, the second by adding
 `.app-brand` to the narrow-viewport tap-target rule.
 
 Verified: `make ci` green; the full UI suite green (105 passed, 3 skipped — the
-skips are `assist.spec.js`, which needs the assistant configured); new
+skips are `assist.spec.js`, which needs the assistant configured). One process
+note, since it produced a false report before it was understood: two of those
+suite runs were launched concurrently against the same dev server, and four
+tests failed as a result — both `settings.spec.js` language cases, which mutate
+and restore the seeded `other` account. They pass in isolation and the clean
+serial run is green, but the first report of "green" was made from a run that
+had a second run interfering with it, which is not evidence. Recorded in
+`todo.md`. New
 `tests/ui/brand.spec.js` cases covering both themes (one `h1` and it is the
 hero's, the form's title an `h2`, both marks `aria-hidden`, Montserrat actually
 computed on the headline and wordmark, the watermark's mask present and its

@@ -287,6 +287,18 @@ down.
   poking at by hand and point people at it. The middle one is probably the
   right size.
 
+  **Two concurrent suite runs do it to each other, too** (Stage 18 Milestone 2).
+  Running `make test-ui` twice at once against one dev server made four tests
+  fail -- both `settings.spec.js` language cases, which change the seeded
+  `other` account and then restore it, so the two runs each saw the other's
+  half-finished state. Same failure shape as a person poking at a seeded trip,
+  same misleading report: the named failures pass in isolation, and the run that
+  loses the race looks like a regression in code that is fine. The run times
+  gave it away -- 4.1 and 4.5 minutes overlapping against 2.0 minutes alone.
+  Whatever gets built for the entry above should also refuse to start when
+  another run is already in progress, which is a lock file rather than a seed
+  check.
+
   **It happened again in Stage 17**, and the shape is worth recording because it
   was not extra locations this time: `file row overflow menu` failed because the
   seeded `cascade` trip had gained *members* -- a stray `pwtest` and a stray

@@ -20,9 +20,15 @@ import (
 )
 
 func init() {
-	// Go's mime package doesn't know this extension, so http.FileServer
-	// would otherwise serve manifest.webmanifest as text/plain.
+	// Go's mime package doesn't know these extensions, so http.FileServer
+	// would otherwise serve manifest.webmanifest as text/plain and the brand
+	// fonts as application/octet-stream. Note that a developer machine will not
+	// show the woff2 omission: mime falls back to the system /etc/mime.types,
+	// which has the entry. A distroless container has no such file, so the
+	// built image is the only place it would have broken - which also means
+	// tests/ui/brand.spec.js cannot prove this line matters, and says so.
 	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
+	_ = mime.AddExtensionType(".woff2", "font/woff2")
 }
 
 type Server struct {

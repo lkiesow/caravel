@@ -1,12 +1,12 @@
 {
   "name": "Caravel",
   "short_name": "Caravel",
-  "description": "Plan trips: locations, stays, transport, maps, and itineraries.",
+  "description": "Self-hosted trip planning that keeps the map, the plan and the group in sync.",
   "start_url": "/trips",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#2563eb",
+  "background_color": "#faf7f2",
+  "theme_color": "#23304f",
   "icons": [
     { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },

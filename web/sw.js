@@ -5,9 +5,19 @@
 //
 // Bump this on any static-asset change you want clients to pick up
 // immediately; old caches are dropped on activate.
-const CACHE_VERSION = "caravel-shell-v2";
+const CACHE_VERSION = "caravel-shell-v3";
 
-const SHELL_URLS = ["/", "/index.html", "/css/base.css", "/manifest.webmanifest"];
+// The brand face is in the shell rather than left to runtime population: it
+// is in the first paint, so an offline load without it shows the fallback and
+// reflows once the cache warms.
+const SHELL_URLS = [
+  "/",
+  "/index.html",
+  "/css/base.css",
+  "/manifest.webmanifest",
+  "/fonts/montserrat-500.woff2",
+  "/fonts/montserrat-700.woff2",
+];
 
 // Dev mode (CARAVEL_WEB_DIR) serves static files with a no-cache header
 // specifically so live-reload works; honor that here too, or the service

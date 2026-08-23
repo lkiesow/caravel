@@ -125,6 +125,55 @@ sail (check the maskable one in Chromium's app-install preview, where a bad safe
 area actually shows); a Playwright assertion that
 `getComputedStyle(header).fontFamily` resolves to the brand stack.
 
+**Done.** The asset set is in the tree and `logo/` is gone. Two deviations from
+the plan, both deliberate:
+
+- **The icons are generated, not copied.** `scripts/gen_icons.py` already
+  existed (it drew the placeholder mountain-and-sun set), so instead of dropping
+  in the pre-rendered PNGs it now owns the mark's two paths and derives every
+  size plus `web/icons/favicon.svg` from them. That answered the maskable
+  question the plan flagged: the brand's own app icon puts the mark's enclosing
+  circle at ~0.39 of the width, which a circular Android mask *would* clip, so
+  the script takes an `ink_radius_ratio` per output and the maskable icon uses
+  0.29 against a 0.40 safe radius. Verified by circle-cropping the result.
+- **The editable SVG originals were kept** under `docs/assets/brand/src/` rather
+  than discarded with `logo/`. Their wordmarks are live `<text>`, so they are
+  the only way to change the words later; the PNGs beside them are renders.
+  `app-icon-blue` is kept as the drawn alternative it is.
+
+Fonts: `scripts/gen_brand_fonts.py` subsets the distribution's OFL Montserrat
+(500 and 700) to latin + latin-ext plus the punctuation the copy uses, 17 KiB
+each, with `web/fonts/OFL.txt` beside them. No network needed to rebuild them.
+Tokens landed as planned, plus one the plan did not name: `--brand-ink`, which
+resolves to navy on light and the lightened navy on dark, so callers never pick
+between the two (the same shape as `--color-danger` / `--color-danger-fg`).
+
+Two things found on the way that were not in the plan. **`.woff2` has no entry
+in Go's MIME table**, so `http.FileServer` would serve the fonts as
+`application/octet-stream`; `router.go` now registers it beside the
+`.webmanifest` line. Note honestly what is *not* proven: a developer machine has
+`/etc/mime.types`, from which Go picks the type up anyway, so the new assertion
+passes with or without that line and only the container will show the
+difference — Milestone 7 has to check it there. And the app's **description had
+drifted into three copies**; all three now carry the brand's own sub-line, with
+a test that they agree.
+
+App chrome was the milestone's one open preference, and was chosen from a
+rendered comparison rather than described: navy `#23304F` for `theme-color` and
+`theme_color`, cream `#FAF7F2` for the splash, so an installed app frames like
+the tile it launched from. `#2563eb` stays the in-app accent.
+
+Verified by `make ci` (green), and by a new `tests/ui/brand.spec.js`: every
+icon, card and font served with the right content type; the 700 face loading
+from this instance and measuring differently from the fallback for
+`CARAVEL Größe – „quotes“` (which proves the *subset's* coverage in a browser,
+not just in fontTools); `--brand-ink` changing with the theme; the two chrome
+colours agreeing across `index.html` and the manifest; and zero off-origin
+requests on the login screen. Also confirmed by hand that `/fonts/`, `/brand/`
+and `/icons/` are served with correct types by the running server, and that the
+service worker's `CACHE_VERSION` bump ships the changed assets to existing
+clients.
+
 ## 2. The app header and a branded login screen
 
 The mockups, made real. Both themes, and 324×756 as well as desktop.

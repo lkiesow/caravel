@@ -1,3 +1,28 @@
+/* The brand face, self-hosted rather than loaded from a font CDN: this app is
+   self-hosted, has to work offline, and should not make every instance
+   announce every page load to a third party. The files are a latin +
+   latin-ext subset of the OFL Montserrat build, ~17 KiB each -- see
+   scripts/gen_brand_fonts.py, which owns the coverage, and web/fonts/OFL.txt.
+
+   font-display: swap, so a slow or blocked font shows the fallback stack
+   rather than nothing: the app is entirely readable in system-ui, only less
+   itself. */
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/montserrat-500.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/montserrat-700.woff2") format("woff2");
+}
+
 :root {
   --color-bg: #ffffff;
   --color-surface: #f4f4f5;
@@ -28,6 +53,29 @@
      describing a thing. Same alpha as the danger tint for the same reason:
      faint enough that the text on it carries the meaning. */
   --color-accent-tint: rgba(37, 99, 235, 0.08);
+
+  /* The brand palette, from docs/assets/brand/README.md. Kept beside the UI
+     palette rather than folded into it: these are the mark's colours and the
+     colours of the surfaces that carry the mark (the header, the login hero),
+     while --color-* above dresses the app itself. Note what is *not*
+     duplicated here -- the brand's app blue is #2563EB, which is already
+     --color-accent, so the accent has one name and not two.
+
+     --brand-navy is the ink on light grounds; --brand-navy-light is the same
+     ink lightened for dark ones, where navy on near-black is unreadable. */
+  --brand-navy: #23304f;
+  --brand-navy-light: #5470a8;
+  --brand-cream: #faf7f2;
+  /* The mark's colour *as used*, resolved per theme, so a caller says "brand
+     ink" and never picks between the two above -- the same split, and for the
+     same reason, as --color-danger / --color-danger-fg. */
+  --brand-ink: var(--brand-navy);
+
+  /* The wordmark and the display headings. Montserrat is a geometric sans and
+     the fallback is not, so a swap is visible -- which is the intended
+     trade against a blocking load. Body text keeps the system stack (see
+     `body` below): the brand face is for the places that are *branding*. */
+  --font-brand: "Montserrat", system-ui, -apple-system, "Segoe UI", sans-serif;
 
   --radius: 0.375rem;
   --radius-lg: 0.5rem;
@@ -60,6 +108,9 @@
   --color-danger-tint: rgba(248, 113, 113, 0.14);
   /* Stronger than light mode's, for the same reason as the danger tint. */
   --color-accent-tint: rgba(96, 165, 250, 0.14);
+  /* Navy on near-black is unreadable; the brand's own dark-ground ink is the
+     lightened one, which is what the dark lockups use. */
+  --brand-ink: var(--brand-navy-light);
   /* Native widgets the app doesn't paint itself - scrollbars, date pickers,
      the file-input button - follow this rather than the OS, which is the whole
      point of an in-app override. */

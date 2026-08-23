@@ -1,4 +1,6 @@
-# Caravel
+<p align="center">
+  <img src="docs/assets/brand/readme-banner.png" alt="Caravel — explore the world" width="820" />
+</p>
 
 Caravel is a self-hosted trip planner: create a trip, fill it with locations
 to visit, places to stay, and transportation, lay them out on a map, build a

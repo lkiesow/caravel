@@ -209,6 +209,17 @@ down.
   is what the rest of that person's computer does, and someone reading a German
   UI may still want their own separators.
 
+- **The social card is committed twice.** (Stage 18 Milestone 1.) The same
+  1200x630 PNG lives at `web/brand/og-card.png`, because the app's `og:image`
+  has to be served by the app, and at `docs/assets/brand/og-card.png`, because
+  the documentation site and the README consume it as an image. ~100 KiB of
+  duplicate bytes is not the problem; drift is -- regenerate one from
+  `docs/assets/brand/src/og-card.svg` and the other silently stays old. Options:
+  serve the docs copy from the site and let the app point at it (no, an instance
+  must not depend on an external host), have the build copy one to the other (no
+  build step for `web/` today), or accept it and document the pairing where the
+  regeneration recipe lives.
+
 - **A rendered note has no shared styling between the two places it appears.**
   (Stage 15 Milestone 3.) The editor's preview and the view page produce
   identical HTML — both from `renderNotesHTML` — but sit in different containers:

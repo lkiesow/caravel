@@ -4,12 +4,33 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Caravel</title>
-  <meta name="description" content="Plan trips: locations, stays, transport, maps, and itineraries." />
-  <meta name="theme-color" content="#2563eb" />
+  <meta name="description" content="Self-hosted trip planning that keeps the map, the plan and the group in sync." />
+  <!-- The brand navy, not the accent: this paints the OS-drawn chrome of an
+       installed app, which should look like the icon tile it launched from.
+       #2563eb stays the *in-app* accent (--color-accent) - see base.css. Keep
+       this in step with theme_color in manifest.webmanifest. -->
+  <meta name="theme-color" content="#23304f" />
   <link rel="manifest" href="/manifest.webmanifest" />
+  <!-- The SVG favicon first: every current browser prefers it and stays sharp
+       on a hidpi tab strip, and the PNGs remain for the ones that don't. All
+       three come out of scripts/gen_icons.py. -->
+  <link rel="icon" type="image/svg+xml" href="/icons/favicon.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
   <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16.png" />
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+  <!-- Social preview. A link to an instance previewed as nothing at all before
+       this; the card is a committed PNG because scrapers reject SVG. The URL is
+       relative on purpose - an instance has no idea what hostname it is
+       reached under, and every scraper resolves it against the page. -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Caravel" />
+  <meta property="og:description" content="Self-hosted trip planning that keeps the map, the plan and the group in sync." />
+  <meta property="og:image" content="/brand/og-card.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <!-- Preloaded rather than left to the CSS: the wordmark is in the first
+       paint, and discovering the face only after base.css parses is a visible
+       swap on every load. -->
+  <link rel="preload" href="/fonts/montserrat-700.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="/css/base.css" />
   <!-- Applied here, before the first paint, so a dark-themed app never flashes
        white while /js/app.js loads. web/js/theme.js owns the same rule and is

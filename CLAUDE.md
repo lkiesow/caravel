@@ -114,6 +114,22 @@ check, i18n key parity, `go test`. Don't rely on CI to catch it first.
   for churn — an unsubstituted `sqlc.arg(...)` compiles fine and fails at
   runtime.
 
+- **Brand assets are generated, not hand-edited.** Two scripts own them, both
+  run by hand with committed output (like the icon sprite below):
+
+  ```
+  python3 scripts/gen_icons.py         # web/icons/ - favicons, PWA, maskable
+  python3 scripts/gen_brand_fonts.py   # web/fonts/ - the Montserrat subset
+  ```
+
+  `gen_icons.py` holds the mark's two paths and the safe-area arithmetic, so
+  every raster size and `web/icons/favicon.svg` come from one source; it needs
+  `cairosvg`. `gen_brand_fonts.py` subsets the distribution's OFL Montserrat
+  (`julietaula-montserrat-fonts` on Fedora) and needs `fonttools[woff]`. A
+  static-asset change also wants `CACHE_VERSION` in `web/sw.js` bumped, or
+  clients keep the old files. The rules for using the assets (palette, clear
+  space, minimum sizes, PNG-vs-SVG) live in `docs/assets/brand/README.md`.
+
 - **Adding a new icon.** Icons come from a committed sprite
   (`web/icons/lucide-sprite.svg`), not a runtime dependency. Add the
   name to the `ICONS` list in `scripts/gen_icon_sprite.py`, then:

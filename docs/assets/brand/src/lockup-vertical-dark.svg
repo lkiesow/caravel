@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 300" width="420" height="300" role="img" aria-label="Caravel — Explore the World">
+  
+  <rect width="420" height="300" fill="#0E0E12"></rect>
+  <g transform="translate(154 34) scale(1.75)"><path d="M43.2 4C31.4 14.8 21.4 31 14.6 50.4L39 40.6C42.2 28.6 43.6 15.4 43.2 4Z" fill="#5470A8"></path>
+  <path d="M27.4 46.6 60.8 37.9 41.2 60.8 27.4 46.6Z" fill="#5470A8" opacity=".72"></path></g>
+  <text x="210" y="222" text-anchor="middle" font-family="Montserrat, sans-serif" font-weight="700" font-size="46" letter-spacing="7.8" fill="#F2F1EE">CARAVEL</text>
+  <text x="212" y="256" text-anchor="middle" font-family="Montserrat, sans-serif" font-weight="500" font-size="16" letter-spacing="3.8" fill="#8E8E9A">EXPLORE THE WORLD</text>
+</svg>

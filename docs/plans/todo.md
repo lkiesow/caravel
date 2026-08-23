@@ -321,16 +321,6 @@ down.
   project scoped to gesture/mobile specs**, not a second full run of the sweeps —
   those are about markup and CSS, where a second engine mostly buys duplicate
   failures and doubles the CI job.
-- **The Postgres dialect runs locally, but not in CI.** **(soon)** (Stage 18
-  Milestone 3 built the harness; the CI job is Milestone 5 of the same stage, so
-  this entry should be deleted when that lands -- it is here in case it does
-  not.) `internal/dbtest` takes the dialect from `CARAVEL_TEST_DB_DRIVER` and
-  `make test-postgres` runs the whole suite against a container, which is what
-  found the two real bugs that stage records. What is still missing is anything
-  that runs it *automatically*: a green PR still says nothing about Postgres.
-  Note also that the seeder and the dev server remain SQLite-only, so no
-  *manual* testing has ever exercised the other dialect -- only `go test` has.
-
 - **Contrast is measured but not asserted.** `tests/ui/contrast.js` reports
   ratios and has a `--min` flag, but nothing runs it in CI, so a regression like
   Stage 07's 2.54:1 primary button would only be found by someone running it.
@@ -396,13 +386,14 @@ else runs this.
   working path.
 
 - **Squash the migrations before the first real release.** **(soon)** There are
-  now **ten** files per dialect (`0001_init` through `0010_add_checklist_visibility`,
+  now **twelve** files per dialect (`0001_init` through `0012_add_expense_shares`,
   in both `internal/db/migrations/sqlite/` and `.../postgres/`). Since nobody has
   deployed this yet, collapsing them into a single `0001_init` is safe — and
   stops being safe the moment someone has, which is why it wants doing before the
-  Docker images above are actually published. Pairs naturally with the Postgres
-  CI job: squashing while nothing ever runs the Postgres dialect means
-  hand-writing one large untested `0001_init` for it.
+  Docker images above are actually published. Now cheaper than when this was
+  written: Stage 18 Milestones 3 and 5 mean the Postgres `0001_init` can be
+  *executed* rather than hand-written and hoped for, both locally
+  (`make test-postgres`) and on every PR.
 - **S3-compatible object storage.** Swap the `internal/storagefs` `Blob`
   implementation from local filesystem to S3-compatible (MinIO, Backblaze, and
   so on); the interface already isolates callers from the backend.

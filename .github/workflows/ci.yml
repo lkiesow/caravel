@@ -30,6 +30,76 @@ jobs:
       - name: Test
         run: go test ./...
 
+  # The same Go tests, against Postgres instead of SQLite.
+  #
+  # Its own job for the same reason as `ui` below: a database service is more
+  # ways to fail than the fast `ci` job should carry, and a broken container
+  # must not be able to mask a Go regression.
+  #
+  # Why it exists at all: sqlc emits both dialects and internal/db has a
+  # hand-written adapter for each, but until Stage 18 nothing ever executed the
+  # Postgres one — so a query change was verified there only by compiling. The
+  # first run of this found ListItemsByTrip broken outright on Postgres (an
+  # untyped sqlc.narg parameter, refused at prepare time) and a migrator that
+  # leaked a connection per database.
+  postgres:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # Keep this in step with docker-compose.postgres.yml, which serves the
+        # same purpose locally. The two are separate because Actions wants a
+        # service container and a developer wants `make test-postgres`.
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: caravel
+          POSTGRES_PASSWORD: caravel
+          POSTGRES_DB: caravel
+        ports:
+          - 5432:5432
+        # Without this the job races the database: Postgres restarts itself once
+        # during first-time initialisation, so "the container exists" is not
+        # "the server is accepting connections".
+        options: >-
+          --health-cmd "pg_isready -U caravel -d caravel"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    env:
+      CARAVEL_TEST_DB_DRIVER: postgres
+      CARAVEL_TEST_DB_DSN: postgres://caravel:caravel@localhost:5432/caravel?sslmode=disable
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26"
+
+      # internal/dbtest fails rather than falling back when the driver is set
+      # and the server is unreachable, so a broken DSN cannot turn this job into
+      # a green SQLite run. That covers the dangerous direction; this step
+      # covers the embarrassing one, where the env block above is dropped in an
+      # edit and the job silently tests SQLite twice.
+      #
+      # TestMigrationsDoNotHoldAConnection skips itself unless the driver is
+      # postgres, so "did it skip?" answers "was this really Postgres?" — the
+      # same shape as the assistant-capability check in the `ui` job.
+      - name: Confirm the tests are really running against Postgres
+        run: |
+          set -euo pipefail
+          out=$(go test -count=1 -v -run TestMigrationsDoNotHoldAConnection ./internal/db/)
+          echo "$out"
+          if echo "$out" | grep -q "SKIP"; then
+            echo "::error::the Postgres-only test skipped, so this job is not testing Postgres" >&2
+            exit 1
+          fi
+          echo "confirmed: the Postgres-only test ran"
+
+      - name: Test
+        run: go test -count=1 ./...
+
   # Separate job on purpose: this one installs a browser and starts a server, so
   # it is slower and has more ways to fail. Keeping it apart means a flaky browser
   # download can't mask a Go regression in the fast `ci` job above.

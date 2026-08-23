@@ -450,6 +450,45 @@ Both are checked end to end there.
   `ui` job's assistant-capability check — a silent skip that reads as a pass is
   the exact failure mode this stage is trying to remove.
 
+**Done.** A `postgres` job in `.github/workflows/ci.yml` with a
+`postgres:17-alpine` service (health-gated on `pg_isready`, since Postgres
+restarts itself once while initialising and "the container exists" is not "the
+server is accepting connections"), the two `CARAVEL_TEST_DB_*` variables at job
+level, and `go test -count=1 ./...`.
+
+The confirmation the plan asked for covers both directions, and both were
+actually exercised rather than reasoned about:
+
+- **The dangerous one** — a DSN that does not resolve — is handled by
+  Milestone 3's no-fallback rule: the run fails with `cannot reach postgres at
+  ...` (password redacted), rather than quietly passing on SQLite.
+- **The embarrassing one** — the `env` block dropped in a later edit, leaving a
+  job that tests SQLite twice and reports Postgres — is what the new step
+  catches. `TestMigrationsDoNotHoldAConnection` skips itself unless the driver
+  is Postgres, so "did it skip?" answers "was this really Postgres?". Same shape
+  as the `ui` job's assistant-capability check, and for the same reason: a
+  silent skip reads as a pass.
+
+Verified without Actions, which this machine cannot run: the workflow parses and
+`yamllint` is clean; a structural check confirms the service ports, the health
+options, the localhost DSN and that no job references a secret this repo does
+not have; and the job's own steps were run locally against a container started
+with **the same image, env and health command the workflow declares** (on port
+5433, to keep it clear of the compose service). The confirmation step passes
+there, and — the part that matters — it *fails* when the driver variable is
+unset, which is the mistake it exists to catch. `go test ./...` under those
+variables is green.
+
+What remains unverifiable here: that GitHub's runner wires the service the way
+the workflow assumes. That is settled by the first push, and is small — the
+service block is the documented form.
+
+Note the duplication this creates: `postgres:17-alpine` is now pinned in both
+`docker-compose.postgres.yml` and the workflow, with a comment in each pointing
+at the other. They are separate because Actions wants a service container and a
+developer wants `make test-postgres`; a shared file would mean the CI job
+depending on compose being installed on the runner.
+
 ## 6. Squash the migrations to one `0001_init` per dialect
 
 - Replace `internal/db/migrations/{sqlite,postgres}/000{1..12}_*.{up,down}.sql`

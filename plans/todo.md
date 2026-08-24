@@ -21,6 +21,21 @@ down.
 
 ## Bugs and rough edges
 
+- **Only JPEG orientation is honoured on upload.** (Stage 20 follow-up, the
+  EXIF orientation fix.) `internal/imaging` now reads the EXIF Orientation out
+  of a JPEG and bakes the rotation into the pixels, which is what phone cameras
+  need. Not read: PNG's `eXIf` chunk and extended-WebP's `EXIF` chunk, both of
+  which can carry the same tag. Neither is a realistic camera output, so this
+  is a completeness gap rather than a live bug. HEIC, which modern iPhones do
+  produce, is a separate matter -- `image.Decode` cannot read it at all, so
+  such an upload is rejected outright rather than mis-rotated.
+
+- **Images uploaded before the orientation fix stay wrong.** (Stage 20
+  follow-up.) Their EXIF was discarded at ingest, so the orientation is not
+  recoverable from what is on disk -- there is nothing to migrate, and the
+  only fix is re-uploading the picture. Noted so it is not mistaken later for
+  the fix having failed.
+
 - **A cover photo set by URL on the *new trip* form is only validated at Create
   time.** (Stage 07; half-fixed in Stage 09 Milestone 4.) The URL is staged
   locally, the trip is created, and only then does the server fetch it — so a

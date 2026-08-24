@@ -31,6 +31,11 @@ type Result struct {
 // decoding, not encoding. Other formats are re-encoded in their original
 // format so simple images (icons, screenshots) don't balloon in size or
 // lose transparency.
+//
+// A JPEG carrying an EXIF Orientation is turned the right way up first. The
+// re-encode drops all EXIF -- which is what keeps camera GPS tags off our
+// disk -- so the rotation has to be baked into the pixels or it is lost, and a
+// portrait phone photo ends up displayed on its side.
 func DecodeAndResize(r io.Reader) (Result, error) {
 	data, err := io.ReadAll(r)
 	if err != nil {
@@ -46,6 +51,12 @@ func DecodeAndResize(r io.Reader) (Result, error) {
 	w, h := bounds.Dx(), bounds.Dy()
 	if w > MaxDimension || h > MaxDimension {
 		img = resize(img, w, h)
+	}
+	if format == "jpeg" {
+		// After the downscale, not before: rotating is isometric, so it cannot
+		// change whether the cap was exceeded, and this way the pixel loop runs
+		// over at most MaxDimension rather than a full-size phone photo.
+		img = applyOrientation(img, jpegOrientation(data))
 	}
 
 	return encode(img, format)
@@ -65,6 +76,58 @@ func decode(data []byte) (format string, img image.Image, err error) {
 func decodeStdlib(data []byte) (string, image.Image, error) {
 	img, format, err := image.Decode(bytes.NewReader(data))
 	return format, img, err
+}
+
+// applyOrientation turns img the way its EXIF Orientation says it should be
+// displayed, so the pixels themselves carry the rotation once the metadata has
+// been dropped by the re-encode. Orientation 1, and anything outside 1-8,
+// returns img untouched, so the common case allocates nothing.
+//
+// Each value is written out as an inverse mapping -- where in the source a
+// given destination pixel comes from -- because that is what the test asserts
+// corner by corner. Values 5 to 8 transpose the axes, so the result swaps
+// width and height.
+func applyOrientation(img image.Image, orientation int) image.Image {
+	if orientation <= orientationNormal || orientation > 8 {
+		return img
+	}
+
+	b := img.Bounds()
+	w, h := b.Dx(), b.Dy()
+
+	// source picks the source pixel for destination pixel (dx, dy), both in
+	// zero-based coordinates.
+	var source func(dx, dy int) (int, int)
+	dstW, dstH := w, h
+	switch orientation {
+	case 2: // mirrored horizontally
+		source = func(dx, dy int) (int, int) { return w - 1 - dx, dy }
+	case 3: // rotated 180
+		source = func(dx, dy int) (int, int) { return w - 1 - dx, h - 1 - dy }
+	case 4: // mirrored vertically
+		source = func(dx, dy int) (int, int) { return dx, h - 1 - dy }
+	case 5: // transposed along the main diagonal
+		dstW, dstH = h, w
+		source = func(dx, dy int) (int, int) { return dy, dx }
+	case 6: // rotated 90 clockwise -- the usual portrait phone photo
+		dstW, dstH = h, w
+		source = func(dx, dy int) (int, int) { return dy, h - 1 - dx }
+	case 7: // transposed along the anti-diagonal
+		dstW, dstH = h, w
+		source = func(dx, dy int) (int, int) { return w - 1 - dy, h - 1 - dx }
+	case 8: // rotated 90 counter-clockwise
+		dstW, dstH = h, w
+		source = func(dx, dy int) (int, int) { return w - 1 - dy, dx }
+	}
+
+	dst := image.NewRGBA(image.Rect(0, 0, dstW, dstH))
+	for dy := 0; dy < dstH; dy++ {
+		for dx := 0; dx < dstW; dx++ {
+			sx, sy := source(dx, dy)
+			dst.Set(dx, dy, img.At(b.Min.X+sx, b.Min.Y+sy))
+		}
+	}
+	return dst
 }
 
 func resize(img image.Image, w, h int) image.Image {

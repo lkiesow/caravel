@@ -1,0 +1,45 @@
+[Unit]
+Description=Caravel - self-hosted trip planner
+Documentation=https://lkiesow.github.io/caravel/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=caravel
+Group=caravel
+
+# Caravel is configured entirely through environment variables, so there is no
+# flag pointing at a config file -- systemd reads the file and passes it in.
+EnvironmentFile=/etc/caravel/caravel.conf
+ExecStart=/usr/bin/caravel
+
+# Creates and owns /var/lib/caravel, which is where both the SQLite database and
+# the uploads live by default (see /etc/caravel/caravel.conf).
+StateDirectory=caravel
+StateDirectoryMode=0750
+
+Restart=on-failure
+RestartSec=5s
+
+# The service needs a listening socket and its state directory. Nothing here is
+# exotic, but note it cannot all be verified inside a *rootless* container --
+# systemd refuses at step USER with "Failed to keep CAP_SYS_ADMIN" because the
+# container lacks the capability, not because a directive is wrong. A privileged
+# container or a real host starts it fine.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

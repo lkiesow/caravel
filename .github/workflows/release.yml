@@ -11,10 +11,14 @@
 # .github/release.yml configures how they are grouped for when there are pull
 # requests to group.
 #
-# The release carries a Linux binary per architecture. They are archives rather
-# than bare binaries for two reasons: 20 MB of static Go binary compresses to
-# about 7 MB, and the AGPL wants its terms distributed with the thing it covers,
-# so LICENSE and README.md ride along inside.
+# The release carries, per architecture, a Linux binary and an RPM. The binaries
+# are archives rather than bare files for two reasons: 20 MB of static Go binary
+# compresses to about 7 MB, and the AGPL wants its terms distributed with the
+# thing it covers, so LICENSE and README.md ride along inside.
+#
+# The RPMs are built in a CentOS Stream container from the same cross-compiled
+# binaries. Nothing is compiled inside the container, which is why one x86_64
+# runner produces both packages -- see .rpm/build-rpm.sh.
 name: Release
 
 on:
@@ -46,26 +50,50 @@ jobs:
       # The version stamped in is the tag without its leading v, matching what
       # docker/metadata-action puts on the image, so an image and a binary from
       # the same tag report the same string from GET /api/health.
-      - name: Build the release archives
+      - name: Build the binaries
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
-          mkdir -p dist
+          mkdir -p build dist
           for arch in amd64 arm64; do
-            stage="$(mktemp -d)"
             CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath \
               -ldflags "-w -s -X caravel/internal/buildinfo.Version=$version" \
-              -o "$stage/caravel" ./cmd/caravel
+              -o "build/caravel-linux-${arch}" ./cmd/caravel
+            stage="$(mktemp -d)"
+            cp "build/caravel-linux-${arch}" "$stage/caravel"
             cp LICENSE README.md "$stage/"
             tar -czf "dist/caravel-${version}-linux-${arch}.tar.gz" \
               -C "$stage" caravel LICENSE README.md
             rm -rf "$stage"
           done
-          # Bare filenames, not ./-prefixed: somebody who downloads the
-          # archives and SHA256SUMS into one directory runs `sha256sum -c
-          # SHA256SUMS` there, and the names should match what they have.
-          ( cd dist && sha256sum caravel-*.tar.gz > SHA256SUMS )
+
+      # The bare binaries from the step above are what go into the packages, so
+      # a released RPM and a released archive contain the identical build.
+      - name: Build the RPMs
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          # Go's architecture names on the left, RPM's on the right.
+          for pair in amd64:x86_64 arm64:aarch64; do
+            goarch="${pair%%:*}"
+            rpmarch="${pair##*:}"
+            docker run --rm -v "$PWD":/rpmbuild \
+              quay.io/centos/centos:stream10 \
+              /rpmbuild/.rpm/build-rpm.sh \
+              "build/caravel-linux-${goarch}" "$version" "$rpmarch"
+          done
+          # build-rpm.sh drops them at the repository root.
+          mv caravel-*.rpm dist/
+
+      - name: Collect checksums
+        run: |
+          set -euo pipefail
+          # Bare filenames, not ./-prefixed: somebody who downloads the assets
+          # and SHA256SUMS into one directory runs `sha256sum -c SHA256SUMS`
+          # there, and the names have to match what they have.
+          ( cd dist && sha256sum caravel-* > SHA256SUMS )
           ls -l dist
+          file dist/caravel-*
 
       - name: Create the release
         uses: softprops/action-gh-release@v3

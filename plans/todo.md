@@ -395,6 +395,17 @@ else runs this.
   review), or leaving it to judgement. Worth deciding before the first release
   rather than after.
 
+- **The RPM has no repository, and no real-host verification of its unit.**
+  (Stage 18, RPM follow-up.) Packages are attached to each GitHub release, so
+  installing is `dnf install ./caravel-....rpm` and upgrading means fetching the
+  next one -- there is no `dnf update` path without a yum repository (COPR, or
+  a repo published to GitHub Pages beside the docs, which is where it would
+  naturally live). Separately, the unit's hardening directives
+  (`ProtectSystem=strict` and friends) have only been exercised in a
+  *privileged* container: rootless refuses at step USER for want of
+  CAP_SYS_ADMIN, which is the container's limitation rather than the unit's, but
+  a real host is the only place that settles it.
+
 - **Generated release notes will be nearly empty until changes arrive as pull
   requests.** **(soon)** (Stage 18, releases-on-tag follow-up.) GitHub builds the
   notes `.github/workflows/release.yml` asks for from **merged pull requests**
@@ -406,19 +417,6 @@ else runs this.
   notes from `git log` between tags instead and pass them as the release body, or
   accept thin notes and treat the compare link as the changelog. The stage plans
   are arguably the real changelog either way.
-
-- **RPM packaging is prototyped but not landed.** (Stage 18, releases-on-tag
-  follow-up.) A working prototype exists and was verified end to end: four small
-  files (`.rpm/caravel.spec`, `.rpm/caravel.service`, `.rpm/build-rpm.sh`, plus a
-  `caravel.conf.example`), no application code changes, both `x86_64` and
-  `aarch64` built from one x86_64 container, installed into a CentOS Stream 10
-  container where the service started and `/api/health` returned the stamped
-  version. The licence blocker is **resolved**: the repository is AGPL-3.0 now,
-  so the spec's `License:` tag is `AGPL-3.0-or-later` rather than a placeholder,
-  and `%license LICENSE` has a file to point at. One thing left to check when it
-  lands: the systemd unit's hardening (`ProtectSystem=strict` and friends) cannot
-  be verified in a *rootless* container -- it needs a privileged container or a
-  real host, which is how the prototype was verified.
 
 - **The documentation screenshots go stale silently.** (Stage 18 Milestone 11.)
   `make screenshots` regenerates them and `scripts/check_screenshots.py` keeps

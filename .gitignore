@@ -38,3 +38,6 @@
 
 # Release archives built by scripts or .github/workflows/release.yml.
 /dist/
+
+# Cross-compiled binaries staged for packaging (see .github/workflows/release.yml).
+/build/

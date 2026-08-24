@@ -29,10 +29,11 @@ credentials.yaml
 credentials.yml
 *.credentials
 
-# History and docs: the version is passed in as a build argument (see the
-# Dockerfile), so .git is not needed to stamp the binary.
+# History, docs and packaging: the version is passed in as a build argument (see
+# the Dockerfile), so .git is not needed to stamp the binary.
 .git/
 .github/
+.rpm/
 docs/
 plans/
 README.md

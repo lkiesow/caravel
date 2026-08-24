@@ -719,6 +719,37 @@ leading `v` is stripped the same way `docker/metadata-action` strips it, so an
 image and a binary from one tag report the same version. Eleven structural
 assertions on the two files pass, and `yamllint` is clean.
 
+*Follow-up: RPM packages, attached to the release.* Four files, no application
+code changes: `.rpm/caravel.spec`, `.rpm/caravel.service`, `.rpm/caravel.conf`
+and `.rpm/build-rpm.sh`, plus three steps in the release workflow. Modelled on
+`virtUOS/languagetool-user-proxy`'s `.rpm/` layout, with one difference that
+matters: that project's binary takes an `--env-path` flag, and Caravel has no
+equivalent because it is env-var-only -- so the unit uses systemd's own
+`EnvironmentFile=` and nothing had to be added to the app.
+
+Both architectures come out of **one x86_64 container**, because nothing is
+compiled inside it: Go cross-compiles the binaries first and `rpmbuild --target`
+only packages them. The one trap found by building rather than reasoning was
+`BuildArch: %{_target_cpu}`, which makes rpmbuild reject the foreign target
+outright ("No compatible architectures found for build"); there is no BuildArch
+now, and a comment says why.
+
+`StateDirectory=caravel` in the unit means systemd owns `/var/lib/caravel`, and
+the spec owns it too so rpm knows it exists -- but rpm will not remove a
+non-empty directory, so somebody's trips survive an erase, which is the right
+behaviour and is now documented as deliberate rather than incidental.
+
+*Verified by extracting all three workflow steps from the YAML and running them
+verbatim* with `GITHUB_REF_NAME=v1.2.3` (podman standing in for docker). Five
+assets land in `dist/`: two `.tar.gz`, two `.rpm`, and a `SHA256SUMS` whose
+checksums all verify from a download directory. `file` confirms the aarch64
+package really is AArch64. The package metadata reads
+`License: AGPL-3.0-or-later`, and `/usr/share/licenses/caravel/LICENSE` is
+inside it. Earlier, the same spec was installed into a CentOS Stream 10
+container under systemd, where the service started and `/api/health` answered
+with the stamped version -- that test was on the prototype, and per the request
+the real-system check is the maintainer's.
+
 The licence question the RPM prototype raised is answered: the repository is
 **AGPL-3.0** as of commit `85498bd`, so the README says so, the install page
 points at the binaries, and `todo.md`'s RPM entry no longer lists a missing

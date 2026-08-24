@@ -68,6 +68,31 @@ things are worth turning on once it is running: an [address
 search](../configuration/address-search.md) endpoint of your own, and
 optionally [the assistant](../configuration/assistant.md).
 
+## From an RPM
+
+For Fedora, RHEL and anything else RPM-based, each release carries a package for
+`x86_64` and `aarch64`:
+
+```sh
+sudo dnf install ./caravel-1.0.0-1.el10.x86_64.rpm
+sudo systemctl enable --now caravel
+```
+
+That is a complete installation. The package creates a `caravel` system user,
+installs a systemd unit, and puts the database and uploads in
+`/var/lib/caravel`. Configuration is `/etc/caravel/caravel.conf`, which is
+marked `noreplace` — an upgrade will not overwrite your edits.
+
+```sh
+sudo systemctl status caravel
+curl http://localhost:8080/api/health
+```
+
+There is no repository to add, so upgrades are `dnf install` against the next
+release's package rather than `dnf update`. `/var/lib/caravel` deliberately
+survives an erase once it holds data — your trips are not something a package
+removal should take with it.
+
 ## A prebuilt binary
 
 Every release carries a static Linux binary for `amd64` and `arm64` on its

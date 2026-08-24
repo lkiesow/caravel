@@ -1,5 +1,5 @@
 import { api } from "../api.js";
-import { guardForm } from "../busy.js";
+import { guard, guardClick, guardForm } from "../busy.js";
 import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
 
@@ -56,38 +56,48 @@ export function renderImageField(container, { tripId, imageUrl, attachPath, onCh
       showError(t("image.loadFailed"));
     });
 
-    container.querySelector('input[type="file"]').addEventListener("change", async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      errorEl.hidden = true;
+    // The input is what goes busy, so a second pick cannot start a second
+    // upload of the same field - and the label reads as unavailable while the
+    // first one is going.
+    const fileInput = container.querySelector('input[type="file"]');
+    fileInput.addEventListener(
+      "change",
+      guard(
+        async (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          errorEl.hidden = true;
 
-      if (isStaging) {
-        if (staged.kind === "file" && staged.previewUrl) URL.revokeObjectURL(staged.previewUrl);
-        staged.kind = "file";
-        staged.file = file;
-        staged.url = null;
-        staged.previewUrl = URL.createObjectURL(file);
-        onStaged?.({ kind: "file", file, previewUrl: staged.previewUrl });
-        render(staged.previewUrl);
-        return;
-      }
+          if (isStaging) {
+            if (staged.kind === "file" && staged.previewUrl) URL.revokeObjectURL(staged.previewUrl);
+            staged.kind = "file";
+            staged.file = file;
+            staged.url = null;
+            staged.previewUrl = URL.createObjectURL(file);
+            onStaged?.({ kind: "file", file, previewUrl: staged.previewUrl });
+            render(staged.previewUrl);
+            return;
+          }
 
-      try {
-        const formData = new FormData();
-        formData.append("file", file);
-        const res = await fetch(`/api/trips/${tripId}/media`, { method: "POST", body: formData, credentials: "same-origin" });
-        const asset = await res.json();
-        if (!res.ok) throw new Error(asset.error || "upload failed");
-        await attach(asset.id, asset.url);
-      } catch (err) {
-        // Translated copy, developer detail to the console - the server's
-        // message here is Go error text ("server returned status 403", or a
-        // whole dial tcp: lookup ... failure) and was previously rendered
-        // verbatim into the card, untranslated even in the German UI.
-        console.error("image upload failed:", err.message || err);
-        showError(t("image.uploadFailed"));
-      }
-    });
+          try {
+            const formData = new FormData();
+            formData.append("file", file);
+            const res = await fetch(`/api/trips/${tripId}/media`, { method: "POST", body: formData, credentials: "same-origin" });
+            const asset = await res.json();
+            if (!res.ok) throw new Error(asset.error || "upload failed");
+            await attach(asset.id, asset.url);
+          } catch (err) {
+            // Translated copy, developer detail to the console - the server's
+            // message here is Go error text ("server returned status 403", or a
+            // whole dial tcp: lookup ... failure) and was previously rendered
+            // verbatim into the card, untranslated even in the German UI.
+            console.error("image upload failed:", err.message || err);
+            showError(t("image.uploadFailed"));
+          }
+        },
+        { elements: fileInput }
+      )
+    );
 
     guardForm(container.querySelector(".image-field__url-form"), async (e) => {
       const input = e.target.url;
@@ -115,26 +125,28 @@ export function renderImageField(container, { tripId, imageUrl, attachPath, onCh
     });
 
     const removeBtn = container.querySelector('[data-action="remove"]');
-    removeBtn?.addEventListener("click", async () => {
-      errorEl.hidden = true;
+    if (removeBtn) {
+      guardClick(removeBtn, async () => {
+        errorEl.hidden = true;
 
-      if (isStaging) {
-        if (staged.kind === "file" && staged.previewUrl) URL.revokeObjectURL(staged.previewUrl);
-        staged.kind = null;
-        staged.file = null;
-        staged.url = null;
-        staged.previewUrl = null;
-        onStaged?.(null);
-        render(null);
-        return;
-      }
+        if (isStaging) {
+          if (staged.kind === "file" && staged.previewUrl) URL.revokeObjectURL(staged.previewUrl);
+          staged.kind = null;
+          staged.file = null;
+          staged.url = null;
+          staged.previewUrl = null;
+          onStaged?.(null);
+          render(null);
+          return;
+        }
 
-      try {
-        await attach(null, null);
-      } catch (err) {
-        showError(err.body?.error || t("common.error"));
-      }
-    });
+        try {
+          await attach(null, null);
+        } catch (err) {
+          showError(err.body?.error || t("common.error"));
+        }
+      });
+    }
   }
 
   async function attach(mediaAssetId, url) {

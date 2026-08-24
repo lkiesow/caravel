@@ -211,6 +211,39 @@ test.describe("a second press while a write is in flight", () => {
     expect(after.find((c) => c.id === checklist.id).items, "one item, not two").toHaveLength(1);
   });
 
+  // The toggles, which are the shape with the nastiest failure: two PATCHes for
+  // the same box can be answered in either order, so the loser silently wins
+  // the checkbox and the UI ends up disagreeing with the server. The box goes
+  // disabled instead, which makes the second flip impossible rather than
+  // merely dropped.
+  test("a checkbox cannot be flipped into a second request", async ({ page }) => {
+    const tripId = await ownTrip(page, "UI suite: double-submit toggle");
+    strayTripIds.push(tripId);
+
+    const checklist = await (await page.request.post(`/api/trips/${tripId}/checklists`, { data: { title: "Packing" } })).json();
+    const item = await (await page.request.post(`/api/checklists/${checklist.id}/items`, { data: { text: "Passport" } })).json();
+
+    await gotoRoute(page, `/trips/${tripId}/checklists`);
+
+    const box = page.locator('.checklist-item input[type="checkbox"]');
+    const gate = await holdRoute(page, `**/api/checklists/${checklist.id}/items/${item.id}`, { method: "PATCH" });
+
+    // Ticked, then a second click on the same box in the same turn.
+    const inFlight = await doubleClick(page, '.checklist-item input[type="checkbox"]');
+    await gate.arrived(1);
+
+    expect(inFlight, "the second flip must not have started a request").toBe(1);
+    expect(gate.seen, "PATCH should have been sent once").toHaveLength(1);
+    await expect(box).toBeDisabled();
+
+    gate.release();
+    await expect(box).toBeEnabled();
+    await expect(box).toBeChecked();
+
+    const after = await (await page.request.get(`/api/trips/${tripId}/checklists`)).json();
+    expect(after.find((c) => c.id === checklist.id).items[0].checked, "the server agrees with the box").toBe(true);
+  });
+
   // The only path the re-enable code ever runs on. On success the page
   // navigates and the button is thrown away, so a guard that never restored
   // anything would pass every test above and still leave a dead button behind

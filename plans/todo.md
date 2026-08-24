@@ -29,6 +29,13 @@ down.
   endpoint. Softened a lot by Stage 07 Milestone 9's preview-error handler: a URL
   the browser itself can't load is already flagged in the card before Create is
   pressed.
+- **A failed checklist tick leaves the box disagreeing with the server.**
+  (Noticed in Stage 20 Milestone 5.) `checklist-list.js`'s item checkbox has no
+  `try/catch`: if the PATCH fails, the box keeps the state the click gave it
+  while the server holds the other one, and nothing says so. The admin page's
+  open-signup toggle is the model -- it puts the box back and prints a message.
+  Stage 20 guarded the box against a *second* request; it did not give it an
+  error path.
 - **A new location's cover photo and files are still a post-create upload.**
   (The remainder of "create-mode writes aren't atomic", Stage 06 Milestone 4.)
   Stage 09 Milestones 1–2 made the location and its links/dates one transactional
@@ -171,6 +178,21 @@ down.
   one. Consolidating means picking the canonical values, which changes how the
   auth pages look, slightly. Precedent for how: the same file's error-callout
   rule already collapsed five copies into one.
+- **Two busy states that are not the shared guard.** (Stage 20.) Everything
+  mutating now goes through `web/js/busy.js`, with two deliberate exceptions.
+  `assist-panel.js` keeps its own `running` flag, because it also owns stream
+  cancellation and a Cancel button, and `file-list.js`'s drop zone keeps its own
+  `aria-busy` plus `.file-drop--busy { pointer-events: none }` around a
+  sequential batch upload. Both work; neither is the shared idiom, so a reader
+  finds three ways of saying "in flight". Folding either in means teaching the
+  guard about a set of controls rather than one, and about cancellation.
+- **A dropped reorder is dropped, not queued.** (Stage 20 Milestone 5.) The
+  itinerary's move up/down is optimistic: it redraws before the PUT answers, so
+  the pressed button no longer exists to disable and the guard's flag is the
+  only thing stopping a second press. That press therefore does nothing at all -
+  correct (two overlapping reorders can be answered in either order, leaving the
+  stale one stored) but not kind. Queueing the second move, or sending the final
+  order once the first answers, would be.
 - **`confirmDialog` hardcodes a trash icon for every danger confirmation.**
   **(soon)** (Stage 14 Milestone 3.) `components/dialog.js` picks the icon from
   `danger` alone (`trash-2` when set, `check` when not), which is right for the

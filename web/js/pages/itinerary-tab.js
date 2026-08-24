@@ -1,5 +1,5 @@
 import { api } from "../api.js";
-import { guardForm } from "../busy.js";
+import { createGuard, guard, guardClick, guardForm } from "../busy.js";
 import { t, translatePage } from "../i18n.js";
 import { navigate } from "../router.js";
 import { icon } from "../icon.js";
@@ -130,13 +130,23 @@ export async function renderItineraryTab(container, trip) {
 
     const notesEl = el.querySelector(".itinerary-day__notes");
     if (notesEl) notesEl.value = day.notes ?? "";
-    notesEl?.addEventListener("blur", async () => {
-      const value = notesEl.value || null;
-      if (value === day.notes) return;
-      const updated = await api.put(`/trips/${trip.id}/itinerary/days/${day.date}`, { notes: value });
-      day.id = updated.id;
-      day.notes = value;
-    });
+    // Guarded on the textarea, and on its own rather than with the buttons
+    // below: disabling the field the user has just left is invisible, and it
+    // makes a second blur structurally impossible instead of dropping one -
+    // which here would mean silently losing what they typed.
+    notesEl?.addEventListener(
+      "blur",
+      guard(
+        async () => {
+          const value = notesEl.value || null;
+          if (value === day.notes) return;
+          const updated = await api.put(`/trips/${trip.id}/itinerary/days/${day.date}`, { notes: value });
+          day.id = updated.id;
+          day.notes = value;
+        },
+        { elements: notesEl }
+      )
+    );
 
     renderEntries(el, day);
 
@@ -147,18 +157,25 @@ export async function renderItineraryTab(container, trip) {
       else openDates.delete(day.date);
     });
 
-    el.querySelector('[data-action="remove-day"]')?.addEventListener("click", async (e) => {
-      // Inside a <summary>, so without this a click would also toggle the
-      // disclosure - the day would fold shut behind its own confirm dialog.
-      e.preventDefault();
-      e.stopPropagation();
-      // Only confirm when there's something to lose. Removing an empty day
-      // the user just mistyped shouldn't demand a dialog.
-      if (hasContent(day) && !(await confirmDialog({ messageKey: "itinerary.removeDayConfirm", confirmKey: "common.remove" }))) return;
-      await api.delete(`/itinerary/days/${day.id}`);
-      days = days.filter((d) => d.date !== day.date);
-      render();
-    });
+    // preventDefault and stopPropagation are the guard's, and it applies them
+    // before dropping a second click: this button is inside a <summary>, so a
+    // press that goes nowhere still has to be swallowed or the day folds shut
+    // behind its own confirm dialog.
+    const removeDayBtn = el.querySelector('[data-action="remove-day"]');
+    if (removeDayBtn) {
+      guardClick(
+        removeDayBtn,
+        async () => {
+          // Only confirm when there's something to lose. Removing an empty day
+          // the user just mistyped shouldn't demand a dialog.
+          if (hasContent(day) && !(await confirmDialog({ messageKey: "itinerary.removeDayConfirm", confirmKey: "common.remove" }))) return;
+          await api.delete(`/itinerary/days/${day.id}`);
+          days = days.filter((d) => d.date !== day.date);
+          render();
+        },
+        { preventDefault: true, stopPropagation: true }
+      );
+    }
 
     // Two sequential writes on a day that does not exist yet (ensureDay, then
     // the entry), so a re-entry here is worse than a duplicate row: the second
@@ -187,6 +204,26 @@ export async function renderItineraryTab(container, trip) {
     const created = await api.put(`/trips/${trip.id}/itinerary/days/${day.date}`, { notes: day.notes });
     day.id = created.id;
     return created;
+  }
+
+  // One guard per day, shared by that day's entry buttons - remove, move up,
+  // move down. Per day rather than per button because these all write the same
+  // day and must not overlap; keyed off the <details> element rather than
+  // created inside renderEntries(), which rebuilds the rows on every change and
+  // would otherwise hand out a fresh flag mid-flight.
+  //
+  // A reorder is optimistic: it redraws before the PUT answers, so the pressed
+  // button is gone by then and there is nothing to re-enable. The flag is what
+  // does the work there - two overlapping reorders can have their answers
+  // arrive in either order, leaving the stale one as the stored order.
+  const entryGuards = new WeakMap();
+  function entryGuard(el) {
+    let existing = entryGuards.get(el);
+    if (!existing) {
+      existing = createGuard({ elements: () => el.querySelectorAll(".itinerary-day__entries [data-action]") });
+      entryGuards.set(el, existing);
+    }
+    return existing;
   }
 
   function renderEntries(el, day) {
@@ -233,13 +270,17 @@ export async function renderItineraryTab(container, trip) {
             : ""
         }
       `;
-      li.querySelector('[data-action="remove"]')?.addEventListener("click", async () => {
-        await api.delete(`/itinerary/days/${day.id}/entries/${entry.id}`);
-        day.entries = day.entries.filter((e) => e.id !== entry.id);
-        renderEntries(el, day);
-      });
-      li.querySelector('[data-action="move-up"]')?.addEventListener("click", () => moveEntry(el, day, index, -1));
-      li.querySelector('[data-action="move-down"]')?.addEventListener("click", () => moveEntry(el, day, index, 1));
+      const guarded = entryGuard(el);
+      li.querySelector('[data-action="remove"]')?.addEventListener(
+        "click",
+        guarded.wrap(async () => {
+          await api.delete(`/itinerary/days/${day.id}/entries/${entry.id}`);
+          day.entries = day.entries.filter((e) => e.id !== entry.id);
+          renderEntries(el, day);
+        })
+      );
+      li.querySelector('[data-action="move-up"]')?.addEventListener("click", guarded.wrap(() => moveEntry(el, day, index, -1)));
+      li.querySelector('[data-action="move-down"]')?.addEventListener("click", guarded.wrap(() => moveEntry(el, day, index, 1)));
       list.appendChild(li);
     });
   }

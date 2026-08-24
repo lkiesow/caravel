@@ -1,5 +1,5 @@
 import { api, ApiError } from "../api.js";
-import { guardForm } from "../busy.js";
+import { guardClick, guardForm } from "../busy.js";
 import { t, translatePage } from "../i18n.js";
 import { navigate } from "../router.js";
 import { icon } from "../icon.js";
@@ -118,7 +118,7 @@ export function renderMembersTab(content, trip, { onMembersChanged } = {}) {
         btn.className = "btn btn-secondary btn-collapse";
         btn.dataset.action = "leave";
         btn.innerHTML = `${icon("log-out")} <span>${escapeHtml(t("members.leave"))}</span>`;
-        btn.addEventListener("click", () => leave(m));
+        guardClick(btn, () => leave(m));
         actions.appendChild(btn);
       }
     }

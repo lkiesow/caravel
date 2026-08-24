@@ -264,6 +264,45 @@ because it also owns stream abort and a Cancel button; and the `search-place`
 button in the location editor is a read, not a mutation, and already guards
 itself.
 
+**Done.** All of the above, plus one the audit turned up while sweeping:
+`user-menu.js` called `onLogout?.()` without returning it, so `menu.js`'s guard
+released before the logout POST had even been sent — now returned, so the ⋮
+stays busy for the request it started.
+
+Three shapes needed more than a wrapper:
+
+- **The itinerary's entry buttons share one guard per day**, kept in a WeakMap
+  keyed off the day's `<details>` element rather than created inside
+  `renderEntries()`, which rebuilds those rows on every change and would
+  otherwise hand out a fresh flag mid-flight. Per day because remove, move up
+  and move down all write the same day and must not overlap. A reorder is
+  optimistic — it redraws before the PUT answers, so the pressed button is gone
+  and the flag, not the disable, is what does the work there.
+- **Remove-day** passes `preventDefault`/`stopPropagation` to the guard, which
+  applies them *before* dropping a second click: the button is inside a
+  `<summary>`, so a press that goes nowhere still has to be swallowed or the day
+  folds shut behind its own dialog.
+- **The day-notes blur** is guarded on the textarea alone, not with the buttons:
+  disabling the field the user has just left is invisible, and it makes a second
+  blur impossible rather than dropping one, which here would mean losing what
+  they typed.
+
+Verified: `make ci` green, `make test-ui` green in full (134 passed — including
+`itinerary-order.spec.js`, which drives move up/down and remove, plus
+`settings.spec.js`, `checklists.spec.js`, `files.spec.js`, `sharing.spec.js`'s
+leave flow and the cover-photo paths). New case for the toggle shape, which has
+the nastiest failure of the three: two PATCHes for one box can be answered in
+either order, so the loser silently wins the checkbox. It asserts the box goes
+disabled, that no second request starts, and that the server ends up agreeing
+with what the box shows. Fails with the guard defeated, two PATCHes.
+
+Also swept the tree for anything still unguarded: `file-list.js`'s batch upload
+keeps its own `aria-busy` + `pointer-events: none` (which does block a second
+drop), and `assist-panel.js` its own flag. Both are recorded in `todo.md` as the
+two places that say "in flight" in their own words rather than the shared one,
+along with a real gap noticed on the way: the checklist checkbox has no error
+path at all, so a *failed* PATCH leaves it disagreeing with the server.
+
 ---
 
 ## Build order

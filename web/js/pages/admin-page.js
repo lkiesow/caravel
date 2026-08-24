@@ -1,5 +1,5 @@
 import { api, ApiError } from "../api.js";
-import { guardForm } from "../busy.js";
+import { guard, guardForm } from "../busy.js";
 import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
 import { renderMenu } from "../components/menu.js";
@@ -253,22 +253,29 @@ export async function renderAdminPage(container) {
     const box = container.querySelector('[name="openSignup"]');
     const status = container.querySelector(".admin-signup-toggle__status");
 
-    box.addEventListener("change", async () => {
-      status.hidden = true;
-      try {
-        await api.put("/admin/settings/open-signup", { open_signup: box.checked });
-      } catch {
-        // Put the checkbox back rather than leaving it showing a state the
-        // server does not hold.
-        box.checked = !box.checked;
-        status.textContent = t("admin.settingFailed");
+    // Disabled while the PUT is in flight, so the box cannot be flipped again
+    // into a second request that races the first - the two answers can arrive
+    // in either order, and the loser would silently win the checkbox.
+    const save = guard(
+      async () => {
+        status.hidden = true;
+        try {
+          await api.put("/admin/settings/open-signup", { open_signup: box.checked });
+        } catch {
+          // Put the checkbox back rather than leaving it showing a state the
+          // server does not hold.
+          box.checked = !box.checked;
+          status.textContent = t("admin.settingFailed");
+          status.hidden = false;
+          return;
+        }
+        openSignup = box.checked;
+        status.textContent = t(openSignup ? "admin.signupOpened" : "admin.signupClosed");
         status.hidden = false;
-        return;
-      }
-      openSignup = box.checked;
-      status.textContent = t(openSignup ? "admin.signupOpened" : "admin.signupClosed");
-      status.hidden = false;
-    });
+      },
+      { elements: box }
+    );
+    box.addEventListener("change", save);
   }
 
   // Row outcomes report in the Accounts card, split into an alert and a status

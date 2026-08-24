@@ -40,7 +40,9 @@ export function renderUserMenu(container, user, { onLogout }) {
     onSelect: (value) => {
       if (value === "settings") navigate("/settings");
       if (value === "admin") navigate("/admin");
-      if (value === "logout") onLogout?.();
+      // Returned, not just called: menu.js keeps its guard held for as long as
+      // this resolves, so the logout POST is what the ⋮ stays busy for.
+      if (value === "logout") return onLogout?.();
     },
   });
 }

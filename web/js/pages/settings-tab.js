@@ -1,4 +1,5 @@
 import { api } from "../api.js";
+import { guardClick } from "../busy.js";
 import { translatePage } from "../i18n.js";
 import { navigate } from "../router.js";
 import { icon } from "../icon.js";
@@ -64,11 +65,16 @@ export function renderSettingsTab(content, trip, { onTripUpdated, canEdit = true
       });
     }
 
-    content.querySelector('[data-action="delete"]')?.addEventListener("click", async () => {
-      if (!(await confirmDialog({ messageKey: "trip.deleteConfirm" }))) return;
-      await api.delete(`/trips/${trip.id}`);
-      navigate("/trips");
-    });
+    // The confirm is inside the guard: a second click while the dialog is open
+    // would otherwise stack a second copy of it.
+    const deleteBtn = content.querySelector('[data-action="delete"]');
+    if (deleteBtn) {
+      guardClick(deleteBtn, async () => {
+        if (!(await confirmDialog({ messageKey: "trip.deleteConfirm" }))) return;
+        await api.delete(`/trips/${trip.id}`);
+        navigate("/trips");
+      });
+    }
   }
 
   render();

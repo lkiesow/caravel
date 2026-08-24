@@ -1,5 +1,5 @@
 import { api } from "../api.js";
-import { guardForm } from "../busy.js";
+import { guard, guardForm } from "../busy.js";
 import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
 import { confirmDialog, promptDialog } from "./dialog.js";
@@ -254,11 +254,20 @@ export async function renderChecklistList(container, tripId, { readOnly = false,
     `;
 
     if (canWrite) {
-      li.querySelector('input[type="checkbox"]').addEventListener("change", async (e) => {
-        const updated = await api.patch(`/checklists/${checklist.id}/items/${item.id}`, { checked: e.target.checked });
-        item.checked = updated.checked;
-        li.querySelector("span").className = item.checked ? "checklist-item__text--done" : "";
-      });
+      // Guarded on the box itself: a tick that is still being saved cannot be
+      // un-ticked into a second, racing PATCH.
+      const box = li.querySelector('input[type="checkbox"]');
+      box.addEventListener(
+        "change",
+        guard(
+          async (e) => {
+            const updated = await api.patch(`/checklists/${checklist.id}/items/${item.id}`, { checked: e.target.checked });
+            item.checked = updated.checked;
+            li.querySelector("span").className = item.checked ? "checklist-item__text--done" : "";
+          },
+          { elements: box }
+        )
+      );
 
       // A ⋮ rather than the bare remove icon this row used to carry: an item can
       // be reworded now as well as removed, and two icons competing beside a

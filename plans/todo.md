@@ -274,18 +274,17 @@ down.
   (configuration weakening a security control, rejected once already in Stage
   16), have the specs share one login the way `auth.setup.js` does, or teach
   the message to name the 429 as its own cause.
-- **Add a Chromium project for gesture specs.** **(soon)** (Stage 13 Milestone
-  1.) `playwright.config.js` runs Firefox alone, but Playwright's `isMobile` —
-  the option that flips `(pointer: coarse)` and enables real touch emulation — is
-  Chromium-only, and `hasTouch: true` does not do it. So `map.spec.js` stubs
-  `window.matchMedia` for that one query through `addInitScript`: honest as far
-  as it goes (the stub replaces the *input*; the component's real response is
-  asserted), but no spec exercises an actual touch gesture — "one finger scrolls
-  the page, two fingers pan the map" is verified through Leaflet's handler state,
-  not by dragging. The decision taken in the Stage 15 review: add a **Chromium
-  project scoped to gesture/mobile specs**, not a second full run of the sweeps —
-  those are about markup and CSS, where a second engine mostly buys duplicate
-  failures and doubles the CI job.
+- **Only two gestures are driven with real touch.** (Stage 19 Milestone 5.)
+  `map.gesture.spec.js` covers one-finger scroll and two-finger pan in the
+  `chromium-gestures` project; every other touch interaction in the app -- the
+  marker drag in the coordinate picker, the itinerary reorder buttons, swiping
+  anywhere -- is still only exercised with a mouse, or through Firefox with the
+  `(pointer: coarse)` stub. Adding to the project is cheap now that it exists
+  (a `*.gesture.spec.js` file is all it takes), so this is a note about reach
+  rather than a gap that needs a plan. Mind the trap that produced a false pass
+  the first time: CDP silently delivers nothing outside the viewport, so a
+  target below the fold must be scrolled into view or the test passes having
+  touched nothing.
 - **Contrast is measured but not asserted.** `tests/ui/contrast.js` reports
   ratios and has a `--min` flag, but nothing runs it in CI, so a regression like
   Stage 07's 2.54:1 primary button would only be found by someone running it.

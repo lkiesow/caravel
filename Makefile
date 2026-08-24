@@ -87,7 +87,10 @@ check-i18n:
 check-env:
 	python3 scripts/check_env_vars.py
 
-# Playwright UI suite (Firefox), headless by default. Starts a **throwaway
+# Playwright UI suite, headless by default. Firefox for everything, plus a
+# Chromium project scoped to *.gesture.spec.js — the only place with real touch
+# input (see playwright.config.js). `npx playwright install firefox chromium`
+# once, if a run complains that an executable is missing. Starts a **throwaway
 # instance of its own** — own port, own database, own uploads, own seed, removed
 # on exit — so it neither needs `make dev` running nor touches the dev database.
 # See scripts/ui_test.sh for why that matters. Not part of `make ci`: it needs a

@@ -152,10 +152,11 @@ jobs:
       - name: Install JS dev dependencies
         run: npm ci
 
-      # Only Firefox: the suite runs one project, and downloading the other
-      # engines would triple this step for nothing.
-      - name: Install Firefox for Playwright
-        run: npx playwright install --with-deps firefox
+      # Firefox runs the suite; Chromium runs the gesture specs alone, because
+      # Playwright's isMobile — real touch and (pointer: coarse) — is
+      # Chromium-only. WebKit is still not downloaded: nothing asks for it.
+      - name: Install the browsers Playwright needs
+        run: npx playwright install --with-deps firefox chromium
 
       # No server is started here: `make test-ui` goes through
       # scripts/ui_test.sh, which brings up a throwaway instance of its own --

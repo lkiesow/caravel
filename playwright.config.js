@@ -1,9 +1,16 @@
 // Playwright config for Caravel's UI suite.
 //
-// Firefox only, deliberately: the original note asking for this suite specified
-// Firefox, and one browser keeps the CI job cheap. The checks here (heading
-// outline, accessible names, overflow, contrast) are about markup and CSS rather
-// than engine quirks, so a second engine would mostly buy duplicate failures.
+// Firefox for everything, deliberately: the original note asking for this suite
+// specified Firefox, and one browser keeps the CI job cheap. The checks here
+// (heading outline, accessible names, overflow, contrast) are about markup and
+// CSS rather than engine quirks, so a second engine would mostly buy duplicate
+// failures.
+//
+// The one exception is gestures. Playwright's `isMobile` - the option that
+// flips `(pointer: coarse)` and enables real touch input - is Chromium-only,
+// and `hasTouch: true` does not do it. So there is a third project scoped to
+// *.gesture.spec.js and nothing else: a Chromium project for the assertions
+// that need a finger, not a second full run of the sweeps.
 //
 // The suite drives a server at CARAVEL_TEST_URL rather than starting one
 // itself. `make test-ui` goes through scripts/ui_test.sh, which starts a
@@ -62,6 +69,26 @@ export default defineConfig({
     {
       name: "firefox",
       use: { ...devices["Desktop Firefox"], storageState: AUTH_STATE_FILE },
+      dependencies: ["setup"],
+      // Gesture specs need real touch, which Firefox cannot emulate — they
+      // belong to the chromium project below. Without this they would run here
+      // too, since the top-level testMatch takes every *.spec.js.
+      testIgnore: /.*\.gesture\.spec\.js/,
+    },
+    // Real touch input, and the only place in the suite that has it. The
+    // viewport is overridden to the project's own 324×756 convention rather
+    // than left at the Pixel 5's 393px, so a gesture is measured at the same
+    // width every other mobile assertion uses; everything else about the
+    // device profile — isMobile, hasTouch, the scale factor — is what makes
+    // this project worth having.
+    {
+      name: "chromium-gestures",
+      testMatch: /.*\.gesture\.spec\.js/,
+      use: {
+        ...devices["Pixel 5"],
+        viewport: { width: 324, height: 756 },
+        storageState: AUTH_STATE_FILE,
+      },
       dependencies: ["setup"],
     },
   ],

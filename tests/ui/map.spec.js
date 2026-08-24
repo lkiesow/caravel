@@ -21,6 +21,13 @@ const MOBILE = { width: 324, height: 756 };
 // asks the question. This is a stub of the *input*, not of the behaviour
 // under test: everything asserted afterwards is the component's real
 // response to it.
+//
+// Kept, rather than replaced, now that map.gesture.spec.js drives the same two
+// gestures with real fingers on Chromium (Stage 19 Milestone 5). The two
+// assert different things and neither subsumes the other: this one proves the
+// handlers are *configured* right on the engine the rest of the suite runs,
+// and it is the only place that would catch the media query itself being
+// broken, since the gesture spec never consults it.
 async function pretendCoarsePointer(page) {
   await page.addInitScript(() => {
     const real = window.matchMedia.bind(window);

@@ -350,6 +350,40 @@ Move the two gesture assertions into `map.gesture.spec.js` as real touch input.
 Keep or delete the Firefox `matchMedia` versions, whichever reads better once
 both exist — and say which in the Done paragraph.
 
+**Done.** A third project, `chromium-gestures`, scoped by `testMatch` to
+`*.gesture.spec.js` and nothing else, plus `tests/ui/map.gesture.spec.js` with
+two tests. 125 to 127. The firefox project gained a matching `testIgnore`, or
+the top-level `*.spec.js` match would have run the gesture file there too.
+
+*Real input, not synthetic events.* The gestures go through CDP's
+`Input.dispatchTouchEvent`. Dispatching `TouchEvent`s from `page.evaluate` would
+not do: Leaflet would see them, but the browser would not, and "one finger
+scrolls the page" is a claim about the browser's own scrolling — untrusted
+events never scroll. Each finger needs its own `id` in the touch points, or CDP
+treats two points as one touch and Leaflet never sees a second finger.
+
+*The stubbed versions in `map.spec.js` stay.* They assert a different thing —
+that the handlers are *configured* correctly, on the engine the rest of the
+suite runs — and they are the only place that would catch the media query itself
+breaking, since the gesture spec never consults it. Both files now say so.
+
+*One false pass, caught and fixed.* The map sits low on the trip page: at
+324×756 its box runs from about y=617 to y=937, so most of it is **below the
+fold**. CDP delivers nothing outside the viewport, silently, so the first
+version of the one-finger test was green with zero touch events reaching the
+page — the map "did not move" because nothing had been touched. The spec now
+scrolls the map into view and asserts the touch point is on screen before
+dragging. Worth remembering: a gesture test that passes proves nothing unless
+the target was reachable.
+
+*Verified.* `make ci` green, full suite 127 passed. Two breakages, each
+reverted, and they are the ones the milestone existed for: leaving `dragging`
+enabled on a coarse pointer — the exact Stage 13 bug, the map swallowing the
+page scroll — fails the one-finger test, and `touchZoom: false` fails the
+two-finger test. Neither could have been caught by the handler-state assertions,
+which is the whole argument for this project. CI installs Chromium alongside
+Firefox; WebKit is still not downloaded.
+
 ---
 
 ## 6. Contrast asserted, not merely measured

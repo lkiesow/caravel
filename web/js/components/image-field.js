@@ -1,4 +1,5 @@
 import { api } from "../api.js";
+import { guardForm } from "../busy.js";
 import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
 
@@ -88,8 +89,7 @@ export function renderImageField(container, { tripId, imageUrl, attachPath, onCh
       }
     });
 
-    container.querySelector(".image-field__url-form").addEventListener("submit", async (e) => {
-      e.preventDefault();
+    guardForm(container.querySelector(".image-field__url-form"), async (e) => {
       const input = e.target.url;
       if (!input.value) return;
       errorEl.hidden = true;

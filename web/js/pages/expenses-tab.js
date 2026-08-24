@@ -1,4 +1,5 @@
 import { api } from "../api.js";
+import { guardForm } from "../busy.js";
 import { t, translatePage, getLocale } from "../i18n.js";
 import { icon } from "../icon.js";
 import { confirmDialog } from "../components/dialog.js";
@@ -556,8 +557,7 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
       render();
     });
 
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
+    guardForm(form, async () => {
       const title = form.elements.title.value.trim();
       const amountMinor = parseMoney(form.elements.amount.value, currency());
       const spentOn = form.elements.spentOn.value;

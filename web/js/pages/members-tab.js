@@ -1,4 +1,5 @@
 import { api, ApiError } from "../api.js";
+import { guardForm } from "../busy.js";
 import { t, translatePage } from "../i18n.js";
 import { navigate } from "../router.js";
 import { icon } from "../icon.js";
@@ -191,8 +192,7 @@ export function renderMembersTab(content, trip, { onMembersChanged } = {}) {
     const error = content.querySelector(".members-add__error");
     bindSuggestions(form);
 
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
+    guardForm(form, async () => {
       error.hidden = true;
       const username = form.username.value.trim();
       if (!username) return;

@@ -1,4 +1,5 @@
 import { api } from "../api.js";
+import { guardForm } from "../busy.js";
 import { t, translatePage } from "../i18n.js";
 import { navigate } from "../router.js";
 import { icon } from "../icon.js";
@@ -65,8 +66,7 @@ export async function renderItineraryTab(container, trip) {
     const list = container.querySelector(".itinerary-days");
     days.forEach((day) => list.appendChild(renderDay(day)));
 
-    container.querySelector(".itinerary-add-day").addEventListener("submit", async (e) => {
-      e.preventDefault();
+    guardForm(container.querySelector(".itinerary-add-day"), async (e) => {
       const date = e.target.date.value;
       if (!date || days.some((d) => d.date === date)) return;
       const day = await api.put(`/trips/${trip.id}/itinerary/days/${date}`, { notes: null });
@@ -160,17 +160,22 @@ export async function renderItineraryTab(container, trip) {
       render();
     });
 
-    el.querySelector(".itinerary-day__add-item")?.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const select = e.target.itemId;
-      if (!select.value) return;
-      const dayRecord = await ensureDay(day);
-      const entry = await api.post(`/itinerary/days/${dayRecord.id}/entries`, { item_id: select.value });
-      day.id = dayRecord.id;
-      day.entries.push(entry);
-      select.value = "";
-      renderEntries(el, day);
-    });
+    // Two sequential writes on a day that does not exist yet (ensureDay, then
+    // the entry), so a re-entry here is worse than a duplicate row: the second
+    // pass would create the day again.
+    const addItemForm = el.querySelector(".itinerary-day__add-item");
+    if (addItemForm) {
+      guardForm(addItemForm, async (e) => {
+        const select = e.target.itemId;
+        if (!select.value) return;
+        const dayRecord = await ensureDay(day);
+        const entry = await api.post(`/itinerary/days/${dayRecord.id}/entries`, { item_id: select.value });
+        day.id = dayRecord.id;
+        day.entries.push(entry);
+        select.value = "";
+        renderEntries(el, day);
+      });
+    }
 
     return el;
   }

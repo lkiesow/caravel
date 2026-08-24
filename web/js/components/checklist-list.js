@@ -1,4 +1,5 @@
 import { api } from "../api.js";
+import { guardForm } from "../busy.js";
 import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
 import { confirmDialog, promptDialog } from "./dialog.js";
@@ -162,19 +163,21 @@ export async function renderChecklistList(container, tripId, { readOnly = false,
       renderCardMenu(card.querySelector(".checklist-card__actions"), checklist, canWrite, canMove, canDuplicate);
     }
 
-    card.querySelector(".checklist-item-form")?.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const input = e.target.elements.text;
-      const text = input.value.trim();
-      if (!text) return;
-      const item = await api.post(`/checklists/${checklist.id}/items`, { text });
-      checklist.items.push(item);
-      render();
-      // Re-render rebuilds the whole card (and drops focus with it) - refocus
-      // this checklist's item input so several items can be added in a row
-      // without reaching for the mouse each time.
-      container.querySelector(`[data-checklist-id="${checklist.id}"] .checklist-item-form input`)?.focus();
-    });
+    const itemForm = card.querySelector(".checklist-item-form");
+    if (itemForm) {
+      guardForm(itemForm, async (e) => {
+        const input = e.target.elements.text;
+        const text = input.value.trim();
+        if (!text) return;
+        const item = await api.post(`/checklists/${checklist.id}/items`, { text });
+        checklist.items.push(item);
+        render();
+        // Re-render rebuilds the whole card (and drops focus with it) - refocus
+        // this checklist's item input so several items can be added in a row
+        // without reaching for the mouse each time.
+        container.querySelector(`[data-checklist-id="${checklist.id}"] .checklist-item-form input`)?.focus();
+      });
+    }
 
     parent.appendChild(card);
   }
@@ -305,15 +308,17 @@ export async function renderChecklistList(container, tripId, { readOnly = false,
       });
     }
 
-    container.querySelector(".checklist-new-form")?.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const input = e.target.elements.title;
-      const title = input.value.trim();
-      if (!title) return;
-      const checklist = await api.post(`/trips/${tripId}/checklists`, { title, visibility: newVisibility });
-      checklists.push(checklist);
-      render();
-    });
+    const newForm = container.querySelector(".checklist-new-form");
+    if (newForm) {
+      guardForm(newForm, async (e) => {
+        const input = e.target.elements.title;
+        const title = input.value.trim();
+        if (!title) return;
+        const checklist = await api.post(`/trips/${tripId}/checklists`, { title, visibility: newVisibility });
+        checklists.push(checklist);
+        render();
+      });
+    }
   }
 
   render();

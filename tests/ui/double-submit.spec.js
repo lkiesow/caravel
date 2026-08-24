@@ -181,6 +181,36 @@ test.describe("a second press while a write is in flight", () => {
     expect(after.find((c) => c.id === checklist.id).items, "the list is empty, not doubly-deleted").toHaveLength(0);
   });
 
+  // The row forms: an add-item field with a submit button beside it, which is
+  // the shape eight of these conversions share. Worth its own case because
+  // guardForm resolves the button itself, and because this form refocuses its
+  // input after each add - the guard must not fight that.
+  test("adding a checklist item twice adds one item", async ({ page }) => {
+    const tripId = await ownTrip(page, "UI suite: double-submit row form");
+    strayTripIds.push(tripId);
+
+    const checklist = await (await page.request.post(`/api/trips/${tripId}/checklists`, { data: { title: "Packing" } })).json();
+
+    await gotoRoute(page, `/trips/${tripId}/checklists`);
+    await page.locator(".checklist-item-form input[name='text']").fill("Passport");
+
+    const gate = await holdRoute(page, `**/api/checklists/${checklist.id}/items`);
+    const submit = page.locator(".checklist-item-form button[type='submit']");
+
+    const inFlight = await doubleClick(page, ".checklist-item-form button[type='submit']");
+    await gate.arrived(1);
+
+    expect(inFlight, "the second press must not have started a request").toBe(1);
+    expect(gate.seen, "POST .../items should have been sent once").toHaveLength(1);
+    await expect(submit).toBeDisabled();
+
+    gate.release();
+    await expect(page.locator(".checklist-item")).toHaveCount(1);
+
+    const after = await (await page.request.get(`/api/trips/${tripId}/checklists`)).json();
+    expect(after.find((c) => c.id === checklist.id).items, "one item, not two").toHaveLength(1);
+  });
+
   // The only path the re-enable code ever runs on. On success the page
   // navigates and the button is thrown away, so a guard that never restored
   // anything would pass every test above and still leave a dead button behind

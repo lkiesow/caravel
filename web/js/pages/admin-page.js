@@ -1,4 +1,5 @@
 import { api, ApiError } from "../api.js";
+import { guardForm } from "../busy.js";
 import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
 import { renderMenu } from "../components/menu.js";
@@ -222,8 +223,7 @@ export async function renderAdminPage(container) {
     const form = container.querySelector(".admin-new-user");
     const error = container.querySelector(".admin-new-user__error");
 
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
+    guardForm(form, async () => {
       error.hidden = true;
       const username = form.username.value.trim();
       if (!username || form.password.value.length < 8) {

@@ -220,6 +220,28 @@ Mechanical `guardForm` conversions, dropping each handler's own
   than a duplicate row)
 - `image-field.js` — set image by URL
 
+**Done.** All eight converted, each losing its own `e.preventDefault()` and its
+own button lookup. Two needed a shape change rather than a one-line swap: the
+optional-chained `?.addEventListener` calls in `checklist-list.js` and the
+itinerary's add-item form became `const` plus `if`, since `guardForm` needs a
+form to attach to. The handlers that read `e.target.elements` keep their event
+parameter — `wrap` passes every argument through.
+
+Checked while converting: `guardForm`'s default selector also matches a bare
+`<button>` with no `type`, and the itinerary has three of those (remove-day,
+move-up/down, remove-entry). None is inside a form, so none is caught. The
+`type="button"` controls (expenses' Cancel, image-field's Remove, login's mode
+switch) are excluded by the selector.
+
+Verified: `make ci` green, `make test-ui` green in full (133 passed — including
+`checklists.spec.js`, `expenses.spec.js`, `members-tab` via `sharing.spec.js`,
+`itinerary-order.spec.js` and the cover-photo paths in `trip-editor.spec.js`).
+New case: the checklist add-item row form, chosen because it is the shape the
+other seven share *and* because it refocuses its input after each add — the
+guard must not fight that, and does not (the explicit focus lands before the
+restore looks, which then sees focus is not on `<body>` and leaves it alone).
+Fails with the guard defeated, two POSTs.
+
 ---
 
 ## 5. The remaining buttons and toggles

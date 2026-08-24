@@ -1009,6 +1009,96 @@ with pictures.
   the UI moves, and — if it survives — the pinned Zensical version needing
   periodic review).
 
+**Done.** A **Features** section of five pages carrying fifteen screenshots, and
+a generator that produces them: `scripts/gen_screenshots.sh` (server lifecycle)
+plus `scripts/gen_screenshots.mjs` (the browser work), wired up as
+`make screenshots`. Output committed, the script not part of any build — the same
+contract as `gen_icons.py`.
+
+*Isolation, which the plan asked for and the plan's own suggestion could not
+give.* The plan proposed a read-only script against the shared seeded scenarios,
+to avoid the poisoning hazard `todo.md` records twice. But a tour needs the set
+dressed — real photographs, titles that are not `Demo: ...` — and that is
+writing. So the script runs a **throwaway instance of its own**: its own SQLite
+database and upload directory in a `mktemp -d`, on port 8099, seeded with only
+the `full` scenario. Nothing it does can reach the dev database or the UI suite's
+data, which is stronger than read-only rather than a compromise on it.
+
+*Dressing the set.* Through the API: retitle the trip and give it a subtitle,
+upload photographs over the fixtures (cover, location image, five trip files),
+re-date the seeded expenses into the trip's window, and create two more trips so
+the trips list is a list. Cast by filename, because the choice is about content —
+a cathedral captioned "hut traverse" is what a reader notices — with a positional
+fallback so a different photo directory still produces a full set. The two
+invented trips are named after what is actually in their cover photographs
+(Tenerife, Trier) rather than inventing a destination and pairing it with an
+unrelated picture.
+
+*The photographs are the author's own, used under the terms he set: temporary,
+never committed, never published as files.* Only the PNG captures are committed,
+and a PNG re-render carries none of a JPEG's metadata. Caravel strips it anyway —
+`internal/imaging.DecodeAndResize` re-encodes every upload from decoded pixels,
+so EXIF and its GPS tag never reach disk, which was worth confirming in the code
+rather than assuming. The camera filenames were also renamed on upload
+(`IMG20251027211809.jpg` → `kirkjufell-sunrise.jpg`): they read as test data in a
+screenshot and put the capture date in the frame. `images/` is left untracked and
+was never staged; nothing in this milestone commits it.
+
+*Five things went wrong, and the pattern in the first is the one worth keeping.*
+1. **Two API calls were failing with 400 in silence.** The trip body field is
+   `subtitle`, not `description`, and `readJSON` refuses unknown fields — so the
+   set was never dressed, and the first screenshots showed
+   "Demo: Iceland Ring Road" and a one-card trips list. The script had not
+   checked a single status. Every call now goes through a `must()` helper that
+   throws with the status and body.
+2. **Echoing an expense back would have destroyed the interesting case.**
+   `share_user_ids` always comes back as the *effective* set, so a PATCH that
+   returns it converts "split with everyone" into "pinned to today's members" —
+   and the subset row that makes the balances worth showing would stop being
+   distinguishable. Forwarded only when it is a genuine subset.
+3. **Every tab screenshot was the cover banner.** The map shot was one pin and a
+   strip of coastline. Fixed by scrolling the tab bar to the top before
+   capturing; the balances card needed an element-clipped shot instead, because
+   it sits at the bottom of the page and scrolling runs out before it reaches the
+   top.
+4. **The assistant shot was skipped silently** — a bare `count()` immediately
+   after `goto()` found nothing, because the editor renders asynchronously. It
+   waits for the button now. Then the first successful capture was clipped to
+   `.assist` and showed "6 suggestions" and none of them: the suggestions live in
+   `[data-assist-field]` slots scattered through the form, so it is a viewport
+   shot.
+5. **The stub answers with the same canned place whatever it is asked**, so
+   asking about Seljalandsfoss and being offered "Kex Hostel" put a visible
+   non-sequitur in the frame. The prompt now matches `internal/assist/stub.go`.
+
+*One documentation error, caught by reading the code rather than the UI's own
+label.* The checklists page said a shared list can be ticked by every member and
+that a viewer can tick them. `canModifyChecklist` requires
+`role.AtLeast(db.RoleEditor)`, so a viewer can tick nothing — and a "trip"
+checklist is its author only, not editors generally. Both tables corrected, with
+a note that the app's own "everyone can tick" label means every *editor*.
+
+*Weight.* Fifteen captures at device scale 2 came to 3.3M, which is committed
+and re-committed on every regeneration. `pngquant` brings the set under 1M with
+no visible loss on text or map tiles; the script says so if pngquant is missing
+rather than quietly producing a set three times larger.
+
+*A new check, and a gap it exposed.* `scripts/check_screenshots.py` fails if a
+committed capture is shown by no page, or a page references one that does not
+exist. Strict mode already catches the second; the first is silent, and dead
+PNGs stay in the history forever. Verified by planting each failure. Adding it
+to CI then turned up something worse: **`check_env_vars.py` has been in
+`make ci` since Milestone 4 and was never added to `.github/workflows/ci.yml`**,
+so the check written specifically to stop config drift could not fail a pull
+request. Both are steps in the `ci` job now.
+
+*Verified.* `make ci` green including both new checks; `zensical build --clean
+--strict` clean; all fifteen screenshots referenced and present; the Features
+nav and a feature page inspected in a browser. The generator was run end to end
+seven times during this milestone, which is the reproducibility claim being
+exercised rather than asserted.
+
+
 ---
 
 ## Build order

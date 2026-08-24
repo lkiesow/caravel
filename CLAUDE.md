@@ -124,6 +124,31 @@ check, i18n key parity, `go test`. Don't rely on CI to catch it first.
   for churn — an unsubstituted `sqlc.arg(...)` compiles fine and fails at
   runtime.
 
+- **The screenshot generator dresses the set, and the dressing is the fiddly
+  part.** (`scripts/gen_screenshots.sh` + `.mjs`, Stage 18 Milestone 11.) The
+  seeded data is built for the UI suite, so it is titled `Demo: ...`, says
+  "nothing here is real", dates its expenses outside the trip window, and uses
+  deliberately-poor image fixtures. The script rewrites all of that through the
+  API before capturing. Four things cost time and are easy to repeat:
+  - **`readJSON` refuses unknown fields, and the trip body field is `subtitle`,
+    not `description`.** Two calls were failing with 400 in silence because the
+    script did not check statuses. Every API call now goes through a `must()`
+    helper -- do not add one that does not.
+  - **`share_user_ids` comes back as the *effective* set**, so echoing an
+    expense back on PATCH converts "split with everyone" into "pinned to today's
+    members". Forward it only when it is a genuine subset.
+  - **Tab screenshots need scrolling.** The cover banner and title fill the
+    viewport, so an unscrolled capture of the map tab is one pin and a strip of
+    coastline. There is a `scrollTo` option; a card at the very bottom of a page
+    needs `element` instead, because the page runs out of scroll before the card
+    reaches the top.
+  - **The stub provider answers with the same canned place whatever it is
+    asked** (`internal/assist/stub.go`), so the prompt in the assistant
+    screenshot has to match it or the picture shows a waterfall being offered a
+    hostel.
+  Output is quantised with `pngquant` (3.3M -> under 1M); without it installed
+  the run still works and says the set will be ~3x larger.
+
 - **The documentation site has four traps worth knowing.** All four cost time
   in Stage 18.
   - **The Zensical version is pinned in two files** —
@@ -207,6 +232,12 @@ check, i18n key parity, `go test`. Don't rely on CI to catch it first.
   `go test`. Deliberately **does not** build the documentation site: that gate
   is the app, and it should not need a Python site generator installed to tell
   you whether the Go code compiles.
+- `make screenshots` — regenerates the documentation screenshots
+  (`docs/assets/screenshots/`, committed). Runs its own throwaway server on
+  :8099 with its own database, so it neither needs `make dev` nor touches the
+  seeded scenarios `make test-ui` depends on. Photos to dress the set come from
+  `images/` (`PHOTO_DIR=…` to point elsewhere); without them the run still works
+  but every image is the seeder's 343x200 test-sheet crop, and it says so.
 - `make docs` / `make docs-serve` — the project website and documentation
   (`docs/`, `zensical.toml`, `overrides/`), built into `site/` (gitignored) or
   served at `localhost:8000`. Run `make docs` before committing anything under

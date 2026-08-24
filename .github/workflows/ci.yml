@@ -27,6 +27,16 @@ jobs:
       - name: i18n key parity
         run: python3 scripts/check_i18n.py
 
+      # Both of these run in `make ci` and were missing here, so neither could
+      # fail a pull request: check_env_vars has been able to catch a config
+      # variable documented but not read since Stage 18 Milestone 4 and never
+      # once run in CI.
+      - name: Env var parity
+        run: python3 scripts/check_env_vars.py
+
+      - name: Screenshot references
+        run: python3 scripts/check_screenshots.py
+
       - name: Test
         run: go test ./...
 

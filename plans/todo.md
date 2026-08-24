@@ -395,6 +395,32 @@ else runs this.
   review), or leaving it to judgement. Worth deciding before the first release
   rather than after.
 
+- **The documentation screenshots go stale silently.** (Stage 18 Milestone 11.)
+  `make screenshots` regenerates them and `scripts/check_screenshots.py` keeps
+  the set and the pages in agreement, but nothing notices when the UI moves and
+  the committed captures start showing an older layout. There is no cheap
+  automatic answer -- comparing images would fail on every unrelated pixel -- so
+  the realistic options are a reminder in the stage workflow (regenerate
+  whenever a milestone changes a screen that appears in the tour) or a periodic
+  refresh. Worth deciding rather than drifting.
+
+- **The screenshots depend on photographs that are not in the repository.**
+  (Stage 18 Milestone 11.) The set is dressed from `images/`, which is
+  deliberately untracked -- the author's own photos, used temporarily and not
+  published as files. So anybody else regenerating gets the seeder's 343x200
+  test-sheet fixtures instead, and the output will not match what is committed.
+  The script says so loudly rather than pretending otherwise. If the project ever
+  wants reproducible-by-anyone screenshots, it needs a small set of
+  known-licence photographs committed for the purpose.
+
+- **A compose-based way to run the UI suite.** (Stage 18.) `make test-ui` drives
+  a dev server that has to be started and seeded by hand; the screenshot
+  generator now shows the alternative shape -- a throwaway server on its own
+  port with its own database, started and torn down by the script. The same
+  treatment would make the UI suite runnable from a clean clone with one command
+  and remove the shared-seed contention that has already caused a false failure
+  report.
+
 - **`auth.SetPassword`'s doc comment is wrong.** (Stage 18 Milestone 10.) It
   says the function is "deliberately not reachable from any HTTP route" and that
   it exists for `cmd/seed` -- but `handleAdminResetPassword` calls it, which is

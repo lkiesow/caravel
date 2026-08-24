@@ -325,11 +325,34 @@
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
 }
 
+/* Each card is a link into the feature tour, so it needs to behave like one:
+   no underline on the block, a hover state that says it is clickable, and its
+   own text colours rather than the theme's link blue. */
 .home__feature {
+  display: block;
   padding: 1.5rem;
   border: 1px solid var(--md-default-fg-color--lightest);
   border-radius: 0.75rem;
   background: var(--md-default-bg-color);
+  text-decoration: none;
+  transition: border-color 120ms, transform 120ms;
+}
+
+.home__feature:hover,
+.home__feature:focus-visible {
+  border-color: var(--brand-blue);
+  transform: translateY(-2px);
+}
+
+/* Respect a reader who has asked for less movement. */
+@media (prefers-reduced-motion: reduce) {
+  .home__feature {
+    transition: none;
+  }
+  .home__feature:hover,
+  .home__feature:focus-visible {
+    transform: none;
+  }
 }
 
 .home__feature svg {
@@ -355,4 +378,25 @@
   font-size: 0.9375rem;
   line-height: 1.55;
   color: var(--md-default-fg-color--light);
+}
+
+/* ------------------------------------------------------------------------
+   Screenshots
+
+   The feature tour is mostly pictures of the app, and a screenshot with no
+   frame reads as part of the page rather than as a picture of another one.
+   ------------------------------------------------------------------------ */
+
+.md-typeset img {
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.5rem;
+}
+
+/* A phone capture is 324px wide. Left to itself it is stretched to the full
+   measure, which makes a crisp image blurry and a phone look like a tablet.
+   Applied with `{ .screenshot-phone }` in the markdown. */
+.md-typeset img.screenshot-phone {
+  display: block;
+  max-width: min(100%, 324px);
+  margin-inline: auto;
 }

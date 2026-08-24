@@ -1,4 +1,4 @@
-.PHONY: run build test dev dev-restart dev-marker dev-version dev-seed dev-reset vet check-js check-i18n check-env test-ui test-postgres ci docs docs-serve
+.PHONY: run build test dev dev-restart dev-marker dev-version dev-seed dev-reset vet check-js check-i18n check-env check-screenshots test-ui test-postgres ci docs docs-serve screenshots
 
 # The build's identity, stamped into the binary at link time and reported by the
 # startup banner and GET /api/health — so "which build is this server running?"
@@ -103,10 +103,13 @@ check-env:
 PW_ENV = $(if $(HEADED),CARAVEL_TEST_HEADED=1)$(if $(SLOWMO), CARAVEL_TEST_SLOWMO=$(SLOWMO))
 PW_ARGS = $(if $(GREP),--grep "$(GREP)")$(if $(UI), --ui)$(if $(HEADED), --headed --workers=1)
 
+check-screenshots:
+	python3 scripts/check_screenshots.py
+
 test-ui:
 	$(PW_ENV) npx playwright test $(PW_ARGS)
 
-ci: build vet check-js check-i18n check-env test
+ci: build vet check-js check-i18n check-env check-screenshots test
 
 # The project website and documentation (docs/, zensical.toml, overrides/).
 #
@@ -127,3 +130,12 @@ docs:
 # is a different port from the app's 8080, so both can run at once.
 docs-serve:
 	zensical serve
+
+# Regenerates the documentation screenshots (docs/assets/screenshots/). Output is
+# committed; this is not part of any build. It runs its own throwaway server, so
+# it neither needs `make dev` nor touches the seeded scenarios the UI suite uses.
+#
+#   make screenshots
+#   make screenshots PHOTO_DIR=~/photos   dress the set with your own images
+screenshots:
+	scripts/gen_screenshots.sh

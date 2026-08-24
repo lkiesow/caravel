@@ -21,6 +21,26 @@ type Config struct {
 	// the control rather than offering one that cannot work.
 	GeocoderURL string
 
+	// The map tile layer, which the browser loads directly from whoever
+	// serves it -- unlike the geocoder above, which Caravel proxies. Empty
+	// and zero mean "not set" and take the defaults in internal/httpapi,
+	// which owns the values so they are not written down twice.
+	//
+	// Configurable because the default renders place names in the local
+	// script: a trip to Japan is labelled 東京 rather than Tokyo, and there
+	// is no language option on those tiles to change it. Swapping the
+	// provider is the only fix, so the URL cannot be a literal in the
+	// frontend. See docs/configuration/server.md for the providers worth
+	// knowing about and what each one is good for.
+	//
+	// TileAttribution is HTML and is *not* escaped anywhere: Leaflet renders
+	// it as markup, and every provider's terms require a working link back.
+	// It comes from the operator's own environment, the same trust level as
+	// the database password sitting next to it.
+	TileURL         string // CARAVEL_TILE_URL
+	TileAttribution string // CARAVEL_TILE_ATTRIBUTION
+	TileMaxZoom     int    // CARAVEL_TILE_MAX_ZOOM
+
 	// AI-assisted location metadata, off unless LLMURL is set.
 	//
 	// Env vars only, never the database, and deliberately so: a key in
@@ -84,6 +104,11 @@ var SearchProviders = []string{"stub", "ollama", "ddgs", "serper"}
 // provider rather than a real HTTP endpoint.
 const LLMStub = "stub"
 
+// maxTileZoom is the deepest zoom the XYZ tile scheme addresses at all. No
+// provider serves this far down -- the usual ceiling is 19 or 20 -- but a
+// number beyond it is certainly a typo rather than an ambitious operator.
+const maxTileZoom = 22
+
 // AssistEnabled reports whether the assistant is configured at all. It is the
 // single off switch: everything downstream keys off this one answer rather
 // than re-deriving it from a combination of fields.
@@ -103,6 +128,11 @@ func Load() (Config, error) {
 		// user's typing to a third party without a single place to turn that
 		// off.
 		GeocoderURL: getEnv("CARAVEL_GEOCODER_URL", "https://nominatim.openstreetmap.org/search"),
+
+		// No defaults here: internal/httpapi holds them, the same way it
+		// holds the assist limiter defaults.
+		TileURL:         strings.TrimSpace(os.Getenv("CARAVEL_TILE_URL")),
+		TileAttribution: strings.TrimSpace(os.Getenv("CARAVEL_TILE_ATTRIBUTION")),
 
 		// No defaults on purpose. A default endpoint would mean an instance
 		// that starts talking to a third party because someone set a model
@@ -143,6 +173,7 @@ func Load() (Config, error) {
 	cfg.AssistAnswerReserve = pickInt("CARAVEL_ASSIST_ANSWER_RESERVE")
 	cfg.AssistRateLimit = pickInt("CARAVEL_ASSIST_RATE_LIMIT")
 	cfg.AssistMaxConcurrent = pickInt("CARAVEL_ASSIST_MAX_CONCURRENT")
+	cfg.TileMaxZoom = pickInt("CARAVEL_TILE_MAX_ZOOM")
 	if len(errs) > 0 {
 		return Config{}, errors.Join(errs...)
 	}
@@ -174,6 +205,24 @@ func Load() (Config, error) {
 	// CARAVEL_SEARCH_URL as an override.
 	if cfg.SearchProvider == "ddgs" && cfg.SearchURL == "" {
 		return Config{}, fmt.Errorf("CARAVEL_SEARCH_PROVIDER %q needs CARAVEL_SEARCH_URL: it is a service you run yourself", cfg.SearchProvider)
+	}
+
+	// A tile URL without its placeholders is not a slow map, it is a blank
+	// one: the browser requests a literal "{z}" once, gets a 404, and shows
+	// grey squares with nothing in the UI pointing at the variable that
+	// caused it. Checked here so the server refuses to start instead.
+	if cfg.TileURL != "" {
+		for _, placeholder := range []string{"{z}", "{x}", "{y}"} {
+			if !strings.Contains(cfg.TileURL, placeholder) {
+				return Config{}, fmt.Errorf("invalid CARAVEL_TILE_URL %q: missing %s -- the template needs {z}, {x} and {y}", cfg.TileURL, placeholder)
+			}
+		}
+	}
+	// getEnvInt has already refused a negative or unparseable value; 0 means
+	// unset. The ceiling is the deepest zoom the XYZ scheme defines, and the
+	// floor rules out a 0 that would be indistinguishable from unset anyway.
+	if cfg.TileMaxZoom > maxTileZoom {
+		return Config{}, fmt.Errorf("invalid CARAVEL_TILE_MAX_ZOOM %d: must be between 1 and %d", cfg.TileMaxZoom, maxTileZoom)
 	}
 
 	return cfg, nil

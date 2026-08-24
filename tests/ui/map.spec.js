@@ -137,6 +137,62 @@ test.describe("the trip map at phone width", () => {
   });
 });
 
+// The tile layer used to be a literal in leaflet-map.js, which is why the map
+// could only ever speak the local language: the standard OSM tiles label
+// places in the local script (Tokyo renders as the Japanese for it) and no
+// parameter on them changes that. The URL is configuration now, so what is
+// worth asserting is the wiring - that the layer is built from whatever
+// /api/map/config answers, rather than from a constant that merely happens to
+// agree with it today.
+test.describe("the tile layer follows the server's configuration", () => {
+  test.use({ viewport: { width: 1280, height: 800 } });
+
+  test("tiles are requested from the configured provider, and it is credited", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+
+    const { configured, tileSrcs, attribution, attributionText } = await page.evaluate(async () => {
+      const res = await fetch("/api/map/config", { credentials: "same-origin" });
+      const sr = document.querySelector("leaflet-map").shadowRoot;
+      return {
+        configured: await res.json(),
+        tileSrcs: [...sr.querySelectorAll("img.leaflet-tile")].map((img) => img.src),
+        attribution: sr.querySelector(".leaflet-control-attribution")?.innerHTML ?? null,
+        attributionText: sr.querySelector(".leaflet-control-attribution")?.textContent ?? null,
+      };
+    });
+
+    // The host is the part a provider swap actually changes, and it survives
+    // Leaflet's substitution of {z}/{x}/{y} - which the full template does
+    // not, so this cannot just compare strings. {s} is dropped rather than
+    // filled in: Leaflet rotates it over a, b and c, so which subdomain any
+    // one tile came from is not something to assert.
+    const expectedDomain = new URL(configured.tile_url.replace("{s}.", "")).host;
+    expect(tileSrcs.length, "the map should have requested some tiles").toBeGreaterThan(0);
+    for (const src of tileSrcs) {
+      expect(new URL(src).host, `tile ${src} should come from the configured provider`).toContain(expectedDomain);
+    }
+
+    // Attribution is served as HTML and rendered unescaped on purpose: every
+    // provider's terms require a working link back, so a "fix" that escaped
+    // the markup would leave the instance out of compliance with text that
+    // still looks right in a screenshot. The links are what is asserted,
+    // rather than the markup verbatim - the DOM renders `&copy;` back out as
+    // `©`, so a string comparison would fail on a correctly rendered credit.
+    const requiredLinks = [...configured.tile_attribution.matchAll(/href="([^"]+)"/g)].map((m) => m[1]);
+    expect(requiredLinks.length, "the configured attribution should carry at least one link").toBeGreaterThan(0);
+    for (const href of requiredLinks) {
+      expect(attribution, `the provider's credit link ${href} must survive into the DOM`).toContain(
+        `href="${href}"`
+      );
+    }
+    // And the visible text, so an anchor with no words in it would still fail.
+    expect(attributionText, "the credit should read as text, not just link to somewhere").toContain(
+      "OpenStreetMap"
+    );
+  });
+});
+
 test.describe("the trip map with a mouse", () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 

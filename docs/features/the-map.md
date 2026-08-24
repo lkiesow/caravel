@@ -8,8 +8,12 @@ Pins are coloured by category — site, stay, transport — and each category ca
 switched off, so "show me only where we are sleeping" is one click. The map
 frames itself to fit whatever is currently shown.
 
-Tiles come from OpenStreetMap. Clicking a pin opens the location, so the map
-doubles as a way of navigating the trip rather than only a way of looking at it.
+Tiles come from OpenStreetMap, which labels places in the local script — a trip
+to Japan reads 東京 rather than Tokyo. That is a property of those tiles rather
+than a setting, so the provider is configurable: see [Map
+tiles](../configuration/map-tiles.md) for the ones that write latin script, or a
+language of your choosing. Clicking a pin opens the location, so the map doubles
+as a way of navigating the trip rather than only a way of looking at it.
 
 ## Getting coordinates onto a location
 

@@ -33,6 +33,7 @@ nav = [
     { "Server and database" = "configuration/server.md" },
     { "The assistant" = "configuration/assistant.md" },
     { "Address search" = "configuration/address-search.md" },
+    { "Map tiles" = "configuration/map-tiles.md" },
   ] },
   { Features = [
     { "Trips and locations" = "features/trips-and-locations.md" },

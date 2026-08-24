@@ -413,6 +413,31 @@ else runs this.
   would need the built site served, which the Playwright config does not do
   today. Worth it if the landing page grows; overkill for one page.
 
+- **Vector tiles, for map labels in the user's own language.** (Surfaced by
+  the tile-source change of 2026-08-25.) `CARAVEL_TILE_URL` now lets an
+  operator pick a provider whose labels are latin script, or one language
+  chosen for the whole instance -- but not one that follows each user's own
+  preference, because raster tiles are drawn before anyone asks. The answer is
+  vector tiles: MapLibre GL against OpenFreeMap (no key, no request limits,
+  unmodified OpenMapTiles schema, which carries both `name:en` and `name:de` --
+  exactly the two locales `web/js/i18n.js` supports), with the label
+  `text-field` set to coalesce `name:<locale>`, `name:latin`, `name` and
+  re-applied on the `locale-changed` event the i18n module already dispatches.
+  The cost is what makes it a stage of its own rather than a follow-up:
+  vendoring MapLibre GL beside the Leaflet copy, rewriting all 717 lines of
+  `web/js/components/leaflet-map.js` (markers as symbol layers or DOM overlays,
+  popups, `fitBounds`, pick mode, the locate control), and reworking
+  `tests/ui/map.spec.js` and `map.gesture.spec.js`, including Stage 13's
+  two-finger gesture handling, which is expressed entirely in Leaflet handler
+  terms.
+
+- **The committed screenshots still show the default tile provider.**
+  (Surfaced by the tile-source change of 2026-08-25.) `make screenshots` runs
+  its own throwaway server, so `docs/assets/screenshots/map.png` shows whatever
+  that server is configured with -- OpenStreetMap, and correct for a stock
+  install. If the documented default ever changes, the set needs regenerating
+  or the map page will illustrate a provider nobody uses.
+
 - **S3-compatible object storage.** Swap the `internal/storagefs` `Blob`
   implementation from local filesystem to S3-compatible (MinIO, Backblaze, and
   so on); the interface already isolates callers from the backend.

@@ -54,9 +54,10 @@ export const COLOR_SCHEMES = ["light", "dark"];
 // Blocks every request that isn't to the app itself, and serves a 1x1 PNG in
 // place of map tiles.
 //
-// Without this the Map route fetches a dozen tiles from tile.openstreetmap.org,
-// which makes the suite slow, flaky, dependent on a third party being reachable,
-// and rude to a free service — and in CI it would be the main reason for random
+// Without this the Map route fetches a dozen tiles from whichever provider the
+// instance is configured with (tile.openstreetmap.org by default), which makes
+// the suite slow, flaky, dependent on a third party being reachable, and rude
+// to a free service — and in CI it would be the main reason for random
 // failures. Tiles are replaced rather than merely aborted so Leaflet still lays
 // out and still creates its markers, which is what the checks actually look at.
 const TRANSPARENT_PNG = Buffer.from(

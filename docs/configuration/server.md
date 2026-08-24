@@ -14,6 +14,9 @@ change when the defaults do not fit.
 | `CARAVEL_UPLOAD_DIR` | `uploads` | Where uploaded images and documents are stored |
 | `CARAVEL_WEB_DIR` | *(unset)* | Serve the frontend live from this directory instead of the copy embedded in the binary. A development setting — see `make dev` |
 | `CARAVEL_GEOCODER_URL` | OpenStreetMap Nominatim | Address-search endpoint — see [Address search](address-search.md) |
+| `CARAVEL_TILE_URL` | OpenStreetMap tiles | Where the browser fetches map tiles from — see [Map tiles](map-tiles.md) |
+| `CARAVEL_TILE_ATTRIBUTION` | OpenStreetMap contributors | The credit shown on the map, as HTML. Whatever provider you use, meeting its attribution terms is this variable |
+| `CARAVEL_TILE_MAX_ZOOM` | `19` | How far the map may zoom in, which is a property of the provider |
 
 The container image sets `CARAVEL_DB_DSN=/data/caravel.db` and
 `CARAVEL_UPLOAD_DIR=/uploads`, which is why the compose files mount volumes at
@@ -21,6 +24,12 @@ those two paths.
 
 The assistant has its own variables, all unset by default, on [The
 assistant](assistant.md).
+
+The three tile variables are worth a page of their own, because the reason to
+touch them is rarely obvious from the names: the default tiles label places in
+the local script, so a trip to Japan reads 東京 rather than Tokyo, and no
+setting on those tiles changes it. See [Map tiles](map-tiles.md) for the
+providers that do.
 
 ## Where to put them
 

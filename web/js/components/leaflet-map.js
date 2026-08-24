@@ -3,6 +3,29 @@ import { t } from "../i18n.js";
 import { icon } from "../icon.js";
 import { getCurrentPosition, locateErrorKey, locateUnavailableReason } from "../geolocation.js";
 
+// The tile layer, as the instance has it configured. Defaults duplicated from
+// internal/httpapi/map.go on purpose: they are what the map falls back to when
+// the request fails, and a Map tab of grey squares is a worse answer to "the
+// config endpoint is briefly unreachable" than the tiles Caravel shipped with.
+const DEFAULT_TILE_CONFIG = {
+  tile_url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  tile_attribution:
+    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  max_zoom: 19,
+};
+
+// Memoised at module scope, not per instance: three routes mount a map and a
+// trip page can swap between them, but the answer is instance-wide and cannot
+// change without a server restart. One request per page load, not per map.
+let tileConfigPromise = null;
+
+function loadTileConfig() {
+  if (!tileConfigPromise) {
+    tileConfigPromise = api.get("/map/config").catch(() => DEFAULT_TILE_CONFIG);
+  }
+  return tileConfigPromise;
+}
+
 const CATEGORY_COLORS = {
   site: "#16a34a",
   stay: "#7c3aed",
@@ -11,8 +34,9 @@ const CATEGORY_COLORS = {
 
 // Zoom used when the view can't be derived from spread-out markers - a
 // single marker, or a set of markers that all sit in the same place. Close
-// enough to read street names, far enough that OSM definitely has tiles
-// (the layer's maxZoom of 19 is well past what OSM renders in most places).
+// enough to read street names, and shallow enough that any tile provider has
+// something to serve - the layer's own maxZoom is configurable and sits well
+// past what most providers actually render.
 const SINGLE_MARKER_ZOOM = 14;
 
 // Category colour for a marker, for items whose category is unknown or not
@@ -404,8 +428,16 @@ class LeafletMap extends HTMLElement {
     }
 
     // Lazy-load Leaflet only when the map is actually shown, keeping it out
-    // of the initial page weight for users who never open the Map tab.
-    const L = await import("../vendor/leaflet/leaflet.esm.js");
+    // of the initial page weight for users who never open the Map tab. The
+    // tile config is fetched alongside it rather than after: both are needed
+    // before the first tile can be requested, so serialising them would cost
+    // a round trip, and awaiting the config *after* L.map() would leave a
+    // constructed, tile-less map behind whenever this render is superseded
+    // mid-fetch.
+    const [L, tiles] = await Promise.all([
+      import("../vendor/leaflet/leaflet.esm.js"),
+      loadTileConfig(),
+    ]);
     if (generation !== this._generation) return;
     this._L = L;
 
@@ -422,9 +454,19 @@ class LeafletMap extends HTMLElement {
     const map = L.map(mapEl, { attributionControl: true, dragging: !isCoarsePointer() });
     this._map = map;
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: "&copy; <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors",
+    L.tileLayer(tiles.tile_url, {
+      maxZoom: tiles.max_zoom,
+      attribution: tiles.tile_attribution,
+      // detectRetina does more than substitute {r}: it also halves tileSize
+      // and bumps zoomOffset, so switching it on for a provider with no @2x
+      // variant asks for four tiles where one would do. Gating on the
+      // placeholder lets a provider that serves @2x opt in through its URL
+      // alone, and leaves the default provider loading exactly what it did
+      // before this was configurable.
+      detectRetina: tiles.tile_url.includes("{r}"),
+      // Covers both the 3-subdomain (a,b,c) and 4-subdomain conventions.
+      // Leaflet ignores this entirely for a URL with no {s}.
+      subdomains: "abcd",
     }).addTo(map);
 
     this.plotMarkers();
@@ -532,9 +574,9 @@ class LeafletMap extends HTMLElement {
     if (visible.length) {
       const bounds = L.latLngBounds(visible.map((i) => [i.lat, i.lng]));
       // maxZoom matters for a single marker (or several at the same spot):
-      // the bounds are then zero-size and fitBounds would zoom all the way
-      // to the tile layer's maxZoom of 19, where OSM serves no tiles at all
-      // - a grey rectangle with one dot on it. 14 is the same zoom the
+      // the bounds are then zero-size and fitBounds would zoom all the way to
+      // the tile layer's own maxZoom, past where most providers serve tiles
+      // at all - a grey rectangle with one dot on it. 14 is the same zoom the
       // single-marker branch above picks deliberately.
       this._map.fitBounds(bounds, { padding: [32, 32], maxZoom: SINGLE_MARKER_ZOOM });
     } else {

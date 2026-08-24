@@ -133,6 +133,11 @@ func main() {
 		NoCache:  cfg.WebDir != "",
 		Geocoder: geocoder,
 		Assist:   assistant,
+		Tiles: httpapi.TileSettings{
+			URL:         cfg.TileURL,
+			Attribution: cfg.TileAttribution,
+			MaxZoom:     cfg.TileMaxZoom,
+		},
 	})
 
 	log.Printf("caravel %s listening on :%s (db=%s, assist=%t)", buildinfo.Version, cfg.Port, cfg.DBDriver, assistant != nil)

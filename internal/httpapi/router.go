@@ -62,7 +62,11 @@ type Server struct {
 	LoginLimiter   *rateLimiter
 	GeocodeLimiter *rateLimiter
 	AssistLimiter  *rateLimiter
-	router         chi.Router
+	// Tiles is what /api/map/config hands the frontend, already resolved
+	// against the defaults, so nothing downstream has to ask "is this the
+	// configured value or the fallback".
+	Tiles  TileSettings
+	router chi.Router
 }
 
 // Options are NewServer's dependencies and settings.
@@ -96,6 +100,9 @@ type Options struct {
 	// AssistMaxConcurrent bounds how many runs may be in flight at once. Zero
 	// takes DefaultAssistMaxConcurrent.
 	AssistMaxConcurrent int
+	// Tiles is the map tile layer the browser loads. Zero fields take the
+	// defaults below.
+	Tiles TileSettings
 }
 
 // DefaultAssistRateLimit is far tighter than the other limiters because the
@@ -139,6 +146,7 @@ func NewServer(opts Options) *Server {
 		GeocodeLimiter: newRateLimiter(20, time.Minute),
 		AssistLimiter:  newRateLimiter(assistRateLimit(opts.AssistRateLimit), time.Minute),
 		assistSlots:    make(chan struct{}, assistMaxConcurrent(opts.AssistMaxConcurrent)),
+		Tiles:          opts.Tiles.withDefaults(),
 	}
 	s.router = s.buildRouter()
 	go s.sweepLimitersPeriodically()
@@ -214,6 +222,11 @@ func (s *Server) buildRouter() chi.Router {
 		// definition not on the trip yet. Filtering out people already on it
 		// happens on the client, which already has the member list.
 		r.With(auth.RequireAuth).Get("/users/search", s.handleSearchUsers)
+
+		// Not trip-scoped: the tile layer is an instance-wide setting, and
+		// the same answer serves the trip map, the location view and the
+		// coordinate picker. See handleMapConfig.
+		r.With(auth.RequireAuth).Get("/map/config", s.handleMapConfig)
 
 		// Not trip-scoped either: it renders the text sitting in the caller's
 		// own textarea, so there is nothing to authorize against but the

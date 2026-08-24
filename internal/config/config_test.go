@@ -243,3 +243,101 @@ func TestLoadAssistLimits(t *testing.T) {
 		}
 	})
 }
+
+// The tile vars carry no defaults of their own -- internal/httpapi owns those
+// -- so what Load has to get right is passing a set value through untouched
+// and refusing one that would produce a blank map with no visible cause.
+func TestLoadTileValidation(t *testing.T) {
+	const carto = "https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+
+	cases := []struct {
+		name    string
+		env     map[string]string
+		wantErr string // substring; empty means the config must load
+		check   func(*testing.T, Config)
+	}{
+		{
+			name: "unset leaves the defaults to httpapi",
+			env:  map[string]string{},
+			check: func(t *testing.T, c Config) {
+				if c.TileURL != "" || c.TileAttribution != "" || c.TileMaxZoom != 0 {
+					t.Errorf("unset tile vars produced %q / %q / %d, want all zero", c.TileURL, c.TileAttribution, c.TileMaxZoom)
+				}
+			},
+		},
+		{
+			name: "a set provider comes through verbatim",
+			env: map[string]string{
+				"CARAVEL_TILE_URL":         carto,
+				"CARAVEL_TILE_ATTRIBUTION": "&copy; CARTO",
+				"CARAVEL_TILE_MAX_ZOOM":    "20",
+			},
+			check: func(t *testing.T, c Config) {
+				if c.TileURL != carto {
+					t.Errorf("TileURL = %q, want %q", c.TileURL, carto)
+				}
+				if c.TileAttribution != "&copy; CARTO" {
+					t.Errorf("TileAttribution = %q, want the configured markup unescaped", c.TileAttribution)
+				}
+				if c.TileMaxZoom != 20 {
+					t.Errorf("TileMaxZoom = %d, want 20", c.TileMaxZoom)
+				}
+			},
+		},
+		{
+			// Each placeholder separately: a URL with {z} and {x} but no {y}
+			// still fetches something, so the check cannot stop at the first.
+			name:    "a url missing the y placeholder is refused",
+			env:     map[string]string{"CARAVEL_TILE_URL": "https://tiles.invalid/{z}/{x}.png"},
+			wantErr: "missing {y}",
+		},
+		{
+			name:    "a url with no placeholders at all is refused",
+			env:     map[string]string{"CARAVEL_TILE_URL": "https://tiles.invalid/tile.png"},
+			wantErr: "missing {z}",
+		},
+		{
+			name:    "a zoom past the scheme is refused",
+			env:     map[string]string{"CARAVEL_TILE_MAX_ZOOM": "30"},
+			wantErr: "CARAVEL_TILE_MAX_ZOOM 30",
+		},
+		{
+			name:    "a negative zoom is refused by getEnvInt",
+			env:     map[string]string{"CARAVEL_TILE_MAX_ZOOM": "-1"},
+			wantErr: "must not be negative",
+		},
+		{
+			name:    "a misspelled zoom is refused rather than ignored",
+			env:     map[string]string{"CARAVEL_TILE_MAX_ZOOM": "2O"},
+			wantErr: "must be a whole number",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, k := range []string{"CARAVEL_TILE_URL", "CARAVEL_TILE_ATTRIBUTION", "CARAVEL_TILE_MAX_ZOOM"} {
+				t.Setenv(k, "")
+			}
+			for k, v := range tc.env {
+				t.Setenv(k, v)
+			}
+
+			cfg, err := Load()
+			if tc.wantErr != "" {
+				if err == nil {
+					t.Fatalf("Load() succeeded, want error containing %q", tc.wantErr)
+				}
+				if !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("Load() error = %v, want it to contain %q", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load() = %v, want success", err)
+			}
+			if tc.check != nil {
+				tc.check(t, cfg)
+			}
+		})
+	}
+}

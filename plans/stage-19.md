@@ -165,6 +165,39 @@ trip via `page.request.post("/api/trips")` in `beforeEach`, deleted in
 Assert on state rather than screenshots: values after a reload,
 `window.location.pathname` after a delete, DOM counts.
 
+**Done.** Two specs, both owning their own trips: `tests/ui/locations.spec.js`
+(create with links and dates, edit, delete) and `tests/ui/trip-editor.spec.js`
+(create from `/trips/new` including a staged cover photo, edit from the Settings
+tab, delete, and both validation paths). Six tests; the suite goes from 108 to
+114.
+
+*One scope correction.* The plan said to set coordinates through the map
+picker. `map.spec.js` already does that properly -- a real DOM click inside the
+map's shadow root, a Save, then a read back through the API proving the stored
+point is the one the fields showed -- so repeating it here would have bought a
+second copy of the same evidence. `locations.spec.js` types the coordinates
+instead, which covers the half that spec does not: that lat, lng and the address
+ride along with the rest of the form and come back out on the view page. Said
+plainly in the spec's header so the omission does not read as an oversight.
+
+*Two things worth knowing about the surfaces.* The trip *editor* and the trip
+*settings tab* are different code around the same `trip-form.js`: `/trips/new`
+puts its submit button outside the form and stages a cover photo in memory until
+the trip has an id, while the settings tab renders the form's own actions row
+and writes immediately. Both are driven, because a spec covering one would leave
+the other's wiring unasserted. And the trip detail page canonicalises
+`/trips/{id}` to `/trips/{id}/locations`, so a post-create or post-delete URL
+assertion has to expect the tab, not the bare trip -- the first version of the
+delete test failed on exactly that.
+
+*Verified.* `make ci` green, full suite 114 passed. Every new spec was checked
+by breaking what it covers and watching it go red, five times, each reverted
+immediately: the location editor no longer sending `links`, the trip form no
+longer sending `subtitle`, the trip delete no longer honouring its confirmation,
+the location delete no longer honouring its confirmation, and the edit form no
+longer prefilling the notes. All five failed on the assertion that names the
+behaviour, not on a timeout somewhere downstream.
+
 ---
 
 ## 3. Checklists and the itinerary

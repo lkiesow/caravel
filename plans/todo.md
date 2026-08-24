@@ -255,9 +255,11 @@ down.
       Stage 17 Milestone 7 added `expenses.spec.js`, a fourth: its own trip, and
       it *adds a second member to that trip* rather than borrowing a seeded
       shared one, so the payer, share and balance paths are covered without
-      touching the memberships other specs read. That closes the expenses flow;
-      the location and trip editors, checklists and the itinerary are still
-      uncovered.
+      touching the memberships other specs read. Stage 19 Milestone 2 added
+      `locations.spec.js` and `trip-editor.spec.js`, which close the location
+      and trip editors -- create, edit and delete on both, plus the staged cover
+      photo and the two trip validation paths. **Checklists and the itinerary
+      are what is left.**
     - **The register page**, which no spec renders. Stage 14 Milestone 9's
       `unauthenticated.spec.js` covers the *login* screen from a fresh
       unauthenticated context, but the register form only appears when open

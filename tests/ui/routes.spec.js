@@ -1,11 +1,25 @@
-// The sweep matrix: every route × {desktop, mobile} × {light, dark}.
+// The sweep matrix: every route × {desktop, mobile} × {light, dark}, plus a
+// German pass at phone width.
+//
+// German is the longer of the two languages, so it is the case most likely to
+// overflow a box or squeeze a control under the tap floor — the argument
+// trips.spec.js makes for its own toolbar, applied to every route. It runs at
+// 324px only, and in one scheme: overflow is a width problem, and neither
+// assertion depends on colour, so the other three combinations would cost a
+// full sweep each and measure nothing new.
 //
 // Stage 07 hand-rolled this every round and it took seconds to run; the point of
 // writing it down is that the fiddly parts (dark mode without touching the OS
 // theme, asserting the landed URL, reaching controls inside shadow roots) stop
 // getting skipped.
 import { test, expect } from "@playwright/test";
-import { login, buildRoutes, gotoRoute, VIEWPORTS, COLOR_SCHEMES } from "./helpers/scenarios.js";
+import {
+  login,
+  buildRoutes,
+  gotoRoute,
+  VIEWPORTS,
+  COLOR_SCHEMES,
+} from "./helpers/scenarios.js";
 import { DEEP_DOM_SOURCE } from "./helpers/deep-dom.js";
 
 // Tap-target floor at phone width, in CSS px. This is THE ACCESSIBILITY
@@ -20,17 +34,31 @@ import { DEEP_DOM_SOURCE } from "./helpers/deep-dom.js";
 // 2.75rem, the same value --tap-min carries.
 const MIN_TAP_TARGET_PX = 44;
 
+const MOBILE = VIEWPORTS.find((v) => v.name === "mobile");
+
+// The English matrix in full, then the one German combination described above.
+const COMBINATIONS = [];
 for (const scheme of COLOR_SCHEMES) {
   for (const viewport of VIEWPORTS) {
-    test.describe(`${viewport.name} ${scheme}`, () => {
+    COMBINATIONS.push({ scheme, viewport, locale: "en" });
+  }
+}
+COMBINATIONS.push({ scheme: "light", viewport: MOBILE, locale: "de" });
+
+for (const { scheme, viewport, locale } of COMBINATIONS) {
+  {
+    test.describe(`${viewport.name} ${scheme} ${locale}`, () => {
       test.use({
         viewport: { width: viewport.width, height: viewport.height },
         // Dark mode via emulation, which removes any need to change the OS or
         // browser theme by hand — the thing that made this awkward to check.
         colorScheme: scheme,
+        locale,
       });
 
-      test(`no horizontal overflow on any route (${viewport.name}, ${scheme})`, async ({ page }) => {
+      test(`no horizontal overflow on any route (${viewport.name}, ${scheme}, ${locale})`, async ({
+        page,
+      }) => {
         await login(page);
         const routes = await buildRoutes(page);
         const failures = [];
@@ -38,8 +66,13 @@ for (const scheme of COLOR_SCHEMES) {
         // different things, and one shouldn't hide the other in the output.
         const clippedFailures = [];
 
-        for (const route of routes) {
+        for (const [index, route] of routes.entries()) {
           await gotoRoute(page, route.path);
+          // Once per sweep: a German pass that silently rendered English would
+          // pass every assertion below and mean nothing. Verified by running
+          // this combination in English on purpose — it fails here.
+          if (index === 0)
+            await expect(page.locator("html")).toHaveAttribute("lang", locale);
 
           const result = await page.evaluate((deepSource) => {
             eval(deepSource);
@@ -50,7 +83,10 @@ for (const scheme of COLOR_SCHEMES) {
               // Name the widest offender, or the failure is unactionable.
               for (const el of document.querySelectorAll("*")) {
                 const r = el.getBoundingClientRect();
-                if (r.right > window.innerWidth + 1 && (!widest || r.right > widest.right)) {
+                if (
+                  r.right > window.innerWidth + 1 &&
+                  (!widest || r.right > widest.right)
+                ) {
                   widest = {
                     right: r.right,
                     tag: el.localName,
@@ -81,10 +117,17 @@ for (const scheme of COLOR_SCHEMES) {
             const clipped = [];
             for (const el of deepQueryAll("*")) {
               const style = getComputedStyle(el);
-              if (style.display === "none" || style.visibility === "hidden") continue;
-              if (style.overflowX === "auto" || style.overflowX === "scroll") continue;
+              if (style.display === "none" || style.visibility === "hidden")
+                continue;
+              if (style.overflowX === "auto" || style.overflowX === "scroll")
+                continue;
               if (style.textOverflow === "ellipsis") continue;
-              if (["input", "textarea", "select", "svg", "img"].includes(el.localName)) continue;
+              if (
+                ["input", "textarea", "select", "svg", "img"].includes(
+                  el.localName,
+                )
+              )
+                continue;
               if (el.closest?.('[class*="leaflet-"]')) continue;
               // ...and the box immediately *around* a Leaflet map, for the
               // same reason one level up. Leaflet parks its panes at enormous
@@ -115,44 +158,65 @@ for (const scheme of COLOR_SCHEMES) {
                   over,
                   scrollWidth: el.scrollWidth,
                   clientWidth: el.clientWidth,
-                  text: (el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 40),
+                  text: (el.textContent || "")
+                    .replace(/\s+/g, " ")
+                    .trim()
+                    .slice(0, 40),
                 });
               }
             }
-            return { overflow, widest, clipped, scrollWidth: doc.scrollWidth, innerWidth: window.innerWidth };
+            return {
+              overflow,
+              widest,
+              clipped,
+              scrollWidth: doc.scrollWidth,
+              innerWidth: window.innerWidth,
+            };
           }, DEEP_DOM_SOURCE);
 
           if (result.overflow > 0) {
             failures.push(
               `${route.label} (${route.path}): scrollWidth ${result.scrollWidth} > viewport ${result.innerWidth}` +
-                (result.widest ? ` — widest: <${result.widest.tag} class="${result.widest.cls}"> right=${Math.round(result.widest.right)}` : "")
+                (result.widest
+                  ? ` — widest: <${result.widest.tag} class="${result.widest.cls}"> right=${Math.round(result.widest.right)}`
+                  : ""),
             );
           }
           for (const c of result.clipped) {
             clippedFailures.push(
               `${route.label}: ${c.desc} content is ${c.over}px wider than its box ` +
-                `(${c.scrollWidth} vs ${c.clientWidth}${c.text ? `, "${c.text}"` : ""})`
+                `(${c.scrollWidth} vs ${c.clientWidth}${c.text ? `, "${c.text}"` : ""})`,
             );
           }
         }
 
-        expect(failures, `horizontal overflow on ${failures.length} route(s)`).toEqual([]);
+        expect(
+          failures,
+          `horizontal overflow on ${failures.length} route(s)`,
+        ).toEqual([]);
         expect(
           clippedFailures,
-          `${clippedFailures.length} element(s) whose content is wider than the box holding it`
+          `${clippedFailures.length} element(s) whose content is wider than the box holding it`,
         ).toEqual([]);
       });
 
       // Tap targets only matter at phone width; skip the duplicate desktop run.
       if (viewport.name === "mobile") {
-        test(`interactive controls meet the ${MIN_TAP_TARGET_PX}px tap target (${scheme})`, async ({ page }) => {
+        test(`interactive controls meet the ${MIN_TAP_TARGET_PX}px tap target (${scheme}, ${locale})`, async ({
+          page,
+        }) => {
           await login(page);
           const routes = await buildRoutes(page);
           const failures = [];
           let totalChecked = 0;
 
-          for (const route of routes) {
+          for (const [index, route] of routes.entries()) {
             await gotoRoute(page, route.path);
+            if (index === 0)
+              await expect(page.locator("html")).toHaveAttribute(
+                "lang",
+                locale,
+              );
 
             const result = await page.evaluate(
               ({ deepSource, min }) => {
@@ -184,8 +248,12 @@ for (const scheme of COLOR_SCHEMES) {
                 const scope = (el) => {
                   if (el.closest("p")) return false;
                   if (el.closest('[class*="leaflet-"]')) return false;
-                  if (el.localName === "label") return Boolean(el.querySelector("input, select, textarea"));
-                  if (el.localName === "input" && (el.type === "checkbox" || el.type === "radio")) {
+                  if (el.localName === "label")
+                    return Boolean(el.querySelector("input, select, textarea"));
+                  if (
+                    el.localName === "input" &&
+                    (el.type === "checkbox" || el.type === "radio")
+                  ) {
                     return !el.closest("label");
                   }
                   return true;
@@ -195,13 +263,17 @@ for (const scheme of COLOR_SCHEMES) {
                 // opens and closes the itinerary's day cards (Stage 10
                 // Milestone 4), and without it here the 44px claim on those
                 // rows would rest on one manual measurement.
-                const controls = deepQueryAll("button, a, input, select, textarea, label, summary");
+                const controls = deepQueryAll(
+                  "button, a, input, select, textarea, label, summary",
+                );
                 const out = [];
                 let checked = 0;
                 for (const el of controls) {
                   const style = getComputedStyle(el);
-                  if (style.display === "none" || style.visibility === "hidden") continue;
-                  if (el.localName === "input" && el.type === "hidden") continue;
+                  if (style.display === "none" || style.visibility === "hidden")
+                    continue;
+                  if (el.localName === "input" && el.type === "hidden")
+                    continue;
                   const rect = el.getBoundingClientRect();
                   if (rect.width === 0 || rect.height === 0) continue;
                   if (!scope(el)) continue;
@@ -215,18 +287,23 @@ for (const scheme of COLOR_SCHEMES) {
                       desc: describeElement(el),
                       height: Math.round(rect.height * 10) / 10,
                       width: Math.round(rect.width * 10) / 10,
-                      text: (el.textContent || el.value || "").replace(/\s+/g, " ").trim().slice(0, 30),
+                      text: (el.textContent || el.value || "")
+                        .replace(/\s+/g, " ")
+                        .trim()
+                        .slice(0, 30),
                     });
                   }
                 }
                 return { small: out, checked };
               },
-              { deepSource: DEEP_DOM_SOURCE, min: MIN_TAP_TARGET_PX }
+              { deepSource: DEEP_DOM_SOURCE, min: MIN_TAP_TARGET_PX },
             );
 
             totalChecked += result.checked;
             for (const s of result.small) {
-              failures.push(`${route.label}: ${s.desc} is ${s.width}x${s.height}px ("${s.text}")`);
+              failures.push(
+                `${route.label}: ${s.desc} is ${s.width}x${s.height}px ("${s.text}")`,
+              );
             }
           }
 
@@ -235,9 +312,12 @@ for (const scheme of COLOR_SCHEMES) {
           // "the selector stopped matching" without breaking on every UI edit.
           expect(
             totalChecked,
-            "no controls were measured at all — the sweep found nothing, so this check proves nothing"
+            "no controls were measured at all — the sweep found nothing, so this check proves nothing",
           ).toBeGreaterThan(100);
-          expect(failures, `${failures.length} control(s) below ${MIN_TAP_TARGET_PX}px`).toEqual([]);
+          expect(
+            failures,
+            `${failures.length} control(s) below ${MIN_TAP_TARGET_PX}px`,
+          ).toEqual([]);
         });
       }
     });

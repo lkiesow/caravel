@@ -278,6 +278,55 @@ Both were blocked on the shared seed; Milestone 1 unblocks them.
   combination. Overflow is a width problem and 324px is where it bites. If a
   German-only desktop failure ever turns up, widen it then.
 
+**Done.** `tests/ui/register.spec.js` (two tests) and a German pass added to
+`routes.spec.js` and `a11y-names.spec.js`. 120 to 125, and the whole suite went
+from 2.2 to 2.3 minutes -- the sweeps parallelise across workers, so the extra
+dimension costs slots rather than wall clock.
+
+*The register page.* It only exists when open signup is on, which is a global
+instance setting, so the spec turns it on and off again. That is exactly what
+was unaffordable before Milestone 1 and is cheap now: the database belongs to
+the run. Two things are still handled with care. The window is one
+open-and-close per test in a serial block rather than one per locale, because
+`unauthenticated.spec.js` asserts the *absence* of the register link and skips
+itself if it finds signup open -- and a silent skip reads as a pass. And the
+restore is asserted, not assumed, which is the lesson `settings.spec.js` was
+built around. Registration shares the login limiter (10/min/IP, one bucket for
+every worker on localhost), so exactly one account is registered; the German
+half asserts the rendered form, since the submit path is language-independent.
+The assertions are on structure rather than copy, because in German the
+heading, the submit button and the "log in" link are all the same words.
+
+*German, and where it was not added.* `routes.spec.js` gains one combination --
+mobile, light, German -- not a doubling: overflow is a width problem and neither
+it nor the tap-target floor depends on colour, so the other three would cost a
+full 23-route sweep each and measure nothing new. `a11y-names.spec.js` runs both
+languages. **`headings.spec.js` was deliberately left alone**: heading *levels*
+are structural and identical in every language, so a second pass would assert
+the same tree shape twice for 23 more page loads.
+
+*One claim checked rather than asserted, and it was wrong the first time.* The
+justification for the German name sweep is that `check_i18n.py` compares keys
+and never values, and `t()` resolves with `??`, so an empty German string
+reaches the DOM. Emptying `auth.userMenu` proved nothing -- that button also has
+visible text to take a name from. Emptying `checklists.listActions`, which is
+icon-only, is the real reproduction: `make ci` green, English green, German red
+on the checklist card's menu trigger. The spec's header now says the narrower
+true thing, that this only catches controls whose *only* name is the translated
+string.
+
+*The other half of that.* Nothing in the sweeps proved the locale had taken
+effect, so a German pass that quietly rendered English would have been green and
+worthless. Both sweeps now assert `<html lang>` once per run, verified by
+labelling the combination German and running it in English on purpose.
+
+*Verified.* `make ci` green, full suite 125 passed. Three breakages, each
+reverted: an empty icon-only German label (German red, English green), the
+German combination running in English (the `lang` guard fires), and the register
+link rendered regardless of the setting (the closed-signup assertion fires). The
+German sweep currently finds no overflow and no undersized control -- it is
+clean, not merely present.
+
 ---
 
 ## 5. Real touch: a Chromium project for gesture specs

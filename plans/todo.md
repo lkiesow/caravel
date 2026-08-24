@@ -234,48 +234,16 @@ down.
 
 ## Testing, CI and dev tooling
 
-- **The UI suite still doesn't cover data-mutating flows, or the login pages.**
-  **(soon)** Three parts:
-    - **Mutating flows.** The isolation pattern exists and two specs use it:
-      `files.spec.js` (Stage 11 Milestone 5) creates its own trip in
-      `beforeEach`, mutates inside it and deletes it in `afterEach`;
-      `settings.spec.js` (Stage 12 Milestone 5) drives the seeded `other`
-      account, because changing the demo user's password would delete
-      `auth.setup.js`'s shared session, and restores the password afterwards.
-      Note what that exposed — a *silently* failing cleanup leaves the seed wrong
-      for every later run, so a restore step has to assert its own success. Every
-      other mutating flow is uncovered and should copy one of those two shapes:
-      the location and trip editors, checklists, and the itinerary.
-      Stage 16 Milestone 9 added a third shape worth copying: `assist.spec.js`
-      creates its own trip like `files.spec.js`, but also *skips itself* when
-      the server lacks a capability it needs, since that capability is
-      configuration rather than seed data. CI asserts the capability is on
-      before running the suite, because a spec that skips silently reads as a
-      pass.
-      Stage 17 Milestone 7 added `expenses.spec.js`, a fourth: its own trip, and
-      it *adds a second member to that trip* rather than borrowing a seeded
-      shared one, so the payer, share and balance paths are covered without
-      touching the memberships other specs read. Stage 19 Milestone 2 added
-      `locations.spec.js` and `trip-editor.spec.js`, which close the location
-      and trip editors -- create, edit and delete on both, plus the staged cover
-      photo and the two trip validation paths. Stage 19 Milestone 3 added
-      `checklists.spec.js` and a second describe in `itinerary-order.spec.js`,
-      which close the last two. **This part is done**; the register page and the
-      German sweeps below are what is left of this entry.
-    - **The register page**, which no spec renders. Stage 14 Milestone 9's
-      `unauthenticated.spec.js` covers the *login* screen from a fresh
-      unauthenticated context, but the register form only appears when open
-      signup is on, and the seed deliberately leaves it off. Covering it means
-      either flipping the setting inside the spec and restoring it (the
-      `settings.spec.js` shape) or a scenario that seeds an open instance. Note
-      that Stage 19 Milestone 1 removed the poisoned-run hazard that made the
-      first option unattractive: the database a run mutates is its own and dies
-      with it, so a restore step no longer has to be perfect to keep the next
-      run honest.
-    - **German beyond the menu.** `menu.spec.js` proves the mechanism works, but
-      the sweeps themselves (overflow, headings, names, tap targets) run in one
-      locale, and German copy is the longer of the two — the case most likely to
-      overflow a box.
+- **The sweeps run in German at one combination only.** (Stage 19 Milestone 4.)
+  `routes.spec.js` sweeps overflow and tap targets in German at mobile/light,
+  and `a11y-names.spec.js` runs both languages; `headings.spec.js` deliberately
+  does not, because heading levels are structural and identical in every
+  language. Two limits worth knowing before trusting the German pass further:
+  it covers one viewport and one colour scheme, on the argument that neither
+  assertion depends on colour and 324px is where width bites; and the name
+  sweep only catches controls whose *only* name is the translated string, so an
+  empty label on anything with visible text is still invisible to it. A third
+  language would multiply this decision rather than inherit it.
 - **An itinerary entry cannot be moved to another day.** (Stage 19 Milestone 3.)
   `internal/httpapi/itinerary.go` has create, reorder and delete for an entry and
   nothing that reassigns its `itinerary_day_id`; there is no client affordance

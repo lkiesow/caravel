@@ -1,4 +1,4 @@
-.PHONY: run build test check-contrast dev dev-restart dev-marker dev-version dev-seed dev-reset vet check-js check-i18n check-env check-screenshots test-ui test-postgres ci docs docs-serve screenshots
+.PHONY: run build test check-migrations check-contrast image dev dev-restart dev-marker dev-version dev-seed dev-reset vet check-js check-i18n check-env check-screenshots test-ui test-postgres ci docs docs-serve screenshots
 
 # The build's identity, stamped into the binary at link time and reported by the
 # startup banner and GET /api/health — so "which build is this server running?"
@@ -115,6 +115,13 @@ PW_ARGS = $(if $(GREP),--grep "$(GREP)")$(if $(UI), --ui)$(if $(HEADED), --heade
 check-screenshots:
 	python3 scripts/check_screenshots.py
 
+# The migration chain: both directions present, no gaps, both dialects agreeing,
+# and -- the point of it -- nothing that existed on main ever removed or renamed.
+# The Stage 18 squash was safe only because nobody had a deployed database; a
+# second one would brick every instance created since. See the script.
+check-migrations:
+	python3 scripts/check_migrations.py
+
 # Colour contrast, asserted rather than measured. Every element is held to its
 # own WCAG threshold -- 4.5 for normal text, 3.0 for large text and non-text --
 # with a short, reasoned exemption list in the script. Both palettes, because
@@ -134,7 +141,30 @@ check-contrast:
 test-ui:
 	$(PW_ENV) scripts/ui_test.sh $(PW_ARGS)
 
-ci: build vet check-js check-i18n check-env check-screenshots test
+ci: build vet check-js check-i18n check-env check-screenshots check-migrations test
+
+# Builds the container image, with the two arguments that are easy to get wrong.
+#
+# VERSION matters because .git is not in the build context, so without it the
+# binary calls itself "unknown". --format docker matters only for podman, whose
+# default OCI format has no HEALTHCHECK instruction and drops ours with a
+# warning in the middle of a long build log -- so the image builds, and its
+# health is silently unknown. Same tool detection scripts/test_postgres.sh uses.
+#
+#   make image             # caravel:dev
+#   make image TAG=v0.1.0
+TAG ?= dev
+image:
+	@set -e; \
+	if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then \
+		echo "image: building with docker"; \
+		docker build --build-arg VERSION="$$(scripts/version.sh)" -t caravel:$(TAG) .; \
+	elif command -v podman >/dev/null 2>&1; then \
+		echo "image: building with podman (--format docker, so HEALTHCHECK survives)"; \
+		podman build --format docker --build-arg VERSION="$$(scripts/version.sh)" -t caravel:$(TAG) .; \
+	else \
+		echo "image: neither docker nor podman found." >&2; exit 2; \
+	fi
 
 # The project website and documentation (docs/, zensical.toml, overrides/).
 #

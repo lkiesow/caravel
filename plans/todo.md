@@ -317,20 +317,6 @@ down.
   Teaching the scan to follow a function that returns a composed key is hard;
   recognising a template literal assigned to a `const` whose name ends in `Key`,
   or an explicit allowlist comment, would cover the realistic cases.
-- **`scripts/without.sh` reports success on *any* non-zero exit.** So a command
-  that fails for an unrelated reason reads as proof that the test depends on your
-  change. Learned twice: in Stage 09 Milestone 6 a typo in a `GREP` pattern meant
-  Playwright ran no tests at all, and in Stage 10 Milestone 5 reverting the file
-  under test removed a struct the *test* referenced, so `go test` failed to
-  **compile** and the script reported "OK — genuinely depends on your change"
-  with not one assertion having run. A compile error reads as a test failure in
-  the output, which makes that case the least likely to be noticed. The fix is to
-  tell "the command failed" apart from "the command never ran" — or at least echo
-  enough output that the reader can tell. (Two other limitations — a
-  `--commit <sha>` mode and a `--break` mode — were considered in the Stage 15
-  review and dropped: both have a one-line manual equivalent, so there is no
-  dance worth automating. This one stays because it makes the tool give a
-  confident *wrong* answer, which is the exact failure it exists to prevent.)
 
 ---
 
@@ -338,26 +324,6 @@ down.
 
 Nothing here is needed to keep developing; all of it is needed before anyone
 else runs this.
-
-- **`HEALTHCHECK` is invisible to a podman build.** (Stage 18 Milestone 7.)
-  `podman build` defaults to the OCI image format, which has no HEALTHCHECK
-  instruction, so it drops ours with a warning nobody reads in the middle of a
-  build log -- `--format docker` is required. CI uses docker, so published
-  images carry it; anyone building locally with podman gets an image whose
-  health is silently unknown. Options: mention it in the docs only (done), or
-  add a `make image` target that passes the right flag for whichever tool is
-  installed, the way `scripts/test_postgres.sh` already does for compose.
-
-- **The squash is a one-way door, and nothing enforces it.** (Stage 18
-  Milestone 6.) The schema is one `0001_init` pair per dialect now, and any
-  database created before that refuses to start: `no migration found for version
-  12`. That is correct and nobody has such a database -- but the same reasoning
-  says this must never happen again once images are published, and there is no
-  mechanism preventing it. A future squash would silently brick every deployed
-  instance. Options: a comment at the top of `0001_init` (weak), a check in CI
-  that the migration count only ever grows (cheap, catches the mistake in
-  review), or leaving it to judgement. Worth deciding before the first release
-  rather than after.
 
 - **The RPM has no repository, and no real-host verification of its unit.**
   (Stage 18, RPM follow-up.) Packages are attached to each GitHub release, so
@@ -399,15 +365,6 @@ else runs this.
   The script says so loudly rather than pretending otherwise. If the project ever
   wants reproducible-by-anyone screenshots, it needs a small set of
   known-licence photographs committed for the purpose.
-
-- **`auth.SetPassword`'s doc comment is wrong.** (Stage 18 Milestone 10.) It
-  says the function is "deliberately not reachable from any HTTP route" and that
-  it exists for `cmd/seed` -- but `handleAdminResetPassword` calls it, which is
-  how an admin resets somebody's password. The behaviour is right and
-  deliberate (an admin reset leaves sessions alone, unlike a self-service
-  change, and `admin.resetPasswordPrompt` tells the admin so); only the comment
-  is stale, and it is the kind of comment somebody trusts when reasoning about
-  session invalidation. One-line fix.
 
 - **The Zensical pin needs periodic review, in two files.** (Stage 18 Milestone
   9.) `zensical==0.0.57` is pinned in `.github/workflows/docs.yml` and in

@@ -9,7 +9,14 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 because check_migrations.py compares the migration
+      # directory against origin/main to prove no migration was removed or
+      # renamed. In the default shallow clone there is no base commit, the
+      # script says so and skips that check -- which would leave the squash
+      # guard silently not running, the exact failure mode this stage is about.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-go@v7
         with:
@@ -36,6 +43,9 @@ jobs:
 
       - name: Screenshot references
         run: python3 scripts/check_screenshots.py
+
+      - name: Migration chain
+        run: python3 scripts/check_migrations.py
 
       - name: Test
         run: go test ./...

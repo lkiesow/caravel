@@ -469,6 +469,52 @@ Small, all CI- or tooling-shaped.
   kind of comment somebody trusts while reasoning about session invalidation.
 - `todo.md` in both directions, per milestone.
 
+**Done.** Four items, no new tests -- all of this is tooling.
+
+**`scripts/check_migrations.py`**, in `make ci` and CI. Three checks: every
+version has both directions and the numbering is contiguous; the two dialects
+define the same versions under the same names; and, against a base commit, no
+version that existed has been removed or renamed. The third is the squash guard
+and the reason the file exists. It needs git history for the base, which a
+default shallow checkout does not have -- so the `ci` job now checks out with
+`fetch-depth: 0`, and when there is no base the script says so and skips that
+check rather than reporting a pass it did not earn. Verified by planting all
+four failures: a missing `.up.sql`, a migration present for one dialect only, a
+gap in the numbering, and the squash itself (renaming `0001_init` to
+`0001_squashed` on both dialects, which is caught as a rename against
+`origin/main`).
+
+**`make image`**, picking the tool the way `scripts/test_postgres.sh` picks its
+compose command, and passing `--format docker` for podman. Verified on this
+machine, which has podman and no usable docker: a plain `podman build` prints
+`HEALTHCHECK is not supported for OCI image format and will be ignored` twice in
+the middle of the build log, and the resulting image has no healthcheck;
+`make image` prints no such warning and `podman image inspect` shows
+`{"Test":["CMD","/caravel","-health"],...}`. It also passes `VERSION`, without
+which the binary calls itself `unknown` because `.git` is not in the build
+context.
+
+**`scripts/without.sh`** now tells a command that FAILED from one that NEVER
+RAN. It checks four signatures before the verdict: killed by a signal, exit
+127/126, `[build failed]` in the output, and "no tests found"/"no tests to run".
+Output is teed so the verdict can read it, and an INCONCLUSIVE verdict prints
+the last fifteen lines so the reader can see why. All four verdicts were
+exercised against a real uncommitted change: the Stage 10 case (a test
+referencing a symbol only the change introduces, so reverting breaks
+compilation) now reports INCONCLUSIVE with the compile error shown, instead of
+"OK -- genuinely depends on your change"; the Stage 09 case (a grep matching no
+tests) likewise; and a genuine failure still reports OK, a genuine pass still
+VACUOUS.
+
+**`auth.SetPassword`'s doc comment** said the function was "deliberately not
+reachable from any HTTP route". `handleAdminResetPassword` calls it. The comment
+now names both callers and why the difference matters -- an admin reset leaves
+sessions alone, so it is deliberately not a way to evict somebody. The note in
+`admin.go` was already accurate and is unchanged.
+
+*Verified.* `make ci` green (now including the migration check), full suite 127
+passed, contrast clean.
+
 ---
 
 ## Build order

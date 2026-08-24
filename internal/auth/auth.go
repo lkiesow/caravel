@@ -192,9 +192,14 @@ func (s *Service) ChangePassword(ctx context.Context, user db.User, currentPassw
 // SetPassword replaces a local account's password *without* asking for the
 // current one, and without touching the user's sessions.
 //
-// This is deliberately not reachable from any HTTP route - ChangePassword is
-// the one users go through, and it requires the current password and logs every
-// device out. SetPassword exists for cmd/seed, whose whole contract is "these
+// Two callers, and the difference between them matters. ChangePassword is the
+// one *users* go through: it requires the current password and logs every device
+// out. This one does neither, which is why it is reached only by cmd/seed and by
+// handleAdminResetPassword - an admin resetting a forgotten password should not
+// sign the user out of the device they are holding, so a reset is deliberately
+// not a way to evict somebody. Removing the account is.
+//
+// SetPassword exists for cmd/seed, whose whole contract is "these
 // are the dev credentials": before this existed, ensureUser silently left an
 // existing user's password alone, so once Stage 12 made passwords changeable, a
 // changed dev password could not be reset by re-seeding and the documented

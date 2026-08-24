@@ -19,6 +19,12 @@
 # has text content changed nothing, and would have looked like proof if the "why"
 # had gone unexamined.
 #
+# It distinguishes a command that FAILED from one that NEVER RAN — a compile
+# error, a grep that matched no tests, a command not found. Because the exit
+# code is inverted here, those would otherwise read as "OK, your test would have
+# caught it" with nothing having executed; see the verdict section below for the
+# two times that actually happened.
+#
 # --restart re-runs the dev server between stash and command. Needed whenever Go
 # files are reverted and the command talks to the running server: web/ is served
 # live from disk, but Go changes live in a compiled binary, so without a restart
@@ -204,9 +210,13 @@ fi
 
 echo "without: running: ${command_argv[*]}"
 echo "---------------------------------------------------------------"
+# Output is teed rather than just streamed: the verdict below has to read it to
+# tell "the command failed" from "the command never ran", and the reader gets
+# the tail either way.
+output_log="$(mktemp)"
 set +e
-"${command_argv[@]}"
-command_status=$?
+"${command_argv[@]}" 2>&1 | tee "$output_log"
+command_status="${PIPESTATUS[0]}"
 set -e
 echo "---------------------------------------------------------------"
 
@@ -215,13 +225,55 @@ echo "---------------------------------------------------------------"
 restore
 trap - EXIT INT TERM
 
-# A command killed by a signal (128+n) neither passed nor failed on its merits,
-# so it supports no conclusion either way.
-if [ "$command_status" -gt 128 ]; then
-	echo "without: INCONCLUSIVE — the command was killed by a signal (exit $command_status)," >&2
-	echo "without: so it neither passed nor failed on its own terms. No verdict." >&2
+# --- the verdict ------------------------------------------------------------
+#
+# The hard part is not "did it exit non-zero". It is telling a command that
+# FAILED from one that NEVER RAN, because this tool inverts the exit code: a
+# command that could not run at all exits non-zero and therefore reads as
+# "OK — genuinely depends on your change", with not one assertion having
+# executed. That has happened twice, and both times the answer was confidently
+# wrong:
+#
+#   Stage 09 Milestone 6 — a typo in a GREP pattern meant Playwright ran no
+#     tests at all, and the run was reported as proof.
+#   Stage 10 Milestone 5 — reverting the file under test removed a struct the
+#     *test* referenced, so `go test` failed to COMPILE. A compile error reads
+#     as a test failure in the output, which is what makes this the least
+#     likely case to be noticed.
+#
+# So the signatures of both are checked before the verdict is reached.
+
+inconclusive() {
+	echo "without: INCONCLUSIVE — $1" >&2
+	echo "without: the command exited $command_status, but it did not run on its own terms," >&2
+	echo "without: so it supports no verdict. Last lines of its output:" >&2
+	tail -n 15 "$output_log" | sed 's/^/without:   /' >&2
+	rm -f "$output_log"
 	exit 2
+}
+
+# A command killed by a signal (128+n) neither passed nor failed on its merits.
+if [ "$command_status" -gt 128 ]; then
+	inconclusive "it was killed by a signal"
 fi
+
+# 127 is "command not found", 126 is "found but not executable". Neither ran.
+if [ "$command_status" -eq 127 ] || [ "$command_status" -eq 126 ]; then
+	inconclusive "the command could not be executed at all"
+fi
+
+# The Stage 10 case. `go test` prints "[build failed]" and exits 1 exactly like
+# a failing test does, so only the output tells them apart.
+if grep -qE '\[build failed\]|\[setup failed\]|^# .*\.test\]?$' "$output_log"; then
+	inconclusive "the Go package failed to COMPILE, so no test ran"
+fi
+
+# The Stage 09 case, plus its go-test equivalent.
+if grep -qE '^Error: No tests found|^testing: warning: no tests to run|no test files' "$output_log"; then
+	inconclusive "the command selected no tests to run"
+fi
+
+rm -f "$output_log"
 
 if [ "$command_status" -eq 0 ]; then
 	echo "without: VACUOUS — the command PASSED without your change (exit 0)." >&2

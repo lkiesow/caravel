@@ -10,6 +10,7 @@
 data/
 uploads/
 bin/
+dist/
 .dev/
 
 # Node tooling and test artefacts (the app ships no npm dependencies).

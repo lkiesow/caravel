@@ -35,3 +35,6 @@
 # The generated documentation site (see zensical.toml). Built output, not
 # sources: GitHub Pages builds it from CI, and locally it is `make docs`.
 /site/
+
+# Release archives built by scripts or .github/workflows/release.yml.
+/dist/

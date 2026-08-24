@@ -1,0 +1,81 @@
+# Creates a GitHub release when a version tag is pushed, with notes GitHub
+# generates itself.
+#
+# Separate from publish-docker-image.yaml on purpose: that one also runs on
+# main, and a release is a tag-only event. Keeping them apart means a failed
+# release cannot stop an image being published, or the reverse.
+#
+# Note what GitHub's generated notes are built from: **merged pull requests**
+# since the previous tag, plus new contributors. A history of commits pushed
+# straight to main produces notes containing little more than the compare link.
+# .github/release.yml configures how they are grouped for when there are pull
+# requests to group.
+#
+# The release carries a Linux binary per architecture. They are archives rather
+# than bare binaries for two reasons: 20 MB of static Go binary compresses to
+# about 7 MB, and the AGPL wants its terms distributed with the thing it covers,
+# so LICENSE and README.md ride along inside.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  # Creating a release is a write to the repository. Nothing else is needed --
+  # the image is published by its own workflow with its own narrower token.
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26"
+
+      # CGO_ENABLED=0 because modernc.org/sqlite is pure Go, so these are
+      # static binaries with no libc to match -- the same reason the container
+      # image can be distroless. Cross-compiled rather than emulated, so arm64
+      # costs no more than amd64.
+      #
+      # The version stamped in is the tag without its leading v, matching what
+      # docker/metadata-action puts on the image, so an image and a binary from
+      # the same tag report the same string from GET /api/health.
+      - name: Build the release archives
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          mkdir -p dist
+          for arch in amd64 arm64; do
+            stage="$(mktemp -d)"
+            CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath \
+              -ldflags "-w -s -X caravel/internal/buildinfo.Version=$version" \
+              -o "$stage/caravel" ./cmd/caravel
+            cp LICENSE README.md "$stage/"
+            tar -czf "dist/caravel-${version}-linux-${arch}.tar.gz" \
+              -C "$stage" caravel LICENSE README.md
+            rm -rf "$stage"
+          done
+          # Bare filenames, not ./-prefixed: somebody who downloads the
+          # archives and SHA256SUMS into one directory runs `sha256sum -c
+          # SHA256SUMS` there, and the names should match what they have.
+          ( cd dist && sha256sum caravel-*.tar.gz > SHA256SUMS )
+          ls -l dist
+
+      - name: Create the release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*
+          # A release whose assets silently failed to attach looks finished and
+          # is not.
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          # A tag with a suffix -- v1.0.0-rc1, v2.0.0-beta2 -- is a prerelease,
+          # so it does not become the "Latest" release people land on. Plain
+          # v1.0.0 does.
+          prerelease: ${{ contains(github.ref_name, '-') }}

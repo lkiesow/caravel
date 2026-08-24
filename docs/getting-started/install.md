@@ -68,6 +68,23 @@ things are worth turning on once it is running: an [address
 search](../configuration/address-search.md) endpoint of your own, and
 optionally [the assistant](../configuration/assistant.md).
 
+## A prebuilt binary
+
+Every release carries a static Linux binary for `amd64` and `arm64` on its
+[releases page](https://github.com/lkiesow/caravel/releases), with a
+`SHA256SUMS` file beside them. There is nothing to install alongside it — the
+frontend is embedded and SQLite is pure Go, so the binary has no libc or library
+dependencies at all:
+
+```sh
+tar xzf caravel-1.0.0-linux-amd64.tar.gz
+./caravel
+```
+
+It reads the same environment variables as everything else, so a real
+installation is that binary plus a systemd unit and an
+[`EnvironmentFile`](../configuration/server.md).
+
 ## From source
 
 The development path, and also fine for running it. Needs Go 1.26:

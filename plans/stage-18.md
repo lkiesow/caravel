@@ -694,6 +694,44 @@ Verified locally, which turned out to cover more than the plan expected:
 itself succeeds — authentication, package visibility, and whether the
 repository's Actions settings permit `packages: write`.
 
+*Follow-up: releases on tag.* Asked for after the stage closed, and small
+enough to be a follow-up rather than a milestone. `.github/workflows/release.yml`
+creates a GitHub release when a `v*` tag is pushed, with
+`generate_release_notes: true` so GitHub writes the notes, and
+`prerelease: contains(github.ref_name, '-')` so `v1.0.0-rc1` does not become the
+release people land on. Kept separate from the image workflow because that one
+also runs on `main`, and a failed release should not be able to stop an image
+being published. `.github/release.yml` configures how the notes are grouped.
+
+The release also carries **a static Linux binary per architecture**, as
+`.tar.gz` archives rather than bare binaries: 20 MB of Go binary compresses to
+about 7 MB, and the AGPL wants its terms distributed with what they cover, so
+`LICENSE` and `README.md` ride along inside. A `SHA256SUMS` accompanies them,
+with bare filenames so `sha256sum -c` works in the directory somebody downloads
+into. `fail_on_unmatched_files: true`, because a release whose assets silently
+failed to attach looks finished and is not.
+
+Verified by running the workflow's build step *verbatim* — extracted from the
+YAML rather than retyped — with `GITHUB_REF_NAME=v1.2.3`: two archives, the
+checksums verifying, and the unpacked binary answering
+`{"status":"ok","version":"1.2.3"}`. That last one matters because it proves the
+leading `v` is stripped the same way `docker/metadata-action` strips it, so an
+image and a binary from one tag report the same version. Eleven structural
+assertions on the two files pass, and `yamllint` is clean.
+
+The licence question the RPM prototype raised is answered: the repository is
+**AGPL-3.0** as of commit `85498bd`, so the README says so, the install page
+points at the binaries, and `todo.md`'s RPM entry no longer lists a missing
+licence as a blocker.
+
+**One honest limitation, stated because it changes what to expect:** GitHub's
+generated notes are built from **merged pull requests** since the previous tag.
+This repository has 170 commits and *zero* merges — everything goes straight to
+main — so until that changes the notes will contain little more than the compare
+link. The grouping config is in place for when there are pull requests to group;
+`todo.md` carries the alternative (notes from the commit log) as a decision
+rather than a silent disappointment.
+
 *Settled during Milestone 10, and it all works.* Walking the install page from a
 clean clone pulled `ghcr.io/lkiesow/caravel:latest` successfully. Checked
 directly against the registry with an **anonymous** token: the manifest reads

@@ -66,5 +66,10 @@ beyond a database:
 
 ## Licence
 
-Caravel is free software; see the repository for terms. The bundled Montserrat
-subset is used under the SIL Open Font License — see `web/fonts/OFL.txt`.
+Caravel is free software under the **GNU Affero General Public License v3.0** —
+see [LICENSE](LICENSE). The AGPL's network clause matters for a self-hosted web
+app: if you run a modified version and let other people use it over a network,
+they are entitled to its source.
+
+The bundled Montserrat subset is used under the SIL Open Font License — see
+`web/fonts/OFL.txt`.

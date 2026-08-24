@@ -93,6 +93,57 @@ two concurrent `make test-ui` runs are both green — the Stage 18 failure,
 reproduced first and then gone; and `make dev`'s database and `uploads/` are
 byte-identical before and after a run.
 
+**Done.** `scripts/ui_test.sh` starts a throwaway instance -- own port, own
+SQLite database, own upload directory, own seed, own saved sessions, all under
+one `mktemp -d` removed by a `trap cleanup EXIT`. `make test-ui` goes through
+it; `playwright.config.js` is unchanged except its header, because the script
+simply sets `CARAVEL_TEST_URL`, and setting that yourself still points the
+suite at a server you already run. CI's `ui` job lost its whole
+start-the-server-and-seed step and its assistant check: both moved into the
+script, so they guard a developer's run too.
+
+*Two things the plan did not anticipate.*
+
+**Saved sessions had to move as well.** `AUTH_STATE_FILE` was the literal path
+`tests/ui/.auth/demo.json`, and cookies are not scoped by port -- so two runs
+sharing that directory would hand each other a token their own server never
+issued, and every spec would fail as if logged out. `scenarios.js` now reads
+`CARAVEL_TEST_AUTH_DIR`, which the script points into its temp dir.
+
+**Probing for a free port and then binding it is racy, and the race is not
+benign.** The first version did what `gen_screenshots.sh` does: `ss` to check
+the port is free, start the server, poll `/api/health`. Two concurrent runs both
+picked :8090, one server failed to bind -- and the health poll of the run that
+lost was *answered by the other run's server*. So it drove an instance it did
+not own, and collapsed with `NS_ERROR_CONNECTION_REFUSED` when the winner tore
+that instance down: 10 failed, 98 passed, and both logs claiming "an isolated
+instance is up on :8090". The hazard this milestone exists to remove,
+faithfully reproduced inside the fix for it. Readiness now means *the socket on
+this port is held by my own pid*, which `ss -ltnp` reports authoritatively;
+liveness is checked before the port is asked anything, since a dead server has
+nothing to say and the port would only give somebody else's answer. Note that
+a log-based check would have been wrong too: the server prints "listening
+on :8080" and *then* fails to bind.
+
+*Verified.* `make ci` green. The Stage 18 failure reproduced first and then
+gone: two concurrent `npx playwright test settings.spec.js` against one shared
+dev server fail in both runs, run B blaming the seed ("has `make dev-reset
+FORCE=1` been run?") exactly as recorded -- and two concurrent `make test-ui`
+runs afterwards are 108/108 each on :8090 and :8091. Three simultaneous starts
+take three distinct ports. A full run leaves `data/caravel.db` byte-identical
+and `tests/ui/.auth/` untouched, and leaves no temp directory behind. Green
+with nothing listening on :8080 at all. Both new failure paths were made to
+fire rather than assumed: a seed that cannot start prints its log and stops, and
+a server without the stub assistant refuses to run the suite.
+
+*Two things this surfaced, both recorded in `todo.md` rather than fixed here.*
+Playwright's `test-results/` is still shared and emptied at startup, which costs
+a concurrent run its traces on failure but cannot fail a passing run. And the
+10-logins-per-minute limiter is now per-run rather than per-machine, which is an
+improvement -- but a `GREP` that selects a login-heavy subset finishes fast
+enough to spend that budget by itself, and reports a 429 that reads like a
+broken seed.
+
 ---
 
 ## 2. The location editor and the trip editor get specs

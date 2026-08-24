@@ -15,14 +15,20 @@ export const OTHER_USER = { username: "other", password: "other1234" };
 // OTHER_USER). Kept deliberately free of trips and memberships.
 export const PASSWORD_USER = { username: "pwtest", password: "pwtest1234" };
 
-// Where auth.setup.js parks the demo user's session for the rest of the run.
-// Gitignored: it holds a live session token, and it is regenerated every run.
-export const AUTH_STATE_FILE = "tests/ui/.auth/demo.json";
+// Where auth.setup.js parks the saved sessions for the rest of the run.
+// Gitignored: they hold live session tokens, and they are regenerated every run.
+//
+// scripts/ui_test.sh points this at its own temp directory. It has to: the
+// files hold cookies for that run's server, cookies are not scoped by port, and
+// two runs sharing one directory would hand each other a token their own server
+// has never issued -- every spec then failing as if logged out.
+const AUTH_DIR = process.env.CARAVEL_TEST_AUTH_DIR || "tests/ui/.auth";
+export const AUTH_STATE_FILE = `${AUTH_DIR}/demo.json`;
 // A second saved session, for the specs that need two people looking at the
 // same trip (Stage 14 Milestone 9). Saved once per run for the same reason the
 // first one is: login is limited to 10/min/IP, and a spec that switched users by
 // logging in would spend that budget on plumbing.
-export const OTHER_AUTH_STATE_FILE = "tests/ui/.auth/other.json";
+export const OTHER_AUTH_STATE_FILE = `${AUTH_DIR}/other.json`;
 
 // Scenario name -> seeded trip title (cmd/seed/main.go's titlePrefix + title).
 export const SCENARIO_TITLES = {

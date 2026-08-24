@@ -157,61 +157,12 @@ jobs:
       - name: Install Firefox for Playwright
         run: npx playwright install --with-deps firefox
 
-      - name: Start the server and seed the scenarios
-        env:
-          CARAVEL_DB_DSN: data/ci.db
-          CARAVEL_WEB_DIR: web
-          # The assistant, pointed at its in-process fakes. This is the first
-          # thing the UI suite needs from server *configuration* rather than
-          # from seed data, so assist.spec.js skips rather than fails when it
-          # is absent - which is what a developer running `make test-ui`
-          # against an ordinary dev server gets. Here it must be present, or
-          # the spec would skip silently and CI would report a pass for tests
-          # that never ran.
-          CARAVEL_LLM_URL: stub
-          CARAVEL_LLM_MODEL: stub
-          CARAVEL_SEARCH_PROVIDER: stub
-        run: |
-          set -euo pipefail
-          mkdir -p data
-          # Seed first: db.Open() runs the migrations, so this builds the schema
-          # and creates the demo users the suite logs in as.
-          go run ./cmd/seed
-          # Build rather than `go run` so the background process is the server
-          # itself, not a wrapper that compiles first.
-          go build -o /tmp/caravel-ci ./cmd/caravel
-          nohup /tmp/caravel-ci > /tmp/caravel-ci.log 2>&1 &
-          ready=0
-          for i in $(seq 1 60); do
-            if curl -fsS -o /dev/null http://localhost:8080/api/health; then
-              echo "server healthy after ${i}s"
-              ready=1
-              break
-            fi
-            sleep 1
-          done
-          if [ "$ready" != "1" ]; then
-            echo "server did not become healthy within 60s; log follows:" >&2
-            cat /tmp/caravel-ci.log >&2
-            exit 1
-          fi
-
-      - name: Confirm the assistant is actually enabled
-        # assist.spec.js skips itself when the capability is off. That is right
-        # locally and wrong here: without this check, a typo in the env block
-        # above would turn three tests into three silent skips and CI would
-        # still be green.
-        run: |
-          set -euo pipefail
-          curl -fsS -c /tmp/ci-cookies -X POST http://localhost:8080/api/auth/login \
-            -H 'Content-Type: application/json' \
-            -d '{"username":"demo","password":"demo1234"}' > /dev/null
-          if ! curl -fsS -b /tmp/ci-cookies http://localhost:8080/api/auth/me | grep -q '"assist":true'; then
-            echo "the server did not come up with the assistant enabled; assist.spec.js would skip" >&2
-            exit 1
-          fi
-          echo "assistant enabled"
-
+      # No server is started here: `make test-ui` goes through
+      # scripts/ui_test.sh, which brings up a throwaway instance of its own --
+      # own port, own database, own uploads, own seed -- and tears it down
+      # afterwards. The assistant env vars and the "is the assistant actually
+      # enabled" check that used to live in this job moved into that script, so
+      # they guard a developer's run too.
       - name: UI suite
         run: make test-ui
 

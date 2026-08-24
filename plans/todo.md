@@ -263,52 +263,35 @@ down.
       unauthenticated context, but the register form only appears when open
       signup is on, and the seed deliberately leaves it off. Covering it means
       either flipping the setting inside the spec and restoring it (the
-      `settings.spec.js` shape, with the same poisoned-run hazard) or a scenario
-      that seeds an open instance.
+      `settings.spec.js` shape) or a scenario that seeds an open instance. Note
+      that Stage 19 Milestone 1 removed the poisoned-run hazard that made the
+      first option unattractive: the database a run mutates is its own and dies
+      with it, so a restore step no longer has to be perfect to keep the next
+      run honest.
     - **German beyond the menu.** `menu.spec.js` proves the mechanism works, but
       the sweeps themselves (overflow, headings, names, tap targets) run in one
       locale, and German copy is the longer of the two — the case most likely to
       overflow a box.
-- **Manual testing in a seeded trip silently breaks the UI suite.** (Stage 16
-  Milestone 9.) `map.spec.js`'s distance filter asserts an exact card count in
-  the seeded Iceland trip, so a single location added by hand while trying a
-  feature out makes it fail -- which is exactly what happened, twice in one
-  evening, from testing the assistant in `Demo: Iceland Ring Road`. The failure
-  points at the map spec and says nothing about the real cause, so the time
-  goes on investigating a filter that works perfectly.
-
-  The specs that *write* already solve this for themselves by creating their
-  own trip (`files.spec.js`, `assist.spec.js`, `expenses.spec.js`), but nothing
-  protects the seeded scenarios from a person. Options, none obviously best:
-  have `make test-ui` reseed first, which is a big hammer and would wipe
-  anything else in the dev database; have the suite assert the seed is pristine
-  before running and say so plainly when it is not, which is cheap and turns a
-  confusing failure into an instruction; or seed a scenario specifically for
-  poking at by hand and point people at it. The middle one is probably the
-  right size.
-
-  **Two concurrent suite runs do it to each other, too** (Stage 18 Milestone 2).
-  Running `make test-ui` twice at once against one dev server made four tests
-  fail -- both `settings.spec.js` language cases, which change the seeded
-  `other` account and then restore it, so the two runs each saw the other's
-  half-finished state. Same failure shape as a person poking at a seeded trip,
-  same misleading report: the named failures pass in isolation, and the run that
-  loses the race looks like a regression in code that is fine. The run times
-  gave it away -- 4.1 and 4.5 minutes overlapping against 2.0 minutes alone.
-  Whatever gets built for the entry above should also refuse to start when
-  another run is already in progress, which is a lock file rather than a seed
-  check.
-
-  **It happened again in Stage 17**, and the shape is worth recording because it
-  was not extra locations this time: `file row overflow menu` failed because the
-  seeded `cascade` trip had gained *members* -- a stray `pwtest` and a stray
-  `other` -- and that spec asserts the trip is solo, since visibility controls
-  only render on a shared trip. Nothing about files or menus had changed. Two
-  lessons for whatever gets built: the check has to cover memberships and not
-  just child rows, and a diff against a freshly seeded database
-  (`CARAVEL_DB_DSN=/tmp/x.db go run ./cmd/seed`, then compare) is what actually
-  identified it -- a cheap trick worth writing into the tooling.
-
+- **Two concurrent UI runs still share Playwright's `test-results/`.** (Stage 19
+  Milestone 1.) Everything else about a run is now private to it -- port,
+  database, uploads, saved sessions -- but the output directory is still the
+  repository's, and Playwright empties it at startup. So a second run starting
+  while the first is going deletes the first run's traces and screenshots. It
+  cannot make a passing run fail, because nothing is written there unless a test
+  fails, which is why it was left alone: fixing it means either a per-run output
+  directory (and then CI's artifact upload has to find it) or accepting that
+  failure artifacts from concurrent runs are best-effort.
+- **A fast `GREP` can spend the login budget by itself.** (Stage 19 Milestone
+  1.) Login is limited to 10/min/IP, and the limiter now lives in the run's own
+  server rather than being shared with everything else on the machine -- an
+  improvement. But `auth.setup.js` spends two, and a `GREP` that selects a
+  login-heavy subset (the settings specs, say) finishes in twenty seconds and
+  spends the rest, so the run fails on a 429 whose message reads like a broken
+  seed -- it names the seed, not the limiter. The full suite is spread out
+  enough not to hit it. Options: raise the limit when the assistant stubs are on
+  (configuration weakening a security control, rejected once already in Stage
+  16), have the specs share one login the way `auth.setup.js` does, or teach
+  the message to name the 429 as its own cause.
 - **Add a Chromium project for gesture specs.** **(soon)** (Stage 13 Milestone
   1.) `playwright.config.js` runs Firefox alone, but Playwright's `isMobile` —
   the option that flips `(pointer: coarse)` and enables real touch emulation — is
@@ -435,14 +418,6 @@ else runs this.
   The script says so loudly rather than pretending otherwise. If the project ever
   wants reproducible-by-anyone screenshots, it needs a small set of
   known-licence photographs committed for the purpose.
-
-- **A compose-based way to run the UI suite.** (Stage 18.) `make test-ui` drives
-  a dev server that has to be started and seeded by hand; the screenshot
-  generator now shows the alternative shape -- a throwaway server on its own
-  port with its own database, started and torn down by the script. The same
-  treatment would make the UI suite runnable from a clean clone with one command
-  and remove the shared-seed contention that has already caused a false failure
-  report.
 
 - **`auth.SetPassword`'s doc comment is wrong.** (Stage 18 Milestone 10.) It
   says the function is "deliberately not reachable from any HTTP route" and that

@@ -87,16 +87,22 @@ check-i18n:
 check-env:
 	python3 scripts/check_env_vars.py
 
-# Playwright UI suite (Firefox), headless by default. Drives a *running* server —
-# start one with `make dev-restart` and seed it with `make dev-reset FORCE=1`
-# first. Not part of `make ci`: it needs a browser and a live server, so CI runs
-# it as its own job.
+# Playwright UI suite (Firefox), headless by default. Starts a **throwaway
+# instance of its own** — own port, own database, own uploads, own seed, removed
+# on exit — so it neither needs `make dev` running nor touches the dev database.
+# See scripts/ui_test.sh for why that matters. Not part of `make ci`: it needs a
+# browser, so CI runs it as its own job.
 #
 #   make test-ui                        headless, all specs
 #   make test-ui GREP="heading outline"  one spec (a regex — mind the parens)
 #   make test-ui HEADED=1               watch it in a real browser window
 #   make test-ui HEADED=1 SLOWMO=300    ...slowed to 300ms/step so it's followable
 #   make test-ui UI=1                   Playwright's interactive UI mode
+#   CARAVEL_TEST_URL=http://localhost:8080 make test-ui
+#                                       ...against a server you already run,
+#                                       when you want to inspect its database
+#                                       afterwards. Mind the hazards in
+#                                       scripts/ui_test.sh's header.
 #
 # Headed runs force a single worker: four browser windows fighting for focus is
 # unwatchable, which defeats the point of asking to see it.
@@ -107,7 +113,7 @@ check-screenshots:
 	python3 scripts/check_screenshots.py
 
 test-ui:
-	$(PW_ENV) npx playwright test $(PW_ARGS)
+	$(PW_ENV) scripts/ui_test.sh $(PW_ARGS)
 
 ci: build vet check-js check-i18n check-env check-screenshots test
 

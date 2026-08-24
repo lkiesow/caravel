@@ -44,7 +44,7 @@ Other targets worth knowing:
 | Target | Does |
 |---|---|
 | `make dev-seed` | Seeds a demo user and trip for manual testing |
-| `make test-ui` | The Playwright suite against a seeded server |
+| `make test-ui` | The Playwright suite, against a throwaway server it starts and seeds itself |
 | `make test-postgres` | The Go suite against a Postgres container, rather than SQLite |
 | `make docs` | Builds the documentation site into `site/` |
 

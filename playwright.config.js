@@ -5,10 +5,12 @@
 // outline, accessible names, overflow, contrast) are about markup and CSS rather
 // than engine quirks, so a second engine would mostly buy duplicate failures.
 //
-// The suite drives a *running* dev server rather than starting one itself, so
-// `make test-ui` can be pointed at whatever is already up. CI starts one first.
-// It also expects the seeded scenarios from `make dev-reset` to be present —
-// see tests/ui/helpers/scenarios.js.
+// The suite drives a server at CARAVEL_TEST_URL rather than starting one
+// itself. `make test-ui` goes through scripts/ui_test.sh, which starts a
+// throwaway instance — own port, own database, own seed — and sets that
+// variable; setting it yourself points the suite at a server you already run
+// instead. Either way the seeded scenarios must be present, since the routes
+// are resolved from them — see tests/ui/helpers/scenarios.js.
 import { defineConfig, devices } from "@playwright/test";
 import { AUTH_STATE_FILE } from "./tests/ui/helpers/scenarios.js";
 

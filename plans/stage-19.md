@@ -215,6 +215,48 @@ Same shape, one more trip.
   it to another day, unschedule it. `itinerary-order.spec.js` already covers
   reordering within a day — extend that file rather than starting a third.
 
+**Done.** `tests/ui/checklists.spec.js` (four tests) and a second describe in
+`tests/ui/itinerary-order.spec.js` (two), both owning their trips. The suite
+goes from 114 to 120.
+
+*A scope correction, and this one is a missing feature rather than a
+misjudgement.* The plan asked for "add an entry to a day, move it to another
+day, unschedule it". **Neither of the last two exists.** `itinerary.go` offers
+create, reorder and delete on an entry and nothing that reassigns its day; there
+is no client affordance and no route, so moving an entry today means deleting it
+and adding it again on the other day. And nothing is named "unschedule" --
+though deleting an entry is exactly what it would mean, since the location
+itself is untouched, so the spec asserts that half explicitly: after removing
+the entry, `GET /trips/{id}/items` still has the location. The genuinely missing
+move went to `todo.md`. What replaced the two phantom cases: adding a day
+through its own form, and removing a day with entries on it behind its
+confirmation.
+
+*What was already covered, so is not covered twice.* `menu.spec.js` asserts the
+visibility grouping and exactly which moves each card's menu offers, read-only
+against the seed, and `sharing.spec.js` asserts what a viewer is not offered.
+So the new spec drives the mutations those menus lead to -- create, add, tick,
+reword, remove, duplicate, rename, delete -- plus the one move between
+visibilities, which is checked from *both* sessions: after the owner makes a
+list private it leaves the shared section, and it disappears from the other
+editor's page entirely rather than merely going read-only.
+
+*Two small things cost time, both worth recording.* The day-removal dialog
+passes its own `confirmKey: "common.remove"`, so its confirm button says
+**Remove** and not Delete -- a locator looking for "Delete" simply waits out the
+180-second timeout rather than failing usefully. And a bare read straight after
+`page.reload()` races the tab's own fetch and comes back empty, which reads as a
+persistence failure; the rest of the file settles on a count first, and now this
+does too.
+
+*Verified.* `make ci` green, full suite 120 passed. Five breakages, each
+reverted: a duplicate that carries its ticks over (the Stage 15 behaviour is now
+actually pinned), a tick never sent to the server, the checklist delete
+confirmation ignored, removing an entry also deleting its location, and the day
+confirmation ignored. All went red. Four failed on the assertion naming the
+behaviour; the fifth -- the missing day dialog -- failed by timing out on a
+Cancel button that never appears, which is the right verdict arrived at slowly.
+
 ---
 
 ## 4. The register page, and German beyond the menu

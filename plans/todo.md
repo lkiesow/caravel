@@ -258,8 +258,10 @@ down.
       touching the memberships other specs read. Stage 19 Milestone 2 added
       `locations.spec.js` and `trip-editor.spec.js`, which close the location
       and trip editors -- create, edit and delete on both, plus the staged cover
-      photo and the two trip validation paths. **Checklists and the itinerary
-      are what is left.**
+      photo and the two trip validation paths. Stage 19 Milestone 3 added
+      `checklists.spec.js` and a second describe in `itinerary-order.spec.js`,
+      which close the last two. **This part is done**; the register page and the
+      German sweeps below are what is left of this entry.
     - **The register page**, which no spec renders. Stage 14 Milestone 9's
       `unauthenticated.spec.js` covers the *login* screen from a fresh
       unauthenticated context, but the register form only appears when open
@@ -274,6 +276,16 @@ down.
       the sweeps themselves (overflow, headings, names, tap targets) run in one
       locale, and German copy is the longer of the two — the case most likely to
       overflow a box.
+- **An itinerary entry cannot be moved to another day.** (Stage 19 Milestone 3.)
+  `internal/httpapi/itinerary.go` has create, reorder and delete for an entry and
+  nothing that reassigns its `itinerary_day_id`; there is no client affordance
+  either. So rescheduling something means removing it from one day and adding it
+  again on the other, losing any note on the entry in the process. The reorder
+  endpoint already renumbers a whole day inside a transaction, so a move is the
+  same shape across two days -- the awkward part is the API, since entries are
+  addressed as `/itinerary/days/{dayId}/entries/{entryId}` and a move changes the
+  first half of that path. Found while writing the spec: the milestone had
+  planned to *test* this, on the assumption it existed.
 - **Two concurrent UI runs still share Playwright's `test-results/`.** (Stage 19
   Milestone 1.) Everything else about a run is now private to it -- port,
   database, uploads, saved sessions -- but the output directory is still the

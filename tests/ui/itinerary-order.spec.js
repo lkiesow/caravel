@@ -1,4 +1,5 @@
-// Reordering entries inside an itinerary day (Stage 15 Milestone 4).
+// The itinerary tab, end to end: reordering entries inside a day (Stage 15
+// Milestone 4), and the rest of what the tab writes (Stage 19 Milestone 3).
 //
 // This one *writes*, so it follows files.spec.js: its own trip, created in
 // beforeEach and deleted in afterEach, so the seeded itineraries the route
@@ -13,6 +14,14 @@ import { login } from "./helpers/scenarios.js";
 const MOBILE = { width: 324, height: 756 };
 const DAY = "2026-08-20";
 const TITLES = ["Breakfast", "Museum", "Dinner"];
+
+// Used by both describes below, so it sits at module scope rather than inside
+// one of them.
+function entryTitles(page) {
+  return page
+    .locator(".itinerary-day__entries li .itinerary-entry__link span:not(.dot)")
+    .allTextContents();
+}
 
 test.describe("itinerary entry order", () => {
   test.use({ viewport: MOBILE });
@@ -58,14 +67,6 @@ test.describe("itinerary entry order", () => {
     // a red run leaves no litter for the next one.
     if (tripId) await page.request.delete(`/api/trips/${tripId}`);
   });
-
-  function entryTitles(page) {
-    return page
-      .locator(
-        ".itinerary-day__entries li .itinerary-entry__link span:not(.dot)",
-      )
-      .allTextContents();
-  }
 
   test("moves an entry, persists it, and disables the ends", async ({
     page,
@@ -161,5 +162,110 @@ test.describe("itinerary entry order", () => {
       geometry.docOverflow,
       "the page must not scroll horizontally",
     ).toBeLessThanOrEqual(0);
+  });
+});
+
+// The rest of the tab's writes. A second describe rather than a second file:
+// the setup is the same trip with the same shape, and the reorder tests above
+// are the only reason this file was ever narrower than the tab.
+//
+// Note what is *not* here, because it does not exist: there is no way to move
+// an entry to another day, and nothing named "unschedule". itinerary.go offers
+// create, reorder and delete on an entry and nothing that reassigns its day, so
+// moving one means removing it and adding it again on the other day. Deleting
+// the entry is what "unschedule" would mean anyway - the location itself is
+// untouched - and that is asserted below. The missing move is in todo.md.
+test.describe("the itinerary tab, end to end", () => {
+  test.use({ viewport: MOBILE });
+
+  let tripId;
+
+  test.beforeEach(async ({ page }) => {
+    await login(page);
+    const res = await page.request.post("/api/trips", { data: { title: "UI suite: itinerary tab" } });
+    expect(res.status(), "create the spec's own trip").toBe(201);
+    tripId = (await res.json()).id;
+  });
+
+  test.afterEach(async ({ page }) => {
+    if (tripId) await page.request.delete(`/api/trips/${tripId}`);
+    tripId = null;
+  });
+
+  test("adds a day, puts a location on it, and removing the entry keeps the location", async ({ page }) => {
+    const item = await page.request.post(`/api/trips/${tripId}/items`, {
+      data: { title: "Blue Lagoon", category: "site" },
+    });
+    expect(item.status(), "create a location to schedule").toBe(201);
+    const itemId = (await item.json()).id;
+
+    await page.goto(`/trips/${tripId}/itinerary`);
+
+    // A dateless trip synthesises no days at all, so the tab starts with none
+    // and the Add a day form is the only way in.
+    await expect(page.locator(".itinerary-day")).toHaveCount(0);
+    await page.locator('.itinerary-add-day input[name="date"]').fill(DAY);
+    await page.locator('.itinerary-add-day button[type="submit"]').click();
+
+    const day = page.locator(".itinerary-day");
+    await expect(day).toHaveCount(1);
+    await expect(day.locator(".itinerary-day__empty")).toBeVisible();
+
+    // The picker lists the trip's locations. It is populated when the tab
+    // loads, which is why the location above is created before the goto.
+    const add = day.locator(".itinerary-day__add-item");
+    await add.locator('select[name="itemId"]').selectOption(itemId);
+    await add.locator('button[type="submit"]').click();
+
+    await expect(day.locator(".itinerary-day__entries li")).toHaveCount(1);
+    await expect(day.locator(".itinerary-day__empty")).toBeHidden();
+    expect(await entryTitles(page)).toEqual(["Blue Lagoon"]);
+
+    // Settle on the count before reading the titles: a bare read straight after
+    // reload races the tab's own fetch and comes back empty, which reads as a
+    // persistence failure rather than as a test that asked too early.
+    await page.reload();
+    await expect(page.locator(".itinerary-day__entries li")).toHaveCount(1);
+    expect(await entryTitles(page), "the entry should have reached the database").toEqual(["Blue Lagoon"]);
+
+    // Removing the entry unschedules it - the location itself survives, which
+    // is the half a delete-cascade bug would get wrong and the list count
+    // alone would not notice.
+    await page.locator('.itinerary-entry__actions [data-action="remove"]').click();
+    await expect(page.locator(".itinerary-day__entries li")).toHaveCount(0);
+
+    const items = await (await page.request.get(`/api/trips/${tripId}/items`)).json();
+    expect(items.map((i) => i.title), "unscheduling must not delete the location").toEqual(["Blue Lagoon"]);
+  });
+
+  test("removing a day with entries on it asks first", async ({ page }) => {
+    const item = await page.request.post(`/api/trips/${tripId}/items`, {
+      data: { title: "Geysir", category: "site" },
+    });
+    expect(item.status()).toBe(201);
+    const itemId = (await item.json()).id;
+    const day = await page.request.put(`/api/trips/${tripId}/itinerary/days/${DAY}`, { data: { notes: null } });
+    expect(day.status()).toBe(200);
+    const dayId = (await day.json()).id;
+    expect((await page.request.post(`/api/itinerary/days/${dayId}/entries`, { data: { item_id: itemId } })).status()).toBe(201);
+
+    await page.goto(`/trips/${tripId}/itinerary`);
+    await expect(page.locator(".itinerary-day__entries li")).toHaveCount(1);
+
+    // Cancel first. This one confirms only because the day has something on
+    // it, so the dialog appearing at all is part of what is being asserted.
+    await page.locator('[data-action="remove-day"]').click();
+    await page.locator(".dialog__actions button", { hasText: "Cancel" }).click();
+    await expect(page.locator(".itinerary-day")).toHaveCount(1);
+
+    await page.locator('[data-action="remove-day"]').click();
+    // "Remove", not "Delete": this dialog passes its own confirmKey, because
+    // the day is a container rather than the content.
+    await page.locator(".dialog__actions button", { hasText: "Remove" }).click();
+    await expect(page.locator(".itinerary-day")).toHaveCount(0);
+
+    // The day and its entry are gone; the location is not.
+    const items = await (await page.request.get(`/api/trips/${tripId}/items`)).json();
+    expect(items.map((i) => i.title)).toEqual(["Geysir"]);
   });
 });

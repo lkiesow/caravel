@@ -1,3 +1,4 @@
+import { createGuard } from "../busy.js";
 import { translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
 
@@ -166,18 +167,33 @@ export function renderMenu(
     else close();
   });
 
+  // Most of what these menus do is a write - Delete, Duplicate, Remove, change
+  // a role, change visibility - and every one of them used to be re-enterable
+  // while its request was in flight. Guarding the invocation here covers all
+  // twelve of those call sites at once and leaves them unchanged.
+  //
+  // One guard per menu rather than per item, so Edit and Remove on the same row
+  // cannot race each other either. The trigger is the part that matters: close()
+  // runs first, so the realistic double-fire is item, reopen, item again.
+  //
+  // A synchronous onSelect (a filter, a navigation) is disabled for one
+  // microtask and then either navigates or re-renders, so it notices nothing.
+  const guard = createGuard({ elements: () => [trigger, ...dropdown.querySelectorAll("[data-value]")] });
+
   dropdown.querySelectorAll("[data-value]").forEach((btn, i) => {
     btn.addEventListener("click", () => {
       const value = btn.getAttribute("data-value");
       close();
       if (items[i].action) {
-        onSelect?.(value);
-        return;
+        return guard.run(() => onSelect?.(value));
       }
       if (value === active) return;
+      // Still optimistic, and still before the call: the selection is what the
+      // user just chose, and a caller that cannot honor it says so through
+      // setActive() below.
       active = value;
       syncLabel();
-      onSelect?.(value);
+      return guard.run(() => onSelect?.(value));
     });
   });
 

@@ -43,27 +43,43 @@ export async function holdRoute(page, pattern, { method = "POST", status } = {})
   };
 }
 
-// Presses a control twice in one synchronous turn, the way a double tap does.
+// Presses a control twice in one synchronous turn, the way a double tap does,
+// and reports how many requests are in flight afterwards.
 //
 // Not locator.click() twice: that auto-waits for the control to be enabled, so
 // once the fix lands the second call would simply hang, and the spec would be
 // asserting nothing at all. Both presses have to leave before the browser gets
 // a chance to process either.
+//
+// The returned count is the assertion that matters, and it is why this reads
+// the fetch tracker rather than only counting what arrives at the gate. A
+// handler reaches its fetch() *synchronously* from the click, so by the time
+// this evaluate returns, a second press that got through has already
+// incremented `pending` -- whereas the request itself may still be crossing to
+// the route handler, and counting only there passes against broken code if the
+// spec looks a moment too early. That exact false pass happened while this
+// suite was being written.
 export async function doubleClick(page, selector) {
-  await page.evaluate((sel) => {
+  return page.evaluate((sel) => {
     const el = document.querySelector(sel);
     if (!el) throw new Error(`nothing matches ${sel}`);
     el.click();
     el.click();
+    return window.__caravelFetches.pending;
   }, selector);
 }
 
-// The same, for a form submitted with Enter rather than by its button.
-export async function doubleSubmit(page, selector) {
-  await page.evaluate((sel) => {
-    const form = document.querySelector(sel);
-    if (!form) throw new Error(`nothing matches ${sel}`);
-    form.requestSubmit();
-    form.requestSubmit();
-  }, selector);
+// The same, for the controls a spec has to name individually: `presses` is a
+// list of selectors, clicked in order in one turn. A form is submitted rather
+// than clicked, since Enter in a card is one of the paths being covered.
+export async function pressAll(page, presses) {
+  return page.evaluate((sels) => {
+    for (const sel of sels) {
+      const el = document.querySelector(sel);
+      if (!el) throw new Error(`nothing matches ${sel}`);
+      if (el.tagName === "FORM") el.requestSubmit();
+      else el.click();
+    }
+    return window.__caravelFetches.pending;
+  }, presses);
 }

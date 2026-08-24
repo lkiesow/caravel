@@ -180,6 +180,30 @@ microtask, and those callers navigate or re-render anyway, at which point
 The realistic double-fire here is *item, reopen, item again* — `close()` runs
 first, which is precisely why disabling the trigger is the part that matters.
 
+**Done.** As planned, and no call site changed: one `createGuard` per
+`renderMenu`, resolving `[trigger, ...dropdown items]`, wrapping only the
+`onSelect` invocation for both action and radio items. Twelve mutating handlers
+covered by fifteen lines.
+
+Verified: `make ci` green, `make test-ui` green in full (132 passed — including
+`menu.spec.js`, `checklists.spec.js`, `files.spec.js`, `expenses.spec.js`,
+`sharing.spec.js` and the locations distance filter, i.e. every spec that drives
+a ⋮). The new case picks Remove on a checklist item with the DELETE held, then
+reopens the menu and picks it again.
+
+**One finding worth keeping.** The first version of that case *passed against an
+unguarded menu*: it asserted `gate.seen` immediately after the second pick, and
+the second DELETE had left the browser but not yet reached the route handler.
+Only an unrelated extra `page.evaluate` — added to debug why — gave it time to
+arrive, and then it failed with two. So every case now asserts the page's own
+in-flight fetch count, read *in the same synchronous turn as the presses*: a
+handler reaches `fetch()` synchronously from a click, so a press that got
+through has already incremented it, with nothing left to race. The gate count is
+kept as corroboration. Re-verified in both directions with the assertions
+reordered so a defeated guard reports the count rather than timing out on the
+busy state: all five cases fail, the three-doors one with three requests in
+flight.
+
 ---
 
 ## 4. The remaining forms

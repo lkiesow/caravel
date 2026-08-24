@@ -13,11 +13,14 @@
 //   3. after release, the server holds exactly one row -- which is what catches
 //      a guard that freezes the UI while the server still got both requests.
 //
+// The count comes from the page's own in-flight fetch counter as well as from
+// the gate, because the gate alone is a moment behind: see helpers/gate.js.
+//
 // Requests are held open (helpers/gate.js), not delayed: with a fixed delay the
 // assertions would be racing the app instead of describing it.
 import { test, expect } from "@playwright/test";
 import { login, gotoRoute } from "./helpers/scenarios.js";
-import { holdRoute, doubleClick } from "./helpers/gate.js";
+import { holdRoute, doubleClick, pressAll } from "./helpers/gate.js";
 
 // A location needs a trip to live in, and these tests must not touch the
 // seeded scenarios the read-only specs count rows in.
@@ -59,11 +62,12 @@ test.describe("a second press while a write is in flight", () => {
     const gate = await holdRoute(page, "**/api/trips");
     const create = page.locator('[data-action="create"]');
 
-    await doubleClick(page, '[data-action="create"]');
+    const inFlight = await doubleClick(page, '[data-action="create"]');
     await gate.arrived(1);
 
     // The count first, because it is the bug: the second press must not have
     // reached the network at all.
+    expect(inFlight, "the second press must not have started a request").toBe(1);
     expect(gate.seen, "POST /api/trips should have been sent once").toHaveLength(1);
     // And the press is visible as work in progress.
     await expect(create).toBeDisabled();
@@ -90,9 +94,10 @@ test.describe("a second press while a write is in flight", () => {
     const gate = await holdRoute(page, `**/api/trips/${tripId}/items`);
     const save = page.locator('[data-action="save"]');
 
-    await doubleClick(page, '[data-action="save"]');
+    const inFlight = await doubleClick(page, '[data-action="save"]');
     await gate.arrived(1);
 
+    expect(inFlight, "the second press must not have started a request").toBe(1);
     expect(gate.seen, "POST .../items should have been sent once").toHaveLength(1);
     await expect(save).toBeDisabled();
     await expect(save).toHaveAttribute("aria-busy", "true");
@@ -120,13 +125,10 @@ test.describe("a second press while a write is in flight", () => {
     // The button, then Enter in Basic info, then Enter in the Location card -
     // all in one synchronous turn, so all three land while the first request
     // is still held.
-    await page.evaluate(() => {
-      document.querySelector('[data-action="save"]').click();
-      document.querySelector(".item-form").requestSubmit();
-      document.querySelector(".location-form").requestSubmit();
-    });
+    const inFlight = await pressAll(page, ['[data-action="save"]', ".item-form", ".location-form"]);
     await gate.arrived(1);
 
+    expect(inFlight, "three controls, one request in flight").toBe(1);
     expect(gate.seen, "three controls, one request").toHaveLength(1);
 
     gate.release();
@@ -134,6 +136,49 @@ test.describe("a second press while a write is in flight", () => {
 
     const items = await (await page.request.get(`/api/trips/${tripId}/items`)).json();
     expect(items.filter((i) => i.title === "Three doors"), "exactly one location").toHaveLength(1);
+  });
+
+  // The overflow menus are guarded in menu.js itself, so this one case stands
+  // for twelve call sites: delete a checklist or a file, change a role or a
+  // visibility, duplicate a list. The ⋮ closes on the first pick, so the way to
+  // fire a second one is to open it again - which is why the *trigger* is what
+  // the guard disables.
+  test("a menu action cannot be picked twice", async ({ page }) => {
+    const tripId = await ownTrip(page, "UI suite: double-submit menu");
+    strayTripIds.push(tripId);
+
+    const checklist = await (await page.request.post(`/api/trips/${tripId}/checklists`, { data: { title: "Packing" } })).json();
+    const item = await (await page.request.post(`/api/checklists/${checklist.id}/items`, { data: { text: "Passport" } })).json();
+
+    await gotoRoute(page, `/trips/${tripId}/checklists`);
+
+    const row = page.locator(".checklist-item", { hasText: "Passport" });
+    const trigger = row.locator(".menu__trigger");
+    const gate = await holdRoute(page, `**/api/checklists/${checklist.id}/items/${item.id}`, { method: "DELETE" });
+
+    await trigger.click();
+    await row.getByRole("menuitem", { name: "Remove" }).click();
+    await gate.arrived(1);
+
+    // Reopen and pick it again, in one synchronous turn so neither press can
+    // wait for the first request to finish. The row is still there: the DELETE
+    // it would be removed by is the one being held.
+    const rowSelector = `.checklist-item[data-item-id="${item.id}"]`;
+    const inFlight = await pressAll(page, [`${rowSelector} .menu__trigger`, `${rowSelector} [data-value="remove"]`]);
+
+    expect(inFlight, "the second pick must not have started a request").toBe(1);
+    expect(gate.seen, "DELETE should have been sent once").toHaveLength(1);
+    // Asserted after the second attempt rather than before it, so that a run
+    // against an unguarded menu reports the request count -- the actual bug --
+    // instead of timing out on the busy state first.
+    await expect(trigger).toBeDisabled();
+    await expect(trigger).toHaveAttribute("aria-busy", "true");
+
+    gate.release();
+    await expect(row).toHaveCount(0);
+
+    const after = await (await page.request.get(`/api/trips/${tripId}/checklists`)).json();
+    expect(after.find((c) => c.id === checklist.id).items, "the list is empty, not doubly-deleted").toHaveLength(0);
   });
 
   // The only path the re-enable code ever runs on. On success the page

@@ -31,6 +31,9 @@
 /*.credentials
 /.env
 /.env.*
+# ...except the committed template, which holds no values -- it is the file
+# somebody copies to .env, so it has to be in the repository.
+!/.env.sample
 
 # The generated documentation site (see zensical.toml). Built output, not
 # sources: GitHub Pages builds it from CI, and locally it is `make docs`.

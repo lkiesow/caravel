@@ -56,14 +56,18 @@ exist. See [Backup and restore](../running/backup.md).
 Everything is set through environment variables, and every one has a working
 default — a bare `docker compose up -d` is a complete installation. The compose
 files read an optional `.env` beside them, which is where a real deployment puts
-its settings:
+its settings. The checkout ships an annotated `.env.sample` listing every
+variable, commented out at its default:
 
 ```sh
-# .env
-CARAVEL_PORT=8080
+cp .env.sample .env
+$EDITOR .env
+docker compose up -d
 ```
 
-See [Server and database](../configuration/server.md) for the full list. Two
+`.env` is gitignored; `.env.sample` holds no values, so it is safe to keep in
+the repository and safe to diff against after an upgrade. See [Server and
+database](../configuration/server.md) for the full list. Two
 things are worth turning on once it is running: an [address
 search](../configuration/address-search.md) endpoint of your own, and
 optionally [the assistant](../configuration/assistant.md).

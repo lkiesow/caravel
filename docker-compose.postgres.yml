@@ -32,6 +32,8 @@ services:
       # first one register regardless, and that account becomes the admin who
       # decides whether the door stays open.
     env_file:
+      # Optional, same as docker-compose.yml: `cp .env.sample .env` and
+      # uncomment what you need. Gitignored.
       - path: .env
         required: false
     volumes:

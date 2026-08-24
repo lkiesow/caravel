@@ -35,7 +35,8 @@ services:
       # committed.
     env_file:
       # Optional: docker compose reads it if it exists, and does not complain
-      # when it does not. .env is gitignored.
+      # when it does not. .env is gitignored; `cp .env.sample .env` is the
+      # starting point, and lists every variable at its default.
       - path: .env
         required: false
     volumes:

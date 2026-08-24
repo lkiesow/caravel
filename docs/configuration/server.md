@@ -22,6 +22,25 @@ those two paths.
 The assistant has its own variables, all unset by default, on [The
 assistant](assistant.md).
 
+## Where to put them
+
+The repository ships `.env.sample`: every variable above and every one on the
+assistant page, commented out at its default, with a line on what each does.
+Copy it beside the compose file and uncomment what you want to change —
+
+```sh
+cp .env.sample .env
+```
+
+— because both compose files read `.env` if it exists. It is gitignored, which
+is the point: `.env.sample` never holds a value, so the file with your API key
+in it is not the file tracked in git.
+
+An RPM installation has the same thing at `/etc/caravel/caravel.conf`, read by
+the systemd unit as an `EnvironmentFile` and marked `noreplace` so an upgrade
+does not overwrite it. A prebuilt binary under systemd wants an
+`EnvironmentFile` of its own, in the same format.
+
 ## Bad values stop the server
 
 A typo in a configuration value fails at startup with the variable named, rather

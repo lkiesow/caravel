@@ -404,6 +404,47 @@ false pass.
 
 Prove it by re-creating the 2.54:1 button and watching CI go red.
 
+**Done.** `contrast.js` gains `--strict` and a repeatable `--route`;
+`make check-contrast` runs the self-test and then sweeps `/trips`, `/settings`
+and `/trips/new` in both palettes; CI runs it as its own step in the `ui` job.
+110 elements measured, all at or above their own threshold. No new tests -- this
+is a script, not a spec, and a failure should read as "the palette moved" rather
+than as a broken test.
+
+*The threshold table already existed.* `report()` has always computed a
+per-element threshold -- 4.5 for normal text, 3.0 for large text and for
+non-text -- and printed it. What was missing is that `main()` ignored it and
+only honoured the flat `--min`. So the work was not writing the table but
+*enforcing* it, which is why `--strict` is a separate flag from `--min` rather
+than a default for it.
+
+*One exemption, and only one.* `.app-brand`, the header lockup, measures 3.59:1
+in dark mode -- lightened navy on the dark ground. WCAG 1.4.3 exempts logotypes
+outright ("text that is part of a logo or brand name has no minimum contrast
+requirement"), and clearing 4.5 would mean the app not using its own brand
+colour. Exempt elements are still measured and still printed, marked `sk` with
+the reason; they just do not fail the build. The list is deliberately short and
+the rule for adding to it is written down: an exemption is a claim that the
+guideline does not apply, and if the claim is wrong the fix is the colour.
+
+*A refactor the milestone needed.* After Milestone 1 the CI `ui` job starts no
+server -- `make test-ui` brings up its own and tears it down -- so a contrast
+step had nothing to talk to. Rather than a second copy of the bootstrap, it came
+out of `ui_test.sh` into **`scripts/with_server.sh <command>`**, which both now
+use; `ui_test.sh` is six lines. Milestone 1's guarantee was re-proved afterwards
+rather than assumed: two concurrent runs, distinct ports (:8094 and :8095), both
+green, `data/caravel.db` unchanged.
+
+*Verified.* `make ci` green, full suite 127 passed, contrast clean. Three
+breakages, each reverted. The one the plan asked for: setting
+`--color-accent-strong` back to the light-mode blue in dark mode reproduces
+**Stage 07's primary button at 2.54:1** -- the same number that stage found by
+hand -- and it now fails the build on all three routes. Plus the two guards that
+stop a false pass: a compositor that returns the raw tint instead of flattening
+fails the self-test (so a broken measurement cannot report confident nonsense),
+and a selector list that matches nothing is reported as "the selectors are
+probably not matching" rather than as a clean sweep.
+
 ---
 
 ## 7. Guard rails and sweep-up

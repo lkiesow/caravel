@@ -285,15 +285,15 @@ down.
   the first time: CDP silently delivers nothing outside the viewport, so a
   target below the fold must be scrolled into view or the test passes having
   touched nothing.
-- **Contrast is measured but not asserted.** `tests/ui/contrast.js` reports
-  ratios and has a `--min` flag, but nothing runs it in CI, so a regression like
-  Stage 07's 2.54:1 primary button would only be found by someone running it.
-  Turning it into a spec needs a decision about which elements have a defensible
-  threshold (decorative fills and large text differ), which is why it stayed a
-  measurement tool. Two parts worth keeping whatever shape it takes: flattening
-  translucent backgrounds over whatever is behind them (the danger tint is
-  `rgba(...)`, so a naive reading measures against transparency and reports
-  nonsense), and reaching into shadow roots.
+- **The contrast gate covers three routes and one exemption.** (Stage 19
+  Milestone 6.) `make check-contrast` sweeps `/trips`, `/settings` and
+  `/trips/new` in both palettes, holding each element to its own WCAG threshold,
+  with `.app-brand` exempt as a logotype. What it does not reach: every trip
+  tab, the location editor, the map legend and the dialogs -- all of which the
+  script *can* measure, since it pierces shadow roots, but none of which is in
+  the route list. Widening it is a line in the Makefile plus whatever the
+  numbers then say; the reason it starts narrow is that each route costs two
+  browser page loads and nobody has read the numbers for the rest yet.
 - **The suite waits on injected plumbing, not on the app's own state.** Stage 09
   Milestone 5 gave every route a `common.loading` line, which fixes the
   user-facing half of the old "empty shell" problem but not the suite's: a

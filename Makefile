@@ -1,4 +1,4 @@
-.PHONY: run build test dev dev-restart dev-marker dev-version dev-seed dev-reset vet check-js check-i18n check-env check-screenshots test-ui test-postgres ci docs docs-serve screenshots
+.PHONY: run build test check-contrast dev dev-restart dev-marker dev-version dev-seed dev-reset vet check-js check-i18n check-env check-screenshots test-ui test-postgres ci docs docs-serve screenshots
 
 # The build's identity, stamped into the binary at link time and reported by the
 # startup banner and GET /api/health — so "which build is this server running?"
@@ -114,6 +114,22 @@ PW_ARGS = $(if $(GREP),--grep "$(GREP)")$(if $(UI), --ui)$(if $(HEADED), --heade
 
 check-screenshots:
 	python3 scripts/check_screenshots.py
+
+# Colour contrast, asserted rather than measured. Every element is held to its
+# own WCAG threshold -- 4.5 for normal text, 3.0 for large text and non-text --
+# with a short, reasoned exemption list in the script. Both palettes, because
+# dark mode is where the app has previously drifted.
+#
+# The self-test runs first: it proves the translucent-flattening maths on known
+# input, and without it a broken compositor would report confident nonsense and
+# pass. Starts its own throwaway server, the same one `make test-ui` uses.
+#
+# Not part of `make ci` for the same reason test-ui is not: it needs a browser.
+# CI runs it in the `ui` job.
+CONTRAST_ROUTES = --route /trips --route /settings --route /trips/new
+check-contrast:
+	node tests/ui/contrast.js --self-test
+	scripts/with_server.sh node tests/ui/contrast.js $(CONTRAST_ROUTES) --scheme both --strict
 
 test-ui:
 	$(PW_ENV) scripts/ui_test.sh $(PW_ARGS)

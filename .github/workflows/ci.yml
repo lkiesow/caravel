@@ -167,6 +167,14 @@ jobs:
       - name: UI suite
         run: make test-ui
 
+      # Contrast was measurable for four stages and asserted by nobody, so a
+      # regression like Stage 07's 2.54:1 primary button would only be found by
+      # someone thinking to look. Its own step rather than part of the suite:
+      # it is a script, not a spec, and a failure here should read as "the
+      # palette moved" rather than as a broken test.
+      - name: Colour contrast
+        run: make check-contrast
+
       # The report is the only way to see what a headless failure looked like.
       - uses: actions/upload-artifact@v4
         if: failure()

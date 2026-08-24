@@ -1,4 +1,5 @@
 import { api } from "../api.js";
+import { createGuard, guardClick } from "../busy.js";
 import { t, translatePage } from "../i18n.js";
 import { navigate } from "../router.js";
 import { renderItemForm } from "../components/location-form.js";
@@ -86,6 +87,16 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     links: (item?.links ?? []).map((l) => ({ url: l.url, label: l.label ?? null })),
     dates: (item?.dates ?? []).map((d) => ({ start_date: d.start_date, end_date: d.end_date, label: d.label ?? null })),
   };
+
+  // One guard for the page's one write, rather than one per control. Save is
+  // reachable from three places - the button, Enter in the Basic info card,
+  // Enter in the Location card - and three separate flags would leave two of
+  // those doors open on a slow connection, which is exactly how the same
+  // location got created twice. So the *wrapped* function is what every entry
+  // point gets, and the button is what visibly goes busy. Resolved through the
+  // container rather than captured, so it survives a re-render.
+  const saveGuard = createGuard({ elements: () => container.querySelector('[data-action="save"]') });
+  const save = saveGuard.wrap(commitSave);
 
   function render() {
     container.innerHTML = `
@@ -225,11 +236,17 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     container.querySelector('[data-action="save"]').addEventListener("click", save);
     container.querySelector('[data-action="cancel"]').addEventListener("click", cancel);
 
-    container.querySelector('[data-action="delete"]')?.addEventListener("click", async () => {
-      if (!(await confirmDialog({ messageKey: "item.deleteConfirm" }))) return;
-      await api.delete(`/items/${item.id}`);
-      navigate(`/trips/${tripId}`);
-    });
+    // Guarded around the confirm too, not just the DELETE: the dialog is an
+    // await like any other, and a second click while it is open would stack a
+    // second copy of it.
+    const deleteBtn = container.querySelector('[data-action="delete"]');
+    if (deleteBtn) {
+      guardClick(deleteBtn, async () => {
+        if (!(await confirmDialog({ messageKey: "item.deleteConfirm" }))) return;
+        await api.delete(`/items/${item.id}`);
+        navigate(`/trips/${tripId}`);
+      });
+    }
   }
 
   // The assistant proposes; nothing here writes. Every accepted suggestion
@@ -278,7 +295,10 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
 
   // The page's one and only write of the item itself: basic info plus the
   // nested location, links and dates, committed together server-side.
-  async function save() {
+  //
+  // Never called directly: `save` above is this behind the page's guard, and
+  // that is what the button and both Enter handlers are given.
+  async function commitSave() {
     itemForm.clearError();
 
     // show_on_map is a field of the item itself, not of its nested location,

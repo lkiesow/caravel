@@ -140,6 +140,24 @@ click while it is open should not stack a second dialog.
 
 `flushUploads` needs nothing of its own — it only ever runs inside `save`.
 
+**Done.** As planned. The page's `save` is now `saveGuard.wrap(commitSave)`,
+declared before `render()` and handed to all three entry points; the old
+`save()` is renamed `commitSave` so nothing can reach the unguarded one by
+accident. The Save button is resolved through the container by function rather
+than captured, so a re-render cannot leave the guard holding a detached node.
+Delete is a `guardClick` that wraps the `confirmDialog` await as well as the
+DELETE, so a second click cannot stack a second dialog.
+
+Verified: `make ci` green, `make test-ui` green in full (131 passed — including
+`locations.spec.js`, `map.spec.js`'s picker and address-search cases,
+`assist.spec.js` and `notes-preview.spec.js`, all of which drive this page).
+Two cases added to `double-submit.spec.js`: Save double-pressed on a new
+location, and — the reason the flag is on the guard rather than on the button —
+the button plus Enter in *both* cards fired in one synchronous turn, asserting
+one request from three controls. Both **fail with `saveGuard.wrap` removed**,
+and the first fails exactly as the bug was reported: two POSTs to
+`/api/trips/{id}/items`, two locations.
+
 ---
 
 ## 3. The overflow menus, centrally

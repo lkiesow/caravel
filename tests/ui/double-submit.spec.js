@@ -19,6 +19,14 @@ import { test, expect } from "@playwright/test";
 import { login, gotoRoute } from "./helpers/scenarios.js";
 import { holdRoute, doubleClick } from "./helpers/gate.js";
 
+// A location needs a trip to live in, and these tests must not touch the
+// seeded scenarios the read-only specs count rows in.
+async function ownTrip(page, title) {
+  const res = await page.request.post("/api/trips", { data: { title } });
+  expect(res.status(), "create the spec's own trip").toBe(201);
+  return (await res.json()).id;
+}
+
 const MOBILE = { width: 324, height: 756 };
 
 test.describe("a second press while a write is in flight", () => {
@@ -69,6 +77,63 @@ test.describe("a second press while a write is in flight", () => {
     // UI would still leave two rows here.
     const trips = await (await page.request.get("/api/trips")).json();
     expect(trips.filter((t) => t.title === title), `exactly one trip named ${title}`).toHaveLength(1);
+  });
+
+  // The reported bug, as reported: Save pressed twice on a new location.
+  test("saving a new location twice creates one location", async ({ page }) => {
+    const tripId = await ownTrip(page, "UI suite: double-submit locations");
+    strayTripIds.push(tripId);
+
+    await gotoRoute(page, `/trips/${tripId}/locations/new`);
+    await page.locator('.item-form input[name="title"]').fill("Held waterfall");
+
+    const gate = await holdRoute(page, `**/api/trips/${tripId}/items`);
+    const save = page.locator('[data-action="save"]');
+
+    await doubleClick(page, '[data-action="save"]');
+    await gate.arrived(1);
+
+    expect(gate.seen, "POST .../items should have been sent once").toHaveLength(1);
+    await expect(save).toBeDisabled();
+    await expect(save).toHaveAttribute("aria-busy", "true");
+
+    gate.release();
+    await expect(page).toHaveURL(new RegExp(`/trips/${tripId}/locations/[0-9a-f-]+$`));
+
+    const items = await (await page.request.get(`/api/trips/${tripId}/items`)).json();
+    expect(items.filter((i) => i.title === "Held waterfall"), "exactly one location").toHaveLength(1);
+  });
+
+  // Why the flag lives on the guard and not on the button. This page reaches
+  // one save() from three controls, and disabling the button alone would leave
+  // the two Enter paths open - press Save, then hit Enter in either card while
+  // it is still going, and the location is created twice again.
+  test("the location editor's three save paths share one flag", async ({ page }) => {
+    const tripId = await ownTrip(page, "UI suite: double-submit three doors");
+    strayTripIds.push(tripId);
+
+    await gotoRoute(page, `/trips/${tripId}/locations/new`);
+    await page.locator('.item-form input[name="title"]').fill("Three doors");
+
+    const gate = await holdRoute(page, `**/api/trips/${tripId}/items`);
+
+    // The button, then Enter in Basic info, then Enter in the Location card -
+    // all in one synchronous turn, so all three land while the first request
+    // is still held.
+    await page.evaluate(() => {
+      document.querySelector('[data-action="save"]').click();
+      document.querySelector(".item-form").requestSubmit();
+      document.querySelector(".location-form").requestSubmit();
+    });
+    await gate.arrived(1);
+
+    expect(gate.seen, "three controls, one request").toHaveLength(1);
+
+    gate.release();
+    await expect(page).toHaveURL(new RegExp(`/trips/${tripId}/locations/[0-9a-f-]+$`));
+
+    const items = await (await page.request.get(`/api/trips/${tripId}/items`)).json();
+    expect(items.filter((i) => i.title === "Three doors"), "exactly one location").toHaveLength(1);
   });
 
   // The only path the re-enable code ever runs on. On success the page

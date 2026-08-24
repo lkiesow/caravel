@@ -1,4 +1,5 @@
 import { api } from "../api.js";
+import { guardForm } from "../busy.js";
 import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
 import { CURRENCIES } from "../format.js";
@@ -88,8 +89,7 @@ export function renderTripForm(container, trip, { onSaved, onCancel, showActions
 
   container.querySelector('[data-action="cancel"]')?.addEventListener("click", () => onCancel?.());
 
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
+  const guard = guardForm(form, async () => {
     errorEl.hidden = true;
 
     // The API rejects this too (tripRequest.validate), but catching it here
@@ -110,16 +110,29 @@ export function renderTripForm(container, trip, { onSaved, onCancel, showActions
       currency: form.currency.value,
     };
 
+    let saved;
     try {
-      const saved = trip ? await api.patch(`/trips/${trip.id}`, body) : await api.post("/trips", body);
-      onSaved?.(saved);
+      saved = trip ? await api.patch(`/trips/${trip.id}`, body) : await api.post("/trips", body);
     } catch (err) {
       errorEl.textContent = err.body?.error || t("common.error");
       errorEl.hidden = false;
+      return;
     }
+
+    // Awaited, and outside the try - onSaved is where the create page uploads
+    // the staged cover photo and then navigates, so releasing the guard as
+    // soon as POST /trips answered would re-enable Create halfway through and
+    // let a second press make a second trip. Outside the try because a failure
+    // in there is not a failure to save the trip, and reporting it as one
+    // would be a lie; that path handles its own errors.
+    await onSaved?.(saved);
   });
 
   // requestSubmit() (not submit()) so the form's own submit handler above
   // still runs, which is where saving and error display live.
-  return { submit: () => form.requestSubmit() };
+  //
+  // The guard goes out with it: a caller placing its own submit control
+  // (showActions: false) needs that button in the *same* busy set, not a
+  // second flag of its own - see trip-editor-page.js.
+  return { submit: () => form.requestSubmit(), guard };
 }

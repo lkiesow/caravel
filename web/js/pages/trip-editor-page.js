@@ -92,7 +92,13 @@ export async function renderTripEditorPage(container) {
       },
     });
 
-    container.querySelector('[data-action="create"]').addEventListener("click", () => form.submit());
+    // The page's own Create button joins the form's busy set rather than
+    // owning a second flag, so the one press it takes to save is the one press
+    // it accepts - including while the staged cover photo is still uploading
+    // inside onSaved.
+    const createBtn = container.querySelector('[data-action="create"]');
+    form.guard.watch(createBtn);
+    createBtn.addEventListener("click", () => form.submit());
 
     container.querySelector('[data-action="cancel"]').addEventListener("click", () => {
       if (stagedImage?.kind === "file" && stagedImage.previewUrl) URL.revokeObjectURL(stagedImage.previewUrl);

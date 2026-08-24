@@ -211,6 +211,14 @@ a:visited {
   filter: none;
 }
 
+/* A control disabled because its own request is in flight, rather than because
+   it is unavailable - see web/js/busy.js. "not-allowed" would be the wrong
+   thing to say about a button that is working on it. */
+.btn[aria-busy="true"]:disabled,
+.icon-btn[aria-busy="true"]:disabled {
+  cursor: progress;
+}
+
 .btn-icon {
   padding: 0.5rem;
 }

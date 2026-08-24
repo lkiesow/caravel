@@ -1,4 +1,5 @@
 import { api, ApiError } from "../api.js";
+import { guardForm } from "../busy.js";
 import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
 
@@ -102,8 +103,10 @@ export function renderLoginPage(container) {
         render();
       });
 
-      form.addEventListener("submit", async (e) => {
-        e.preventDefault();
+      // A double-tapped Register on a slow connection would otherwise send the
+      // create twice; the second attempt reports "username taken" against the
+      // account it just made itself.
+      guardForm(form, async () => {
         errorEl.hidden = true;
         const data = new FormData(form);
 

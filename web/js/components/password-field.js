@@ -1,4 +1,5 @@
 import { api } from "../api.js";
+import { guardForm } from "../busy.js";
 import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
 
@@ -48,8 +49,9 @@ export function renderPasswordField(container) {
     successEl.hidden = true;
   }
 
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
+  // The disable-while-in-flight this form always had, now the shared one -
+  // guardForm finds the submit button itself and drops a second press.
+  guardForm(form, async () => {
     errorEl.hidden = true;
     successEl.hidden = true;
 
@@ -67,8 +69,6 @@ export function renderPasswordField(container) {
       return;
     }
 
-    const submit = form.querySelector('button[type="submit"]');
-    submit.disabled = true;
     try {
       await api.post("/auth/password", { current_password: current, new_password: next });
       form.reset();
@@ -78,8 +78,6 @@ export function renderPasswordField(container) {
       // out" - the request itself was authenticated by the session cookie.
       fail(err?.status === 401 ? t("settings.password.wrongCurrent") : t("common.error"));
       console.error(err);
-    } finally {
-      submit.disabled = false;
     }
   });
 }

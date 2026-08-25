@@ -105,6 +105,24 @@ down.
       optional `item_id`, which would give a per-location cost on the location
       view. One nullable column and a select.
 
+- **Assistant round trips: batching and parallel tool dispatch.** (Stage 21
+  Milestone 4b, dropped after 4a was measured.) `agent.go` dispatches a turn's
+  tool calls in a plain sequential loop, which reads oddly beside `checkLinks`
+  in the same file -- that already fans out with a `WaitGroup`. Two halves:
+  prompt the model to request several page reads in one turn rather than one at
+  a time, and run a turn's calls concurrently. Results must be appended in call
+  order, because a `tool` message has to follow its `tool_calls` and most
+  servers reject a mismatch, so they go into a slice indexed by call; and the
+  tool-call ceiling has to be decided before the fan-out rather than inside it.
+
+  **Do not take this on as a speed fix.** All tool calls together are ~12% of a
+  run at ~1.1s each, and only a turn issuing two or more benefits at all. More
+  to the point, 4a measured: with a standard deviation of ~2.9s on an ~8.9s
+  mean, detecting a 10% change needs roughly 180 runs per arm, and this targets
+  the same order of effect. It is a tidiness item with a possible second of
+  dividend. What made speed work worthwhile in the first place was switching
+  the model, which took the same run from 59s to 8s.
+
 - **Three assistant speed levers, measured and set aside.** (Stage 21
   Milestone 4.) All three were on the table and none survived the measurements,
   so they are recorded with the reasoning rather than silently dropped. The

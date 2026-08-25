@@ -303,6 +303,12 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 	// and only one of them hit a ceiling.
 	stop := "answered"
 
+	// proposed is set when the model ended the run with a propose call, which
+	// makes the composing request below unnecessary. Nil means the run ended
+	// some other way -- no tool calls, a ceiling, a deadline -- and the
+	// two-phase path still answers it.
+	var proposed *modelProposal
+
 	// turnsUsed (declared above, with the summary that reports it) counts turns
 	// the provider actually answered, which is not the same as the loop
 	// counter: a loop that breaks *inside* an iteration -- which the ordinary
@@ -370,6 +376,45 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 			break
 		}
 
+		// A propose call ends the run: its arguments *are* the answer, so
+		// there is no second request to compose one. Checked before the
+		// dispatch loop because everything else in this turn is moot -- the
+		// model has said it is finished.
+		//
+		// A call whose arguments do not decode is answered rather than fatal,
+		// the same way every other tool failure is: the model is told what was
+		// wrong and gets to try again, bounded by the turn and tool-call
+		// ceilings. That path is rare and costs exactly what the old flow cost
+		// every single time.
+		if call, ok := findCall(resp.ToolCalls, toolPropose); ok {
+			var raw modelProposal
+			if err := decodeJSONAnswer(call.Function.Arguments, &raw); err == nil {
+				log.Debug("assist: proposed by tool call",
+					"turn", turnsUsed,
+					"ms", time.Since(started).Milliseconds(),
+					"spent_tokens", spent.TotalTokens)
+				emit(Event{
+					Kind:       EventStep,
+					Key:        "assist.step.composing",
+					DurationMS: time.Since(turnStarted).Milliseconds(),
+				})
+				proposed = &raw
+				stop = "proposed"
+				break
+			} else {
+				log.Debug("assist: propose call rejected", "turn", turnsUsed, "err", err)
+				messages = append(messages, chatMessage{Role: roleAssistant, Content: resp.Content, ToolCalls: resp.ToolCalls})
+				messages = append(messages, chatMessage{
+					Role:       roleTool,
+					ToolCallID: call.ID,
+					Content: "That did not work: " + err.Error() +
+						". Call propose again with arguments matching the schema.",
+				})
+				toolCalls++
+				continue
+			}
+		}
+
 		// The assistant turn must be echoed back with its tool_calls intact,
 		// or the results below have nothing to attach to and most servers
 		// reject the request.
@@ -421,6 +466,54 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 		"spent_tokens", spent.TotalTokens,
 		"ms", time.Since(started).Milliseconds())
 
+	raw, err := a.answer(userCtx, req, messages, proposed, &spent, emit, log)
+	if err != nil {
+		return nil, err
+	}
+
+	p, err := a.buildProposal(userCtx, req, *raw, tools.Sources(), emit, log)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Debug("assist: run finished",
+		"ms", time.Since(started).Milliseconds(),
+		"turns", turnsUsed,
+		"tool_calls", toolCalls,
+		"spent_tokens", spent.TotalTokens,
+		"answered_by", map[bool]string{true: "propose", false: "composing"}[proposed != nil],
+		"fields", len(p.Fields),
+		"links", len(p.Links),
+		"sources", len(p.Sources),
+		"coordinates", p.Lat != nil)
+	return p, nil
+}
+
+// findCall returns the first call to the named tool.
+func findCall(calls []toolCall, name string) (toolCall, bool) {
+	for _, c := range calls {
+		if c.Function.Name == name {
+			return c, true
+		}
+	}
+	return toolCall{}, false
+}
+
+// answer produces the structured result.
+//
+// When the model ended the run with a propose call there is nothing to do: the
+// arguments were already decoded and this is a pass-through. Otherwise the
+// original two-phase path runs -- a final request carrying the whole
+// conversation plus an instruction to answer in the schema.
+//
+// Keeping the second path rather than replacing it matters: a model that never
+// calls propose, or a server that mishandles a tool schema, still gets an
+// answer by the route that has worked since Stage 16.
+func (a *Agent) answer(userCtx context.Context, req Request, messages []chatMessage, proposed *modelProposal, spent *usage, emit func(Event), log *slog.Logger) (*modelProposal, error) {
+	if proposed != nil {
+		return proposed, nil
+	}
+
 	emit(Event{Key: "assist.progress.composing"})
 
 	messages = append(messages, chatMessage{Role: roleUser, Content: finalPrompt(req)})
@@ -434,7 +527,7 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 	var raw modelProposal
 	composeStarted := time.Now()
 	used, attempts, err := completeJSON(finalCtx, a.provider, chatRequest{Messages: messages, Format: proposalFormat()}, &raw)
-	spent = addUsage(spent, used)
+	*spent = addUsage(*spent, used)
 	// Logged either way. The composing turn resends the whole conversation, so
 	// it is the slowest single request of a run by a wide margin and the one
 	// whose failure wastes everything before it -- which makes "how long did
@@ -458,22 +551,7 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 	if err != nil {
 		return nil, wrapRunError(err)
 	}
-
-	p, err := a.buildProposal(finalCtx, req, raw, tools.Sources(), emit, log)
-	if err != nil {
-		return nil, err
-	}
-
-	log.Debug("assist: run finished",
-		"ms", time.Since(started).Milliseconds(),
-		"turns", turnsUsed,
-		"tool_calls", toolCalls,
-		"spent_tokens", spent.TotalTokens,
-		"fields", len(p.Fields),
-		"links", len(p.Links),
-		"sources", len(p.Sources),
-		"coordinates", p.Lat != nil)
-	return p, nil
+	return &raw, nil
 }
 
 // wrapRunError catches the case where a provider call failed *because* the run

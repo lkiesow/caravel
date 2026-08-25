@@ -34,6 +34,19 @@ const (
 	// coordinates that reach the proposal are resolved by the agent itself,
 	// not taken from whatever the model does with this.
 	toolGeocode = "geocode"
+	// toolPropose ends the run: its arguments are the answer.
+	//
+	// Not dispatched like the others, and deliberately not in the tool map --
+	// it produces no result to feed back and there is nothing for the model to
+	// do afterwards, so the agent loop handles it directly.
+	//
+	// It exists to remove a whole round trip. Before it, the model signalled
+	// "I have enough" by returning a turn with no tool calls, and the answer
+	// then took a second request. That signalling turn carried the entire
+	// conversation as its prompt and produced one sentence, and it measured as
+	// the slowest gathering turn in seven of the eight models tried -- around
+	// a fifth of a run, spent saying nothing.
+	toolPropose = "propose"
 )
 
 // The dispatcher.
@@ -80,7 +93,7 @@ func newToolset(search Searcher, fetch *pageFetcher, geocoder *geocode.Client, e
 // receives an error, and wastes a turn discovering what the config already
 // knew.
 func (t *toolset) definitions() []toolDef {
-	defs := make([]toolDef, 0, 3)
+	defs := make([]toolDef, 0, 4)
 
 	if t.search != nil {
 		defs = append(defs, toolDef{
@@ -108,6 +121,15 @@ func (t *toolset) definitions() []toolDef {
 		    "url": {"type": "string", "description": "The absolute URL of a page found in a search result."}
 		  }
 		}`),
+	})
+
+	defs = append(defs, toolDef{
+		Name: toolPropose,
+		Description: "Report the finished result and end the search. Call this once, as soon as you have what you need. " +
+			"Only include URLs you actually retrieved with fetch_page or saw in a search result. " +
+			"Give an address and a searchable place name, never coordinates. " +
+			"Leave a field as an empty string rather than guessing.",
+		Parameters: proposalSchema,
 	})
 
 	if t.geocoder != nil {
@@ -321,6 +343,8 @@ func describeCall(name string, args json.RawMessage) (progressKey, stepKey strin
 	_ = json.Unmarshal(args, &in)
 
 	switch name {
+	case toolPropose:
+		return "assist.progress.composing", "assist.step.composing", nil
 	case toolWebSearch:
 		return "assist.progress.searching", "assist.step.searching", param("query", strings.TrimSpace(in.Query))
 	case toolFetchPage:

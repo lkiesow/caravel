@@ -53,12 +53,12 @@ func TestTheRunTraceAccountsForAWholeRun(t *testing.T) {
 	// answers it. Named rather than counted: a count would pass on the wrong
 	// records.
 	for _, want := range []string{
-		"assist: run started",        // what was configured
-		"assist: turn",               // where the model time went
-		"assist: tool call",          // where the tool time went
-		"assist: gathering finished", // why the loop stopped
-		"assist: composed",           // the slowest single request of a run
-		"assist: run finished",       // the total
+		"assist: run started",           // what was configured
+		"assist: turn",                  // where the model time went
+		"assist: tool call",             // where the tool time went
+		"assist: gathering finished",    // why the loop stopped
+		"assist: proposed by tool call", // which route produced the answer
+		"assist: run finished",          // the total
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the trace has no %q record:\n%s", want, out)
@@ -74,9 +74,15 @@ func TestTheRunTraceAccountsForAWholeRun(t *testing.T) {
 	}
 
 	// Why the gathering ended, which is the difference between a model that
-	// finished and one that hit a ceiling.
-	if !strings.Contains(out, "reason=answered") {
+	// finished and one that hit a ceiling. The stub ends with a propose call,
+	// which is what a well-behaved model does since Milestone 4a.
+	if !strings.Contains(out, "reason=proposed") {
 		t.Errorf("the trace does not say why gathering stopped:\n%s", out)
+	}
+	// Which route answered: the thing 4a changed, and therefore the thing a
+	// before-and-after has to be able to read out of the log.
+	if !strings.Contains(out, "answered_by=propose") {
+		t.Errorf("the trace does not say which path answered:\n%s", out)
 	}
 
 	// Both tool calls the stub makes are traced, with the URL each read.
@@ -122,13 +128,26 @@ func TestTheRunTraceLeaksNeitherKeysNorPageBodies(t *testing.T) {
 	}
 }
 
-// The composing phase is the slowest single thing a run does, and "one slow
-// request" and "two ordinary requests" want opposite fixes. Before `calls` the
-// trace could not tell them apart, which is exactly the ambiguity that made a
-// first round of measurements misleading.
-func TestTheTraceCountsComposingRequests(t *testing.T) {
-	out := runWithLogger(t, slog.LevelDebug)
-	if !strings.Contains(out, "calls=1") {
-		t.Errorf("the composing record does not report its request count:\n%s", out)
+// The two-phase fallback still has to account for itself, including how many
+// requests composing took: "one slow request" and "two ordinary requests" want
+// opposite fixes, and before `calls` the trace could not tell them apart.
+// Driven explicitly, because the stub no longer takes this route.
+func TestTheTraceStillAccountsForTheComposingFallback(t *testing.T) {
+	var buf bytes.Buffer
+	a := agentWith(
+		stubTurn{Content: "I have enough."},
+		stubTurn{Content: answerJSON(t, modelProposal{Category: "stay", Notes: "Composed."})},
+	)
+	a.logger = slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	if _, err := a.Propose(context.Background(), enrichRequest(), nil); err != nil {
+		t.Fatalf("Propose: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "assist: composed") || !strings.Contains(out, "calls=1") {
+		t.Errorf("the composing record is missing or does not count its requests:\n%s", out)
+	}
+	if !strings.Contains(out, "answered_by=composing") {
+		t.Errorf("the trace does not name the fallback path:\n%s", out)
 	}
 }

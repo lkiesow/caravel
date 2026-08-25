@@ -36,10 +36,10 @@ type stubProvider struct {
 	n     int
 }
 
-// newStubProvider returns the default script: search, read two pages, stop
-// gathering, answer.
+// newStubProvider returns the default script: search, read two pages, answer
+// with a propose call.
 //
-// Five turns rather than one because the number of turns is the interesting
+// Four turns rather than one because the number of turns is the interesting
 // part. A single-turn script would never exercise the loop, the tool
 // dispatcher or the history-echoing rule that most servers enforce, so the
 // first real provider would be the first time any of it ran.
@@ -75,11 +75,11 @@ func newStubProvider() *stubProvider {
 		// built correctly or by accident.
 		turnCalling(toolFetchPage, fetchArgs(fixture.base+"/kex")),
 		turnCalling(toolFetchPage, fetchArgs(fixture.base+"/reykjavik")),
-		// A turn with no tool calls: this is what tells the loop the model has
-		// finished gathering. The structured answer is a separate turn after
-		// it -- see the two-phase note in agent.go.
-		stubTurn{Content: "I have enough to describe this place."},
-		stubTurn{Content: string(answer)},
+		// The run ends with a propose call carrying the answer, which is what
+		// a well-behaved model does since Milestone 4a -- so the browser suite
+		// exercises the path people actually get rather than the fallback.
+		// The two-phase route is covered by agent_test.go instead.
+		turnCalling(toolPropose, string(answer)),
 	)
 }
 

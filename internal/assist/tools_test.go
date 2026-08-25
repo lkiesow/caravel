@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -34,9 +35,22 @@ func TestToolDefinitionsFollowWhatIsConfigured(t *testing.T) {
 		return out
 	}
 
+	// Four when everything is configured: the three that do work, plus propose,
+	// which ends the run and is always offered.
 	full := newToolset(&stubSearcher{}, newPageFetcher(), geocode.New("http://example.invalid/search"), nil, nil)
-	if got := names(full.definitions()); len(got) != 3 {
-		t.Errorf("definitions = %v, want all three", got)
+	if got := names(full.definitions()); len(got) != 4 {
+		t.Errorf("definitions = %v, want all four", got)
+	}
+
+	// propose is not optional: without it there is no way to end a run in one
+	// request, and the loop falls back to a second one every time.
+	for _, ts := range []*toolset{
+		full,
+		newToolset(nil, newPageFetcher(), nil, nil, nil),
+	} {
+		if !slices.Contains(names(ts.definitions()), toolPropose) {
+			t.Errorf("propose was not offered: %v", names(ts.definitions()))
+		}
 	}
 
 	noSearch := newToolset(nil, newPageFetcher(), geocode.New("http://example.invalid/search"), nil, nil)

@@ -862,3 +862,126 @@ func TestAgentReportsItsEffectiveLimits(t *testing.T) {
 		t.Errorf("String() = %q", s)
 	}
 }
+
+// --- The answer as a tool call (Milestone 4a) ---
+
+// proposeCall scripts a turn that ends the run by calling propose.
+func proposeCall(t *testing.T, p modelProposal) stubTurn {
+	t.Helper()
+	encoded, err := json.Marshal(p)
+	if err != nil {
+		t.Fatalf("encode propose arguments: %v", err)
+	}
+	return turnCalling(toolPropose, string(encoded))
+}
+
+// The point of the whole milestone: a run that ends with propose makes no
+// composing request at all. Before this, the model spent a round trip saying
+// "I have enough" and the answer took a second one.
+func TestAProposeCallAnswersWithoutASecondRequest(t *testing.T) {
+	a := agentWith(
+		turnCalling(toolWebSearch, `{"query":"Kex"}`),
+		proposeCall(t, modelProposal{Category: "stay", Type: "hostel", Notes: "A hostel."}),
+		// Deliberately scripted but unreachable: if the loop still asks for a
+		// composing turn, this answers it and the test below catches the extra
+		// request rather than mysteriously passing.
+		stubTurn{Content: answerJSON(t, modelProposal{Category: "site", Notes: "SHOULD NOT BE USED"})},
+	)
+	a.search = &stubSearcher{}
+
+	p, err := a.Propose(context.Background(), enrichRequest(), nil)
+	if err != nil {
+		t.Fatalf("Propose: %v", err)
+	}
+
+	// The third scripted turn must be untouched.
+	stub := a.provider.(*stubProvider)
+	if stub.n != 2 {
+		t.Errorf("the provider was called %d times, want 2 -- a composing request was still made", stub.n)
+	}
+	for _, f := range p.Fields {
+		if strings.Contains(f.Proposed, "SHOULD NOT BE USED") {
+			t.Fatalf("the answer came from the composing turn, not the propose call: %+v", p.Fields)
+		}
+	}
+	if len(p.Fields) == 0 {
+		t.Error("the propose call produced no fields")
+	}
+}
+
+// The fallback has to keep working, or a model that ignores propose -- or a
+// server that mishandles a tool schema -- loses the feature entirely.
+func TestARunWithNoProposeCallStillComposes(t *testing.T) {
+	a := agentWith(
+		turnCalling(toolWebSearch, `{"query":"Kex"}`),
+		stubTurn{Content: "I have enough."},
+		stubTurn{Content: answerJSON(t, modelProposal{Category: "stay", Notes: "From the composing turn."})},
+	)
+	a.search = &stubSearcher{}
+
+	p, err := a.Propose(context.Background(), enrichRequest(), nil)
+	if err != nil {
+		t.Fatalf("Propose: %v", err)
+	}
+	var notes string
+	for _, f := range p.Fields {
+		if f.Name == "notes" {
+			notes = f.Proposed
+		}
+	}
+	if notes != "From the composing turn." {
+		t.Errorf("notes = %q, want the two-phase path to have answered", notes)
+	}
+}
+
+// Arguments that do not decode are answered rather than fatal, exactly as
+// every other tool failure is. The model is told what was wrong and gets to
+// try again -- a rare path that costs what the old flow cost every time.
+func TestAMalformedProposeCallIsAnsweredAndRecovers(t *testing.T) {
+	a := agentWith(
+		turnCalling(toolPropose, `{"category": "stay", "notes": `), // truncated JSON
+		proposeCall(t, modelProposal{Category: "stay", Notes: "Second attempt."}),
+	)
+
+	p, err := a.Propose(context.Background(), enrichRequest(), nil)
+	if err != nil {
+		t.Fatalf("Propose: %v", err)
+	}
+	var notes string
+	for _, f := range p.Fields {
+		if f.Name == "notes" {
+			notes = f.Proposed
+		}
+	}
+	if notes != "Second attempt." {
+		t.Errorf("notes = %q, want the retried propose call", notes)
+	}
+}
+
+// A propose call is the end of the run, so anything else in the same turn is
+// moot -- the model has said it is finished, and dispatching a page read whose
+// result nobody will ever see is a request paid for and thrown away.
+func TestProposeEndsTheTurnEvenAlongsideOtherCalls(t *testing.T) {
+	var fetched bool
+	a := agentWith(stubTurn{ToolCalls: []toolCall{
+		callTo(toolFetchPage, `{"url":"https://example.invalid/never"}`),
+		callTo(toolPropose, answerJSON(t, modelProposal{Category: "stay", Notes: "Done."})),
+	}})
+	a.fetcher = newRelaxedFetcher()
+	a.search = &recordingSearcher{called: &fetched}
+
+	if _, err := a.Propose(context.Background(), enrichRequest(), nil); err != nil {
+		t.Fatalf("Propose: %v", err)
+	}
+	if fetched {
+		t.Error("a tool call alongside propose was dispatched; the run was already over")
+	}
+}
+
+type recordingSearcher struct{ called *bool }
+
+func (*recordingSearcher) Name() string { return "recording" }
+func (r *recordingSearcher) Search(context.Context, string) ([]SearchResult, error) {
+	*r.called = true
+	return nil, nil
+}

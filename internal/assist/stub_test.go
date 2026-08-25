@@ -43,22 +43,22 @@ func TestStubDrivesAMultiStepExchange(t *testing.T) {
 		}
 	}
 
-	// Turn 4 is prose with no tool calls: that is the signal the loop reads as
-	// "done gathering". The structured answer is turn 5, a separate request.
+	// Turn 4 ends the run with a propose call whose arguments are the answer.
+	// There is no fifth turn: removing that second request is what Milestone
+	// 4a was for.
 	fourth, err := s.Complete(ctx, chatRequest{})
 	if err != nil {
 		t.Fatalf("turn 4: %v", err)
 	}
-	if fourth.FinishReason != "stop" || len(fourth.ToolCalls) != 0 {
-		t.Errorf("turn 4 = %+v, want a plain stop", fourth)
+	if len(fourth.ToolCalls) != 1 || fourth.ToolCalls[0].Function.Name != toolPropose {
+		t.Fatalf("turn 4 = %+v, want a %s call", fourth.ToolCalls, toolPropose)
+	}
+	if fourth.ToolCalls[0].Function.Arguments == "" {
+		t.Error("the propose call carried no arguments; they are the answer")
 	}
 
-	fifth, err := s.Complete(ctx, chatRequest{})
-	if err != nil {
-		t.Fatalf("turn 5: %v", err)
-	}
-	if fifth.Content == "" {
-		t.Error("turn 5 carried no answer")
+	if _, err := s.Complete(ctx, chatRequest{}); err == nil {
+		t.Error("a fifth turn was available; the script should end at the propose call")
 	}
 }
 
@@ -67,7 +67,7 @@ func TestStubDrivesAMultiStepExchange(t *testing.T) {
 func TestStubAnswerMatchesTheSchema(t *testing.T) {
 	s := newStubProvider()
 	ctx := context.Background()
-	for range 4 {
+	for range 3 {
 		if _, err := s.Complete(ctx, chatRequest{}); err != nil {
 			t.Fatalf("advancing the script: %v", err)
 		}
@@ -76,9 +76,15 @@ func TestStubAnswerMatchesTheSchema(t *testing.T) {
 	if err != nil {
 		t.Fatalf("final turn: %v", err)
 	}
+	if len(final.ToolCalls) != 1 {
+		t.Fatalf("final turn = %+v, want the propose call", final)
+	}
+	// The answer now rides in the tool arguments rather than in the message
+	// content, but it is the same contract and has to satisfy the same schema.
+	answer := final.ToolCalls[0].Function.Arguments
 
 	var out modelProposal
-	if err := decodeJSONAnswer(final.Content, &out); err != nil {
+	if err := decodeJSONAnswer(answer, &out); err != nil {
 		t.Fatalf("the stub answer does not decode: %v", err)
 	}
 	if out.Category != "stay" {
@@ -89,7 +95,7 @@ func TestStubAnswerMatchesTheSchema(t *testing.T) {
 	}
 	// The model must never produce coordinates, so the schema has no field
 	// for them and the stub must not smuggle any in.
-	if strings.Contains(strings.ToLower(final.Content), "\"lat\"") {
+	if strings.Contains(strings.ToLower(answer), "\"lat\"") {
 		t.Error("the stub answer carries coordinates; they are resolved from the address, never returned")
 	}
 }

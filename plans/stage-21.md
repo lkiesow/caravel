@@ -778,28 +778,7 @@ Then live, against nemotron with repeats -- see the note on variance.
 
 ---
 
-## 4b. Fewer round trips: batching and parallel dispatch
-
-- **Prompt for batching.** Ask the model to request every page it wants to read
-  in one turn rather than one at a time. Five calls over five turns is five
-  round trips; the same five in two turns is two.
-- **Dispatch a turn concurrently.** `agent.go` runs a turn's tool calls in a
-  plain loop. Results must be appended in call order -- a `tool` message must
-  follow its `tool_calls` and most servers reject a mismatch -- so results go
-  into a slice indexed by call and are appended after the fan-out.
-  `toolset` is already mutex-guarded and `checkLinks` already uses a
-  `WaitGroup`, so the pattern exists in the package.
-- The tool-call ceiling has to be decided **before** the fan-out rather than
-  inside it.
-
-**Verify.** `go test` for call-order preservation under concurrency, and for
-the ceiling still holding when a turn requests more calls than remain. Then
-live with repeats, watching turn counts as much as wall time: the number of
-round trips is the thing being changed.
-
----
-
-### Measuring 4a and 4b honestly
+### Measuring 4a honestly
 
 The same harness for both, and **repeats, not one pass**. Re-running three
 models earlier produced 27.3s for one that had measured 59.1s, and a done turn
@@ -807,9 +786,72 @@ of 17.2s where the first run saw 5.5s. A single run per configuration would
 attribute noise to the change.
 
 Baseline first, on nemotron, several places, N runs each, recorded here. Then
-the same after 4a, and again after 4b. Watch two numbers, not one: wall time,
-and the number of model round trips -- the second is what both changes actually
-target, and it is far less noisy than the first.
+the same after 4a. Watch two numbers, not one: wall time, and the number of
+model round trips -- the second is what the change actually targets, and it
+should be far less noisy than the first.
+
+**Done.** The propose tool ships and every live run used it. The speed premise
+did not survive contact with the measurements, and this section records what
+actually happened rather than what was hoped for.
+
+**What was built.** `propose`, a tool whose parameters are `proposalSchema`,
+offered on every run. When a turn contains a propose call, its arguments are
+decoded as the answer and the run ends there -- no composing request. Handled
+in the loop rather than in the tool map, because it produces no result to feed
+back. Three deliberate behaviours:
+
+1. **The two-phase path stays as the fallback.** A turn with no tool calls
+   still means "done gathering" and still leads to the composing request. A
+   model that ignores `propose`, or a server that mishandles a tool schema,
+   loses nothing. `answer()` is the seam: a pass-through when a proposal
+   already exists, the original flow otherwise.
+2. **A malformed propose is answered, not fatal.** Arguments that do not decode
+   go back as a tool result saying what was wrong -- the idiom `dispatch`
+   already uses for every other failure -- and the ceilings bound the retries.
+3. **A propose call ends the turn even alongside other calls.** The model has
+   said it is finished; dispatching a page read whose result nobody will see is
+   a request paid for and discarded.
+
+The stub now ends with a propose call, so the browser suite exercises the path
+people actually get; the fallback is covered by `agent_test.go`. The trace and
+the debug log carry `answered_by`, without which none of the below could have
+been attributed.
+
+**The measurements: 15 runs before, 15 after, five places, nemotron, Serper,
+real Nominatim.** All 15 after-runs took the propose path.
+
+| | baseline | propose | permutation p |
+| --- | ---: | ---: | ---: |
+| total time | 8.93s | 8.08s | 0.44 |
+| round trips | 5.27 | 5.00 | 0.51 |
+| tokens | 14.0k | 17.9k | 0.12 |
+| tool calls | 3.27 | **4.00** | **0.037** |
+| links proposed | 1.33 | **1.93** | **0.013** |
+| sources | 1.40 | 2.00 | 0.13 |
+
+**The change is not measurably faster.** The wall-time point estimate is 10%
+better, but the standard deviation is about 2.9s on an 8.9s mean, which
+swallows an 850ms effect whole -- p = 0.44 over twenty thousand shuffles.
+
+**What did change, significantly, is that the model does more.** An extra tool
+call per run and half again as many links. The round trip freed by removing the
+signalling turn was *reinvested in more gathering* rather than banked as speed.
+That is a defensible outcome -- the same latency, better sourced -- but it is
+not the one this milestone was written for, and calling a p = 0.44 result a 10%
+improvement would have been the easy and wrong thing to write down.
+
+**Kept anyway**, on the argument that it deletes a request which provably
+produced nothing (structurally, not statistically: `compose=-1` in all 15
+runs), costs nothing in latency, and improves sourcing measurably. The extra
+tokens are fractions of a cent.
+
+**And this is why 4b was dropped.** Detecting a 10% latency change against this
+variance needs roughly 180 runs per arm. Batching targets one or two round
+trips out of five -- the same order as 4a, and therefore also below the noise
+floor of the system being measured. After the model switch took a run from 59s
+to 8s, further speed work is chasing effects smaller than run-to-run variance.
+Parallel tool dispatch moves to `todo.md` as the tidiness item it always was.
+
 
 ---
 
@@ -963,7 +1005,8 @@ a results grid at 324px is the interesting case.
 
 ## Build order
 
-`0 → 1 → 2 → 3 → 4a → 4b → 5 → 6 → 7`, and the order carries an argument.
+`0 → 1 → 2 → 3 → 4a → 5 → 6 → 7`, and the order carries an argument. 4b was
+dropped once 4a had been measured; the reasoning is in that milestone.
 
 The bug goes first because it is the thing that annoys daily and its fix is
 small. Observability (2, 3) comes before speed (4) because optimising without

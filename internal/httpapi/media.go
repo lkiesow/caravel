@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -46,18 +47,57 @@ func mediaAssetToResponse(m db.MediaAsset) mediaAssetResponse {
 	return resp
 }
 
+// imageCreditResponse is who a stored image is owed to.
+//
+// Null for everything anybody uploaded themselves, which is most images. Sent
+// as a nested object rather than three parallel nullable strings because the
+// three only ever travel together and the client shows them as one line.
+type imageCreditResponse struct {
+	// Text is the author, as plain text. Empty when the source stated none --
+	// which happens, and is not the same as there being no source.
+	Text string `json:"text"`
+	// License is the short name, such as "CC BY-SA 4.0".
+	License string `json:"license"`
+	// SourceURL is the page the image came from, which is what the credit
+	// links to.
+	SourceURL string `json:"source_url"`
+}
+
 // resolveImageURL looks up imageID's media asset and returns its URL, or nil
 // if imageID is nil or the asset can't be found (e.g. already deleted).
 func (s *Server) resolveImageURL(ctx context.Context, imageID *string) *string {
+	url, _ := s.resolveImage(ctx, imageID)
+	return url
+}
+
+// resolveImage returns an image's URL and its credit in one lookup, for the
+// callers that show both. Kept beside resolveImageURL rather than replacing it
+// because most callers render a thumbnail and have nowhere to put a credit.
+func (s *Server) resolveImage(ctx context.Context, imageID *string) (*string, *imageCreditResponse) {
 	if imageID == nil {
-		return nil
+		return nil, nil
 	}
 	asset, err := s.Store.GetMediaAssetByID(ctx, *imageID)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 	url := mediaAssetToResponse(asset).URL
-	return &url
+
+	// A credit exists when there is somewhere it points. An image with an
+	// author and no source page cannot be credited usefully, and one with a
+	// source and no named author still can -- "from this page" is a real
+	// attribution.
+	if asset.SourceURL == nil {
+		return &url, nil
+	}
+	credit := &imageCreditResponse{SourceURL: *asset.SourceURL}
+	if asset.Credit != nil {
+		credit.Text = *asset.Credit
+	}
+	if asset.License != nil {
+		credit.License = *asset.License
+	}
+	return &url, credit
 }
 
 // handleUploadMedia handles POST /api/trips/{tripId}/media (multipart, field "file").
@@ -111,8 +151,29 @@ func (s *Server) handleUploadMedia(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, mediaAssetToResponse(asset))
 }
 
+const (
+	// maxCreditBytes caps the attribution strings. A credit line is a name and
+	// perhaps a licence; anything longer is not a credit, and these are
+	// rendered on a page.
+	maxCreditBytes = 500
+)
+
 type mediaURLRequest struct {
 	URL string `json:"url"`
+	// Provenance, all optional and all empty for an image somebody pasted
+	// themselves. Populated when the assistant proposed the image: SourceURL
+	// is the page it came from, and Credit and License are what a freely
+	// licensed photograph requires and an ordinary upload does not.
+	//
+	// Accepted from the client rather than re-derived here because the client
+	// is passing back what the *assistant* found, and the assistant is the
+	// only thing that knows -- the image URL alone says nothing about who took
+	// the photograph. That does mean a caller could send any credit it likes;
+	// the blast radius is a wrong attribution on that person's own trip, which
+	// is the same thing they could achieve by typing one.
+	SourceURL string `json:"source_url"`
+	Credit    string `json:"credit"`
+	License   string `json:"license"`
 }
 
 // handleCreateMediaURL handles POST /api/trips/{tripId}/media/url.
@@ -133,6 +194,19 @@ func (s *Server) handleCreateMediaURL(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "url must be a valid http(s) URL")
 		return
 	}
+
+	// A source URL that is not a URL is dropped rather than refused: the image
+	// is the point, and a malformed provenance field should not cost somebody
+	// the picture. The credit strings are trimmed to a sane length for the
+	// same reason -- reject the value, keep the image.
+	sourceURL := strings.TrimSpace(req.SourceURL)
+	if sourceURL != "" {
+		if p, err := url.Parse(sourceURL); err != nil || (p.Scheme != "http" && p.Scheme != "https") || p.Host == "" {
+			sourceURL = ""
+		}
+	}
+	credit := truncateBytes(strings.TrimSpace(req.Credit), maxCreditBytes)
+	license := truncateBytes(strings.TrimSpace(req.License), maxCreditBytes)
 
 	result, err := fetchImage(r.Context(), req.URL)
 	if err != nil {
@@ -158,6 +232,9 @@ func (s *Server) handleCreateMediaURL(w http.ResponseWriter, r *http.Request) {
 		ContentType: &result.ContentType,
 		Width:       &result.Width,
 		Height:      &result.Height,
+		SourceURL:   optional(sourceURL),
+		Credit:      optional(credit),
+		License:     optional(license),
 		CreatedAt:   time.Now().UTC(),
 	})
 	if err != nil {
@@ -165,6 +242,28 @@ func (s *Server) handleCreateMediaURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, mediaAssetToResponse(asset))
+}
+
+// optional turns an empty string into nil, which is what the column means:
+// "there is no credit" rather than "the credit is the empty string".
+func optional(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+// truncateBytes cuts on a rune boundary, because cutting mid-rune produces
+// replacement characters in something that will be rendered.
+func truncateBytes(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	runes := []rune(s)
+	for len(string(runes)) > max {
+		runes = runes[:len(runes)-1]
+	}
+	return string(runes)
 }
 
 // fetchImage downloads rawURL (bounded by imageFetchTimeout and

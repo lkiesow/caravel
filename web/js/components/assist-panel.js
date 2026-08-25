@@ -73,7 +73,7 @@ const ERROR_KEYS = {
 // arbitrary.
 const FIELD_NAMES = ["title", "category", "type", "notes", "address"];
 
-export function renderAssistPanel(container, { tripId, root, readCurrent, applyField, applyLink, applyCoordinates }) {
+export function renderAssistPanel(container, { tripId, root, readCurrent, applyField, applyLink, applyCoordinates, applyCover }) {
   if (!getCurrentUser()?.assist) {
     container.hidden = true;
     return { destroy() {} };
@@ -286,10 +286,80 @@ export function renderAssistPanel(container, { tripId, root, readCurrent, applyF
     return parts.join(" · ");
   }
 
+  // The cover photograph: the one suggestion whose value cannot be judged as
+  // text. A URL tells you nothing about whether it is a picture of the right
+  // building, so this shows the image.
+  //
+  // Built on the same row as every other suggestion -- same accept and reject,
+  // same slot mechanism -- with the value replaced by a thumbnail and a
+  // provenance line underneath.
+  function addCoverSuggestion(cover) {
+    addSuggestion("cover", {
+      overwrites: false,
+      onAccept: () => applyCover?.(cover),
+      // A node rather than a string: addSuggestion renders text by default,
+      // and this is the one case that needs markup it builds itself.
+      node: () => {
+        const wrap = document.createElement("div");
+        wrap.className = "assist-cover";
+
+        const img = document.createElement("img");
+        img.className = "assist-cover__image";
+        img.src = cover.thumb_url || cover.url;
+        // Deliberately not lazy. The picture *is* the suggestion, it was asked
+        // for by an explicit action, and an unloaded img with no intrinsic
+        // size collapses to nothing -- so lazy loading made the row grow from
+        // zero height exactly as the reader scrolled to it.
+        // The image is decoration for a proposal that is described in words
+        // below it; naming it again would be repetition for a screen reader.
+        img.alt = "";
+        // A thumbnail that will not load must not leave an invisible hole
+        // where a picture should be -- image-field.js learned the same lesson
+        // for its preview.
+        img.addEventListener("error", () => {
+          img.remove();
+          wrap.classList.add("assist-cover--broken");
+        });
+        wrap.appendChild(img);
+
+        const meta = document.createElement("p");
+        meta.className = "assist-cover__meta";
+        // Where it came from, always: an image with no stated origin is not
+        // something to accept blind.
+        const host = document.createElement("a");
+        host.href = cover.source_url;
+        host.target = "_blank";
+        host.rel = "noopener noreferrer";
+        host.textContent = hostOf(cover.source_url);
+        meta.appendChild(host);
+        // The credit, when the source states one. og:image never does;
+        // Wikimedia nearly always does, and it is a condition of use.
+        if (cover.credit || cover.license) {
+          const credit = document.createElement("span");
+          credit.className = "assist-cover__credit";
+          credit.textContent = [cover.credit, cover.license].filter(Boolean).join(" · ");
+          meta.append(document.createTextNode(" — "), credit);
+        }
+        wrap.appendChild(meta);
+        return wrap;
+      },
+    });
+  }
+
+  // A URL reduced to its host, for display. The full URL is long and came off
+  // a page the agent read; the host is the part a person actually reads.
+  function hostOf(raw) {
+    try {
+      return new URL(raw).host;
+    } catch {
+      return raw;
+    }
+  }
+
   // One suggestion, built with DOM calls rather than a template string: every
   // value in a proposal came off a web page the agent read, so one forgotten
   // escape in a template is an injection.
-  function addSuggestion(fieldName, { value, overwrites, onAccept }) {
+  function addSuggestion(fieldName, { value, overwrites, onAccept, node }) {
     const slot = root.querySelector(`[data-assist-field="${fieldName}"]`);
     // No slot means this page has nowhere sensible to put it -- a newer server
     // proposing a field this build does not have. Skipped rather than dumped
@@ -313,9 +383,15 @@ export function renderAssistPanel(container, { tripId, root, readCurrent, applyF
       head.appendChild(badge);
     }
 
-    const body = document.createElement("p");
-    body.className = "assist-suggestion__value";
-    body.textContent = value;
+    let body;
+    if (node) {
+      body = node();
+      body.classList.add("assist-suggestion__value");
+    } else {
+      body = document.createElement("p");
+      body.className = "assist-suggestion__value";
+      body.textContent = value;
+    }
 
     const actions = document.createElement("div");
     actions.className = "assist-suggestion__actions";
@@ -437,6 +513,8 @@ export function renderAssistPanel(container, { tripId, root, readCurrent, applyF
         onAccept: () => applyLink(link),
       });
     }
+
+    if (proposal.cover?.url) addCoverSuggestion(proposal.cover);
 
     if (proposal.lat != null && proposal.lng != null) {
       addSuggestion("coordinates", {

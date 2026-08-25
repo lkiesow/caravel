@@ -17,7 +17,7 @@ import { icon } from "../icon.js";
 // exists.
 export function renderImageField(container, { tripId, imageUrl, attachPath, onChanged, onStaged }) {
   const isStaging = !tripId || !attachPath;
-  const staged = { kind: null, file: null, url: null, previewUrl: null };
+  const staged = { kind: null, file: null, url: null, previewUrl: null, provenance: null };
 
   function render(currentUrl) {
     container.innerHTML = `
@@ -104,24 +104,7 @@ export function renderImageField(container, { tripId, imageUrl, attachPath, onCh
       if (!input.value) return;
       errorEl.hidden = true;
 
-      if (isStaging) {
-        if (staged.kind === "file" && staged.previewUrl) URL.revokeObjectURL(staged.previewUrl);
-        staged.kind = "url";
-        staged.file = null;
-        staged.url = input.value;
-        staged.previewUrl = input.value;
-        onStaged?.({ kind: "url", url: input.value, previewUrl: staged.previewUrl });
-        render(staged.previewUrl);
-        return;
-      }
-
-      try {
-        const asset = await api.post(`/trips/${tripId}/media/url`, { url: input.value });
-        await attach(asset.id, asset.url);
-      } catch (err) {
-        console.error("image url fetch failed:", err.body?.error || err.message || err);
-        showError(t("image.fetchFailed"));
-      }
+      await setFromURL(input.value);
     });
 
     const removeBtn = container.querySelector('[data-action="remove"]');
@@ -155,7 +138,53 @@ export function renderImageField(container, { tripId, imageUrl, attachPath, onCh
     onChanged?.(updated);
   }
 
+  // Set the image from a URL, optionally carrying where it came from.
+  //
+  // Shared by the URL form and by the assistant's cover suggestion, which is
+  // the reason it takes provenance at all: an image the assistant found is
+  // often a freely licensed photograph, and a freely licensed photograph is
+  // not an unencumbered one. The credit has to travel with the image at the
+  // moment it is stored, because it cannot be recovered afterwards.
+  //
+  // Exposed on the returned handle so the panel writes through this component
+  // rather than reaching into its DOM -- the same shape renderItemForm's
+  // setValues took in Stage 16.
+  async function setFromURL(url, provenance = null) {
+    if (!url) return;
+    // Re-queried rather than closed over: render() rebuilds the markup, so an
+    // element captured earlier is detached and setting it does nothing.
+    const say = (msg) => {
+      const el = container.querySelector(".image-field__error");
+      if (!el) return;
+      el.textContent = msg ?? "";
+      el.hidden = msg == null;
+    };
+    say(null);
+
+    if (isStaging) {
+      if (staged.kind === "file" && staged.previewUrl) URL.revokeObjectURL(staged.previewUrl);
+      staged.kind = "url";
+      staged.file = null;
+      staged.url = url;
+      staged.previewUrl = url;
+      staged.provenance = provenance;
+      onStaged?.({ kind: "url", url, previewUrl: staged.previewUrl, provenance });
+      render(staged.previewUrl);
+      return;
+    }
+
+    try {
+      const asset = await api.post(`/trips/${tripId}/media/url`, { url, ...(provenance ?? {}) });
+      await attach(asset.id, asset.url);
+    } catch (err) {
+      console.error("image url fetch failed:", err.body?.error || err.message || err);
+      say(t("image.fetchFailed"));
+    }
+  }
+
   render(imageUrl);
+
+  return { setFromURL };
 }
 
 function escapeAttr(s) {

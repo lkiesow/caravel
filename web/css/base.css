@@ -3687,6 +3687,50 @@ button {
   margin-top: 0.625rem;
 }
 
+/* --- The cover suggestion, and the credit --------------------------------- */
+
+/* The one suggestion whose value cannot be judged as text: a URL says nothing
+   about whether it is a picture of the right building. */
+
+.assist-cover {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+/* Bounded rather than full width. This sits inside a suggestion row under the
+   cover-photo field, and a full-size photograph there would dwarf the form it
+   is a suggestion for. The aspect ratio is unknown and unconstrained, so the
+   height cap is what actually bounds it. */
+.assist-cover__image {
+  max-width: 100%;
+  max-height: 10rem;
+  width: auto;
+  border-radius: var(--radius);
+  /* A tall narrow image and a wide short one both have to look deliberate. */
+  object-fit: contain;
+  align-self: flex-start;
+}
+
+.assist-cover__meta {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* --- The credit, where the cover is shown at size ------------------------- */
+
+/* Quiet, directly under the image, and only on the location view: a credit
+   under a 60px thumbnail elsewhere would be unreadable, and those thumbnails
+   link here. */
+.image-credit {
+  margin: -0.5rem 0 1rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
 /* --- The run trace -------------------------------------------------------- */
 
 /* What the assistant did, collapsed. Quieter than the suggestions above it:

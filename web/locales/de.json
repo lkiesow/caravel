@@ -356,5 +356,6 @@
   "expenses.shares.you": "dich",
   "expenses.shares.former": "jemand, der nicht mehr dabei ist",
   "expenses.form.shareAll": "Mit allen teilen",
-  "expenses.summaryHeading": "Übersicht"
+  "expenses.summaryHeading": "Übersicht",
+  "image.creditPrefix": "Foto:"
 }

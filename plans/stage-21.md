@@ -995,6 +995,74 @@ database to confirm the provenance is stored and not merely displayed. German,
 dark mode, 324×756 — a thumbnail plus a credit line is exactly the content
 that overflows a 324px screen.
 
+**Done.** The cover is offered, accepted and credited, end to end.
+
+**One correction to the plan's own wording**: it asked for an `<img>` with a
+*non-empty* `alt`. It ships with an empty one, deliberately. The suggestion is
+described in words directly beneath the image -- the source host, the credit,
+the licence -- and naming it again in `alt` would be repetition for a screen
+reader. An empty `alt` is the correct markup for an image whose caption is
+already adjacent.
+
+**Accepting goes through the image field, not around it.** `renderImageField`
+now returns a handle with `setFromURL(url, provenance)`, and the URL form is
+one of its two callers -- the same shape `renderItemForm` took when it gained
+`setValues` in Stage 16. That means accepting a cover behaves exactly like
+pasting a URL into that card, *including* the staging path on a location that
+does not exist yet: the pick is held in memory and `flushUploads` posts it
+after Create, provenance and all. Getting that for free is the whole argument
+for writing through the component.
+
+**The provenance is accepted from the client rather than re-derived.** The
+client is passing back what the assistant found, and the assistant is the only
+thing that knows -- an image URL says nothing about who took the photograph.
+A caller could therefore send any credit it likes; the blast radius is a wrong
+attribution on that person's own trip, which is exactly what they could achieve
+by typing one. Malformed values cost the value and never the image: a source
+URL that will not parse is dropped, credit strings are truncated on a rune
+boundary, and the picture is still stored.
+
+**A credit needs somewhere to point.** `resolveImage` returns one only when a
+source URL exists: an image with a named author and no source page cannot be
+credited usefully, while one with a source and no author still can -- "from
+this page" is a real attribution, and Wikimedia returns exactly that shape.
+
+**The credit appears on the location view only**, not on the thumbnails in the
+locations list or the itinerary. A credit line under a 60px thumbnail is
+unreadable, and those thumbnails link to the page that carries it.
+
+**The stub grew a real image.** The fixture host serves a generated 64px PNG
+and the `/kex` page advertises it as its `og:image`, so a stub run proposes a
+cover and accepting it exercises the whole fetch-decode-store path rather than
+failing on a placeholder.
+
+**One bug found by looking at the working page.** The thumbnail had
+`loading="lazy"`, and an unloaded `<img>` with no intrinsic size collapses to
+zero height -- so the suggestion row grew from nothing exactly as the reader
+scrolled to it. Measured at 324px: `naturalWidth` 0 and a 0x0 box until
+scrolled into view. Lazy loading is wrong here on principle as well as in
+practice: the picture *is* the suggestion, and it was asked for by an explicit
+action.
+
+**Verified.** `make ci` green, i18n parity at 360 keys, `make test-postgres`
+green from Milestone 5 and unaffected here. Go tests cover the endpoint:
+provenance stored and returned on the item, an ordinary image reporting
+`"image_credit":null`, a `javascript:` source URL and an over-long credit both
+dropped while the image survives, and rune-boundary truncation.
+
+Playwright now asserts eight suggestions rather than seven, the cover rendering
+an `<img>` with its source host, and -- the guarantee the milestone exists for
+-- the full round trip: accept the cover on a *new* location, Save, and the
+view page serves it from `/api/media/…` rather than hotlinking. A second test
+attaches a credited image and asserts the credit text, the licence and the link
+target.
+
+Then by hand at 324x756 in German and dark: the suggestion reads
+"KI-VORSCHLAG" with the thumbnail and its source host, accepting it fills the
+image field, Save carries it through, and the view page shows "Foto: MrsMyer in
+der Wikipedia auf Deutsch · CC BY-SA 3.0" linked to the article. Credit
+contrast 6.91:1 at 13px, no horizontal overflow.
+
 ---
 
 ## 7. "Search for an image", without the assistant

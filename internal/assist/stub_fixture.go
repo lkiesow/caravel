@@ -1,12 +1,32 @@
 package assist
 
 import (
+	"bytes"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"net"
 	"net/http"
 	"sync"
 	"time"
 )
+
+// stubCoverPNG is a small solid-colour PNG. Encoded once, on demand.
+var stubCoverPNG = sync.OnceValue(func() []byte {
+	const size = 64
+	img := image.NewRGBA(image.Rect(0, 0, size, size))
+	for x := range size {
+		for y := range size {
+			img.Set(x, y, color.RGBA{R: 20, G: 120, B: 200, A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		panic("assist: encoding the stub cover image: " + err.Error())
+	}
+	return buf.Bytes()
+})
 
 // The stub provider's fixture host.
 //
@@ -72,6 +92,14 @@ var startStubFixture = sync.OnceValue(func() stubFixture {
 			fmt.Fprint(w, body)
 		})
 	}
+	// A real image, so the cover suggestion has something to render and
+	// accepting it exercises the whole fetch-decode-store path rather than
+	// failing on a placeholder. Generated rather than committed: eight pixels
+	// of PNG is not a file worth keeping in the repository.
+	mux.HandleFunc("/cover.png", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(stubCoverPNG())
+	})
 
 	srv := &http.Server{
 		Handler: mux,
@@ -93,7 +121,11 @@ var startStubFixture = sync.OnceValue(func() stubFixture {
 // that cites a page saying something else would make the fixture harder to
 // read than no fixture at all.
 var stubFixturePages = map[string]string{
-	"/kex": `<!doctype html><html><head><title>Kex Hostel — Reykjavik</title></head>
+	// The og:image is what makes the cover suggestion appear. The stub scripts
+	// this page as the proposed official link, and only a page that is *both*
+	// read and proposed is taken as a cover -- see chooseCover.
+	"/kex": `<!doctype html><html><head><title>Kex Hostel — Reykjavik</title>
+<meta property="og:image" content="/cover.png"></head>
 <body><h1>Kex Hostel</h1>
 <p>A former biscuit factory on the harbour side of Reykjavik, now a hostel
 with dorms and private rooms. Reception is open around the clock.</p>

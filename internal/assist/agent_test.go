@@ -1253,3 +1253,29 @@ func TestWikipediaArticleRecognisesArticleURLs(t *testing.T) {
 		}
 	}
 }
+
+// The stub has to produce a cover, or the browser suite has nothing to develop
+// the suggestion against -- the same reason it grew a fixture host in
+// Milestone 1.
+func TestTheDefaultStubProposesACover(t *testing.T) {
+	a, err := New(Options{LLMURL: LLMStub, LLMModel: "stub", SearchProvider: "stub"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	p, err := a.Propose(context.Background(), enrichRequest(), nil)
+	if err != nil {
+		t.Fatalf("Propose: %v", err)
+	}
+	if p.Cover == nil {
+		t.Fatal("the stub run proposed no cover")
+	}
+	if p.Cover.From != "og" {
+		t.Errorf("From = %q, want og", p.Cover.From)
+	}
+	if !strings.HasSuffix(p.Cover.URL, "/cover.png") {
+		t.Errorf("URL = %q, want the fixture's image", p.Cover.URL)
+	}
+	if p.Cover.SourceURL == "" {
+		t.Error("the cover has no source page")
+	}
+}

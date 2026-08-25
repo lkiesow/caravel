@@ -6,6 +6,16 @@ import "../components/leaflet-map.js";
 import { renderLoading } from "../components/loading.js";
 import { canEdit, isShared } from "../trip-role.js";
 import { renderFileList } from "../components/file-list.js";
+
+// A URL reduced to its host, for a credit that has a source page but no named
+// author.
+function hostOf(raw) {
+  try {
+    return new URL(raw).host;
+  } catch {
+    return raw;
+  }
+}
 import { renderNotFoundPage } from "./not-found-page.js";
 
 const CATEGORY_COLORS = {
@@ -67,6 +77,7 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
         ${item.type ? `<span class="meta-sep" aria-hidden="true">·</span><span class="type-label"></span>` : ""}
       </div>
       ${item.image_url ? `<img class="location-view__image" src="${escapeAttr(item.image_url)}" alt="" />` : ""}
+      ${item.image_credit ? `<p class="image-credit"></p>` : ""}
       ${item.notes ? `<div class="location-view__notes"></div>` : ""}
 
       ${
@@ -154,6 +165,36 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
   container.querySelector("h1").textContent = item.title;
   container.querySelector(".category-label").textContent = t(`item.category.${item.category}`);
   if (item.type) container.querySelector(".type-label").textContent = item.type;
+
+  // The credit, where the cover is actually shown at size.
+  //
+  // Built with DOM calls: every value here came off a third party's page, and
+  // storing it was the whole point of migration 0002 -- a freely licensed
+  // photograph is not an unencumbered one, and Caravel is already multi-user
+  // with public share links on the backlog.
+  //
+  // Deliberately only here, and not on the thumbnails in the locations list or
+  // the itinerary: a credit line under a 60px thumbnail is unreadable, and
+  // those thumbnails link to this page, which carries it.
+  const creditEl = container.querySelector(".image-credit");
+  if (creditEl && item.image_credit) {
+    const { text, license, source_url: sourceURL } = item.image_credit;
+    const link = document.createElement("a");
+    link.href = sourceURL;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    // The author when it is known, the source otherwise -- "from this page" is
+    // a real attribution, and an image with a source and no named author is a
+    // normal thing for Wikimedia to return.
+    link.textContent = text || hostOf(sourceURL);
+    creditEl.append(document.createTextNode(t("image.creditPrefix") + " "), link);
+    if (license) {
+      const lic = document.createElement("span");
+      lic.className = "image-credit__license";
+      lic.textContent = license;
+      creditEl.append(document.createTextNode(" · "), lic);
+    }
+  }
   if (item.notes) container.querySelector(".location-view__notes").innerHTML = item.notes_html;
   if (hasAddress) container.querySelector(".location-view__address").textContent = item.location.address;
 

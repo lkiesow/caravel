@@ -75,6 +75,9 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
   // this binding rather than being passed it, since they're all closures over
   // the same single render.
   let itemForm;
+  // The cover-photo field's handle, so the assistant's cover suggestion can
+  // write through the component's own API rather than reaching into its DOM.
+  let imageField = null;
   // Assigned by renderLocationForm(). The assistant writes coordinates through
   // it so the map and the "show on map" hint update exactly as they do when a
   // pin is dragged, rather than the fields being set behind their backs.
@@ -116,6 +119,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
         <div class="editor-card">
           <h2 data-i18n="item.detail.image"></h2>
           <div class="image-field-slot"></div>
+          <div data-assist-field="cover"></div>
         </div>
 
         <div class="editor-card">
@@ -207,7 +211,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
 
     itemForm = renderItemForm(container.querySelector(".item-form-slot"), item, { onSubmit: save });
 
-    renderImageField(container.querySelector(".image-field-slot"), {
+    imageField = renderImageField(container.querySelector(".image-field-slot"), {
       tripId,
       imageUrl: item?.image_url,
       attachPath: item ? `/items/${item.id}/image` : undefined,
@@ -290,6 +294,17 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
         renderLinksList();
       },
       applyCoordinates: ({ lat, lng }) => setCoordinates?.({ lat, lng }),
+      // The cover goes through the image field's own API, so accepting it is
+      // the same operation as pasting a URL into that card -- including the
+      // staging path on a location that does not exist yet. The provenance
+      // travels with it: a freely licensed photograph stored without its
+      // credit cannot be credited afterwards.
+      applyCover: (cover) =>
+        imageField?.setFromURL(cover.url, {
+          source_url: cover.source_url,
+          credit: cover.credit,
+          license: cover.license,
+        }),
     });
   }
 
@@ -359,7 +374,13 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
           asset = await res.json();
           if (!res.ok) throw new Error(asset.error || "upload failed");
         } else {
-          asset = await api.post(`/trips/${tripId}/media/url`, { url: draft.image.url });
+          // The provenance rides along, or a cover the assistant found is
+          // stored with no record of whose photograph it is -- and unlike the
+          // image itself, that cannot be recovered afterwards.
+          asset = await api.post(`/trips/${tripId}/media/url`, {
+            url: draft.image.url,
+            ...(draft.image.provenance ?? {}),
+          });
         }
         await api.put(`/items/${savedId}/image`, { media_asset_id: asset.id });
       }

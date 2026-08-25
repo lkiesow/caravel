@@ -356,5 +356,6 @@
   "expenses.shares.you": "you",
   "expenses.shares.former": "someone no longer on the trip",
   "expenses.form.shareAll": "Split with everyone",
-  "expenses.summaryHeading": "Summary"
+  "expenses.summaryHeading": "Summary",
+  "image.creditPrefix": "Photo:"
 }

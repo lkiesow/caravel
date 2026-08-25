@@ -91,14 +91,14 @@ test.describe("AI assistant", () => {
     // The run is over, so the spinner and its Cancel have gone again.
     await expect(status).toBeHidden();
 
-    for (const field of ["title", "category", "type", "notes", "address", "coordinates", "links"]) {
+    for (const field of ["title", "category", "type", "notes", "address", "coordinates", "links", "cover"]) {
       await expect(
         page.locator(`[data-assist-field="${field}"] .assist-suggestion`),
         `a suggestion under ${field}`
       ).toHaveCount(1);
     }
     await expect(bar).toBeVisible();
-    await expect(page.locator(".assist__count")).toHaveText("7 suggestions");
+    await expect(page.locator(".assist__count")).toHaveText("8 suggestions");
 
     // The pages the run actually read, listed so the proposal can be judged.
     // Not a suggestion: there is nothing here to accept, and counting it as
@@ -113,14 +113,14 @@ test.describe("AI assistant", () => {
     await titleSuggestion.getByRole("button", { name: "Accept" }).click();
     await expect(page.locator('input[name="title"]')).toHaveValue("Kex Hostel");
     await expect(titleSuggestion).toHaveCount(0);
-    await expect(page.locator(".assist__count")).toHaveText("6 suggestions");
+    await expect(page.locator(".assist__count")).toHaveText("7 suggestions");
 
     // Rejecting takes it away and leaves the field alone.
     const typeSuggestion = page.locator('[data-assist-field="type"] .assist-suggestion');
     await typeSuggestion.getByRole("button", { name: "Reject" }).click();
     await expect(page.locator('input[name="type"]')).toHaveValue("");
     await expect(typeSuggestion).toHaveCount(0);
-    await expect(page.locator(".assist__count")).toHaveText("5 suggestions");
+    await expect(page.locator(".assist__count")).toHaveText("6 suggestions");
 
     // Coordinates go through the Location card's own handler, so the map
     // marker moves exactly as it does when a pin is dragged.
@@ -128,6 +128,13 @@ test.describe("AI assistant", () => {
       .getByRole("button", { name: "Accept" }).click();
     await expect(page.locator('.location-form [name="lat"]')).not.toHaveValue("");
     await expect(page.locator("leaflet-map")).toHaveAttribute("lat", /\d/);
+
+    // The cover: the one suggestion whose value cannot be judged as text, so
+    // it shows the picture rather than a URL, with where it came from.
+    const cover = page.locator('[data-assist-field="cover"] .assist-cover');
+    await expect(cover.locator("img")).toBeVisible();
+    await expect(cover.locator("img")).toHaveAttribute("alt", "");
+    await expect(cover.locator(".assist-cover__meta a")).toHaveText(/127\.0\.0\.1:\d+/);
 
     // Accept the rest in one go, and the bar retires itself. This is the
     // regression the milestone exists for: the sources box used to sit in the
@@ -176,11 +183,65 @@ test.describe("AI assistant", () => {
       expect(ms, "a step duration").toMatch(/^[\d.]+ s$/);
     }
 
+    // Accepting the cover fills the image field, exactly as pasting a URL
+    // into that card would -- including on a location that does not exist yet,
+    // where the pick is staged until Save.
+    await expect(page.locator(".image-field__preview")).toBeVisible();
+
     // Nothing has been written yet. Saving is what commits, exactly as if
     // every field had been typed.
     await page.locator('[data-action="save"]').click();
     await expect(page).toHaveURL(new RegExp(`/trips/${tripId}/locations/[0-9a-f-]+$`));
     await expect(page.locator("h1")).toHaveText("Kex Hostel");
+
+    // The cover survived the staged-upload flush and is served from this
+    // instance rather than hotlinked.
+    await expect(page.locator(".location-view__image")).toHaveAttribute("src", /^\/api\/media\//);
+  });
+
+  // The credit, which is the whole reason the provenance columns exist: a
+  // freely licensed photograph is not an unencumbered one, and an image saved
+  // with no record of whose it is cannot be credited afterwards.
+  test("shows the credit for an image that came with one", async ({ page }) => {
+    const itemRes = await page.request.post(`/api/trips/${tripId}/items`, {
+      data: { title: "Heger Tor", category: "site", type: "landmark" },
+    });
+    const itemId = (await itemRes.json()).id;
+
+    // The image itself comes from the assistant's own fixture host, which is
+    // the only image this suite can reach; the provenance is what a Wikimedia
+    // cover would carry.
+    const me = await (await page.request.get("/api/auth/me")).json();
+    void me;
+    const runRes = await page.request.post(`/api/trips/${tripId}/assist/location`, {
+      data: { mode: "enrich", title: "Kex Hostel", locale: "en" },
+    });
+    const stream = await runRes.text();
+    const proposal = JSON.parse(
+      stream.split("\n").filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trim()).at(-1)
+    );
+    expect(proposal.cover?.url, "the stub proposes a cover").toBeTruthy();
+
+    const media = await page.request.post(`/api/trips/${tripId}/media/url`, {
+      data: {
+        url: proposal.cover.url,
+        source_url: "https://de.wikipedia.org/wiki/Waterloo-Tor",
+        credit: "MrsMyer",
+        license: "CC BY-SA 3.0",
+      },
+    });
+    expect(media.status()).toBe(201);
+    const assetId = (await media.json()).id;
+    expect((await page.request.put(`/api/items/${itemId}/image`, { data: { media_asset_id: assetId } })).status()).toBe(200);
+
+    await page.goto(`/trips/${tripId}/locations/${itemId}`);
+    const credit = page.locator(".image-credit");
+    await expect(credit).toBeVisible();
+    await expect(credit).toContainText("MrsMyer");
+    await expect(credit).toContainText("CC BY-SA 3.0");
+    // Linked to the page it came from, which is what makes it an attribution
+    // rather than a caption.
+    await expect(credit.locator("a")).toHaveAttribute("href", "https://de.wikipedia.org/wiki/Waterloo-Tor");
   });
 
   test("marks an overwrite, and rejecting one leaves the text alone", async ({ page }) => {

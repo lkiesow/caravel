@@ -25,8 +25,14 @@ type itemResponse struct {
 	NotesHTML *string `json:"notes_html"`
 	ImageID   *string `json:"image_id"`
 	ImageURL  *string `json:"image_url"`
-	ShowOnMap bool    `json:"show_on_map"`
-	SortOrder int     `json:"sort_order"`
+	// ImageCredit is who the cover is owed to, or null -- which it is for
+	// every image somebody uploaded themselves. Carried on the item rather
+	// than only on the media asset because this is where it gets rendered,
+	// and a second request to find out whether a credit exists would mean the
+	// page either flickers or waits.
+	ImageCredit *imageCreditResponse `json:"image_credit"`
+	ShowOnMap   bool                 `json:"show_on_map"`
+	SortOrder   int                  `json:"sort_order"`
 	// Lat/Lng are set only on the list endpoint, and only for items that have
 	// both. The list used to carry no position at all, which meant the
 	// locations tab could not filter by distance without a second request
@@ -54,7 +60,7 @@ func (s *Server) itemToResponse(ctx context.Context, i db.Item) itemResponse {
 		CreatedAt: i.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt: i.UpdatedAt.UTC().Format(time.RFC3339),
 	}
-	resp.ImageURL = s.resolveImageURL(ctx, i.ImageID)
+	resp.ImageURL, resp.ImageCredit = s.resolveImage(ctx, i.ImageID)
 	return resp
 }
 

@@ -110,6 +110,9 @@ type Proposal struct {
 	// just the user's data, and a provenance trail nobody asked for is a
 	// retention decision made by accident.
 	Sources []Source
+
+	// Cover is a proposed cover photograph, or nil when none was found.
+	Cover *Cover
 }
 
 // Field is one proposed scalar change.
@@ -135,6 +138,41 @@ func (f Field) Overwrites() bool { return f.Current != "" }
 type Source struct {
 	Title string
 	URL   string
+	// Image is the page's own og:image, when it advertises one. Carried on the
+	// source rather than looked up separately because the page has already
+	// been fetched and parsed -- see the note on page.Image in fetch.go.
+	Image string
+}
+
+// Cover is a proposed cover photograph, with enough provenance to credit it.
+//
+// Two sources, in priority order. The og:image of a page the agent read is
+// preferred: it is the venue's own photograph of itself, and it exists for the
+// hotels and restaurants Wikipedia has never heard of. A Wikipedia lead image
+// is the fallback, for the landmarks with a good article and no useful
+// official site.
+//
+// Nothing here is downloaded by the agent. This is a suggestion; fetching
+// happens if and when somebody accepts it, through the endpoint that already
+// stores images.
+type Cover struct {
+	// URL is the image itself.
+	URL string
+	// ThumbURL is a smaller rendering when one is known, for the preview.
+	// Empty for an og:image, which comes in one size.
+	ThumbURL string
+	// SourceURL is the page the image came from -- the site whose og:image it
+	// is, or the Wikipedia article. Always set: an image with no record of
+	// where it came from is a problem waiting for the day somebody shares a
+	// trip.
+	SourceURL string
+	// Credit and Licence are populated for a Wikimedia image and empty for an
+	// og:image, which carries no such metadata. Both plain text.
+	Credit  string
+	Licence string
+	// From names the route, for the trace and for the tests: "og" or
+	// "wikipedia".
+	From string
 }
 
 // EventKind separates the three things a run reports.

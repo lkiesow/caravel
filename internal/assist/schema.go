@@ -29,8 +29,14 @@ type modelProposal struct {
 	Address string `json:"address"`
 	// PlaceName is the searchable name of the place ("Kex Hostel, Reykjavik"),
 	// used as the geocoder query when Address alone does not resolve.
-	PlaceName string      `json:"place_name"`
-	Links     []modelLink `json:"links"`
+	PlaceName string `json:"place_name"`
+	// WikipediaTitle is a *lookup key*, exactly as Address is a lookup key for
+	// the geocoder, and for the same reason: what reaches the user comes from
+	// the upstream service, not from the model. The model naming an article is
+	// checkable; the model naming an image URL would be a picture of the wrong
+	// building with no visible tell.
+	WikipediaTitle string      `json:"wikipedia_title"`
+	Links          []modelLink `json:"links"`
 }
 
 type modelLink struct {
@@ -54,7 +60,7 @@ const proposalSchemaName = "location_proposal"
 var proposalSchema = json.RawMessage(`{
   "type": "object",
   "additionalProperties": false,
-  "required": ["title", "category", "type", "notes", "address", "place_name", "links"],
+  "required": ["title", "category", "type", "notes", "address", "place_name", "wikipedia_title", "links"],
   "properties": {
     "title": {
       "type": "string",
@@ -80,6 +86,10 @@ var proposalSchema = json.RawMessage(`{
     "place_name": {
       "type": "string",
       "description": "The searchable name and city, used to look up the position. Never coordinates."
+    },
+    "wikipedia_title": {
+      "type": "string",
+      "description": "The exact title of the Wikipedia article about this place, if it certainly has one. Used to look up a photograph. Empty if unsure or if the place is too small to have an article -- a wrong article gives a picture of somewhere else."
     },
     "links": {
       "type": "array",

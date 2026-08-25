@@ -164,12 +164,24 @@ func newFetcherWithPolicy(policy addressPolicy) *pageFetcher {
 	return f
 }
 
-// page is what a fetch yields: the readable text, and the document title when
-// it has one.
+// page is what a fetch yields: the readable text, the document title when it
+// has one, and the page's own headline image when it advertises one.
 type page struct {
 	// Title is the <title>, trimmed. Empty when the page has none.
 	Title string
 	Text  string
+	// Image is the absolute URL from og:image, or empty.
+	//
+	// Harvested here rather than looked for separately because the agent has
+	// already fetched and parsed this page: it costs no extra request, no
+	// search backend and no key. And it is the best-provenance photograph
+	// available to this feature -- the venue's own picture of itself, from the
+	// page being proposed as its official link. A generic image search would
+	// mean the model choosing a photograph by the text around it, which it
+	// cannot see, and a wrong-but-plausible picture of somewhere you have
+	// never been is the same failure mode with no tell that made Stage 16
+	// refuse to take coordinates from the model.
+	Image string
 }
 
 // Fetch retrieves one page.
@@ -235,14 +247,33 @@ func (f *pageFetcher) fetchUnguarded(ctx context.Context, target string) (page, 
 		return page{}, fmt.Errorf("could not read the page: %w", err)
 	}
 
-	title, text := extractText(string(body))
+	title, image, text := extractText(string(body))
+	// Relative and protocol-relative og:image values are common enough to be
+	// the rule rather than the exception, and resolving needs the page URL,
+	// which extractText has no business knowing. A value that will not parse
+	// is dropped rather than passed on: a broken image URL in a suggestion is
+	// worse than no suggestion.
+	if image != "" {
+		if base, err := url.Parse(target); err == nil {
+			if ref, err := url.Parse(image); err == nil {
+				resolved := base.ResolveReference(ref)
+				if resolved.Scheme == "http" || resolved.Scheme == "https" {
+					image = resolved.String()
+				} else {
+					image = ""
+				}
+			} else {
+				image = ""
+			}
+		}
+	}
 	if len(text) > fetchMaxTextBytes {
 		text = text[:fetchMaxTextBytes] + "\n[truncated]"
 	}
 	if strings.TrimSpace(text) == "" {
 		return page{}, fmt.Errorf("the page had no readable text")
 	}
-	return page{Title: title, Text: text}, nil
+	return page{Title: title, Text: text, Image: image}, nil
 }
 
 // guard applies this fetcher's address policy.
@@ -384,15 +415,14 @@ func isUniqueLocal(ip net.IP) bool {
 // line of a real page is very often furniture -- Milestone 8's first live run
 // produced a source listed as "Skip to main content", which is an
 // accessibility link every well-built site starts with.
-func extractText(body string) (string, string) {
+func extractText(body string) (title, image, text string) {
 	doc, err := html.Parse(strings.NewReader(body))
 	if err != nil {
 		// Not HTML, or HTML too broken to parse. The raw text is still better
 		// than nothing -- plain-text pages take this path deliberately.
-		return "", collapseWhitespace(body)
+		return "", "", collapseWhitespace(body)
 	}
 
-	title := ""
 	var b strings.Builder
 	var walk func(*html.Node)
 	walk = func(n *html.Node) {
@@ -408,11 +438,19 @@ func extractText(body string) (string, string) {
 			case "script", "style", "noscript", "svg":
 				return
 			case "head":
-				// Walked for its <title> only; nothing else in here is text a
-				// reader would see.
+				// Walked for its <title> and its og:image only; nothing else
+				// in here is text a reader would see.
 				for c := n.FirstChild; c != nil; c = c.NextSibling {
-					if c.Type == html.ElementNode && c.Data == "title" {
+					if c.Type != html.ElementNode {
+						continue
+					}
+					switch c.Data {
+					case "title":
 						walk(c)
+					case "meta":
+						if v := metaImage(c); v != "" && image == "" {
+							image = v
+						}
 					}
 				}
 				return
@@ -437,7 +475,40 @@ func extractText(body string) (string, string) {
 		}
 	}
 	walk(doc)
-	return title, collapseWhitespace(b.String())
+	return title, image, collapseWhitespace(b.String())
+}
+
+// metaImage reads a <meta> element and returns its content when it is one of
+// the tags that names a page's headline image.
+//
+// Both `property` and `name` are accepted. Open Graph specifies `property`,
+// but a large minority of real sites emit `name` instead -- some through a CMS
+// that does not know the difference -- and refusing those would drop a working
+// image for a spelling nobody outside a validator notices. twitter:image is
+// the last resort: it means the same thing and is present on pages that have
+// no Open Graph tags at all.
+func metaImage(n *html.Node) string {
+	var key, content string
+	for _, a := range n.Attr {
+		switch strings.ToLower(a.Key) {
+		case "property", "name":
+			// A page carrying both `property` and `name` is malformed; taking
+			// the first non-empty is as good a rule as any.
+			if key == "" {
+				key = strings.ToLower(strings.TrimSpace(a.Val))
+			}
+		case "content":
+			content = strings.TrimSpace(a.Val)
+		}
+	}
+	if content == "" {
+		return ""
+	}
+	switch key {
+	case "og:image", "og:image:url", "og:image:secure_url", "twitter:image", "twitter:image:src":
+		return content
+	}
+	return ""
 }
 
 func collapseWhitespace(s string) string {

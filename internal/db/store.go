@@ -146,6 +146,9 @@ type CreateMediaAssetParams struct {
 	ContentType *string
 	Width       *int
 	Height      *int
+	SourceURL   *string
+	Credit      *string
+	License     *string
 	CreatedAt   time.Time
 }
 

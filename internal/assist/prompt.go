@@ -66,6 +66,18 @@ Rules:
 
 	b.WriteString("\nNotes should be a few sentences of markdown covering what the place is and anything practical: opening hours, booking, how to get in. No headings, no marketing language.\n")
 
+	// A lookup key, not an answer. Emphatic about leaving it empty because the
+	// failure here is silent: a plausible-but-wrong article title produces a
+	// good photograph of the wrong place, which looks entirely correct.
+	b.WriteString("\nIf this place certainly has a Wikipedia article, give its exact title so a photograph can be looked up. Leave it empty if you are unsure, or if the place is too small or too new to have one. A wrong title gives a picture of somewhere else, so an empty value is much better than a guess.\n")
+	if locale := strings.TrimSpace(req.Locale); locale != "" {
+		// The edition is chosen from this locale, and article titles are not
+		// translations of each other -- the German article is "Brandenburger
+		// Tor" and the English one is "Brandenburg Gate". A title from the
+		// wrong edition finds nothing at all.
+		fmt.Fprintf(&b, "Give that title as it appears in the Wikipedia edition for language %q, since that is the edition it will be looked up in.\n", locale)
+	}
+
 	return b.String()
 }
 
@@ -117,6 +129,7 @@ func finalPrompt(req Request) string {
 	var b strings.Builder
 	b.WriteString("Now give the result as JSON.\n")
 	b.WriteString("Only include URLs you actually retrieved. Give an address and a place name, never coordinates.\n")
+	b.WriteString("Give the Wikipedia article title only if you are sure of it; leave it empty otherwise.\n")
 	b.WriteString("Leave a field as an empty string if you did not find anything reliable for it.\n")
 	if req.Mode == ModeEnrich && strings.TrimSpace(req.Current.Title) != "" {
 		b.WriteString("Leave the title empty: this place is already named.\n")

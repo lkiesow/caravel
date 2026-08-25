@@ -903,6 +903,71 @@ place with a good official site (expect its `og:image`) and one landmark
 without (expect the Wikipedia lead image, with the licence and credit the
 article actually states).
 
+**Done.** Both sources work, and the live verification earned its place by
+finding a bug that every unit test had passed over.
+
+**`og:image`, from a page already read.** `extractText` returns a third value
+and `page` carries `Image`. `property=` and `name=` are both accepted --
+Open Graph specifies the former and a large minority of real sites emit the
+latter, often through a CMS that does not know the difference, and refusing
+those would drop a working image over a spelling nobody outside a validator
+notices. `og:image:secure_url` and `twitter:image` are accepted too. Relative
+and protocol-relative values are resolved against the page URL in the fetcher,
+which is the only place that knows it, and anything that does not resolve to
+http(s) is dropped: a broken image URL in a suggestion is worse than no
+suggestion.
+
+**`internal/wikimedia`**, in the shape of `internal/geocode`. One exported
+method, no configuration, no key. Two API calls: the page lookup for the lead
+image, then the file lookup for the licence and the author. **A failure of the
+second is not fatal** -- an image with no credit is still an image, and
+refusing to offer it because a metadata call timed out would trade a working
+feature for a missing attribution line.
+
+**The language edition is chosen per lookup, not pinned.** The plan said
+nothing about this and it turned out to matter: article titles are not
+translations of each other -- the German article is "Brandenburger Tor" and the
+English one is "Brandenburg Gate" -- and smaller places often have an article
+in one language and none in another. Osnabrueck's Heger Tor is the case in
+point. So the lookup goes to the edition for the user's own locale, the prompt
+asks for the title as it appears in *that* edition, and the language is
+normalised down to a subdomain (`de-AT` becomes `de`) with anything that is
+not plainly a language code falling back to English -- it ends up in a
+hostname.
+
+**What the live run found.** Kex Hostel and Hallgrimskirkja both produced their
+own site's `og:image`, as designed. The German landmark produced an image too
+-- from `de.wikipedia.org`, through the og path, **with credit and licence
+empty**. The model had proposed the Wikipedia article as a link, the agent read
+it, and took its `og:image` like any other page. That is a Wikimedia
+photograph stored with no record of whose it is: precisely the failure the
+provenance columns exist to prevent, and no unit test would have caught it
+because no unit test had a Wikipedia article in it.
+
+`wikipediaArticle` now recognises an article URL and keeps it out of the og
+path. It also earns a second keep: when the model links an article but names
+no `wikipedia_title`, the title is recovered from the URL -- a model that finds
+the article well enough to link it has already done the hard part. Re-run
+live, the same place came back `from=wikipedia`, credited "MrsMyer in der
+Wikipedia auf Deutsch", CC BY-SA 3.0, and with the API's clean upload URL
+rather than the tagged og one.
+
+**Migration `0002`**, both dialects: `source_url`, `credit` and `license` on
+`media_assets`, all nullable because every asset that exists today has none and
+so does every photo anybody uploads from their own camera. Queries regenerated
+with `sqlc generate` for both dialects and checked for unsubstituted
+`sqlc.arg`, which compiles fine and fails at runtime.
+
+**Verified.** `make ci` green, `make test-postgres` green -- the query change
+is exactly the case CLAUDE.md says to run it for. `go test` covers the og:image
+harvest over eight shapes and the URL resolution over five, the Wikimedia
+client over its whole surface (missing article, no lead image, an image too
+small to be a photograph, a file-lookup failure, an API error in a 200 body, an
+oversized response, the request parameters, and the language-to-edition
+mapping including three hostile inputs), and `chooseCover` over both routes
+plus the three ways it can come to nothing. Then three live runs, twice: once
+to find the Wikipedia bug and once to confirm it fixed.
+
 ---
 
 ## 6. Cover image, the suggestion and the credit

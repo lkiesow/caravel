@@ -12,9 +12,9 @@ import (
 )
 
 const createMediaAsset = `-- name: CreateMediaAsset :one
-INSERT INTO media_assets (id, trip_id, kind, storage_path, external_url, content_type, width, height, created_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, trip_id, kind, storage_path, external_url, content_type, width, height, created_at
+INSERT INTO media_assets (id, trip_id, kind, storage_path, external_url, content_type, width, height, source_url, credit, license, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+RETURNING id, trip_id, kind, storage_path, external_url, content_type, width, height, created_at, source_url, credit, license
 `
 
 type CreateMediaAssetParams struct {
@@ -26,6 +26,9 @@ type CreateMediaAssetParams struct {
 	ContentType sql.NullString `json:"content_type"`
 	Width       sql.NullInt32  `json:"width"`
 	Height      sql.NullInt32  `json:"height"`
+	SourceUrl   sql.NullString `json:"source_url"`
+	Credit      sql.NullString `json:"credit"`
+	License     sql.NullString `json:"license"`
 	CreatedAt   time.Time      `json:"created_at"`
 }
 
@@ -39,6 +42,9 @@ func (q *Queries) CreateMediaAsset(ctx context.Context, arg CreateMediaAssetPara
 		arg.ContentType,
 		arg.Width,
 		arg.Height,
+		arg.SourceUrl,
+		arg.Credit,
+		arg.License,
 		arg.CreatedAt,
 	)
 	var i MediaAsset
@@ -52,12 +58,15 @@ func (q *Queries) CreateMediaAsset(ctx context.Context, arg CreateMediaAssetPara
 		&i.Width,
 		&i.Height,
 		&i.CreatedAt,
+		&i.SourceUrl,
+		&i.Credit,
+		&i.License,
 	)
 	return i, err
 }
 
 const getMediaAssetByID = `-- name: GetMediaAssetByID :one
-SELECT id, trip_id, kind, storage_path, external_url, content_type, width, height, created_at FROM media_assets WHERE id = $1
+SELECT id, trip_id, kind, storage_path, external_url, content_type, width, height, created_at, source_url, credit, license FROM media_assets WHERE id = $1
 `
 
 func (q *Queries) GetMediaAssetByID(ctx context.Context, id string) (MediaAsset, error) {
@@ -73,6 +82,9 @@ func (q *Queries) GetMediaAssetByID(ctx context.Context, id string) (MediaAsset,
 		&i.Width,
 		&i.Height,
 		&i.CreatedAt,
+		&i.SourceUrl,
+		&i.Credit,
+		&i.License,
 	)
 	return i, err
 }

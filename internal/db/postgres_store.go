@@ -630,6 +630,9 @@ func (s *postgresStore) CreateMediaAsset(ctx context.Context, p CreateMediaAsset
 		ContentType: nullString(p.ContentType),
 		Width:       nullInt32(p.Width),
 		Height:      nullInt32(p.Height),
+		SourceUrl:   nullString(p.SourceURL),
+		Credit:      nullString(p.Credit),
+		License:     nullString(p.License),
 		CreatedAt:   p.CreatedAt.UTC(),
 	})
 	if err != nil {
@@ -654,6 +657,9 @@ func postgresMediaAssetToDomain(m postgresgen.MediaAsset) MediaAsset {
 		StoragePath: strPtr(m.StoragePath),
 		ExternalURL: strPtr(m.ExternalUrl),
 		ContentType: strPtr(m.ContentType),
+		SourceURL:   strPtr(m.SourceUrl),
+		Credit:      strPtr(m.Credit),
+		License:     strPtr(m.License),
 		Width:       intPtr32(m.Width),
 		Height:      intPtr32(m.Height),
 		CreatedAt:   m.CreatedAt,

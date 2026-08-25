@@ -92,6 +92,29 @@ type assistProposalResponse struct {
 	Lat     *float64               `json:"lat"`
 	Lng     *float64               `json:"lng"`
 	Sources []assistSourceResponse `json:"sources"`
+	// Cover is a proposed cover photograph, or null. Nullable rather than a
+	// zero-valued object because "no picture was found" is the ordinary case
+	// and the client has to branch on it either way.
+	Cover *assistCoverResponse `json:"cover"`
+}
+
+// assistCoverResponse is a proposed cover photograph and its provenance.
+//
+// Credit and licence are empty for an og:image, which carries no such
+// metadata, and populated for a Wikimedia one. The client shows what is there
+// rather than inventing a credit for an image that has none.
+type assistCoverResponse struct {
+	URL      string `json:"url"`
+	ThumbURL string `json:"thumb_url"`
+	// SourceURL is the page it came from. Always set -- an image with no
+	// record of where it came from is a problem waiting for the day somebody
+	// shares a trip.
+	SourceURL string `json:"source_url"`
+	Credit    string `json:"credit"`
+	License   string `json:"license"`
+	// From is "og" or "wikipedia", so the client can say where it came from
+	// without parsing a URL.
+	From string `json:"from"`
 }
 
 type assistFieldResponse struct {
@@ -409,6 +432,16 @@ func toAssistProposalResponse(p *assist.Proposal) assistProposalResponse {
 	}
 	for _, src := range p.Sources {
 		out.Sources = append(out.Sources, assistSourceResponse{Title: src.Title, URL: src.URL})
+	}
+	if p.Cover != nil {
+		out.Cover = &assistCoverResponse{
+			URL:       p.Cover.URL,
+			ThumbURL:  p.Cover.ThumbURL,
+			SourceURL: p.Cover.SourceURL,
+			Credit:    p.Cover.Credit,
+			License:   p.Cover.Licence,
+			From:      p.Cover.From,
+		}
 	}
 	return out
 }

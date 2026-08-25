@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"caravel/internal/geocode"
+	"caravel/internal/wikimedia"
 )
 
 // answerJSON builds a final-turn answer, so each test can vary the one field
@@ -984,4 +986,270 @@ func (*recordingSearcher) Name() string { return "recording" }
 func (r *recordingSearcher) Search(context.Context, string) ([]SearchResult, error) {
 	*r.called = true
 	return nil, nil
+}
+
+// --- The cover image (Milestone 5) ---
+
+// The preferred source, and the reason for the "and proposed as a link"
+// condition: an og:image from some aggregator the model happened to open is
+// not this place's photograph of itself.
+func TestTheCoverPrefersTheOgImageOfAProposedLink(t *testing.T) {
+	official := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, `<html><head><title>Kex Hostel</title>
+		  <meta property="og:image" content="/photo.jpg"></head><body><p>A hostel.</p></body></html>`)
+	}))
+	defer official.Close()
+	aggregator := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, `<html><head><title>Booking aggregator</title>
+		  <meta property="og:image" content="/stock.jpg"></head><body><p>Book now.</p></body></html>`)
+	}))
+	defer aggregator.Close()
+
+	// The run reads both pages but proposes only the official one as a link.
+	a := agentWith(
+		stubTurn{ToolCalls: []toolCall{
+			callTo(toolFetchPage, `{"url":"`+aggregator.URL+`/x"}`),
+			callTo(toolFetchPage, `{"url":"`+official.URL+`/x"}`),
+		}},
+		proposeCall(t, modelProposal{
+			Category: "stay",
+			Notes:    "A hostel.",
+			Links:    []modelLink{{URL: official.URL + "/x", Label: "Official site"}},
+		}),
+	)
+	a.fetcher = newFetcherAllowing(
+		strings.TrimPrefix(official.URL, "http://"),
+		strings.TrimPrefix(aggregator.URL, "http://"),
+	)
+
+	p, err := a.Propose(context.Background(), enrichRequest(), nil)
+	if err != nil {
+		t.Fatalf("Propose: %v", err)
+	}
+	if p.Cover == nil {
+		t.Fatal("no cover was proposed")
+	}
+	if p.Cover.From != "og" {
+		t.Errorf("From = %q, want og", p.Cover.From)
+	}
+	if p.Cover.URL != official.URL+"/photo.jpg" {
+		t.Errorf("URL = %q, want the official site's own image", p.Cover.URL)
+	}
+	if p.Cover.SourceURL != official.URL+"/x" {
+		t.Errorf("SourceURL = %q, want the page it came from", p.Cover.SourceURL)
+	}
+	// og:image carries no licence metadata, and inventing one would be worse
+	// than admitting there is none.
+	if p.Cover.Credit != "" || p.Cover.Licence != "" {
+		t.Errorf("credit = %q / %q, want both empty for an og:image", p.Cover.Credit, p.Cover.Licence)
+	}
+}
+
+// A page the run read but did not propose is not this place's own photograph.
+func TestAnOgImageFromAnUnproposedPageIsNotUsed(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, `<html><head><title>Somewhere</title>
+		  <meta property="og:image" content="/stock.jpg"></head><body><p>Text.</p></body></html>`)
+	}))
+	defer srv.Close()
+
+	a := agentWith(
+		turnCalling(toolFetchPage, `{"url":"`+srv.URL+`/x"}`),
+		proposeCall(t, modelProposal{Category: "stay", Notes: "A hostel."}),
+	)
+	a.fetcher = newFetcherAllowing(strings.TrimPrefix(srv.URL, "http://"))
+
+	p, err := a.Propose(context.Background(), enrichRequest(), nil)
+	if err != nil {
+		t.Fatalf("Propose: %v", err)
+	}
+	if p.Cover != nil {
+		t.Errorf("cover = %+v, want none: the page was read but never proposed", p.Cover)
+	}
+}
+
+// The fallback, for the landmarks with a good article and no useful site.
+func TestTheCoverFallsBackToWikipedia(t *testing.T) {
+	wiki := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasPrefix(r.URL.Query().Get("prop"), "imageinfo") {
+			fmt.Fprint(w, `{"query":{"pages":[{"imageinfo":[{
+			  "descriptionurl":"https://commons.example/File:H.jpg",
+			  "extmetadata":{"LicenseShortName":{"value":"CC BY-SA 4.0"},
+			                 "Artist":{"value":"<a href=\"/u\">Someone</a>"}}}]}]}}`)
+			return
+		}
+		fmt.Fprint(w, `{"query":{"pages":[{"title":"Hallgrimskirkja",
+		  "original":{"source":"https://upload.example/H.jpg","width":2000,"height":1500},
+		  "thumbnail":{"source":"https://upload.example/thumb/H.jpg"},
+		  "fullurl":"https://en.example/wiki/Hallgrimskirkja"}]}}`)
+	}))
+	defer wiki.Close()
+
+	a := agentWith(proposeCall(t, modelProposal{
+		Category:       "site",
+		Notes:          "A church.",
+		WikipediaTitle: "Hallgrimskirkja",
+	}))
+	a.wikimedia = wikimedia.New(wiki.URL)
+
+	p, err := a.Propose(context.Background(), enrichRequest(), nil)
+	if err != nil {
+		t.Fatalf("Propose: %v", err)
+	}
+	if p.Cover == nil {
+		t.Fatal("no cover was proposed")
+	}
+	if p.Cover.From != "wikipedia" {
+		t.Errorf("From = %q, want wikipedia", p.Cover.From)
+	}
+	if p.Cover.Licence != "CC BY-SA 4.0" || p.Cover.Credit != "Someone" {
+		t.Errorf("credit = %q / %q, want both carried through", p.Cover.Credit, p.Cover.Licence)
+	}
+	// The article, not the file page: it is the thing a reader recognises,
+	// and the file page is one click from it.
+	if p.Cover.SourceURL != "https://en.example/wiki/Hallgrimskirkja" {
+		t.Errorf("SourceURL = %q, want the article", p.Cover.SourceURL)
+	}
+}
+
+// Every way this can come to nothing, and none of them is an error: a
+// proposal without a picture is the ordinary case.
+func TestNoCoverIsNotAFailure(t *testing.T) {
+	cases := []struct {
+		name    string
+		raw     modelProposal
+		handler http.HandlerFunc
+	}{
+		{
+			name: "the model named no article",
+			raw:  modelProposal{Category: "stay", Notes: "A hostel."},
+		},
+		{
+			name: "the article has no lead image",
+			raw:  modelProposal{Category: "site", Notes: "X.", WikipediaTitle: "Nowhere"},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprint(w, `{"query":{"pages":[{"title":"Nowhere","missing":true}]}}`)
+			},
+		},
+		{
+			name: "the encyclopaedia is down",
+			raw:  modelProposal{Category: "site", Notes: "X.", WikipediaTitle: "Hallgrimskirkja"},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				http.Error(w, "boom", http.StatusBadGateway)
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			a := agentWith(proposeCall(t, tc.raw))
+			if tc.handler != nil {
+				srv := httptest.NewServer(tc.handler)
+				defer srv.Close()
+				a.wikimedia = wikimedia.New(srv.URL)
+			}
+			p, err := a.Propose(context.Background(), enrichRequest(), nil)
+			if err != nil {
+				t.Fatalf("Propose failed rather than proposing no cover: %v", err)
+			}
+			if p.Cover != nil {
+				t.Errorf("cover = %+v, want none", p.Cover)
+			}
+			// The rest of the proposal is unaffected: one missing picture does
+			// not discard a good run.
+			if len(p.Fields) == 0 {
+				t.Error("the proposal lost its fields along with its cover")
+			}
+		})
+	}
+}
+
+// A Wikipedia article has a perfectly good og:image, and taking it would lose
+// the licence: Wikimedia photographs are freely licensed, not unencumbered,
+// and nearly all of them need a credit an og:image tag does not carry.
+//
+// Found by a live run, which came back with a German landmark's picture and
+// both credit and licence empty.
+//
+// chooseCover is exercised directly rather than through a run, because the
+// recogniser keys on the wikipedia.org hostname and an httptest server cannot
+// have one.
+func TestAWikipediaArticleGoesThroughTheAPINotItsOgImage(t *testing.T) {
+	wiki := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasPrefix(r.URL.Query().Get("prop"), "imageinfo") {
+			fmt.Fprint(w, `{"query":{"pages":[{"imageinfo":[{
+			  "descriptionurl":"https://commons.example/File:W.jpg",
+			  "extmetadata":{"LicenseShortName":{"value":"CC BY-SA 3.0"},
+			                 "Artist":{"value":"A Photographer"}}}]}]}}`)
+			return
+		}
+		fmt.Fprint(w, `{"query":{"pages":[{"title":"Waterloo-Tor",
+		  "original":{"source":"https://upload.example/clean.jpg","width":1280,"height":960},
+		  "fullurl":"https://de.wikipedia.org/wiki/Waterloo-Tor"}]}}`)
+	}))
+	defer wiki.Close()
+
+	a := agentWith()
+	a.wikimedia = wikimedia.New(wiki.URL)
+
+	article := "https://de.wikipedia.org/wiki/Waterloo-Tor"
+	cover := a.chooseCover(
+		context.Background(),
+		Request{Mode: ModeEnrich, Locale: "de"},
+		// The model named no article title: it has to be recovered from the
+		// link, which is worth doing because a model that finds the article
+		// well enough to link it has already done the hard part.
+		modelProposal{},
+		[]Link{{URL: article, Label: "Wikipedia"}},
+		[]Source{{Title: "Waterloo-Tor", URL: article, Image: "https://upload.example/tracked.jpg?utm_source=de.wikipedia.org"}},
+		slog.Default(),
+	)
+
+	if cover == nil {
+		t.Fatal("no cover was chosen")
+	}
+	if cover.From != "wikipedia" {
+		t.Fatalf("From = %q, want the API route so the licence comes with it", cover.From)
+	}
+	if cover.Licence != "CC BY-SA 3.0" || cover.Credit != "A Photographer" {
+		t.Errorf("credit = %q / %q, want both from the API", cover.Credit, cover.Licence)
+	}
+	if strings.Contains(cover.URL, "utm_source") {
+		t.Errorf("URL = %q, want the API's clean upload URL rather than the tagged og:image", cover.URL)
+	}
+}
+
+func TestWikipediaArticleRecognisesArticleURLs(t *testing.T) {
+	cases := []struct {
+		url        string
+		lang, want string
+		ok         bool
+	}{
+		{"https://de.wikipedia.org/wiki/Waterloo-Tor", "de", "Waterloo-Tor", true},
+		{"https://en.wikipedia.org/wiki/Brandenburg_Gate", "en", "Brandenburg Gate", true},
+		{"https://en.m.wikipedia.org/wiki/Kex_Hostel", "en", "Kex Hostel", true},
+		// Percent-encoded titles are the norm for anything non-ASCII.
+		{"https://de.wikipedia.org/wiki/Hallgr%C3%ADmskirkja", "de", "Hallgrímskirkja", true},
+		{"https://de.wikipedia.org/", "", "", false},
+		{"https://de.wikipedia.org/wiki/", "", "", false},
+		// Not Wikipedia, including a lookalike host.
+		{"https://commons.wikimedia.org/wiki/File:X.jpg", "", "", false},
+		{"https://www.kexrvk.is/", "", "", false},
+		{"https://notwikipedia.org/wiki/X", "", "", false},
+		{"https://evil.example/wiki/X?x=.wikipedia.org", "", "", false},
+		{"not a url", "", "", false},
+	}
+	for _, tc := range cases {
+		lang, title, ok := wikipediaArticle(tc.url)
+		if ok != tc.ok || title != tc.want {
+			t.Errorf("wikipediaArticle(%q) = %q, %q, %t; want %q, %q, %t", tc.url, lang, title, ok, tc.lang, tc.want, tc.ok)
+		}
+		if ok && lang != tc.lang {
+			t.Errorf("wikipediaArticle(%q) language = %q, want %q", tc.url, lang, tc.lang)
+		}
+	}
 }

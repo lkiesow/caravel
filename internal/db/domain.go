@@ -358,7 +358,16 @@ type MediaAsset struct {
 	ContentType *string
 	Width       *int
 	Height      *int
-	CreatedAt   time.Time
+	// Provenance, added in migration 0002 and nil for everything created
+	// before it -- and for everything anybody uploads from their own camera.
+	// SourceURL is the page the image came from; Credit and License are the
+	// attribution a freely-licensed image carries and an ordinary upload does
+	// not. See the migration for why they are stored rather than shown once
+	// and forgotten.
+	SourceURL *string
+	Credit    *string
+	License   *string
+	CreatedAt time.Time
 }
 
 type Item struct {

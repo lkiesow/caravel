@@ -64,6 +64,7 @@ import (
 
 	"caravel/internal/buildinfo"
 	"caravel/internal/geocode"
+	"caravel/internal/wikimedia"
 )
 
 // Assistant proposes location metadata. One implementation today (*Agent);
@@ -111,6 +112,12 @@ type Options struct {
 	// default from DefaultLimits, so a caller that does not care passes the
 	// zero value and gets the shipped behaviour.
 	Limits Limits
+
+	// WikimediaURL pins the Wikipedia API endpoint, for a mirror. Empty -- the
+	// normal case -- means each lookup goes to the edition for the user's own
+	// language. No configuration and no key, which is the whole reason the
+	// cover-image fallback is Wikipedia rather than a paid image search.
+	WikimediaURL string
 
 	// Logger receives the run trace. Nil means slog.Default, which is what the
 	// server passes -- the field exists for tests, which need to read the
@@ -170,24 +177,26 @@ func New(opts Options) (Assistant, error) {
 	}
 
 	return &Agent{
-		opts:     opts,
-		provider: p,
-		search:   search,
-		fetcher:  fetcher,
-		geocoder: opts.Geocoder,
-		limits:   limits,
-		logger:   logger,
+		opts:      opts,
+		provider:  p,
+		search:    search,
+		fetcher:   fetcher,
+		geocoder:  opts.Geocoder,
+		wikimedia: wikimedia.New(opts.WikimediaURL),
+		limits:    limits,
+		logger:    logger,
 	}, nil
 }
 
 // Agent is the open-ended tool-calling loop. Milestone 4 fills in Propose.
 type Agent struct {
-	opts     Options
-	provider provider
-	search   Searcher
-	fetcher  *pageFetcher
-	geocoder *geocode.Client
-	limits   Limits
+	opts      Options
+	provider  provider
+	search    Searcher
+	fetcher   *pageFetcher
+	geocoder  *geocode.Client
+	wikimedia *wikimedia.Client
+	limits    Limits
 	// logger is slog.Default unless Options names one. A field rather than a
 	// call to slog.Default at each site so a test can hand in a handler over a
 	// buffer and read back exactly what a run emitted.

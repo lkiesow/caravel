@@ -291,7 +291,7 @@ func (t *toolset) doFetch(ctx context.Context, args json.RawMessage) (string, er
 	if title == "" {
 		title = firstLine(fetched.Text)
 	}
-	t.record(Source{Title: cleanTitle(title), URL: in.URL})
+	t.record(Source{Title: cleanTitle(title), URL: in.URL, Image: fetched.Image})
 	return fetched.Text, nil
 }
 

@@ -271,7 +271,7 @@ func TestRelaxedPolicyStillEnforcesTheScheme(t *testing.T) {
 func TestExtractTextHandlesNonHTML(t *testing.T) {
 	// A plain-text page takes the parse path too; it must not come back empty,
 	// and it has no title to find.
-	title, text := extractText("Kex Hostel\n\nSkulagata 28, Reykjavik")
+	title, _, text := extractText("Kex Hostel\n\nSkulagata 28, Reykjavik")
 	if !strings.Contains(text, "Kex Hostel") || !strings.Contains(text, "Skulagata 28") {
 		t.Errorf("extractText text = %q", text)
 	}
@@ -284,7 +284,7 @@ func TestExtractTextHandlesNonHTML(t *testing.T) {
 // furniture. A live run in Milestone 8 listed a source as "Skip to main
 // content", which is the accessibility link every well-built site opens with.
 func TestExtractTextPrefersTheDocumentTitleOverSkipLinks(t *testing.T) {
-	title, text := extractText(`<html><head><title>Hallgrimskirkja Church</title></head>
+	title, _, text := extractText(`<html><head><title>Hallgrimskirkja Church</title></head>
 	  <body><a href="#main">Skip to main content</a><h1>Hallgrimskirkja</h1></body></html>`)
 	if title != "Hallgrimskirkja Church" {
 		t.Errorf("title = %q", title)
@@ -368,5 +368,93 @@ func TestAllowlistPolicyAppliesAtDialTime(t *testing.T) {
 	}
 	if !f.LinkIsLive(context.Background(), srv.URL) {
 		t.Error("LinkIsLive refused the allowlisted address")
+	}
+}
+
+// og:image, harvested from a page the agent has already fetched and parsed. It
+// costs no extra request and it is the venue's own photograph of itself, which
+// is the best provenance this feature can get.
+func TestExtractTextHarvestsTheHeadlineImage(t *testing.T) {
+	cases := []struct {
+		name string
+		head string
+		want string
+	}{
+		{
+			"the specified spelling",
+			`<meta property="og:image" content="https://example.com/a.jpg">`,
+			"https://example.com/a.jpg",
+		},
+		{
+			// A large minority of real sites emit this, often through a CMS
+			// that does not know the difference. Refusing it would drop a
+			// working image over a spelling nobody outside a validator sees.
+			"name= rather than property=",
+			`<meta name="og:image" content="https://example.com/b.jpg">`,
+			"https://example.com/b.jpg",
+		},
+		{
+			"secure_url",
+			`<meta property="og:image:secure_url" content="https://example.com/c.jpg">`,
+			"https://example.com/c.jpg",
+		},
+		{
+			"twitter:image as a last resort",
+			`<meta name="twitter:image" content="https://example.com/d.jpg">`,
+			"https://example.com/d.jpg",
+		},
+		{
+			"the first wins when a page carries several",
+			`<meta property="og:image" content="https://example.com/first.jpg">` +
+				`<meta property="og:image" content="https://example.com/second.jpg">`,
+			"https://example.com/first.jpg",
+		},
+		{"no image at all", `<meta name="description" content="A hostel.">`, ""},
+		{"an empty content attribute", `<meta property="og:image" content="">`, ""},
+		{"an unrelated meta tag", `<meta property="og:title" content="Kex Hostel">`, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, got, _ := extractText(`<html><head><title>T</title>` + tc.head + `</head><body><p>Text.</p></body></html>`)
+			if got != tc.want {
+				t.Errorf("image = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// Relative and protocol-relative values are the rule rather than the
+// exception, and resolving needs the page URL -- which is why it happens in
+// the fetcher and not in the parser.
+func TestFetchResolvesTheHeadlineImageAgainstThePage(t *testing.T) {
+	var head string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprintf(w, `<html><head><title>Kex</title>%s</head><body><p>A hostel.</p></body></html>`, head)
+	}))
+	defer srv.Close()
+	f := newRelaxedFetcher()
+
+	for _, tc := range []struct {
+		name, meta, want string
+	}{
+		{"absolute", `<meta property="og:image" content="https://cdn.example.com/a.jpg">`, "https://cdn.example.com/a.jpg"},
+		{"root-relative", `<meta property="og:image" content="/img/a.jpg">`, srv.URL + "/img/a.jpg"},
+		{"protocol-relative", `<meta property="og:image" content="//cdn.example.com/a.jpg">`, "http://cdn.example.com/a.jpg"},
+		// Anything that is not http(s) is dropped: a broken image URL in a
+		// suggestion is worse than no suggestion.
+		{"a data URI is dropped", `<meta property="og:image" content="data:image/png;base64,AAAA">`, ""},
+		{"javascript is dropped", `<meta property="og:image" content="javascript:alert(1)">`, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			head = tc.meta
+			got, err := f.Fetch(context.Background(), srv.URL+"/page")
+			if err != nil {
+				t.Fatalf("Fetch: %v", err)
+			}
+			if got.Image != tc.want {
+				t.Errorf("Image = %q, want %q", got.Image, tc.want)
+			}
+		})
 	}
 }

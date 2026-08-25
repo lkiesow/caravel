@@ -137,6 +137,9 @@ type MediaAsset struct {
 	Width       sql.NullInt32  `json:"width"`
 	Height      sql.NullInt32  `json:"height"`
 	CreatedAt   time.Time      `json:"created_at"`
+	SourceUrl   sql.NullString `json:"source_url"`
+	Credit      sql.NullString `json:"credit"`
+	License     sql.NullString `json:"license"`
 }
 
 type Session struct {

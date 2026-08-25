@@ -583,6 +583,9 @@ func (s *sqliteStore) CreateMediaAsset(ctx context.Context, p CreateMediaAssetPa
 		ContentType: nullString(p.ContentType),
 		Width:       nullInt64(p.Width),
 		Height:      nullInt64(p.Height),
+		SourceUrl:   nullString(p.SourceURL),
+		Credit:      nullString(p.Credit),
+		License:     nullString(p.License),
 		CreatedAt:   formatTime(p.CreatedAt),
 	})
 	if err != nil {
@@ -607,6 +610,9 @@ func sqliteMediaAssetToDomain(m sqlitegen.MediaAsset) MediaAsset {
 		StoragePath: strPtr(m.StoragePath),
 		ExternalURL: strPtr(m.ExternalUrl),
 		ContentType: strPtr(m.ContentType),
+		SourceURL:   strPtr(m.SourceUrl),
+		Credit:      strPtr(m.Credit),
+		License:     strPtr(m.License),
 		Width:       intPtr64(m.Width),
 		Height:      intPtr64(m.Height),
 		CreatedAt:   parseTime(m.CreatedAt),

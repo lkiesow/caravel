@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -485,8 +486,53 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 		"fields", len(p.Fields),
 		"links", len(p.Links),
 		"sources", len(p.Sources),
-		"coordinates", p.Lat != nil)
+		"coordinates", p.Lat != nil,
+		"cover", coverFrom(p.Cover))
 	return p, nil
+}
+
+// wikipediaArticle recognises an article URL and pulls the language edition
+// and the title out of it.
+//
+// Two callers' worth of value from one function: it keeps Wikipedia out of the
+// og:image path, where the licence would be lost, and it recovers an article
+// title from a link the model proposed when the model did not name one
+// separately. The second is worth having because a model that finds the
+// article well enough to link it has already done the hard part.
+func wikipediaArticle(rawURL string) (lang, title string, ok bool) {
+	u, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return "", "", false
+	}
+	host := strings.ToLower(u.Hostname())
+	if !strings.HasSuffix(host, ".wikipedia.org") && host != "wikipedia.org" {
+		return "", "", false
+	}
+	// /wiki/Article_Title, which is the only article form worth recognising --
+	// index.php?title= exists but is not what anything links to.
+	rest, found := strings.CutPrefix(u.EscapedPath(), "/wiki/")
+	if !found || rest == "" {
+		return "", "", false
+	}
+	decoded, err := url.PathUnescape(rest)
+	if err != nil {
+		return "", "", false
+	}
+	// Wikipedia writes spaces as underscores in a URL and the API wants them
+	// either way, but the space form is what a person recognises in a log.
+	decoded = strings.ReplaceAll(decoded, "_", " ")
+	lang, _, _ = strings.Cut(host, ".")
+	return lang, decoded, true
+}
+
+// coverFrom names the route a cover came from, for the log. "none" rather than
+// an empty string, so a reader is not left wondering whether the field failed
+// to render.
+func coverFrom(c *Cover) string {
+	if c == nil {
+		return "none"
+	}
+	return c.From
 }
 
 // findCall returns the first call to the named tool.
@@ -649,7 +695,104 @@ func (a *Agent) buildProposal(ctx context.Context, req Request, raw modelProposa
 		log.Debug("assist: no coordinates", "reason", "no geocoder configured")
 	}
 
+	p.Cover = a.chooseCover(ctx, req, raw, p.Links, sources, log)
+
 	return p, nil
+}
+
+// chooseCover picks a cover photograph, preferring the one with the best claim
+// to being a picture of this place.
+//
+// The order is not arbitrary. An og:image from the page the agent proposed as
+// the official link is the venue's own photograph of itself, chosen by the
+// venue, on a page a person can go and look at. A Wikipedia lead image is
+// curated to be a picture of the article's subject, which is nearly as good
+// and covers the landmarks that have no useful site of their own. Nothing else
+// is offered: a generic image search would mean the model choosing a
+// photograph by the text around it, which it cannot see.
+func (a *Agent) chooseCover(ctx context.Context, req Request, raw modelProposal, links []Link, sources []Source, log *slog.Logger) *Cover {
+	// First choice: a page the run both read *and* proposed as a link. The
+	// second condition matters -- an og:image from some aggregator the model
+	// happened to open is not this place's photograph of itself.
+	proposed := make(map[string]bool, len(links))
+	for _, l := range links {
+		proposed[normaliseURL(l.URL)] = true
+	}
+	for _, src := range sources {
+		if src.Image == "" || !proposed[normaliseURL(src.URL)] {
+			continue
+		}
+		// A Wikipedia article is not taken through this path, even though it
+		// has a perfectly good og:image. That image is a Wikimedia photograph,
+		// and Wikimedia photographs are freely licensed rather than
+		// unencumbered -- nearly all of them require attribution, which an
+		// og:image tag does not carry. Taking it here would store a picture
+		// that needs a credit with no record of whose it is, which is the
+		// exact failure the provenance columns exist to prevent.
+		//
+		// Found by a live run: a German landmark came back with an image from
+		// de.wikipedia and both credit and licence empty. The article goes
+		// through the API below instead, which knows the licence.
+		if lang, title, ok := wikipediaArticle(src.URL); ok {
+			log.Debug("assist: og:image skipped, it is a wikipedia article", "page", src.URL, "title", title)
+			if strings.TrimSpace(raw.WikipediaTitle) == "" {
+				raw.WikipediaTitle = title
+				if strings.TrimSpace(req.Locale) == "" {
+					req.Locale = lang
+				}
+			}
+			continue
+		}
+		log.Debug("assist: cover from og:image", "image", src.Image, "page", src.URL)
+		return &Cover{URL: src.Image, SourceURL: src.URL, From: "og"}
+	}
+
+	title := strings.TrimSpace(raw.WikipediaTitle)
+	if title == "" {
+		// The ordinary case for a hotel or a restaurant, and the prompt asks
+		// for silence rather than a guess: a wrong article title produces a
+		// good photograph of the wrong place, which looks entirely correct.
+		log.Debug("assist: no cover", "reason", "no wikipedia title proposed")
+		return nil
+	}
+	if a.wikimedia == nil {
+		// Only reachable from a test that built an Agent literal: New always
+		// sets one, because wikimedia.New falls back to a working default.
+		log.Debug("assist: no cover", "reason", "no wikimedia client")
+		return nil
+	}
+
+	// The user's own language, because the model was asked for a title from
+	// that edition -- article titles are not translations of each other, so
+	// looking a German title up in the English encyclopaedia simply misses.
+	img, err := a.wikimedia.LeadImage(ctx, req.Locale, title)
+	if err != nil {
+		// Not fatal, and not worth telling the user about: a proposal without
+		// a picture is the ordinary case anyway.
+		log.Debug("assist: wikipedia lookup failed", "title", title, "lang", req.Locale, "err", err)
+		return nil
+	}
+	if img.URL == "" {
+		log.Debug("assist: no cover", "reason", "no lead image", "title", title, "lang", req.Locale)
+		return nil
+	}
+
+	// The article page, not the file page, when both exist: it is the thing a
+	// reader recognises, and the file page is one click from it.
+	source := img.ArticleURL
+	if source == "" {
+		source = img.DescriptionURL
+	}
+	log.Debug("assist: cover from wikipedia",
+		"title", title, "lang", req.Locale, "image", img.URL, "licence", img.Licence, "credited", img.Credit != "")
+	return &Cover{
+		URL:       img.URL,
+		ThumbURL:  img.ThumbURL,
+		SourceURL: source,
+		Credit:    img.Credit,
+		Licence:   img.Licence,
+		From:      "wikipedia",
+	}
 }
 
 // validCategories mirrors the CHECK constraint on items.category and the map

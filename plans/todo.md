@@ -36,6 +36,37 @@ down.
   only fix is re-uploading the picture. Noted so it is not mistaken later for
   the fix having failed.
 
+- **The assistant's suggestion counter never empties.** **(soon)** (Stage 21.)
+  Accept every suggestion -- one at a time, or with "Accept all" -- and the bar
+  sticks on "1 suggestion" with "Accept all" and "Dismiss all" still on screen.
+  `renderSources` (`web/js/components/assist-panel.js:355`) pushes the sources
+  box into `outstanding`, the array the counter counts, with
+  `accept: () => box.remove()`; every real entry's `accept` calls `forget()`,
+  which is what removes it from the array, and this one does not. So the box
+  leaves the page and stays in the count. It also inflates the count by one
+  from the moment sources render. The UI suite cannot see any of this because
+  the stub's URLs are `example.invalid`, so no fetch succeeds, so
+  `proposal.sources` is empty and `renderSources` returns before the bad push
+  -- the same gap recorded below for the links and sources lists.
+
+- **The assistant is slow, and regularly gives up.** **(soon)** (Stage 21.)
+  "The assistant took too long and was stopped. Try a narrower description."
+  arrives often enough to be the normal outcome for some places. Nothing
+  currently says why. Where to look first, from reading the loop rather than
+  from measurement: the gathering deadline does *not* produce that message --
+  hitting it ends the research and the run still answers
+  (`internal/assist/agent.go:245-252`) -- so `assist_timeout` can only come
+  from the caller's context or a provider call's own deadline, and the
+  composing turn resends the entire conversation including every page's 12KB
+  of extracted text. Stage 16 Milestone 8 already had to raise `AnswerTimeout`
+  from 60s to 2m for exactly that. Levers not yet pulled: tool calls within a
+  turn are dispatched sequentially (`agent.go:278-296`) though `toolset` is
+  already mutex-guarded; nothing tunable reaches the provider except a
+  hard-coded `temperature: 0.2` (`provider.go:212`), so there is no
+  `reasoning_effort` or `max_tokens` knob, and the right value may differ per
+  step and per model; and the conversation is never compacted before the
+  composing turn.
+
 - **A cover photo set by URL on the *new trip* form is only validated at Create
   time.** (Stage 07; half-fixed in Stage 09 Milestone 4.) The URL is staged
   locally, the trip is created, and only then does the server fetch it — so a
@@ -44,6 +75,21 @@ down.
   endpoint. Softened a lot by Stage 07 Milestone 9's preview-error handler: a URL
   the browser itself can't load is already flagged in the card before Create is
   pressed.
+- **The map is half the screen on a phone.** **(soon)** (Stage 21.)
+  `web/js/components/leaflet-map.js:257-269` caps `#map` at
+  `min(50vh, 20rem)` under `@media (max-width: 640px)`, which at 324x756
+  leaves the map smaller than it wants to be for actually reading one. It
+  should be able to grow -- but never past the screen. **The cap is not an
+  oversight**: it is the Stage 13 Milestone 1 fix for the map swallowing the
+  page scroll. A flat 50vh left about 67px of page below the map at 324x756,
+  so a drag starting in the lower half had nowhere to go but the map, and the
+  legend's `order: -1` (moving it above the map) exists partly to leave a
+  drag-safe strip to start a page drag in. So raising the height needs an
+  answer for where the page is still draggable. `tests/ui/map.gesture.spec.js`
+  is what would catch a regression, and it drives real touch through CDP --
+  mind that CDP silently delivers nothing outside the viewport, so a taller
+  map makes "scroll the target into view first" matter more, not less.
+
 - **A failed checklist tick leaves the box disagreeing with the server.**
   (Noticed in Stage 20 Milestone 5.) `checklist-list.js`'s item checkbox has no
   `try/catch`: if the PATCH fails, the box keeps the state the click gave it
@@ -72,6 +118,23 @@ down.
       optional `item_id`, which would give a per-location cost on the location
       view. One nullable column and a select.
 
+- **The assistant has no account of itself, in the log or in the browser.**
+  **(soon)** (Stage 21.) `internal/assist` contains not one log statement, and
+  `internal/httpapi/assist.go:337` comments that "the real error is in the
+  server log for the operator" -- which is not true, because nothing logs it.
+  There is no `slog` anywhere in the repository either, and no log level to
+  configure: `cmd/caravel/main.go` and `internal/db/db.go` use the stdlib
+  `log` at a handful of sites and that is the whole of it. So "why was that run
+  slow" is unanswerable from outside a debugger. Two halves. *Backend:*
+  `log/slog` plus a `CARAVEL_LOG_LEVEL` variable, and a debug-level trace of a
+  run -- per turn, per tool call, wall times, tokens, why the loop ended, what
+  `buildProposal` dropped -- with the API key and full page text explicitly out
+  of bounds. *Frontend:* the same account for the person using the app, in a
+  collapsed `<details>` under the suggestions, following the one precedent for
+  that element (`itinerary-tab.js:95-115`). Progress events today are
+  fire-at-start only and carry no timing, so `assist.Event` needs a duration
+  and an outcome, plus a summary event at the end of a run.
+
 - **SearXNG as a search backend.** (Stage 16 Milestone 8.) Planned for that
   milestone and dropped: nobody had an instance to test against, and a backend
   verified only against a fake is a backend nobody should trust. Everything
@@ -84,7 +147,7 @@ down.
   heavily with ddgs, which shipped -- both are self-hosted keyless metasearch,
   so this is for people who already run one rather than a gap in coverage.
 - **The assistant's links and sources are not covered by the UI suite.**
-  (Stage 16 Milestone 9.) `tests/ui/assist.spec.js` asserts on the suggested
+  **(soon)** (Stage 16 Milestone 9.) `tests/ui/assist.spec.js` asserts on the suggested
   fields but not on the two list sections, because the stub provider cannot
   produce either: its URLs point at `example.invalid`, so the proposed link is
   correctly dropped as dead and the failed page fetch records no source. Both
@@ -95,13 +158,55 @@ down.
   verified by hand against real providers. Closing it properly probably means a
   second fake that serves pages from an in-process `httptest` server the
   fetcher is allowed to reach, which is a bigger change than it sounds because
-  the guard refuses loopback by design.
-- **Auto-filling a location's cover image.** (Stage 16, deliberately out of
-  scope.) The workable route is the model returning a Wikipedia article title
-  and Caravel pulling the lead image through the Wikimedia API -- a real photo
-  with a known licence and attribution, where generic web image search is a
-  licensing landmine. Needs a Wikimedia client, an attribution field on
-  `media_assets` and UI to show the credit.
+  the guard refuses loopback by design. One shape that might work, thought of
+  when Stage 21 was scoped: let the *stub provider* start that server itself
+  and hand the fetcher an allowlist of exactly the one `ip:port` the OS just
+  gave it -- an address no environment variable can name and which does not
+  exist unless the stub does. Smaller than relaxing the address policy from
+  configuration, but still a weakening, and it should be described as one.
+- **Filling in a location's cover image.** **(soon)** (Stage 16, deliberately
+  out of scope; redesigned when Stage 21 was scoped.) Three parts, and the
+  first two are the assistant's.
+    - **`og:image`, from a page the agent has already read.** `extractText`
+      (`internal/assist/fetch.go:334`) already walks the document with
+      `x/net/html` to harvest the title; harvesting
+      `<meta property="og:image">` beside it costs no extra request, no
+      backend and no key, and it is the venue's own photograph of itself from
+      the page being proposed as the official link. This is the primary
+      source: it covers the hotels and restaurants Wikipedia has never heard
+      of.
+    - **Wikipedia, as the fallback.** The model returns an article title as a
+      *lookup key* -- exactly as it returns an address for the geocoder to
+      resolve -- and Caravel pulls the lead image with its licence and credit.
+      Needs a small `internal/wikimedia` client in the shape of
+      `internal/geocode`. Covers the landmarks with a good article and no
+      useful official site.
+    - **A "Search for an image" control, with no LLM in it.** The sibling of
+      the address search: Wikipedia article images always, and an image search
+      as well when a backend that can do one is configured. See the separate
+      entry below.
+  All three want provenance on `media_assets`, which has none -- the source
+  page URL, plus a credit line and licence name that a Wikimedia image has and
+  an `og:image` does not. That is a migration (`0002`) in both dialects.
+  **Generic image search is deliberately not offered to the agent**: the model
+  has no vision, so it would be choosing a photograph by the text around it,
+  and a wrong-but-plausible picture of a place you have never been is the same
+  failure mode with no tell that made Stage 16 refuse to take coordinates from
+  the model. Offering the same results to a *person* to pick from is fine,
+  which is what the third part is.
+- **Image search as an optional `Searcher` capability.** **(soon)** (Stage 21.)
+  `Searcher` (`internal/assist/search.go:36`) returns `{title, url, snippet}`
+  and cannot do images. Serper has an images endpoint and so does ddgs;
+  **Ollama Cloud's `web_search` does not**, and neither does the stub. So this
+  wants an optional `ImageSearcher` a backend *may* also implement, discovered
+  by type assertion rather than a second provider registry -- a backend that
+  cannot simply contributes nothing. Two knock-on effects: `config.go:201`
+  currently refuses `CARAVEL_SEARCH_PROVIDER` without `CARAVEL_LLM_URL` on the
+  reasoning that "web search is only used by the assistant", which stops being
+  true, so the searcher has to be built in `main.go` and shared; and a future
+  SearXNG backend would want to implement this too. Take the ddgs request and
+  response shapes from a live instance rather than from documentation --
+  Stage 16 Milestone 8 had to.
 - **AI trip-level suggestions.** (Stage 15 backlog review.) "Suggest things to
   do in Reykjavik" returning several candidate locations to add at once, rather
   than enriching one location at a time. **No longer blocked**: Stage 16 built

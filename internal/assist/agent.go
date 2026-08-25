@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -226,6 +227,39 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 		"type_vocabulary", len(req.TypeVocabulary),
 		"limits", a.limits.String())
 
+	var spent usage
+	toolCalls := 0
+	turnsUsed := 0
+	steps := 0
+
+	// Every event that is a step is counted here rather than at each emission
+	// site, so the total in the summary cannot drift from the list the client
+	// actually received.
+	emit := func(e Event) {
+		if e.Kind == EventStep {
+			steps++
+		}
+		events(e)
+	}
+
+	// The summary closes the run *however it ends*, which is why it is
+	// deferred rather than written before the return. A run that timed out or
+	// failed is exactly when somebody wants to see what it managed to do, and
+	// an account that only appears on success is an account of the runs that
+	// did not need explaining.
+	defer func() {
+		events(Event{
+			Kind: EventSummary,
+			Totals: Totals{
+				DurationMS: time.Since(started).Milliseconds(),
+				Steps:      steps,
+				Turns:      turnsUsed,
+				ToolCalls:  toolCalls,
+				Tokens:     spent.TotalTokens,
+			},
+		})
+	}()
+
 	// Two contexts, deliberately. runCtx carries the gathering deadline;
 	// userCtx is the caller's own, which only ends when the user cancels.
 	// The composing turn below uses the latter, so a run that ran out of time
@@ -241,7 +275,7 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 		s.reset()
 	}
 
-	tools := newToolset(a.search, a.fetcher, a.geocoder, events, log)
+	tools := newToolset(a.search, a.fetcher, a.geocoder, emit, log)
 	defs := tools.definitions()
 
 	messages := []chatMessage{
@@ -250,9 +284,6 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 	}
 
 	events(Event{Key: "assist.progress.thinking"})
-
-	var spent usage
-	toolCalls := 0
 
 	// Why the rails break rather than return an error.
 	//
@@ -272,13 +303,12 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 	// and only one of them hit a ceiling.
 	stop := "answered"
 
-	// turnsUsed counts turns the provider actually answered, which is not the
-	// same as the loop counter: a loop that breaks *inside* an iteration --
-	// which the ordinary "no more tool calls" exit does -- leaves the counter
-	// one behind the number of turns that were billed. A trace whose job is
-	// accuracy must not undercount the thing it is counting.
-	turnsUsed := 0
-
+	// turnsUsed (declared above, with the summary that reports it) counts turns
+	// the provider actually answered, which is not the same as the loop
+	// counter: a loop that breaks *inside* an iteration -- which the ordinary
+	// "no more tool calls" exit does -- leaves the counter one behind the
+	// number of turns that were billed. A trace whose job is accuracy must not
+	// undercount the thing it is counting.
 	turn := 0
 	for ; turn < a.limits.MaxTurns; turn++ {
 		// The caller's own context, not ours. If it is already done there is
@@ -299,6 +329,7 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 		}
 
 		turnStarted := time.Now()
+		emit(Event{Key: "assist.progress.thinking"})
 		resp, err := a.provider.Complete(runCtx, chatRequest{Messages: messages, Tools: defs})
 		if err != nil {
 			// A provider call that failed because gathering ran out of time is
@@ -317,6 +348,11 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 		}
 		spent = addUsage(spent, resp.Usage)
 		turnsUsed++
+		emit(Event{
+			Kind:       EventStep,
+			Key:        "assist.step.thinking",
+			DurationMS: time.Since(turnStarted).Milliseconds(),
+		})
 
 		log.Debug("assist: turn",
 			"turn", turnsUsed,
@@ -385,7 +421,7 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 		"spent_tokens", spent.TotalTokens,
 		"ms", time.Since(started).Milliseconds())
 
-	events(Event{Key: "assist.progress.composing"})
+	emit(Event{Key: "assist.progress.composing"})
 
 	messages = append(messages, chatMessage{Role: roleUser, Content: finalPrompt(req)})
 
@@ -413,11 +449,17 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 		"tokens", used.TotalTokens,
 		"spent_tokens", spent.TotalTokens,
 		"ok", err == nil)
+	emit(Event{
+		Kind:       EventStep,
+		Key:        "assist.step.composing",
+		DurationMS: time.Since(composeStarted).Milliseconds(),
+		Failed:     err != nil,
+	})
 	if err != nil {
 		return nil, wrapRunError(err)
 	}
 
-	p, err := a.buildProposal(finalCtx, req, raw, tools.Sources(), events, log)
+	p, err := a.buildProposal(finalCtx, req, raw, tools.Sources(), emit, log)
 	if err != nil {
 		return nil, err
 	}
@@ -578,6 +620,7 @@ func (a *Agent) checkLinks(ctx context.Context, req Request, proposed []modelLin
 	}
 
 	events(Event{Key: "assist.progress.checkingLinks"})
+	checkStarted := time.Now()
 
 	var wg sync.WaitGroup
 	for i := range candidates {
@@ -588,6 +631,13 @@ func (a *Agent) checkLinks(ctx context.Context, req Request, proposed []modelLin
 		}(i)
 	}
 	wg.Wait()
+
+	events(Event{
+		Kind:       EventStep,
+		Key:        "assist.step.checkingLinks",
+		Params:     map[string]string{"count": strconv.Itoa(len(candidates))},
+		DurationMS: time.Since(checkStarted).Milliseconds(),
+	})
 
 	var out []Link
 	for _, c := range candidates {

@@ -297,7 +297,28 @@ func (s *Server) streamAssistRun(w http.ResponseWriter, r *http.Request, req ass
 	}
 
 	proposal, err := s.Assist.Propose(r.Context(), req, func(e assist.Event) {
-		send("progress", map[string]any{"key": e.Key, "params": e.Params})
+		switch e.Kind {
+		case assist.EventStep:
+			// One finished step, for the trace the editor collects. Separate
+			// from progress because the two arrive at different moments and
+			// answer different questions -- see the note on EventKind.
+			send("step", map[string]any{
+				"key":    e.Key,
+				"params": paramsOrEmpty(e.Params),
+				"ms":     e.DurationMS,
+				"failed": e.Failed,
+			})
+		case assist.EventSummary:
+			send("summary", map[string]any{
+				"ms":         e.Totals.DurationMS,
+				"steps":      e.Totals.Steps,
+				"turns":      e.Totals.Turns,
+				"tool_calls": e.Totals.ToolCalls,
+				"tokens":     e.Totals.Tokens,
+			})
+		default:
+			send("progress", map[string]any{"key": e.Key, "params": paramsOrEmpty(e.Params)})
+		}
 	})
 
 	if err != nil {
@@ -327,6 +348,16 @@ func (s *Server) streamAssistRun(w http.ResponseWriter, r *http.Request, req ass
 	}
 
 	send("proposal", toAssistProposalResponse(proposal))
+}
+
+// paramsOrEmpty keeps params an object rather than null. The client reads them
+// in exactly one place, and a null there is one more branch for no gain -- the
+// same reasoning as the response slices always being [].
+func paramsOrEmpty(p map[string]string) map[string]string {
+	if p == nil {
+		return map[string]string{}
+	}
+	return p
 }
 
 // assistErrorCode gives the client something stable to branch on, since the

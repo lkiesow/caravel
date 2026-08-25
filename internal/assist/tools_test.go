@@ -204,7 +204,9 @@ func TestSourcesAreDeduplicated(t *testing.T) {
 	}
 }
 
-// Progress events carry i18n keys and parameters, never English sentences:
+// Every tool call reports twice: a progress event when it starts, which is the
+// live status line, and a step event when it ends, which is what the trace
+// accumulates. Both carry i18n keys and parameters, never English sentences --
 // the server does not know the user's language, and a translated string on the
 // wire cannot be re-rendered when they switch locale mid-run.
 func TestToolsEmitProgressEventsAsKeys(t *testing.T) {
@@ -212,17 +214,63 @@ func TestToolsEmitProgressEventsAsKeys(t *testing.T) {
 	ts := newToolset(&stubSearcher{}, newPageFetcher(), nil, func(e Event) { events = append(events, e) }, nil)
 	ts.dispatch(context.Background(), callTo(toolWebSearch, `{"query":"Kex Hostel"}`))
 
-	if len(events) != 1 {
-		t.Fatalf("events = %+v, want one", events)
+	if len(events) != 2 {
+		t.Fatalf("events = %+v, want a start and an end", events)
 	}
-	if !strings.HasPrefix(events[0].Key, "assist.progress.") {
-		t.Errorf("key = %q, want an i18n key", events[0].Key)
+	start, end := events[0], events[1]
+
+	if start.Kind != EventProgress || !strings.HasPrefix(start.Key, "assist.progress.") {
+		t.Errorf("start = %+v, want a progress event with a progress key", start)
 	}
-	if strings.Contains(events[0].Key, " ") {
-		t.Errorf("key = %q looks like a sentence, not a key", events[0].Key)
+	if end.Kind != EventStep || !strings.HasPrefix(end.Key, "assist.step.") {
+		t.Errorf("end = %+v, want a step event with a step key", end)
 	}
-	if events[0].Params["query"] != "Kex Hostel" {
-		t.Errorf("params = %v, want the query", events[0].Params)
+	for _, e := range events {
+		if strings.Contains(e.Key, " ") {
+			t.Errorf("key = %q looks like a sentence, not a key", e.Key)
+		}
+		if e.Params["query"] != "Kex Hostel" {
+			t.Errorf("params = %v, want the query", e.Params)
+		}
+	}
+	if end.Failed {
+		t.Error("a search that worked was reported as failed")
+	}
+}
+
+// A step that did not work still appears, and says so. A trace that quietly
+// omitted the page that would not load would be describing a run that did not
+// happen -- and a failed read is often the whole explanation for a thin
+// proposal.
+func TestAFailedToolCallIsStillATracedStep(t *testing.T) {
+	var events []Event
+	ts := newToolset(&failingSearcher{}, newPageFetcher(), nil, func(e Event) { events = append(events, e) }, nil)
+	ts.dispatch(context.Background(), callTo(toolWebSearch, `{"query":"Kex Hostel"}`))
+
+	if len(events) != 2 {
+		t.Fatalf("events = %+v, want a start and an end", events)
+	}
+	if !events[1].Failed {
+		t.Errorf("step = %+v, want it marked failed", events[1])
+	}
+}
+
+// Arguments that are not JSON at all are the case where a reader most wants
+// the call listed: the model spent a turn on something malformed. The step
+// appears with no parameter rather than not appearing.
+func TestAnUnreadableToolCallIsStillTraced(t *testing.T) {
+	var events []Event
+	ts := newToolset(&stubSearcher{}, newPageFetcher(), nil, func(e Event) { events = append(events, e) }, nil)
+	ts.dispatch(context.Background(), callTo(toolWebSearch, `not json at all`))
+
+	if len(events) != 2 {
+		t.Fatalf("events = %+v, want a start and an end", events)
+	}
+	if events[1].Params["query"] != "" {
+		t.Errorf("params = %v, want none", events[1].Params)
+	}
+	if !events[1].Failed {
+		t.Error("a call with unreadable arguments was not marked failed")
 	}
 }
 
@@ -233,11 +281,13 @@ func TestFetchProgressEventReportsOnlyTheHost(t *testing.T) {
 	ts := newToolset(nil, newPageFetcher(), nil, func(e Event) { events = append(events, e) }, nil)
 	ts.dispatch(context.Background(), callTo(toolFetchPage, `{"url":"https://example.invalid/a/very/long/path?tracking=1"}`))
 
-	if len(events) != 1 {
-		t.Fatalf("events = %+v, want one", events)
+	if len(events) != 2 {
+		t.Fatalf("events = %+v, want a start and an end", events)
 	}
-	if got := events[0].Params["url"]; got != "example.invalid" {
-		t.Errorf("url param = %q, want just the host", got)
+	for _, e := range events {
+		if got := e.Params["url"]; got != "example.invalid" {
+			t.Errorf("url param = %q, want just the host", got)
+		}
 	}
 }
 

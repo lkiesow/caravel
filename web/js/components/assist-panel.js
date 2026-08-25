@@ -48,6 +48,19 @@ const PROGRESS_KEYS = new Set([
   "assist.progress.wrappingUp",
 ]);
 
+// The step keys the server may send, spelled out for the same two reasons as
+// PROGRESS_KEYS above: an unknown key from a newer server falls back rather
+// than rendering a raw key at somebody, and scripts/i18n.py cannot follow a
+// variable into t().
+const STEP_KEYS = new Set([
+  "assist.step.thinking",
+  "assist.step.searching",
+  "assist.step.reading",
+  "assist.step.checkingMap",
+  "assist.step.checkingLinks",
+  "assist.step.composing",
+]);
+
 const ERROR_KEYS = {
   assist_timeout: "assist.error.timeout",
   assist_budget: "assist.error.budget",
@@ -94,6 +107,8 @@ export function renderAssistPanel(container, { tripId, root, readCurrent, applyF
       <p class="assist__error" role="alert" hidden></p>
       <p class="assist__note" role="status" hidden></p>
 
+      <div class="assist__trace-slot"></div>
+
       <div class="assist__bar" hidden>
         <span class="assist__count"></span>
         <div class="assist__bar-actions">
@@ -118,6 +133,7 @@ export function renderAssistPanel(container, { tripId, root, readCurrent, applyF
   const noteEl = container.querySelector(".assist__note");
   const barEl = container.querySelector(".assist__bar");
   const countEl = container.querySelector(".assist__count");
+  const traceSlot = container.querySelector(".assist__trace-slot");
 
   let controller = null;
   // Every suggestion currently on the page, so Accept all / Dismiss all have
@@ -129,6 +145,12 @@ export function renderAssistPanel(container, { tripId, root, readCurrent, applyF
   // The sources box, tracked separately so "Dismiss all" can clear it without
   // it ever being counted or accepted.
   let sourcesBox = null;
+  // The run trace: every step as it finishes, and the totals when the run
+  // closes. Collected during the run and rendered once at the end rather than
+  // grown row by row -- a list that reflows while you are reading the status
+  // line above it is worse than one that appears complete.
+  let steps = [];
+  let totals = null;
 
   function setRunning(running) {
     statusEl.hidden = !running;
@@ -172,6 +194,96 @@ export function renderAssistPanel(container, { tripId, root, readCurrent, applyF
   function clearSources() {
     sourcesBox?.remove();
     sourcesBox = null;
+  }
+
+  function clearTrace() {
+    steps = [];
+    totals = null;
+    traceSlot.replaceChildren();
+  }
+
+  // Seconds to one decimal, which is the resolution that distinguishes a step
+  // worth looking at from one that is not. Milliseconds would be noise and
+  // whole seconds would render every quick step as "0 s".
+  function seconds(ms) {
+    return t("assist.trace.seconds", { seconds: (Math.max(0, ms) / 1000).toFixed(1) });
+  }
+
+  // The run trace: what the assistant actually did, collapsed.
+  //
+  // Always rendered, not gated on a setting. It costs one closed line, it
+  // describes the reader's own run, and "what did it do to get this" is a
+  // question about trust rather than about debugging. The server has the same
+  // account at debug level for whoever runs the instance.
+  function renderTrace() {
+    traceSlot.replaceChildren();
+    if (steps.length === 0) return;
+
+    const details = document.createElement("details");
+    details.className = "assist-trace";
+
+    const summary = document.createElement("summary");
+    summary.className = "assist-trace__summary";
+    // Drawn, not the UA marker: `display: flex` on a <summary> removes the
+    // triangle, which is the same trap itinerary-tab.js documents. icon()
+    // returns markup rather than a node, and this is the one place in the file
+    // where innerHTML is used -- safe because the string is a fixed literal
+    // with no run data anywhere in it.
+    summary.insertAdjacentHTML("afterbegin", icon("chevron-down", { className: "assist-trace__chevron" }));
+    const title = document.createElement("span");
+    title.className = "assist-trace__title";
+    title.textContent = t("assist.trace.title");
+    const meta = document.createElement("span");
+    meta.className = "assist-trace__meta";
+    meta.textContent = traceMeta();
+    summary.append(title, meta);
+
+    const list = document.createElement("ol");
+    list.className = "assist-trace__list";
+    for (const step of steps) {
+      const li = document.createElement("li");
+      li.className = "assist-trace__step";
+      if (step.failed) li.classList.add("assist-trace__step--failed");
+
+      const label = document.createElement("span");
+      label.className = "assist-trace__label";
+      // Every value here came off a web page the agent read, so it is placed
+      // as text and never as markup.
+      label.textContent = t(step.key, step.params ?? {});
+      li.appendChild(label);
+
+      if (step.failed) {
+        const failed = document.createElement("span");
+        failed.className = "assist-trace__failed";
+        failed.textContent = t("assist.step.failed");
+        li.appendChild(failed);
+      }
+
+      const ms = document.createElement("span");
+      ms.className = "assist-trace__ms";
+      ms.textContent = seconds(step.ms);
+      li.appendChild(ms);
+
+      list.appendChild(li);
+    }
+
+    details.append(summary, list);
+    traceSlot.appendChild(details);
+  }
+
+  // The heading line. Tokens are omitted rather than shown as zero: several
+  // OpenAI-compatible servers report no usage at all, and a confident 0 there
+  // reads as "this was free".
+  function traceMeta() {
+    const parts = [];
+    if (totals) {
+      parts.push(seconds(totals.ms));
+      parts.push(t("assist.trace.steps", { count: totals.steps }, totals.steps));
+      if (totals.tokens > 0) parts.push(t("assist.trace.tokens", { count: totals.tokens }));
+    } else {
+      parts.push(t("assist.trace.steps", { count: steps.length }, steps.length));
+    }
+    return parts.join(" · ");
   }
 
   // One suggestion, built with DOM calls rather than a template string: every
@@ -247,8 +359,10 @@ export function renderAssistPanel(container, { tripId, root, readCurrent, applyF
     }
 
     // A second run replaces the first run's suggestions rather than piling up
-    // two opinions under one field.
+    // two opinions under one field, and its trace likewise describes this run
+    // rather than the last one.
     clearSuggestions();
+    clearTrace();
 
     controller = new AbortController();
     setRunning(true);
@@ -266,11 +380,21 @@ export function renderAssistPanel(container, { tripId, root, readCurrent, applyF
             if (event.name === "progress") {
               const key = PROGRESS_KEYS.has(event.data.key) ? event.data.key : "assist.progress.thinking";
               progressEl.textContent = t(key, event.data.params ?? {});
-            } else if (event.name === "proposal") proposal = event.data;
+            } else if (event.name === "step") {
+              // An unknown key from a newer server would render as a raw key,
+              // so it is dropped instead. The count in the heading comes from
+              // the server's own total, so it still adds up.
+              if (STEP_KEYS.has(event.data.key)) steps.push(event.data);
+            } else if (event.name === "summary") totals = event.data;
+            else if (event.name === "proposal") proposal = event.data;
             else if (event.name === "error") failure = event.data;
           },
         }
       );
+
+      // Rendered before the branches below, because a run that failed or found
+      // nothing is exactly the one somebody wants an account of.
+      renderTrace();
 
       if (failure) {
         showError(ERROR_KEYS[failure.code] ?? "assist.error.failed");
@@ -381,6 +505,9 @@ export function renderAssistPanel(container, { tripId, root, readCurrent, applyF
     // A copy, because accept() mutates the list it is iterating.
     for (const entry of [...outstanding]) entry.accept();
   });
+  // Dismiss all clears the proposal, not the account of how it was reached:
+  // the run still happened, and the trace is the answer to "why was that
+  // useless?" -- which is the likeliest question at that moment.
   container.querySelector('[data-action="assist-dismiss-all"]').addEventListener("click", clearSuggestions);
 
   // Enter in the prompt runs it, and must not reach the form's own keydown

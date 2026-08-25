@@ -455,6 +455,89 @@ browser: German, dark mode, and 324×756 with no horizontal overflow — a
 trace row holds a URL and a duration, which is exactly the content that
 overflows a 324px screen.
 
+**Done.** The trace ships, always available and with no configuration -- the
+open decision above was settled that way: it costs one closed line, it
+describes the reader's own run, and it can be hidden later if it turns out to
+be in the way.
+
+**Three event kinds, not one with a duration bolted on.** `assist.Event` gained
+a `Kind`: `EventProgress` (the zero value, so every existing construction still
+means "say this in the status line"), `EventStep` and `EventSummary`. Progress
+fires when a step *starts* and is replaced; a step fires when it *ends* and is
+accumulated. Putting a duration on a progress event would have meant either
+holding the status line back until the step finished, or shipping a duration of
+zero.
+
+**The dispatcher now owns both halves of a tool step.** `doSearch`, `doFetch`
+and `doGeocode` each used to emit their own progress event; the timing had to
+be measured somewhere, and doing it in three places would have measured it
+three ways. `describeCall` maps a tool name and its raw arguments to the two
+keys and the parameter, and `dispatch` emits the start, times the call, and
+emits the step. A fourth tool gets its trace for nothing.
+
+Reading the argument in the dispatcher rather than passing it out of the tool
+function has a payoff the plan did not anticipate: **a call whose arguments do
+not parse is still traced**, which is exactly when a reader most wants to see
+that the model spent a turn on something malformed.
+
+**The summary is deferred.** A run that timed out or failed is the one somebody
+most wants an account of, so it closes the run however the run ends rather than
+only on the success path. `emit` counts steps centrally, so the total in the
+heading cannot drift from the list underneath it -- a trace that contradicts
+itself on its own first line would be worse than none.
+
+**Two real bugs found by looking at the working page**, neither of which any
+test would have caught:
+
+1. **`t()` clobbers a `count` supplied in params.** The tokens line rendered as
+   a literal `{count} tokens`. `Object.entries({ ...params, count })` sets
+   `count` to `undefined` when the third argument is absent, overwriting the
+   one in params, and the `value !== undefined` guard then skips it. Every
+   caller in the app happened to pass both, so this had never fired.
+   **Fixed in `i18n.js` rather than worked around at the call site**, because
+   the next person to want a placeholder without a plural would hit it too.
+   The spec now asserts a number rather than a placeholder.
+2. **The trace heading collapsed at 324px in German.** `.assist-trace__meta` is
+   `nowrap` with `margin-left: auto`, and flex items shrink before they wrap --
+   so "0.1 s · 9 Schritte · 3000 Tokens" took the line and squeezed "Was die KI
+   gemacht hat" into a four-line column one word wide. `flex-wrap: wrap` plus a
+   `min-width` floor on the title drops the totals to their own line instead.
+
+**And one accessibility failure found by measuring rather than assuming.** The
+failed marker in `--color-danger-fg` at 13px measures **4.39:1** against the
+card -- under the 4.5 this app holds normal text to, and 13px is not "large
+text" at any weight, so bolding would not have helped. The fix is the idiom
+`.image-field__error` established: full-contrast text, with the red carried by
+a left border and the danger tint. Every row already has a transparent
+left border so a failed one colours without shifting its neighbours sideways.
+
+**Verified.** `make ci` green with i18n parity at 358 keys, `scripts/i18n.py
+unused` reporting no orphaned assist keys. Go tests cover the contract the UI
+is built on: a step per turn and per tool call, exactly one summary and it is
+last, the summary's step count matching the number of steps actually sent, a
+failed tool call still traced and marked, an unparseable one traced too, and a
+summary closing a *failed* run. The transport tests assert step and summary
+events arrive over SSE with i18n keys and never-null params.
+
+Playwright: the trace is present and closed after a run, its heading counts
+what the list holds, opening it shows a row per step, both fixture hosts appear
+as "Read ..." rows, every row carries a duration matching `/^[\d.]+ s$/`, and
+"Dismiss all" clears the suggestions and the sources while leaving the trace --
+the run still happened, and "why was that useless?" is the likeliest question
+at that moment.
+
+Then by hand against a stub-configured server. German and dark at 324x756: the
+heading is a 44px tap target on one line with the totals wrapped beneath, no
+horizontal overflow. English and light at 1280px: title left, totals right, one
+row per step. Contrast measured in both themes on both a plain and a failed
+row -- 7.03 and 6.25 light, 5.81 and 4.72 dark, with the failed marker at 14.34
+and 11.60. All above 4.5.
+
+**One copy change made while looking at it**: the per-turn label was "Thought
+about what to do next", which appears four times in a nine-step trace and read
+as filler at 324px. It is now "Worked out what to do next" / "Nächsten Schritt
+überlegt", the German being the half that actually needed shortening.
+
 ---
 
 ## 4. Speed, measured

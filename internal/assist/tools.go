@@ -144,6 +144,7 @@ func (t *toolset) dispatch(ctx context.Context, call toolCall) string {
 
 	fn, ok := t.lookup(name)
 	if !ok {
+		t.log.Debug("assist: tool unknown", "name", name)
 		// Models occasionally invent a tool. Saying so plainly is more useful
 		// than silence, and cheaper than a turn spent waiting.
 		t.log.Debug("assist: tool unknown", "name", name)
@@ -159,8 +160,22 @@ func (t *toolset) dispatch(ctx context.Context, call toolCall) string {
 	// result_bytes rather than the result: a fetched page is up to
 	// fetchMaxTextBytes of third-party text, and its size is what actually
 	// answers "why did this run cost so much".
+	// Both halves of a step are announced here rather than inside each tool:
+	// the live status line when it starts, and the trace entry when it ends.
+	// One place owns the timing, so all three tools are measured identically
+	// and a fourth gets its trace for free.
+	progressKey, stepKey, params := describeCall(name, args)
+	t.events(Event{Key: progressKey, Params: params})
+
 	started := time.Now()
 	out, err := fn(ctx, args)
+	t.events(Event{
+		Kind:       EventStep,
+		Key:        stepKey,
+		Params:     params,
+		DurationMS: time.Since(started).Milliseconds(),
+		Failed:     err != nil,
+	})
 	attrs := []any{
 		"name", name,
 		"args", string(args),
@@ -212,8 +227,6 @@ func (t *toolset) doSearch(ctx context.Context, args json.RawMessage) (string, e
 		return "", fmt.Errorf("the query was empty")
 	}
 
-	t.events(Event{Key: "assist.progress.searching", Params: map[string]string{"query": in.Query}})
-
 	results, err := t.search.Search(ctx, in.Query)
 	if err != nil {
 		return "", fmt.Errorf("the search failed: %w", err)
@@ -239,8 +252,6 @@ func (t *toolset) doFetch(ctx context.Context, args json.RawMessage) (string, er
 	if err := json.Unmarshal(args, &in); err != nil {
 		return "", fmt.Errorf("the arguments were not valid JSON: %w", err)
 	}
-
-	t.events(Event{Key: "assist.progress.reading", Params: map[string]string{"url": hostOf(in.URL)}})
 
 	fetched, err := t.fetch.Fetch(ctx, in.URL)
 	if err != nil {
@@ -274,8 +285,6 @@ func (t *toolset) doGeocode(ctx context.Context, args json.RawMessage) (string, 
 		return "", fmt.Errorf("the query was empty")
 	}
 
-	t.events(Event{Key: "assist.progress.checkingMap", Params: map[string]string{"query": in.Query}})
-
 	results, err := t.geocoder.Search(ctx, in.Query)
 	if err != nil {
 		return "", fmt.Errorf("the lookup failed: %w", err)
@@ -293,6 +302,45 @@ func (t *toolset) doGeocode(ctx context.Context, args json.RawMessage) (string, 
 		fmt.Fprintf(&b, "%d. %s\n", i+1, r.DisplayName)
 	}
 	return b.String(), nil
+}
+
+// describeCall turns a tool call into the two keys and the parameters the UI
+// needs: what to say while it runs, and what to say about it afterwards.
+//
+// The argument is read here rather than passed out of the tool functions
+// because the trace has to be able to describe a call that *failed to parse*
+// its arguments -- which is exactly when a reader most wants to see the call
+// listed. Both fields are optional and only one is ever set; a call whose
+// arguments are unreadable simply has no parameter, and the step still
+// appears.
+func describeCall(name string, args json.RawMessage) (progressKey, stepKey string, params map[string]string) {
+	var in struct {
+		Query string `json:"query"`
+		URL   string `json:"url"`
+	}
+	_ = json.Unmarshal(args, &in)
+
+	switch name {
+	case toolWebSearch:
+		return "assist.progress.searching", "assist.step.searching", param("query", strings.TrimSpace(in.Query))
+	case toolFetchPage:
+		// The host, not the URL: a full URL from a search result is long and
+		// attacker-influenced, and the host is the part a person reads.
+		return "assist.progress.reading", "assist.step.reading", param("url", hostOf(in.URL))
+	case toolGeocode:
+		return "assist.progress.checkingMap", "assist.step.checkingMap", param("query", strings.TrimSpace(in.Query))
+	default:
+		// A tool the model invented. It still gets a trace line, because "it
+		// spent a turn calling something that does not exist" is worth seeing.
+		return "assist.progress.thinking", "assist.step.thinking", nil
+	}
+}
+
+func param(key, value string) map[string]string {
+	if value == "" {
+		return nil
+	}
+	return map[string]string{key: value}
 }
 
 func (t *toolset) record(s Source) {

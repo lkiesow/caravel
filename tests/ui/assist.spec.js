@@ -144,6 +144,38 @@ test.describe("AI assistant", () => {
     // came from: the sources are an explanation, not an outstanding decision.
     await expect(sources).toBeVisible();
 
+    // The run trace: what the assistant actually did. Closed by default -- it
+    // explains the suggestions rather than competing with them -- and always
+    // present, with no setting gating it.
+    const trace = page.locator(".assist-trace");
+    await expect(trace).toBeVisible();
+    await expect(trace).not.toHaveAttribute("open", /.*/);
+    await expect(trace.locator(".assist-trace__title")).toHaveText("What the assistant did");
+
+    // The heading counts what the list holds. A trace that contradicts itself
+    // on its own first line is worse than no trace.
+    const rows = trace.locator(".assist-trace__step");
+    const rowCount = await rows.count();
+    expect(rowCount, "a step per model turn and per tool call").toBeGreaterThanOrEqual(3);
+    const meta = trace.locator(".assist-trace__meta");
+    await expect(meta).toContainText(`${rowCount} steps`);
+    // A number, not a literal "{count}". t() used to drop a `count` supplied
+    // in params whenever the plural argument was absent, which is exactly the
+    // shape this line uses.
+    await expect(meta).toContainText(/\d+ tokens/);
+
+    await trace.locator("summary").click();
+    await expect(trace).toHaveAttribute("open", /.*/);
+
+    // The stub reads two pages, so the trace names both hosts it fetched --
+    // the whole point of the list is that it says what was actually read.
+    await expect(rows.filter({ hasText: "Read " })).toHaveCount(2);
+    // Every row carries a duration, which is what makes it a trace rather than
+    // a list of things that happened.
+    for (const ms of await trace.locator(".assist-trace__ms").allTextContents()) {
+      expect(ms, "a step duration").toMatch(/^[\d.]+ s$/);
+    }
+
     // Nothing has been written yet. Saving is what commits, exactly as if
     // every field had been typed.
     await page.locator('[data-action="save"]').click();
@@ -176,11 +208,14 @@ test.describe("AI assistant", () => {
     await expect(page.locator('[data-assist-field="title"] .assist-suggestion')).toHaveCount(0);
 
     // Dismiss all applies nothing at all, and takes the sources with it: they
-    // belong to a proposal nobody is looking at any more.
+    // belong to a proposal nobody is looking at any more. The trace stays --
+    // the run still happened, and "why was that useless?" is the likeliest
+    // question at exactly this moment.
     await expect(page.locator(".assist-sources")).toBeVisible();
     await page.locator('[data-action="assist-dismiss-all"]').click();
     await expect(page.locator(".assist-suggestion")).toHaveCount(0);
     await expect(page.locator(".assist-sources")).toHaveCount(0);
+    await expect(page.locator(".assist-trace")).toBeVisible();
     await expect(page.locator(".assist__bar")).toBeHidden();
     await expect(page.locator('textarea[name="notes"]')).toHaveValue(handwritten);
 

@@ -126,9 +126,14 @@ func TestAssistStreamsProgressThenProposal(t *testing.T) {
 	if last.Name != "proposal" {
 		t.Fatalf("last event = %q, want proposal (all: %+v)", last.Name, events)
 	}
+	// Everything before the proposal is one of the three in-flight kinds. The
+	// proposal is always last, because the client only has a complete picture
+	// once it has arrived.
 	for _, e := range events[:len(events)-1] {
-		if e.Name != "progress" {
-			t.Errorf("event %q before the proposal, want progress", e.Name)
+		switch e.Name {
+		case "progress", "step", "summary":
+		default:
+			t.Errorf("event %q before the proposal, want progress, step or summary", e.Name)
 		}
 	}
 
@@ -601,4 +606,74 @@ func (c *capturingAssistant) Propose(_ context.Context, req assist.Request, even
 	c.mu.Unlock()
 	events(assist.Event{Key: "assist.progress.thinking"})
 	return &assist.Proposal{Fields: []assist.Field{{Name: "type", Proposed: "hostel"}}}, nil
+}
+
+// The run trace the editor renders is built from step and summary events, so
+// their arrival and their shape are a transport contract, not an internal
+// detail of the agent.
+func TestAssistStreamsStepsAndASummary(t *testing.T) {
+	ts := newTestServer(t)
+	ts.Assist = stubAssistant(t)
+	srv := ts.liveServer(t)
+	cookie := ts.login("alice")
+	tripID := ts.createTrip(cookie, "Iceland")
+
+	events := readSSE(t, bufio.NewReader(postAssist(t, srv, cookie, tripID, enrichBody).Body))
+
+	var steps []sseEvent
+	var summaries []sseEvent
+	for _, e := range events {
+		switch e.Name {
+		case "step":
+			steps = append(steps, e)
+		case "summary":
+			summaries = append(summaries, e)
+		}
+	}
+
+	if len(steps) == 0 {
+		t.Fatalf("no step events arrived (all: %+v)", events)
+	}
+	if len(summaries) != 1 {
+		t.Fatalf("got %d summary events, want exactly one", len(summaries))
+	}
+
+	for _, e := range steps {
+		var step struct {
+			Key    string            `json:"key"`
+			Params map[string]string `json:"params"`
+			MS     int64             `json:"ms"`
+			Failed bool              `json:"failed"`
+		}
+		if err := json.Unmarshal([]byte(e.Data), &step); err != nil {
+			t.Fatalf("decode step: %v", err)
+		}
+		if !strings.HasPrefix(step.Key, "assist.step.") {
+			t.Errorf("step key = %q, want an i18n key the client can render", step.Key)
+		}
+		// Never null: the client reads params in one place, and a null there
+		// is one more branch for no gain.
+		if step.Params == nil {
+			t.Errorf("step %q has null params, want an object", step.Key)
+		}
+	}
+
+	var summary struct {
+		MS        int64 `json:"ms"`
+		Steps     int   `json:"steps"`
+		Turns     int   `json:"turns"`
+		ToolCalls int   `json:"tool_calls"`
+		Tokens    int   `json:"tokens"`
+	}
+	if err := json.Unmarshal([]byte(summaries[0].Data), &summary); err != nil {
+		t.Fatalf("decode summary: %v", err)
+	}
+	// The heading counts what the list holds, or the trace contradicts itself
+	// on its own first line.
+	if summary.Steps != len(steps) {
+		t.Errorf("summary counts %d steps, %d arrived", summary.Steps, len(steps))
+	}
+	if summary.Turns == 0 || summary.Tokens == 0 {
+		t.Errorf("summary = %+v, want the totals filled in", summary)
+	}
 }

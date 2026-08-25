@@ -118,7 +118,15 @@ export function t(key, params = {}, count) {
     lookupKey = `${key}_plural`;
   }
   let text = messages[lookupKey] ?? messages[key] ?? key;
-  for (const [name, value] of Object.entries({ ...params, count })) {
+  // The third argument overrides a `count` in params -- but only when it was
+  // actually given. Spreading `{ ...params, count }` unconditionally sets
+  // count to undefined when the argument is absent, which clobbers a count
+  // supplied in params and leaves a literal "{count}" in the rendered string.
+  // Every caller happened to pass both until assist.trace.tokens, which wants
+  // the placeholder without the plural.
+  const values = { ...params };
+  if (typeof count === "number") values.count = count;
+  for (const [name, value] of Object.entries(values)) {
     if (value !== undefined) text = text.replaceAll(`{${name}}`, value);
   }
   return text;

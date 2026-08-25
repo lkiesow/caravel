@@ -622,9 +622,87 @@ func TestProgressEventsAreEmittedThroughTheRun(t *testing.T) {
 		t.Fatalf("events = %v, want several", keys)
 	}
 	for _, k := range keys {
-		if !strings.HasPrefix(k, "assist.progress.") {
+		// The summary carries no key; everything else is one, and never a
+		// sentence.
+		if k == "" {
+			continue
+		}
+		if !strings.HasPrefix(k, "assist.progress.") && !strings.HasPrefix(k, "assist.step.") {
 			t.Errorf("event key %q is not an i18n key", k)
 		}
+	}
+}
+
+// The trace the editor renders is built entirely from these events, so their
+// shape is a contract: a step for each thing the run did, and exactly one
+// summary, last.
+func TestStepAndSummaryEventsCloseOutARun(t *testing.T) {
+	var events []Event
+	a := agentWith(
+		turnCalling(toolWebSearch, `{"query":"Kex"}`),
+		stubTurn{Content: "done"},
+		stubTurn{Content: answerJSON(t, modelProposal{Category: "stay"})},
+	)
+	a.search = &stubSearcher{}
+
+	if _, err := a.Propose(context.Background(), enrichRequest(), func(e Event) {
+		events = append(events, e)
+	}); err != nil {
+		t.Fatalf("Propose: %v", err)
+	}
+
+	var steps []Event
+	var summaries []Event
+	for _, e := range events {
+		switch e.Kind {
+		case EventStep:
+			steps = append(steps, e)
+		case EventSummary:
+			summaries = append(summaries, e)
+		}
+	}
+
+	if len(summaries) != 1 {
+		t.Fatalf("got %d summary events, want exactly one", len(summaries))
+	}
+	if events[len(events)-1].Kind != EventSummary {
+		t.Errorf("last event is %+v, want the summary", events[len(events)-1])
+	}
+
+	// Two model turns and one search, at least.
+	if len(steps) < 3 {
+		t.Errorf("steps = %+v, want one per turn and per tool call", steps)
+	}
+	// The count in the heading has to match the list under it, or the trace
+	// contradicts itself on its own first line.
+	if got := summaries[0].Totals.Steps; got != len(steps) {
+		t.Errorf("summary counts %d steps, %d were sent", got, len(steps))
+	}
+	if summaries[0].Totals.Turns != 2 {
+		t.Errorf("turns = %d, want 2", summaries[0].Totals.Turns)
+	}
+	if summaries[0].Totals.ToolCalls != 1 {
+		t.Errorf("tool calls = %d, want 1", summaries[0].Totals.ToolCalls)
+	}
+	if summaries[0].Totals.Tokens == 0 {
+		t.Error("the summary reports no tokens; the stub reports usage")
+	}
+}
+
+// A run that failed is exactly when somebody wants to see what it managed to
+// do, so the summary is deferred rather than written on the success path.
+func TestASummaryClosesAFailedRunToo(t *testing.T) {
+	var events []Event
+	a := agentWith(stubTurn{Err: errors.New("the provider fell over")})
+
+	if _, err := a.Propose(context.Background(), enrichRequest(), func(e Event) {
+		events = append(events, e)
+	}); err == nil {
+		t.Fatal("Propose succeeded; this run is meant to fail")
+	}
+
+	if len(events) == 0 || events[len(events)-1].Kind != EventSummary {
+		t.Fatalf("events = %+v, want a summary last", events)
 	}
 }
 

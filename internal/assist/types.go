@@ -137,8 +137,32 @@ type Source struct {
 	URL   string
 }
 
-// Event is a progress report from a run in flight.
+// EventKind separates the three things a run reports.
+//
+// The zero value is EventProgress, deliberately: every existing construction
+// is Event{Key: ...} and means "say this in the status line".
+type EventKind string
+
+const (
+	// EventProgress is the live status line: what is happening *now*. Fired
+	// when a step starts, replaced by the next one, and never accumulated.
+	EventProgress EventKind = ""
+	// EventStep is one finished step, with how long it took. Fired when a step
+	// *ends*, and accumulated by the client into the run trace.
+	//
+	// A separate kind rather than a duration bolted onto progress, because the
+	// two answer different questions and arrive at different moments. A
+	// progress event with a duration would either delay the status line until
+	// the step finished, or carry a duration of zero.
+	EventStep EventKind = "step"
+	// EventSummary closes a run: the totals for the trace heading. Last.
+	EventSummary EventKind = "summary"
+)
+
+// Event is a report from a run in flight.
 type Event struct {
+	// Kind selects how the client treats this. Zero value is progress.
+	Kind EventKind
 	// Key is an i18n key ("assist.progress.searching"), not a sentence. The
 	// server does not write UI copy: it does not know the user's language,
 	// and a translated string arriving over the wire cannot be re-rendered
@@ -148,4 +172,26 @@ type Event struct {
 	// the host being fetched. Values are data, so the client must escape them
 	// on render: a page title from a search result is attacker-influenced.
 	Params map[string]string
+
+	// DurationMS is how long the step took. EventStep only.
+	DurationMS int64
+	// Failed marks a step that did not do what it set out to. EventStep only,
+	// and not an error: a page that would not load is something the run
+	// recovers from, and the trace should say so rather than hide it.
+	Failed bool
+
+	// Totals closes the run. EventSummary only.
+	Totals Totals
+}
+
+// Totals is what a finished run cost, for the trace heading.
+type Totals struct {
+	DurationMS int64
+	Steps      int
+	Turns      int
+	ToolCalls  int
+	// Tokens is zero when the provider reports no usage, which several
+	// OpenAI-compatible servers do. The client omits it rather than showing a
+	// confident zero.
+	Tokens int
 }

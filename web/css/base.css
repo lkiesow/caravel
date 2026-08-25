@@ -3687,6 +3687,117 @@ button {
   margin-top: 0.625rem;
 }
 
+/* --- The run trace -------------------------------------------------------- */
+
+/* What the assistant did, collapsed. Quieter than the suggestions above it:
+   this is an explanation of the run, not part of the task, and it should be
+   findable without competing for attention with the thing being reviewed. */
+
+.assist-trace {
+  margin-top: 0.75rem;
+  font-size: 0.8125rem;
+}
+
+/* :empty keeps an unused slot out of the layout entirely, the same idiom the
+   [data-assist-field] slots use -- an idle panel must not carry the height of
+   a trace that is not there. */
+.assist__trace-slot:empty {
+  display: none;
+}
+
+.assist-trace__summary {
+  display: flex;
+  align-items: center;
+  /* Wrapping, not shrinking. Flex items shrink by default, so at 324px the
+     nowrap totals below took most of the line and squeezed the title into a
+     four-line column one word wide. With wrap plus a floor on the title, the
+     totals drop to their own line instead. */
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  /* The tap target, not the text. 44px is the floor the sweeps enforce, and a
+     summary this small would otherwise be a 17px line to hit on a phone. */
+  min-height: var(--tap-min, 2.75rem);
+  cursor: pointer;
+  color: var(--color-text-muted);
+  /* display:flex removes the UA disclosure triangle, which is why the chevron
+     below is drawn. Stated here because the cause and the fix are in two
+     different rules. */
+  list-style: none;
+}
+
+.assist-trace__summary::-webkit-details-marker {
+  display: none;
+}
+
+.assist-trace__chevron {
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.assist-trace[open] .assist-trace__chevron {
+  transform: rotate(180deg);
+}
+
+.assist-trace__title {
+  flex: 1 1 auto;
+  min-width: 8rem;
+}
+
+/* The totals sit at the right edge on a wide screen and wrap under the title
+   on a narrow one, rather than squeezing the title into two words. */
+.assist-trace__meta {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.assist-trace__list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0.25rem;
+}
+
+.assist-trace__step {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.1875rem 0 0.1875rem 0.5rem;
+  color: var(--color-text-muted);
+  /* Transparent by default so a failed row can colour it without shifting the
+     rows around it sideways. */
+  border-left: 3px solid transparent;
+}
+
+/* A step label holds a host or a search term, both of which can be long and
+   neither of which the user chose. It wraps; the duration never does, so the
+   column stays readable. */
+.assist-trace__label {
+  overflow-wrap: anywhere;
+}
+
+.assist-trace__ms {
+  margin-left: auto;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A step that did not work is marked rather than hidden: a failed page read is
+   often the entire explanation for a thin proposal.
+
+   The red is in the border and the tint, not in the text. --color-danger-fg on
+   13px normal-weight text measures 4.39:1 against the card, under the 4.5 this
+   app holds normal text to -- and 13px is not "large text" at any weight, so
+   bolding it would not help. .image-field__error solved the same problem the
+   same way first: full-contrast text, danger colour carried by the edge. */
+.assist-trace__step--failed {
+  border-left-color: var(--color-danger-fg);
+  background: var(--color-danger-tint);
+}
+
+.assist-trace__failed {
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
 /* --- Sources ------------------------------------------------------------- */
 
 .assist-sources {

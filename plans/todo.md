@@ -105,18 +105,6 @@ down.
       optional `item_id`, which would give a per-location cost on the location
       view. One nullable column and a select.
 
-- **The assistant's run trace is only in the log, not in the browser.**
-  **(soon)** (Stage 21 Milestone 2.) `CARAVEL_LOG_LEVEL=debug` now makes a run
-  account for itself -- every turn with its wall time and tokens, every tool
-  call, why the loop stopped, what was proposed and dropped. The other half is
-  not built: the person *using* the app still sees a progress line and then a
-  proposal, with no way to ask what was done to produce it. The shape agreed
-  when this stage was scoped is a collapsed `<details>` under the suggestions,
-  following the one precedent for that element (`itinerary-tab.js:95-115`).
-  Progress events today are fire-at-start only and carry no timing
-  (`Event{Key, Params}`), so `assist.Event` needs a duration and an outcome,
-  a completion event per step, and a summary event at the end of a run.
-
 - **SearXNG as a search backend.** (Stage 16 Milestone 8.) Planned for that
   milestone and dropped: nobody had an instance to test against, and a backend
   verified only against a fake is a backend nobody should trust. Everything

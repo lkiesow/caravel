@@ -325,6 +325,88 @@ live provider in `credentials.yaml`, reading the output to confirm it answers
 "where did the time go". Document `CARAVEL_LOG_LEVEL` in `.env.sample` and
 the configuration docs.
 
+**Done.** Both halves landed, and the trace answered the stage's central
+question on its first live run.
+
+**The seam.** `CARAVEL_LOG_LEVEL` (debug/info/warn/error, default info) and
+`CARAVEL_LOG_FORMAT` (text/json, default text) are parsed and *validated* in
+`internal/config` -- an unrecognised value is a startup error naming the
+variable, not a fall back to info, because somebody who wrote "verbose" and got
+silence would conclude the flag does nothing. `DEBUG+2`, which slog itself
+accepts, is refused: documenting that syntax buys a level with no name.
+`setupLogging` in `main.go` installs the handler as the default, so packages
+reach it with `slog.Default` rather than being handed a logger through five
+constructors.
+
+Every existing `log.` call site is converted -- `main.go` and `db.go` -- and a
+`fatal(what, err)` helper replaces `log.Fatalf` so a startup failure goes
+*through* the operator's logger rather than around it. One deliberate
+exception: `config.Load` failing is still written straight to stderr, because a
+malformed `CARAVEL_LOG_LEVEL` is one of the things it fails on and there is no
+logger to install yet. `cmd/seed` keeps `log`: it is a CLI writing to a person.
+
+**The trace.** `Options.Logger` (nil means `slog.Default`) plus a run-scoped
+child carrying a `run` number from an atomic counter, so two concurrent runs
+can be told apart in a log that interleaves them. Records at debug and nowhere
+else: run started with the whole configuration, one per turn with its wall
+time, finish reason and token usage, one per tool call, why gathering stopped,
+the composing turn on its own, every field proposed or not proposed with the
+reason, every link kept or dropped, which query resolved the coordinates, and a
+final total.
+
+The rule about what must never be logged is in the package comment and pinned
+by a test: a run with a distinctive fake key and the fixture pages text is
+asserted to contain neither, while still containing `result_bytes`.
+
+**The stale comment is now true.** `assist.go` said "the real error is in the
+server log for the operator" and nothing logged it. `streamAssistRun` now logs
+the provider actual error at **error** level, unconditionally -- the browser
+only ever sees a fixed sentence, so this was previously written down nowhere at
+all.
+
+**Two flaws the first live run exposed in the trace itself**, both fixed before
+committing, and both the kind only real output shows:
+
+1. **`turns` undercounted by one.** It reported the loop counter, and the
+   ordinary exit -- a turn with no tool calls -- breaks *inside* an iteration,
+   leaving the counter one behind the turns actually billed. A separate
+   `turnsUsed`, incremented after each answered call, is the honest number. A
+   trace whose job is accuracy must not miscount the thing it counts.
+2. **`err=<nil>` on every successful tool call.** A column of nothing in the
+   one place a reader is scanning for something. The attribute is now appended
+   only on failure.
+
+**Verified.** `make ci` green, `make docs` clean, the assist UI spec still
+passing. `go test` covers the level gate as an absolute -- a successful run at
+info, warn and error logs *nothing at all*, not merely less -- the presence of
+each of the six record kinds at debug, and the no-keys-no-page-bodies rule.
+`internal/config` gains a table over both variables including the two refusals.
+
+Then two live runs against the model in `credentials.yaml` with Serper, at
+debug. **The hypothesis in this plan Context section was right**, and this is
+the data Milestone 4 starts from:
+
+| | run 1 | run 2 |
+| --- | --- | --- |
+| total | 71.6s | 37.4s |
+| gathering | 18.1s | 25.7s |
+| **composing (one request)** | **53.5s** | **11.2s** |
+| turns | 3 | 4 |
+| tool calls | 3 | 4 |
+| tokens | 18.3k | 26.9k |
+
+The composing turn was **75% of the first run** and a third of the second, off
+the same prompt and the same place. Two observations for Milestone 4: the
+variance in that single request dwarfs everything the gathering phase does, and
+the three tool calls in run 1 cost 2.3s of the 71.6 between them -- so
+parallelising tool dispatch, the lever that looked most obviously right when
+this stage was scoped, would have saved about a second. That is exactly the
+kind of thing the measurement was for.
+
+The measuring harness was a throwaway `zz_live_test.go`, not committed;
+Milestone 4 should decide whether a skipped-by-default live harness is worth
+keeping, since it will want before-and-after runs of the same shape.
+
 ---
 
 ## 3. The run trace in the editor

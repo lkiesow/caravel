@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"slices"
 	"strconv"
@@ -11,6 +12,15 @@ import (
 )
 
 type Config struct {
+	// Logging. Parsed here rather than in main so a typo is a startup error
+	// naming the variable, which is the same rule every other setting follows.
+	//
+	// LogFormat is text by default because the log a self-hosted instance
+	// produces is read by a person in journalctl, not by a collector. The json
+	// alternative is there for anyone shipping it somewhere that parses.
+	LogLevel  slog.Level // CARAVEL_LOG_LEVEL
+	LogFormat string     // CARAVEL_LOG_FORMAT
+
 	Port      string
 	DBDriver  string // "sqlite" or "postgres"
 	DBDSN     string // sqlite file path, or postgres connection string
@@ -174,6 +184,18 @@ func Load() (Config, error) {
 	cfg.AssistRateLimit = pickInt("CARAVEL_ASSIST_RATE_LIMIT")
 	cfg.AssistMaxConcurrent = pickInt("CARAVEL_ASSIST_MAX_CONCURRENT")
 	cfg.TileMaxZoom = pickInt("CARAVEL_TILE_MAX_ZOOM")
+
+	level, err := parseLogLevel(os.Getenv("CARAVEL_LOG_LEVEL"))
+	if err != nil {
+		errs = append(errs, err)
+	}
+	cfg.LogLevel = level
+	format, err := parseLogFormat(os.Getenv("CARAVEL_LOG_FORMAT"))
+	if err != nil {
+		errs = append(errs, err)
+	}
+	cfg.LogFormat = format
+
 	if len(errs) > 0 {
 		return Config{}, errors.Join(errs...)
 	}
@@ -226,6 +248,50 @@ func Load() (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// LogFormats are the valid values for CARAVEL_LOG_FORMAT.
+var LogFormats = []string{"text", "json"}
+
+// logLevels maps what an operator writes to what slog uses. Only these four,
+// spelled in lower case: slog understands "DEBUG+2" and similar, and accepting
+// that here would mean documenting a syntax nobody wants and supporting a
+// level with no name.
+var logLevels = map[string]slog.Level{
+	"debug": slog.LevelDebug,
+	"info":  slog.LevelInfo,
+	"warn":  slog.LevelWarn,
+	"error": slog.LevelError,
+}
+
+// parseLogLevel reads CARAVEL_LOG_LEVEL. Empty means info.
+//
+// An unrecognised value is an error rather than a fall back to info, for the
+// reason that applies to every setting here: somebody who wrote "verbose" and
+// got silence would conclude the flag does nothing, which is a worse outcome
+// than a server that refuses to start and says what the four words are.
+func parseLogLevel(raw string) (slog.Level, error) {
+	name := strings.ToLower(strings.TrimSpace(raw))
+	if name == "" {
+		return slog.LevelInfo, nil
+	}
+	level, ok := logLevels[name]
+	if !ok {
+		return 0, fmt.Errorf("invalid CARAVEL_LOG_LEVEL %q: must be empty or one of debug, info, warn, error", raw)
+	}
+	return level, nil
+}
+
+// parseLogFormat reads CARAVEL_LOG_FORMAT. Empty means text.
+func parseLogFormat(raw string) (string, error) {
+	name := strings.ToLower(strings.TrimSpace(raw))
+	if name == "" {
+		return "text", nil
+	}
+	if !slices.Contains(LogFormats, name) {
+		return "", fmt.Errorf("invalid CARAVEL_LOG_FORMAT %q: must be empty or one of %s", raw, strings.Join(LogFormats, ", "))
+	}
+	return name, nil
 }
 
 // getEnvInt reads a non-negative integer, or 0 when unset. A negative or

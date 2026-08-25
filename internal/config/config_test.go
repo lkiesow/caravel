@@ -1,6 +1,7 @@
 package config
 
 import (
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -337,6 +338,70 @@ func TestLoadTileValidation(t *testing.T) {
 			}
 			if tc.check != nil {
 				tc.check(t, cfg)
+			}
+		})
+	}
+}
+
+// Logging. Both settings follow the same rule as every other one here: a value
+// nobody recognises is a startup error naming the variable, not a silent fall
+// back to the default. Somebody who wrote "verbose" and got info would
+// conclude the flag does nothing.
+func TestLogLevelAndFormat(t *testing.T) {
+	cases := []struct {
+		name    string
+		env     map[string]string
+		want    slog.Level
+		format  string
+		wantErr string
+	}{
+		{name: "unset defaults to info", want: slog.LevelInfo, format: "text"},
+		{name: "debug", env: map[string]string{"CARAVEL_LOG_LEVEL": "debug"}, want: slog.LevelDebug, format: "text"},
+		{name: "case and space are forgiven", env: map[string]string{"CARAVEL_LOG_LEVEL": " WARN "}, want: slog.LevelWarn, format: "text"},
+		{name: "error", env: map[string]string{"CARAVEL_LOG_LEVEL": "error"}, want: slog.LevelError, format: "text"},
+		{name: "json format", env: map[string]string{"CARAVEL_LOG_FORMAT": "json"}, want: slog.LevelInfo, format: "json"},
+		{
+			name:    "an unknown level names the four that work",
+			env:     map[string]string{"CARAVEL_LOG_LEVEL": "verbose"},
+			wantErr: "CARAVEL_LOG_LEVEL",
+		},
+		{
+			// slog itself accepts this; the app does not, because documenting
+			// that syntax buys a level with no name.
+			name:    "an offset level is refused",
+			env:     map[string]string{"CARAVEL_LOG_LEVEL": "DEBUG+2"},
+			wantErr: "CARAVEL_LOG_LEVEL",
+		},
+		{
+			name:    "an unknown format is refused",
+			env:     map[string]string{"CARAVEL_LOG_FORMAT": "logfmt"},
+			wantErr: "CARAVEL_LOG_FORMAT",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			for k, v := range tc.env {
+				t.Setenv(k, v)
+			}
+			cfg, err := Load()
+			if tc.wantErr != "" {
+				if err == nil {
+					t.Fatalf("Load() accepted %v", tc.env)
+				}
+				if !strings.Contains(err.Error(), tc.wantErr) {
+					t.Errorf("error = %v, want it to name %s", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if cfg.LogLevel != tc.want {
+				t.Errorf("LogLevel = %v, want %v", cfg.LogLevel, tc.want)
+			}
+			if cfg.LogFormat != tc.format {
+				t.Errorf("LogFormat = %q, want %q", cfg.LogFormat, tc.format)
 			}
 		})
 	}

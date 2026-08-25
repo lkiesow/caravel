@@ -17,6 +17,8 @@ change when the defaults do not fit.
 | `CARAVEL_TILE_URL` | OpenStreetMap tiles | Where the browser fetches map tiles from — see [Map tiles](map-tiles.md) |
 | `CARAVEL_TILE_ATTRIBUTION` | OpenStreetMap contributors | The credit shown on the map, as HTML. Whatever provider you use, meeting its attribution terms is this variable |
 | `CARAVEL_TILE_MAX_ZOOM` | `19` | How far the map may zoom in, which is a property of the provider |
+| `CARAVEL_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error` — see [Logging](#logging) |
+| `CARAVEL_LOG_FORMAT` | `text` | `text` or `json` |
 
 The container image sets `CARAVEL_DB_DSN=/data/caravel.db` and
 `CARAVEL_UPLOAD_DIR=/uploads`, which is why the compose files mount volumes at
@@ -49,6 +51,52 @@ An RPM installation has the same thing at `/etc/caravel/caravel.conf`, read by
 the systemd unit as an `EnvironmentFile` and marked `noreplace` so an upgrade
 does not overwrite it. A prebuilt binary under systemd wants an
 `EnvironmentFile` of its own, in the same format.
+
+## Logging
+
+The server logs to standard error, one record per line, at `info` by default.
+`docker logs caravel` or `journalctl -u caravel` is where to read it.
+
+`CARAVEL_LOG_FORMAT=json` swaps the format for one a collector can parse.
+Text is the default because the log of a self-hosted instance is usually read
+by a person, and one line beats a wall of JSON when you are looking at it
+directly.
+
+### Debug is how the assistant explains itself
+
+`CARAVEL_LOG_LEVEL=debug` is worth knowing about specifically because of the
+[assistant](assistant.md). A run takes half a minute or more and, at any other
+level, says nothing at all about where that time went. At `debug` it accounts
+for itself:
+
+```
+level=DEBUG msg="assist: run started" run=1 mode=enrich model=... search=serper
+level=DEBUG msg="assist: turn" run=1 turn=1 ms=2104 finish=tool_calls spent_tokens=1450 tool_calls=1
+level=DEBUG msg="assist: tool call" run=1 name=web_search args="{\"query\":\"...\"}" ms=880 ok=true result_bytes=1523
+level=DEBUG msg="assist: tool call" run=1 name=fetch_page args="{\"url\":\"...\"}" ms=1310 ok=true result_bytes=11702
+level=DEBUG msg="assist: gathering finished" run=1 reason=answered turns=4 tool_calls=5 spent_tokens=48210 ms=21400
+level=DEBUG msg="assist: composed" run=1 ms=18900 messages=14 tokens=13400 ok=true
+level=DEBUG msg="assist: run finished" run=1 ms=41200 fields=4 links=2 sources=3
+```
+
+Every record carries a `run` number, so two people using it at once can be
+told apart in a log that interleaves them. `reason` on the gathering line says
+why the research stopped — `answered`, `deadline`, `budget`, `turn_ceiling` or
+`tool_call_ceiling` — which is the difference between a model that finished and
+one that ran out of something.
+
+Two things deliberately never appear in it: the API key, and the text of a
+fetched page. The page URL and the number of bytes extracted from it are
+what a person debugging actually needs, and the body is up to 12 KB of somebody
+else content per read.
+
+This is verbose and it is emitted per run, so it is not a level to leave on for
+an instance other people use. Nothing above `debug` is logged for an ordinary
+run, though, so turning it on to answer a question and off again costs nothing.
+
+A run that *fails* is logged at `error` whatever the level is set to, with the
+provider's actual complaint — the browser only ever sees a fixed sentence, so
+this is the only place the real cause is written down.
 
 ## Bad values stop the server
 

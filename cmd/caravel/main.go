@@ -4,7 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -58,22 +58,31 @@ func main() {
 
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("config: %v", err)
+		// Before the logger exists, and deliberately: a configuration failure
+		// includes a malformed CARAVEL_LOG_LEVEL, so there is nothing to
+		// install yet and stderr is the only honest place for this.
+		fmt.Fprintf(os.Stderr, "config: %v\n", err)
+		os.Exit(1)
 	}
 
+	// Installed as the default so every package can reach it with slog.Default
+	// rather than being handed a logger through five constructors. See
+	// setupLogging for what the two settings do.
+	setupLogging(cfg)
+
 	if err := os.MkdirAll(cfg.UploadDir, 0o755); err != nil {
-		log.Fatalf("create upload dir: %v", err)
+		fatal("create upload dir", err)
 	}
 
 	dbConn, err := db.Open(cfg.DBDriver, cfg.DBDSN)
 	if err != nil {
-		log.Fatalf("db: %v", err)
+		fatal("db", err)
 	}
 	defer dbConn.Close()
 
 	store, err := db.NewStore(cfg.DBDriver, dbConn)
 	if err != nil {
-		log.Fatalf("store: %v", err)
+		fatal("store", err)
 	}
 	authService := auth.NewService(store)
 	blob := storagefs.NewLocalFS(cfg.UploadDir)
@@ -103,7 +112,7 @@ func main() {
 		},
 	})
 	if err != nil {
-		log.Fatalf("%v", err)
+		fatal("assist", err)
 	}
 	// Logged rather than left implicit: these bound what the instance can
 	// spend, and "what is this server actually running with" should be
@@ -118,7 +127,11 @@ func main() {
 		if concurrent <= 0 {
 			concurrent = httpapi.DefaultAssistMaxConcurrent
 		}
-		log.Printf("assist enabled: %s rate=%d/min/ip concurrent=%d", a.Limits(), rate, concurrent)
+		slog.Info("assist enabled",
+			"limits", a.Limits().String(),
+			"rate_per_min_per_ip", rate,
+			"max_concurrent", concurrent,
+			"search", cfg.SearchProvider)
 	}
 
 	go sweepExpiredSessionsPeriodically(store)
@@ -140,10 +153,43 @@ func main() {
 		},
 	})
 
-	log.Printf("caravel %s listening on :%s (db=%s, assist=%t)", buildinfo.Version, cfg.Port, cfg.DBDriver, assistant != nil)
+	slog.Info("caravel listening",
+		"version", buildinfo.Version,
+		"port", cfg.Port,
+		"db", cfg.DBDriver,
+		"assist", assistant != nil)
 	if err := http.ListenAndServe(":"+cfg.Port, server); err != nil {
-		log.Fatalf("server: %v", err)
+		fatal("server", err)
 	}
+}
+
+// setupLogging installs the process-wide logger.
+//
+// Text by default because a self-hosted instance's log is read by a person in
+// journalctl or `docker logs`, where one line per record beats a wall of JSON.
+// CARAVEL_LOG_FORMAT=json is there for anyone shipping to something that
+// parses.
+//
+// The level is what makes the assistant's run trace reachable: at info the
+// server says what it is doing, at debug internal/assist accounts for every
+// turn, every tool call and where the time went. See the note on logging in
+// that package for what must never appear in it.
+func setupLogging(cfg config.Config) {
+	opts := &slog.HandlerOptions{Level: cfg.LogLevel}
+	var handler slog.Handler
+	if cfg.LogFormat == "json" {
+		handler = slog.NewJSONHandler(os.Stderr, opts)
+	} else {
+		handler = slog.NewTextHandler(os.Stderr, opts)
+	}
+	slog.SetDefault(slog.New(handler))
+}
+
+// fatal replaces log.Fatalf: the same "say why and stop", through the logger
+// the operator configured rather than around it.
+func fatal(what string, err error) {
+	slog.Error("caravel: cannot start", "at", what, "err", err)
+	os.Exit(1)
 }
 
 // sweepExpiredSessionsPeriodically deletes expired session rows so the
@@ -155,7 +201,7 @@ func sweepExpiredSessionsPeriodically(store db.Store) {
 	defer ticker.Stop()
 	for range ticker.C {
 		if err := store.DeleteExpiredSessions(context.Background(), time.Now().UTC()); err != nil {
-			log.Printf("session sweep: %v", err)
+			slog.Warn("session sweep failed", "err", err)
 		}
 	}
 }

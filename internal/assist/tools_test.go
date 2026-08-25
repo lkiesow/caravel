@@ -34,19 +34,19 @@ func TestToolDefinitionsFollowWhatIsConfigured(t *testing.T) {
 		return out
 	}
 
-	full := newToolset(&stubSearcher{}, newPageFetcher(), geocode.New("http://example.invalid/search"), nil)
+	full := newToolset(&stubSearcher{}, newPageFetcher(), geocode.New("http://example.invalid/search"), nil, nil)
 	if got := names(full.definitions()); len(got) != 3 {
 		t.Errorf("definitions = %v, want all three", got)
 	}
 
-	noSearch := newToolset(nil, newPageFetcher(), geocode.New("http://example.invalid/search"), nil)
+	noSearch := newToolset(nil, newPageFetcher(), geocode.New("http://example.invalid/search"), nil, nil)
 	for _, n := range names(noSearch.definitions()) {
 		if n == toolWebSearch {
 			t.Error("web search was offered with no search backend configured")
 		}
 	}
 
-	noGeo := newToolset(&stubSearcher{}, newPageFetcher(), nil, nil)
+	noGeo := newToolset(&stubSearcher{}, newPageFetcher(), nil, nil, nil)
 	for _, n := range names(noGeo.definitions()) {
 		if n == toolGeocode {
 			t.Error("geocoding was offered with no geocoder configured")
@@ -63,7 +63,7 @@ func TestToolDefinitionsFollowWhatIsConfigured(t *testing.T) {
 func TestToolDefinitionSchemasAreValidJSON(t *testing.T) {
 	// Hand-written literals, so a stray comma reaches a real provider as an
 	// opaque 400 unless something local catches it first.
-	ts := newToolset(&stubSearcher{}, newPageFetcher(), geocode.New("http://example.invalid/search"), nil)
+	ts := newToolset(&stubSearcher{}, newPageFetcher(), geocode.New("http://example.invalid/search"), nil, nil)
 	for _, d := range ts.definitions() {
 		var parsed map[string]any
 		if err := json.Unmarshal(d.Parameters, &parsed); err != nil {
@@ -76,7 +76,7 @@ func TestToolDefinitionSchemasAreValidJSON(t *testing.T) {
 }
 
 func TestDispatchSearch(t *testing.T) {
-	ts := newToolset(&stubSearcher{}, newPageFetcher(), nil, nil)
+	ts := newToolset(&stubSearcher{}, newPageFetcher(), nil, nil, nil)
 	out := ts.dispatch(context.Background(), callTo(toolWebSearch, `{"query":"Kex Hostel"}`))
 
 	if !strings.Contains(out, "Kex Hostel") || !strings.Contains(out, "https://example.invalid/kex") {
@@ -92,7 +92,7 @@ func TestDispatchSearch(t *testing.T) {
 // the model, not a reason to abandon a paid run. Every dead link on the web
 // would otherwise be a failed enrichment.
 func TestDispatchTurnsFailuresIntoTextForTheModel(t *testing.T) {
-	ts := newToolset(&failingSearcher{}, newPageFetcher(), nil, nil)
+	ts := newToolset(&failingSearcher{}, newPageFetcher(), nil, nil, nil)
 
 	cases := []struct {
 		name string
@@ -134,7 +134,7 @@ func TestDispatchGeocodeReturnsAddressesWithoutCoordinates(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	ts := newToolset(nil, newPageFetcher(), geocode.New(upstream.URL), nil)
+	ts := newToolset(nil, newPageFetcher(), geocode.New(upstream.URL), nil, nil)
 	out := ts.dispatch(context.Background(), callTo(toolGeocode, `{"query":"Kex Hostel"}`))
 
 	if !strings.Contains(out, "Skulagata 28") {
@@ -153,7 +153,7 @@ func TestDispatchGeocodeWithNoMatch(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	ts := newToolset(nil, newPageFetcher(), geocode.New(upstream.URL), nil)
+	ts := newToolset(nil, newPageFetcher(), geocode.New(upstream.URL), nil, nil)
 	out := ts.dispatch(context.Background(), callTo(toolGeocode, `{"query":"zzzz"}`))
 	if !strings.Contains(out, "No matching place") {
 		t.Errorf("result = %q, want a plain no-match answer", out)
@@ -174,7 +174,7 @@ func TestSourcesRecordOnlySuccessfulReads(t *testing.T) {
 	defer srv.Close()
 
 	f := newRelaxedFetcher()
-	ts := newToolset(nil, f, nil, nil)
+	ts := newToolset(nil, f, nil, nil, nil)
 
 	// Through dispatch, which is what records sources; the fetcher's address
 	// policy is relaxed because the test server is on loopback.
@@ -192,7 +192,7 @@ func TestSourcesRecordOnlySuccessfulReads(t *testing.T) {
 }
 
 func TestSourcesAreDeduplicated(t *testing.T) {
-	ts := newToolset(nil, newPageFetcher(), nil, nil)
+	ts := newToolset(nil, newPageFetcher(), nil, nil, nil)
 	// The model routinely searches twice and re-reads a page it already found.
 	ts.record(Source{Title: "Kex", URL: "https://example.invalid/kex"})
 	ts.record(Source{Title: "Kex again", URL: "https://example.invalid/kex"})
@@ -209,7 +209,7 @@ func TestSourcesAreDeduplicated(t *testing.T) {
 // wire cannot be re-rendered when they switch locale mid-run.
 func TestToolsEmitProgressEventsAsKeys(t *testing.T) {
 	var events []Event
-	ts := newToolset(&stubSearcher{}, newPageFetcher(), nil, func(e Event) { events = append(events, e) })
+	ts := newToolset(&stubSearcher{}, newPageFetcher(), nil, func(e Event) { events = append(events, e) }, nil)
 	ts.dispatch(context.Background(), callTo(toolWebSearch, `{"query":"Kex Hostel"}`))
 
 	if len(events) != 1 {
@@ -230,7 +230,7 @@ func TestToolsEmitProgressEventsAsKeys(t *testing.T) {
 // the part a person reads, and the part safe to put in a progress line.
 func TestFetchProgressEventReportsOnlyTheHost(t *testing.T) {
 	var events []Event
-	ts := newToolset(nil, newPageFetcher(), nil, func(e Event) { events = append(events, e) })
+	ts := newToolset(nil, newPageFetcher(), nil, func(e Event) { events = append(events, e) }, nil)
 	ts.dispatch(context.Background(), callTo(toolFetchPage, `{"url":"https://example.invalid/a/very/long/path?tracking=1"}`))
 
 	if len(events) != 1 {

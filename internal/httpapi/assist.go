@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
@@ -305,11 +306,21 @@ func (s *Server) streamAssistRun(w http.ResponseWriter, r *http.Request, req ass
 		if errors.Is(err, context.Canceled) || r.Context().Err() != nil {
 			return
 		}
+		code := assistErrorCode(err)
+		// The one place the underlying error is written down. The browser gets
+		// a fixed sentence (see assistErrorMessage for why), so without this
+		// the actual cause -- a wrong endpoint, a rejected key, a model name
+		// the provider does not know -- existed nowhere at all.
+		//
+		// Error rather than debug, and unconditional: this is a failure the
+		// operator has to be able to see without having first predicted it and
+		// turned the level up.
+		slog.Error("assist run failed", "code", code, "mode", string(req.Mode), "err", err)
 		// The status line is already 200 by now, so a failure has to arrive as
 		// an event rather than as a status code. The client branches on the
 		// event name.
 		send("error", map[string]string{
-			"code":    assistErrorCode(err),
+			"code":    code,
 			"message": assistErrorMessage(err),
 		})
 		return
@@ -333,8 +344,9 @@ func assistErrorCode(err error) string {
 
 // assistErrorMessage is deliberately not the underlying error. A provider's
 // own words can carry an endpoint, a model name or an account detail, none of
-// which are ours to forward to whoever is using the app. The real error is in
-// the server log for the operator.
+// which are ours to forward to whoever is using the app. The real error is
+// logged at error level where this is called, which is what the operator
+// reads -- for two milestones this comment claimed that and nothing logged it.
 func assistErrorMessage(err error) string {
 	switch {
 	case errors.Is(err, assist.ErrTimedOut):

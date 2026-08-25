@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 
 	"caravel/internal/geocode"
 )
@@ -52,6 +54,7 @@ type toolset struct {
 	fetch    *pageFetcher
 	geocoder *geocode.Client
 	events   func(Event)
+	log      *slog.Logger
 
 	mu      sync.Mutex
 	sources []Source
@@ -60,11 +63,14 @@ type toolset struct {
 	seen map[string]bool
 }
 
-func newToolset(search Searcher, fetch *pageFetcher, geocoder *geocode.Client, events func(Event)) *toolset {
+func newToolset(search Searcher, fetch *pageFetcher, geocoder *geocode.Client, events func(Event), log *slog.Logger) *toolset {
 	if events == nil {
 		events = func(Event) {}
 	}
-	return &toolset{search: search, fetch: fetch, geocoder: geocoder, events: events, seen: map[string]bool{}}
+	if log == nil {
+		log = slog.Default()
+	}
+	return &toolset{search: search, fetch: fetch, geocoder: geocoder, events: events, log: log, seen: map[string]bool{}}
 }
 
 // definitions describes the available tools for the model.
@@ -140,10 +146,34 @@ func (t *toolset) dispatch(ctx context.Context, call toolCall) string {
 	if !ok {
 		// Models occasionally invent a tool. Saying so plainly is more useful
 		// than silence, and cheaper than a turn spent waiting.
+		t.log.Debug("assist: tool unknown", "name", name)
 		return fmt.Sprintf("There is no tool called %q. The available tools are listed in this conversation.", name)
 	}
 
+	// One record per tool call, here rather than inside each tool, so the
+	// timing is measured the same way for all three and adding a fourth tool
+	// gets its trace for free. The arguments carry the interesting part -- the
+	// query, the URL -- so they go in whole; they are short by schema, and
+	// nothing secret can reach them.
+	//
+	// result_bytes rather than the result: a fetched page is up to
+	// fetchMaxTextBytes of third-party text, and its size is what actually
+	// answers "why did this run cost so much".
+	started := time.Now()
 	out, err := fn(ctx, args)
+	attrs := []any{
+		"name", name,
+		"args", string(args),
+		"ms", time.Since(started).Milliseconds(),
+		"ok", err == nil,
+		"result_bytes", len(out),
+	}
+	// Only on failure. "err=<nil>" on every successful call is a column of
+	// nothing in the one place a reader is scanning for something.
+	if err != nil {
+		attrs = append(attrs, "err", err)
+	}
+	t.log.Debug("assist: tool call", attrs...)
 	if err != nil {
 		// The model sees why it failed, in words it can act on.
 		return "That did not work: " + err.Error()

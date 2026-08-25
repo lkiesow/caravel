@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -142,7 +142,7 @@ func migratePostgres(dsn string) error {
 	// function was restructured to fix.
 	defer func() {
 		if srcErr, dbErr := m.Close(); srcErr != nil || dbErr != nil {
-			log.Printf("caravel: closing the postgres migrator: source=%v database=%v", srcErr, dbErr)
+			slog.Warn("closing the postgres migrator", "source", srcErr, "database", dbErr)
 		}
 	}()
 	return runMigrations(m)

@@ -34,10 +34,33 @@
 //     is only wrong on the map, which makes it the one failure mode with no
 //     visible tell.
 //   - Category is validated against the enum rather than accepted.
+//
+// # Logging
+//
+// A run accounts for itself at slog.LevelDebug: every turn with its wall time
+// and token usage, every tool call with its arguments and how long it took,
+// why the loop stopped, and what buildProposal kept or dropped. That exists
+// because "why was that run slow" was previously unanswerable from outside a
+// debugger, and because the guess and the measurement look identical until
+// somebody measures.
+//
+// Three things must never appear in it, and this is the whole rule:
+//
+//   - the API key, and the Authorization header it goes in;
+//   - the full text of a fetched page. It is third-party content, it is up to
+//     fetchMaxTextBytes long, and the URL plus the byte count is what a person
+//     debugging actually needs;
+//   - anything at a level above debug that a user action can produce on
+//     demand. A run is user-triggered, so info-level chatter here is a log
+//     somebody else fills up.
+//
+// The provider's own error is logged, at error level, by the HTTP layer -- the
+// place that decides not to forward it to the browser.
 package assist
 
 import (
 	"context"
+	"log/slog"
 
 	"caravel/internal/buildinfo"
 	"caravel/internal/geocode"
@@ -88,6 +111,11 @@ type Options struct {
 	// default from DefaultLimits, so a caller that does not care passes the
 	// zero value and gets the shipped behaviour.
 	Limits Limits
+
+	// Logger receives the run trace. Nil means slog.Default, which is what the
+	// server passes -- the field exists for tests, which need to read the
+	// records back rather than watch them go to stderr.
+	Logger *slog.Logger
 }
 
 // LLMStub is the CARAVEL_LLM_URL sentinel selecting the in-process fake
@@ -136,6 +164,11 @@ func New(opts Options) (Assistant, error) {
 		return nil, err
 	}
 
+	logger := opts.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+
 	return &Agent{
 		opts:     opts,
 		provider: p,
@@ -143,6 +176,7 @@ func New(opts Options) (Assistant, error) {
 		fetcher:  fetcher,
 		geocoder: opts.Geocoder,
 		limits:   limits,
+		logger:   logger,
 	}, nil
 }
 
@@ -154,6 +188,10 @@ type Agent struct {
 	fetcher  *pageFetcher
 	geocoder *geocode.Client
 	limits   Limits
+	// logger is slog.Default unless Options names one. A field rather than a
+	// call to slog.Default at each site so a test can hand in a handler over a
+	// buffer and read back exactly what a run emitted.
+	logger *slog.Logger
 }
 
 // Limits reports the effective guard rails, for the startup log.

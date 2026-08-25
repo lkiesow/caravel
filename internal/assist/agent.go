@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -188,6 +190,12 @@ var (
 	ErrBudgetExhausted = errors.New("assist: the run reached its token budget and was stopped")
 )
 
+// runCounter labels each run so the records of two concurrent ones can be told
+// apart in a log that interleaves them. A counter rather than a timestamp or a
+// random value: it is short, it sorts, and it says how many runs this process
+// has served, which is itself worth knowing.
+var runCounter atomic.Uint64
+
 func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*Proposal, error) {
 	if events == nil {
 		events = func(Event) {}
@@ -195,6 +203,28 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 	if !req.Mode.Valid() {
 		return nil, fmt.Errorf("assist: unknown mode %q", req.Mode)
 	}
+
+	// a.logger is set by New; tests that build an Agent literal leave it nil,
+	// and a run must not panic on the way to its first log line.
+	base := a.logger
+	if base == nil {
+		base = slog.Default()
+	}
+	log := base.With("run", runCounter.Add(1))
+	started := time.Now()
+	searchName := "none"
+	if a.search != nil {
+		searchName = a.search.Name()
+	}
+	log.Debug("assist: run started",
+		"mode", string(req.Mode),
+		"model", a.opts.LLMModel,
+		"search", searchName,
+		"geocoder", a.geocoder != nil,
+		"trip_context", req.Trip.Sent(),
+		"locale", req.Locale,
+		"type_vocabulary", len(req.TypeVocabulary),
+		"limits", a.limits.String())
 
 	// Two contexts, deliberately. runCtx carries the gathering deadline;
 	// userCtx is the caller's own, which only ends when the user cancels.
@@ -211,7 +241,7 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 		s.reset()
 	}
 
-	tools := newToolset(a.search, a.fetcher, a.geocoder, events)
+	tools := newToolset(a.search, a.fetcher, a.geocoder, events, log)
 	defs := tools.definitions()
 
 	messages := []chatMessage{
@@ -235,33 +265,67 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 	// a partial proposal they can accept field by field is worth far more than
 	// an apology. So a ceiling ends the *gathering*, and the run still
 	// composes. Only the user cancelling stops it outright.
+	// Why the gathering stopped, for the one record at the end of the loop.
+	// Set at each exit rather than reconstructed afterwards, because two of
+	// these are indistinguishable once the loop has left: a run that used
+	// eleven of twelve turns and a run that used twelve both have a turn count
+	// and only one of them hit a ceiling.
+	stop := "answered"
+
+	// turnsUsed counts turns the provider actually answered, which is not the
+	// same as the loop counter: a loop that breaks *inside* an iteration --
+	// which the ordinary "no more tool calls" exit does -- leaves the counter
+	// one behind the number of turns that were billed. A trace whose job is
+	// accuracy must not undercount the thing it is counting.
+	turnsUsed := 0
+
 	turn := 0
 	for ; turn < a.limits.MaxTurns; turn++ {
 		// The caller's own context, not ours. If it is already done there is
 		// nothing to compose with -- every remaining call would fail too.
 		if err := userCtx.Err(); err != nil {
+			log.Debug("assist: run abandoned", "reason", "cancelled", "turns", turnsUsed, "ms", time.Since(started).Milliseconds())
 			return nil, wrapRunError(err)
 		}
 		if runCtx.Err() != nil {
+			stop = "deadline"
 			events(Event{Key: "assist.progress.wrappingUp"})
 			break
 		}
 		if spent.TotalTokens >= a.limits.MaxTokens-a.limits.AnswerReserve {
+			stop = "budget"
 			events(Event{Key: "assist.progress.wrappingUp"})
 			break
 		}
 
+		turnStarted := time.Now()
 		resp, err := a.provider.Complete(runCtx, chatRequest{Messages: messages, Tools: defs})
 		if err != nil {
 			// A provider call that failed because gathering ran out of time is
 			// not a failure of the run: compose with what is already here.
 			if errors.Is(err, context.DeadlineExceeded) && userCtx.Err() == nil {
+				stop = "deadline"
+				log.Debug("assist: turn timed out",
+					"turn", turn+1, "ms", time.Since(turnStarted).Milliseconds())
 				events(Event{Key: "assist.progress.wrappingUp"})
 				break
 			}
+			// Not logged here: the HTTP layer records the provider error at
+			// error level, and doing it twice would put the same failure in
+			// the log under two different messages.
 			return nil, wrapRunError(err)
 		}
 		spent = addUsage(spent, resp.Usage)
+		turnsUsed++
+
+		log.Debug("assist: turn",
+			"turn", turnsUsed,
+			"ms", time.Since(turnStarted).Milliseconds(),
+			"finish", resp.FinishReason,
+			"prompt_tokens", resp.Usage.PromptTokens,
+			"completion_tokens", resp.Usage.CompletionTokens,
+			"spent_tokens", spent.TotalTokens,
+			"tool_calls", len(resp.ToolCalls))
 
 		// No tool calls means the model is done gathering. Break to the
 		// structured turn rather than treating this text as the answer: it is
@@ -297,14 +361,29 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 	}
 
 	if err := userCtx.Err(); err != nil {
+		log.Debug("assist: run abandoned", "reason", "cancelled", "turns", turnsUsed, "ms", time.Since(started).Milliseconds())
 		return nil, wrapRunError(err)
 	}
 
 	// The turn and tool-call ceilings break out silently above; say so here,
 	// so every reason the research stopped short reaches the user the same way.
 	if turn >= a.limits.MaxTurns || toolCalls >= a.limits.MaxToolCalls {
+		if stop == "answered" {
+			if turn >= a.limits.MaxTurns {
+				stop = "turn_ceiling"
+			} else {
+				stop = "tool_call_ceiling"
+			}
+		}
 		events(Event{Key: "assist.progress.wrappingUp"})
 	}
+
+	log.Debug("assist: gathering finished",
+		"reason", stop,
+		"turns", turnsUsed,
+		"tool_calls", toolCalls,
+		"spent_tokens", spent.TotalTokens,
+		"ms", time.Since(started).Milliseconds())
 
 	events(Event{Key: "assist.progress.composing"})
 
@@ -317,13 +396,38 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 	defer cancelFinal()
 
 	var raw modelProposal
+	composeStarted := time.Now()
 	used, err := completeJSON(finalCtx, a.provider, chatRequest{Messages: messages, Format: proposalFormat()}, &raw)
 	spent = addUsage(spent, used)
+	// Logged either way. The composing turn resends the whole conversation, so
+	// it is the slowest single request of a run by a wide margin and the one
+	// whose failure wastes everything before it -- which makes "how long did
+	// composing take" the first question to ask of a slow run.
+	log.Debug("assist: composed",
+		"ms", time.Since(composeStarted).Milliseconds(),
+		"messages", len(messages),
+		"tokens", used.TotalTokens,
+		"spent_tokens", spent.TotalTokens,
+		"ok", err == nil)
 	if err != nil {
 		return nil, wrapRunError(err)
 	}
 
-	return a.buildProposal(finalCtx, req, raw, tools.Sources(), events)
+	p, err := a.buildProposal(finalCtx, req, raw, tools.Sources(), events, log)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Debug("assist: run finished",
+		"ms", time.Since(started).Milliseconds(),
+		"turns", turnsUsed,
+		"tool_calls", toolCalls,
+		"spent_tokens", spent.TotalTokens,
+		"fields", len(p.Fields),
+		"links", len(p.Links),
+		"sources", len(p.Sources),
+		"coordinates", p.Lat != nil)
+	return p, nil
 }
 
 // wrapRunError catches the case where a provider call failed *because* the run
@@ -341,7 +445,7 @@ func wrapRunError(err error) error {
 
 // buildProposal turns what the model said into what the user is shown,
 // applying the three checks the prompt cannot guarantee.
-func (a *Agent) buildProposal(ctx context.Context, req Request, raw modelProposal, sources []Source, events func(Event)) (*Proposal, error) {
+func (a *Agent) buildProposal(ctx context.Context, req Request, raw modelProposal, sources []Source, events func(Event), log *slog.Logger) (*Proposal, error) {
 	p := &Proposal{Sources: sources}
 
 	// Category: validated, never corrected. A wrong value is dropped, because
@@ -349,6 +453,12 @@ func (a *Agent) buildProposal(ctx context.Context, req Request, raw modelProposa
 	// terminal.
 	category := strings.ToLower(strings.TrimSpace(raw.Category))
 	if !slices.Contains(validCategories, category) {
+		if category != "" {
+			// Worth its own line: this is the model failing to follow an
+			// instruction the prompt states plainly, and a run of these is a
+			// prompt problem rather than a bad day.
+			log.Debug("assist: category dropped", "proposed", category, "allowed", validCategories)
+		}
 		category = ""
 	}
 
@@ -372,29 +482,47 @@ func (a *Agent) buildProposal(ctx context.Context, req Request, raw modelProposa
 		// request to clear the field: the feature never offers to delete what
 		// somebody wrote.
 		if f.proposed == "" || f.proposed == strings.TrimSpace(f.current) {
+			// Sizes rather than values: a run that proposes nothing and a run
+			// that proposes what is already there look identical from the
+			// outside, and the difference is the whole question.
+			log.Debug("assist: field not proposed",
+				"field", f.name,
+				"reason", map[bool]string{true: "empty", false: "unchanged"}[f.proposed == ""])
 			continue
 		}
+		log.Debug("assist: field proposed",
+			"field", f.name, "overwrites", strings.TrimSpace(f.current) != "", "chars", len([]rune(f.proposed)))
 		p.Fields = append(p.Fields, Field{Name: f.name, Current: f.current, Proposed: f.proposed})
 	}
 
-	p.Links = a.checkLinks(ctx, req, raw.Links, events)
+	p.Links = a.checkLinks(ctx, req, raw.Links, events, log)
 
 	// Coordinates last, and only from the geocoder. The address the model
 	// proposed is tried first, then the place name, which is more forgiving of
 	// a street address that Nominatim does not recognise.
 	if a.geocoder != nil {
-		for _, query := range []string{strings.TrimSpace(raw.Address), strings.TrimSpace(raw.PlaceName)} {
-			if query == "" {
+		for _, from := range []struct{ source, query string }{
+			{"address", strings.TrimSpace(raw.Address)},
+			{"place_name", strings.TrimSpace(raw.PlaceName)},
+		} {
+			if from.query == "" {
 				continue
 			}
-			results, err := a.geocoder.Search(ctx, query)
+			results, err := a.geocoder.Search(ctx, from.query)
 			if err != nil || len(results) == 0 {
+				log.Debug("assist: geocode missed", "from", from.source, "query", from.query, "err", err)
 				continue
 			}
 			lat, lng := results[0].Lat, results[0].Lng
 			p.Lat, p.Lng = &lat, &lng
+			// Which of the two answered matters: the address answering means
+			// the model got the street right, and falling through to the place
+			// name means it did not.
+			log.Debug("assist: coordinates resolved", "from", from.source, "query", from.query, "matches", len(results))
 			break
 		}
+	} else {
+		log.Debug("assist: no coordinates", "reason", "no geocoder configured")
 	}
 
 	return p, nil
@@ -412,7 +540,7 @@ var validCategories = []string{"site", "stay", "transport"}
 // sequential requests at the end is a visible pause for no reason. Links
 // already on the location are dropped as duplicates rather than checked --
 // proposing what is already there wastes the user's attention.
-func (a *Agent) checkLinks(ctx context.Context, req Request, proposed []modelLink, events func(Event)) []Link {
+func (a *Agent) checkLinks(ctx context.Context, req Request, proposed []modelLink, events func(Event), log *slog.Logger) []Link {
 	if len(proposed) == 0 {
 		return nil
 	}
@@ -433,6 +561,9 @@ func (a *Agent) checkLinks(ctx context.Context, req Request, proposed []modelLin
 		u := strings.TrimSpace(l.URL)
 		key := normaliseURL(u)
 		if u == "" || existing[key] || seen[key] {
+			if u != "" {
+				log.Debug("assist: link skipped", "url", u, "reason", map[bool]string{true: "already on the location", false: "duplicate"}[existing[key]])
+			}
 			continue
 		}
 		seen[key] = true
@@ -457,8 +588,14 @@ func (a *Agent) checkLinks(ctx context.Context, req Request, proposed []modelLin
 	var out []Link
 	for _, c := range candidates {
 		if !c.ok {
+			// The classic failure of this feature is a hallucinated URL that
+			// looks authoritative until somebody clicks it. Recording the drop
+			// is how you find out that is happening rather than assuming the
+			// model simply proposed no links.
+			log.Debug("assist: link dropped", "url", c.link.URL, "reason", "did not answer")
 			continue
 		}
+		log.Debug("assist: link kept", "url", c.link.URL)
 		if c.link.Label == "" {
 			c.link.Label = hostOf(c.link.URL)
 		}

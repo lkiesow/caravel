@@ -27,30 +27,38 @@ func TestStubDrivesAMultiStepExchange(t *testing.T) {
 		t.Errorf("turn 1 FinishReason = %q", first.FinishReason)
 	}
 
-	second, err := s.Complete(ctx, chatRequest{})
-	if err != nil {
-		t.Fatalf("turn 2: %v", err)
-	}
-	if len(second.ToolCalls) != 1 || second.ToolCalls[0].Function.Name != toolFetchPage {
-		t.Fatalf("turn 2 = %+v, want a %s call", second.ToolCalls, toolFetchPage)
-	}
-
-	// Turn 3 is prose with no tool calls: that is the signal the loop reads as
-	// "done gathering". The structured answer is turn 4, a separate request.
-	third, err := s.Complete(ctx, chatRequest{})
-	if err != nil {
-		t.Fatalf("turn 3: %v", err)
-	}
-	if third.FinishReason != "stop" || len(third.ToolCalls) != 0 {
-		t.Errorf("turn 3 = %+v, want a plain stop", third)
+	// Two page reads, so the run records more than one source. Both point at
+	// the fixture host, which is the whole reason a stub run can produce a
+	// live link and a sources list at all.
+	for _, turn := range []int{2, 3} {
+		resp, err := s.Complete(ctx, chatRequest{})
+		if err != nil {
+			t.Fatalf("turn %d: %v", turn, err)
+		}
+		if len(resp.ToolCalls) != 1 || resp.ToolCalls[0].Function.Name != toolFetchPage {
+			t.Fatalf("turn %d = %+v, want a %s call", turn, resp.ToolCalls, toolFetchPage)
+		}
+		if !strings.Contains(resp.ToolCalls[0].Function.Arguments, startStubFixture().base) {
+			t.Errorf("turn %d fetches %s, want the fixture host", turn, resp.ToolCalls[0].Function.Arguments)
+		}
 	}
 
+	// Turn 4 is prose with no tool calls: that is the signal the loop reads as
+	// "done gathering". The structured answer is turn 5, a separate request.
 	fourth, err := s.Complete(ctx, chatRequest{})
 	if err != nil {
 		t.Fatalf("turn 4: %v", err)
 	}
-	if fourth.Content == "" {
-		t.Error("turn 4 carried no answer")
+	if fourth.FinishReason != "stop" || len(fourth.ToolCalls) != 0 {
+		t.Errorf("turn 4 = %+v, want a plain stop", fourth)
+	}
+
+	fifth, err := s.Complete(ctx, chatRequest{})
+	if err != nil {
+		t.Fatalf("turn 5: %v", err)
+	}
+	if fifth.Content == "" {
+		t.Error("turn 5 carried no answer")
 	}
 }
 
@@ -59,7 +67,7 @@ func TestStubDrivesAMultiStepExchange(t *testing.T) {
 func TestStubAnswerMatchesTheSchema(t *testing.T) {
 	s := newStubProvider()
 	ctx := context.Background()
-	for range 3 {
+	for range 4 {
 		if _, err := s.Complete(ctx, chatRequest{}); err != nil {
 			t.Fatalf("advancing the script: %v", err)
 		}

@@ -254,7 +254,7 @@ func TestDeadLinksAreDropped(t *testing.T) {
 	)
 	// Loopback again: the address policy is relaxed so the liveness check
 	// itself is what gets tested. The guard has its own tests.
-	a.fetcher = newFetcherWithPolicy(true)
+	a.fetcher = newRelaxedFetcher()
 
 	p, err := a.Propose(context.Background(), enrichRequest(), nil)
 	if err != nil {
@@ -287,7 +287,7 @@ func TestLinksAnsweringOnlyToGETSurvive(t *testing.T) {
 		stubTurn{Content: "done"},
 		stubTurn{Content: answerJSON(t, modelProposal{Category: "stay", Links: []modelLink{{URL: srv.URL + "/x"}}})},
 	)
-	a.fetcher = newFetcherWithPolicy(true)
+	a.fetcher = newRelaxedFetcher()
 
 	p, err := a.Propose(context.Background(), enrichRequest(), nil)
 	if err != nil {
@@ -324,7 +324,7 @@ func TestLinksAlreadyPresentAreNotProposedAgain(t *testing.T) {
 			{URL: srv.URL + "/new"},
 		}})},
 	)
-	a.fetcher = newFetcherWithPolicy(true)
+	a.fetcher = newRelaxedFetcher()
 
 	p, err := a.Propose(context.Background(), req, nil)
 	if err != nil {
@@ -650,6 +650,23 @@ func TestTheDefaultStubScriptRunsEndToEnd(t *testing.T) {
 	}
 	if len(p.Fields) == 0 {
 		t.Error("the stub run proposed nothing")
+	}
+
+	// The two lists the browser suite could never see before the stub grew a
+	// fixture host: a link that survived the liveness check, and the pages the
+	// run actually read. Both were empty against example.invalid -- correctly,
+	// which is what made the gap awkward -- and a bug in the sources list
+	// shipped because of it.
+	if len(p.Links) == 0 {
+		t.Error("the stub run proposed no live link; the fixture host is what makes one possible")
+	}
+	if len(p.Sources) < 2 {
+		t.Errorf("the stub run recorded %d source(s), want the two pages it reads", len(p.Sources))
+	}
+	for _, src := range p.Sources {
+		if src.Title == "" || src.Title == "(untitled)" {
+			t.Errorf("source %q has no usable title; the fixture pages carry one", src.URL)
+		}
 	}
 
 	// And again, to prove the script rewinds: a second enrichment in the same

@@ -173,7 +173,7 @@ func TestSourcesRecordOnlySuccessfulReads(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	f := newFetcherWithPolicy(true)
+	f := newRelaxedFetcher()
 	ts := newToolset(nil, f, nil, nil)
 
 	// Through dispatch, which is what records sources; the fetcher's address

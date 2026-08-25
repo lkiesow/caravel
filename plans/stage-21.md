@@ -186,6 +186,85 @@ suggestion one at a time ends with `.assist__bar` hidden and no count;
 box too. Delete the coverage-gap paragraph from that spec's header and the
 matching `todo.md` entry.
 
+**Done.** Both halves landed as planned, including the seam -- it did not turn
+out awkward, so the fallback of splitting it off was not needed.
+
+**The fix is what the plan said it was.** `sourcesBox` is its own variable,
+`clearSuggestions()` clears it, `syncBar()` never sees it, and `outstanding`
+now means only "suggestions you have not decided" -- which is what the label
+above it has always claimed. Two consequences taken deliberately:
+
+1. **`renderSources` moved above the empty check.** It used to sit after a
+   `return` that fired whenever nothing was worth suggesting, so a run that
+   found nothing also said nothing about where it had looked. Now the account
+   of the run is rendered first and the "no suggestions" note follows it.
+2. **The sources box survives "Accept all".** It did not before, but only as a
+   side effect of the bug: the pseudo-entry's `accept` removed the node. Having
+   accepted seven suggestions is the moment you might most want to see what
+   they came from, so it stays; "Dismiss all" still clears it, because then
+   there is no proposal left for it to explain.
+
+**The seam: `addressPolicy` replaced the boolean.** `newFetcherWithPolicy`
+took `allowPrivate bool`; it now takes an `addressPolicy` with two fields --
+`allowPrivate`, which the package's own tests use and nothing else may, and
+`allowed`, a set of exact `host:port` strings. `newFetcherAllowing(addrs...)`
+is the constructor for the second. The allowlist is matched in both places the
+policy is enforced, the pre-flight `guard` and the dial-time
+`checkDialAddress`, and the two agree because its entries are literal
+addresses with no name in between for a resolver to change its mind about.
+The scheme check runs before either exception, so neither can make `file://`
+fetchable.
+
+`internal/assist/stub_fixture.go` is the fixture host: a `sync.OnceValue`
+singleton that binds `127.0.0.1:0`, serves two plain HTML pages, and hands back
+its address. A singleton because `newStubProvider` is called by every test in
+the package as well as by the server, and a listener per call would leak dozens
+across a run with nothing to close them. It has no shutdown path for the same
+reason `Assistant` has none: one idle loopback listener for the life of a
+process that only exists because somebody selected the stub.
+
+**The stub script grew to five turns**, reading two pages rather than one, so
+the sources list has more than a single entry in it -- a list of one renders
+the same whether it was built correctly or by accident. `fetchArgs` encodes the
+tool arguments rather than formatting them, because the fixture URL carries a
+port the script cannot know in advance.
+
+**Verified.** `make ci` green. `go test ./internal/assist` covers the
+allowlist in both directions: the named address is fetched and its title
+extracted, a *different* loopback address one server along is refused as a
+blocked address, and `file://`, `169.254.169.254` and `10.0.0.1` are all still
+refused through an allowlisting fetcher. The dial-time check is tested
+directly on both a listed and an unlisted address, and `LinkIsLive` through
+the allowlist. `TestTheDefaultStubScriptRunsEndToEnd` now asserts what it could
+not before -- a live link survives the check, two sources are recorded, and
+both carry a real title rather than `(untitled)`.
+
+Then the browser suite. The assist spec asserts seven suggestions rather than
+six (the links slot is populated now), a `.assist-sources` list of two whose
+first entry reads "Kex Hostel — Reykjavik", the count stepping 7 -> 6 -> 5 as
+suggestions are taken, "Accept all" leaving zero suggestions with the bar
+hidden and the accepted link in the form's own list, and "Dismiss all"
+clearing the sources box as well.
+
+**The regression assertion was proved rather than assumed.** The old
+`outstanding.push` was put back and the spec run against it: it fails at the
+count assertion ("7 suggestions" vs 8). Restored, it passes. That is the
+difference between a test that covers the bug and a test written beside it.
+Full suite: 135 passed.
+
+Then by hand at 324x756 against a stub-configured server: seven suggestions
+and two sources with their real titles; after "Accept all", zero suggestions,
+the bar hidden, title, category and the link all applied, the sources box
+still standing and reading correctly on its own ("Pages used ... Shown so you
+can check the suggestions. They are not saved."), and no horizontal overflow.
+
+**One thing surfaced and deferred**, now in `todo.md`: `with_server.sh` sets
+the LLM and search providers to their stubs but leaves `CARAVEL_GEOCODER_URL`
+at its default, so the coordinates suggestion this spec asserts on -- and the
+address search in `locations.spec.js` -- reach the real Nominatim on every
+run. The assist spec's own header says CI has no network budget, which is true
+of everything except that.
+
 ---
 
 ## 2. Structured logging with levels, and the assistant's run trace in the log

@@ -14,6 +14,15 @@ import (
 // security bug rather than a bad suggestion, so the table is deliberately
 // broad and includes the bypasses rather than only the obvious cases.
 
+// newRelaxedFetcher is the fetcher these tests use to reach an httptest
+// server, which listens on loopback -- the thing the guard exists to refuse.
+// It switches off the address check wholesale, which no production path can
+// do; see addressPolicy for why the exception exists and what it leaves in
+// place.
+func newRelaxedFetcher() *pageFetcher {
+	return newFetcherWithPolicy(addressPolicy{allowPrivate: true})
+}
+
 func TestGuardURLRejectsNonPublicTargets(t *testing.T) {
 	cases := []struct {
 		name string
@@ -127,7 +136,7 @@ func TestFetchWorksWhenTheHostIsANameNotAnIP(t *testing.T) {
 		t.Skipf("test server URL %q is not the expected loopback form", srv.URL)
 	}
 
-	got, err := newFetcherWithPolicy(true).Fetch(context.Background(), byName)
+	got, err := newRelaxedFetcher().Fetch(context.Background(), byName)
 	if err != nil {
 		t.Fatalf("Fetch(%q) = %v; a hostname must reach the dialer intact", byName, err)
 	}
@@ -145,7 +154,7 @@ func TestLinkIsLiveWorksWhenTheHostIsAName(t *testing.T) {
 	defer srv.Close()
 
 	byName := strings.Replace(srv.URL, "127.0.0.1", "localhost", 1)
-	if !newFetcherWithPolicy(true).LinkIsLive(context.Background(), byName) {
+	if !newRelaxedFetcher().LinkIsLive(context.Background(), byName) {
 		t.Errorf("LinkIsLive(%q) = false; a hostname must reach the dialer intact", byName)
 	}
 }
@@ -163,7 +172,7 @@ func TestFetchReadsAPublicPage(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	f := newFetcherWithPolicy(true)
+	f := newRelaxedFetcher()
 
 	got, err := f.Fetch(context.Background(), srv.URL)
 	if err != nil {
@@ -189,7 +198,7 @@ func TestFetchRejectsNonTextContent(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	f := newFetcherWithPolicy(true)
+	f := newRelaxedFetcher()
 	_, err := f.Fetch(context.Background(), srv.URL)
 	if err == nil || !strings.Contains(err.Error(), "not text") {
 		t.Errorf("error = %v, want a complaint about the content type", err)
@@ -209,7 +218,7 @@ func TestFetchCapsTheBodyItReads(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	f := newFetcherWithPolicy(true)
+	f := newRelaxedFetcher()
 	got, err := f.Fetch(context.Background(), srv.URL)
 	if err != nil {
 		t.Fatalf("fetch: %v", err)
@@ -227,7 +236,7 @@ func TestFetchRejectsAnEmptyPage(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	f := newFetcherWithPolicy(true)
+	f := newRelaxedFetcher()
 	_, err := f.Fetch(context.Background(), srv.URL)
 	if err == nil || !strings.Contains(err.Error(), "no readable text") {
 		t.Errorf("error = %v, want a complaint that there was nothing to read", err)
@@ -240,7 +249,7 @@ func TestFetchSurfacesAnErrorStatus(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	f := newFetcherWithPolicy(true)
+	f := newRelaxedFetcher()
 	_, err := f.Fetch(context.Background(), srv.URL)
 	if err == nil || !strings.Contains(err.Error(), "404") {
 		t.Errorf("error = %v, want the status reported", err)
@@ -251,7 +260,7 @@ func TestFetchSurfacesAnErrorStatus(t *testing.T) {
 // file:// and a URL with no host, or the tests would be exercising a
 // different guard from the one that ships.
 func TestRelaxedPolicyStillEnforcesTheScheme(t *testing.T) {
-	f := newFetcherWithPolicy(true)
+	f := newRelaxedFetcher()
 	for _, bad := range []string{"file:///etc/passwd", "gopher://example.com/", "http:///nowhere"} {
 		if _, err := f.Fetch(context.Background(), bad); err == nil {
 			t.Errorf("Fetch(%q) succeeded under the relaxed policy", bad)
@@ -284,5 +293,80 @@ func TestExtractTextPrefersTheDocumentTitleOverSkipLinks(t *testing.T) {
 	// be taken from it.
 	if !strings.Contains(text, "Skip to main content") {
 		t.Errorf("text = %q, want the body left alone", text)
+	}
+}
+
+// The allowlist exception, in both directions.
+//
+// It exists so the stub's fixture host is reachable (see stub_fixture.go), and
+// the thing that makes it acceptable is how narrow it is: one exact address,
+// and nothing else -- not even another loopback address one port along, which
+// is what an SSRF against a developer machine would actually be aiming at.
+func TestAllowlistPolicyPermitsOnlyTheNamedAddress(t *testing.T) {
+	page := `<!doctype html><html><head><title>Allowed</title></head><body><p>Reachable.</p></body></html>`
+	allowed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, page)
+	}))
+	defer allowed.Close()
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, page)
+	}))
+	defer other.Close()
+
+	f := newFetcherAllowing(strings.TrimPrefix(allowed.URL, "http://"))
+
+	got, err := f.Fetch(context.Background(), allowed.URL+"/kex")
+	if err != nil {
+		t.Fatalf("the allowlisted address was refused: %v", err)
+	}
+	if got.Title != "Allowed" {
+		t.Errorf("Title = %q, want the fixture's", got.Title)
+	}
+
+	// A different loopback address is still loopback.
+	if _, err := f.Fetch(context.Background(), other.URL+"/kex"); err == nil {
+		t.Error("a loopback address that is not on the list was fetched")
+	} else {
+		var blocked errBlockedAddress
+		if !errors.As(err, &blocked) {
+			t.Errorf("refusal = %v, want a blocked-address error", err)
+		}
+	}
+
+	// And the rest of the policy is untouched: an allowlist is an address
+	// exception, not a licence to leave the web.
+	for _, target := range []string{
+		"file:///etc/passwd",
+		"http://169.254.169.254/latest/meta-data/",
+		"http://10.0.0.1/",
+	} {
+		if _, err := f.Fetch(context.Background(), target); err == nil {
+			t.Errorf("Fetch(%q) was allowed", target)
+		}
+	}
+}
+
+// The same narrowness, at the dial-time check rather than the pre-flight one.
+// The two have to agree, or a URL that passes the first is refused by the
+// second and the fixture is unusable in a way that looks like a network fault.
+func TestAllowlistPolicyAppliesAtDialTime(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, `<!doctype html><html><head><title>Dialled</title></head><body><p>Text.</p></body></html>`)
+	}))
+	defer srv.Close()
+	addr := strings.TrimPrefix(srv.URL, "http://")
+
+	f := newFetcherAllowing(addr)
+	if err := f.checkDialAddress("tcp", addr, nil); err != nil {
+		t.Errorf("checkDialAddress(%q) = %v, want it permitted", addr, err)
+	}
+	if err := f.checkDialAddress("tcp", "127.0.0.1:1", nil); err == nil {
+		t.Error("checkDialAddress permitted a loopback address that is not on the list")
+	}
+	if !f.LinkIsLive(context.Background(), srv.URL) {
+		t.Error("LinkIsLive refused the allowlisted address")
 	}
 }

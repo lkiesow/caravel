@@ -36,14 +36,20 @@ type stubProvider struct {
 	n     int
 }
 
-// newStubProvider returns the default script: search, read a page, stop
+// newStubProvider returns the default script: search, read two pages, stop
 // gathering, answer.
 //
-// Four turns rather than one because the number of turns is the interesting
+// Five turns rather than one because the number of turns is the interesting
 // part. A single-turn script would never exercise the loop, the tool
 // dispatcher or the history-echoing rule that most servers enforce, so the
 // first real provider would be the first time any of it ran.
+//
+// The URLs point at the fixture host rather than at example.invalid, which is
+// what lets a run against the stub produce a live link and a recorded source.
+// See stub_fixture.go for why that host exists and what it costs.
 func newStubProvider() *stubProvider {
+	fixture := startStubFixture()
+
 	answer, err := json.Marshal(modelProposal{
 		Title:     "Kex Hostel",
 		Category:  "stay",
@@ -52,7 +58,7 @@ func newStubProvider() *stubProvider {
 		Address:   "Skulagata 28, 101 Reykjavik, Iceland",
 		PlaceName: "Kex Hostel, Reykjavik",
 		Links: []modelLink{
-			{URL: "https://example.invalid/kex", Label: "Official site"},
+			{URL: fixture.base + "/kex", Label: "Official site"},
 		},
 	})
 	if err != nil {
@@ -64,7 +70,11 @@ func newStubProvider() *stubProvider {
 
 	return newScriptedProvider(
 		turnCalling(toolWebSearch, `{"query":"Kex Hostel Reykjavik"}`),
-		turnCalling(toolFetchPage, `{"url":"https://example.invalid/kex"}`),
+		// Two page reads rather than one, so the sources list has more than a
+		// single entry in it. A list of one renders the same whether it is
+		// built correctly or by accident.
+		turnCalling(toolFetchPage, fetchArgs(fixture.base+"/kex")),
+		turnCalling(toolFetchPage, fetchArgs(fixture.base+"/reykjavik")),
 		// A turn with no tool calls: this is what tells the loop the model has
 		// finished gathering. The structured answer is a separate turn after
 		// it -- see the two-phase note in agent.go.
@@ -78,6 +88,20 @@ func newStubProvider() *stubProvider {
 // mid-run failure.
 func newScriptedProvider(turns ...stubTurn) *stubProvider {
 	return &stubProvider{turns: turns}
+}
+
+// fetchArgs encodes a fetch_page argument object. Built rather than formatted,
+// because the fixture URL carries a port the script cannot know in advance and
+// a hand-written JSON string is one missed quote from a turn that silently
+// does nothing.
+func fetchArgs(target string) string {
+	encoded, err := json.Marshal(struct {
+		URL string `json:"url"`
+	}{URL: target})
+	if err != nil {
+		panic("assist: encoding the stub fetch arguments: " + err.Error())
+	}
+	return string(encoded)
 }
 
 func turnCalling(name, arguments string) stubTurn {

@@ -121,8 +121,14 @@ export function renderAssistPanel(container, { tripId, root, readCurrent, applyF
 
   let controller = null;
   // Every suggestion currently on the page, so Accept all / Dismiss all have
-  // something to act on and the counter has something to count.
+  // something to act on and the counter has something to count. Only
+  // suggestions: the sources box below is part of the same proposal but is
+  // not one of them, and putting it in here is exactly how the counter came
+  // to floor at "1 suggestion" with nothing left on screen.
   let outstanding = [];
+  // The sources box, tracked separately so "Dismiss all" can clear it without
+  // it ever being counted or accepted.
+  let sourcesBox = null;
 
   function setRunning(running) {
     statusEl.hidden = !running;
@@ -159,7 +165,13 @@ export function renderAssistPanel(container, { tripId, root, readCurrent, applyF
   function clearSuggestions() {
     for (const entry of outstanding) entry.el.remove();
     outstanding = [];
+    clearSources();
     syncBar();
+  }
+
+  function clearSources() {
+    sourcesBox?.remove();
+    sourcesBox = null;
   }
 
   // One suggestion, built with DOM calls rather than a template string: every
@@ -312,22 +324,29 @@ export function renderAssistPanel(container, { tripId, root, readCurrent, applyF
       });
     }
 
+    // Sources are shown so the proposal can be judged, and stored nowhere:
+    // once a suggestion is accepted it is just the user's own data. Rendered
+    // before the empty check below, because a run that found nothing worth
+    // suggesting still owes an account of where it looked -- and because the
+    // early return used to skip this entirely.
+    renderSources(proposal.sources ?? []);
+
     if (outstanding.length === 0) {
       showNote("assist.noSuggestions");
       return;
     }
 
-    // Sources are shown so the proposal can be judged, and stored nowhere:
-    // once a suggestion is accepted it is just the user's own data.
-    renderSources(proposal.sources ?? []);
     // The first suggestion is usually below the fold on a phone.
     outstanding[0].el.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
 
+  // The pages the run read. An explanation of the proposal, not a part of it:
+  // there is nothing here to accept or reject, so it is deliberately not in
+  // `outstanding` and the counter never sees it.
   function renderSources(sources) {
     const slot = root.querySelector('[data-assist-field="sources"]');
     if (!slot) return;
-    slot.innerHTML = "";
+    clearSources();
     if (sources.length === 0) return;
 
     const box = document.createElement("div");
@@ -350,10 +369,10 @@ export function renderAssistPanel(container, { tripId, root, readCurrent, applyF
     hint.textContent = t("assist.sourcesHint");
     box.append(heading, list, hint);
     slot.appendChild(box);
-    // Tracked like a suggestion so Dismiss all clears it too: the sources
-    // belong to a proposal nobody is looking at any more.
-    outstanding.push({ el: box, accept: () => box.remove() });
-    syncBar();
+    // Held here rather than in `outstanding` so Dismiss all can still clear it
+    // -- the sources belong to a proposal nobody is looking at any more --
+    // without it being counted as something you have yet to decide.
+    sourcesBox = box;
   }
 
   runBtn.addEventListener("click", run);

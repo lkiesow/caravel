@@ -36,19 +36,6 @@ down.
   only fix is re-uploading the picture. Noted so it is not mistaken later for
   the fix having failed.
 
-- **The assistant's suggestion counter never empties.** **(soon)** (Stage 21.)
-  Accept every suggestion -- one at a time, or with "Accept all" -- and the bar
-  sticks on "1 suggestion" with "Accept all" and "Dismiss all" still on screen.
-  `renderSources` (`web/js/components/assist-panel.js:355`) pushes the sources
-  box into `outstanding`, the array the counter counts, with
-  `accept: () => box.remove()`; every real entry's `accept` calls `forget()`,
-  which is what removes it from the array, and this one does not. So the box
-  leaves the page and stays in the count. It also inflates the count by one
-  from the moment sources render. The UI suite cannot see any of this because
-  the stub's URLs are `example.invalid`, so no fetch succeeds, so
-  `proposal.sources` is empty and `renderSources` returns before the bad push
-  -- the same gap recorded below for the links and sources lists.
-
 - **The assistant is slow, and regularly gives up.** **(soon)** (Stage 21.)
   "The assistant took too long and was stopped. Try a narrower description."
   arrives often enough to be the normal outcome for some places. Nothing
@@ -146,24 +133,6 @@ down.
   has to be added to `search.formats` in `settings.yml`, and it overlaps
   heavily with ddgs, which shipped -- both are self-hosted keyless metasearch,
   so this is for people who already run one rather than a gap in coverage.
-- **The assistant's links and sources are not covered by the UI suite.**
-  **(soon)** (Stage 16 Milestone 9.) `tests/ui/assist.spec.js` asserts on the suggested
-  fields but not on the two list sections, because the stub provider cannot
-  produce either: its URLs point at `example.invalid`, so the proposed link is
-  correctly dropped as dead and the failed page fetch records no source. Both
-  behaviours are right, which is what makes this awkward. The alternatives were
-  rejected in that milestone -- giving CI a network dependency, or letting
-  `CARAVEL_LLM_URL=stub` relax the fetcher's SSRF guard, which is a config
-  value weakening a security control. Both lists have Go tests and were
-  verified by hand against real providers. Closing it properly probably means a
-  second fake that serves pages from an in-process `httptest` server the
-  fetcher is allowed to reach, which is a bigger change than it sounds because
-  the guard refuses loopback by design. One shape that might work, thought of
-  when Stage 21 was scoped: let the *stub provider* start that server itself
-  and hand the fetcher an allowlist of exactly the one `ip:port` the OS just
-  gave it -- an address no environment variable can name and which does not
-  exist unless the stub does. Smaller than relaxing the address policy from
-  configuration, but still a weakening, and it should be described as one.
 - **Filling in a location's cover image.** **(soon)** (Stage 16, deliberately
   out of scope; redesigned when Stage 21 was scoped.) Three parts, and the
   first two are the assistant's.
@@ -375,6 +344,19 @@ down.
 ---
 
 ## Testing, CI and dev tooling
+
+- **The UI suite reaches the real Nominatim.** (Stage 21 Milestone 1.)
+  `scripts/with_server.sh` sets `CARAVEL_LLM_URL=stub` and
+  `CARAVEL_SEARCH_PROVIDER=stub` but leaves `CARAVEL_GEOCODER_URL` at its
+  default, which is `nominatim.openstreetmap.org`. So the coordinates
+  suggestion in `assist.spec.js` -- and the address search in
+  `locations.spec.js` -- depend on a live call to a third party, on a service
+  with its own rate limits and its own opinion about automated traffic. The
+  assist spec's own header says CI has no network budget, which is true of
+  everything except this. Nobody has been bitten yet, and it is a real
+  dependency all the same: the fix is a stub geocoder behind the same sentinel
+  the LLM and search providers already use, so the suite stops asking a
+  volunteer-run service for the same three coordinates on every run.
 
 - **The sweeps run in German at one combination only.** (Stage 19 Milestone 4.)
   `routes.spec.js` sweeps overflow and tap targets in German at mobile/light,

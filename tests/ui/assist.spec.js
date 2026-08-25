@@ -9,16 +9,19 @@
 // real. So a pass here means the whole pipeline works, not that a fixture
 // rendered.
 //
-// # What it cannot cover, and why that is recorded rather than worked around
+// # How the links and sources lists get here
 //
-// The stub's URLs point at example.invalid, which does not resolve, so its
-// proposed link is correctly dropped as dead and its failed page fetch records
-// no source. Both behaviours are right, and together they mean **the links and
-// sources lists cannot appear in this spec**. The alternatives were to give CI
-// a network dependency, or to let the stub relax the fetcher's SSRF guard --
-// a config value weakening a security control, which Stage 16 Milestone 3
-// deliberately avoided. Those two lists are covered by Go tests and were
-// verified by hand against real providers in Milestones 5 and 8.
+// They used to be untestable. The stub's URLs pointed at example.invalid, so
+// the proposed link was correctly dropped as dead and the failed page fetch
+// recorded no source -- both right, and together they meant neither list could
+// ever appear in this spec. A counting bug in the sources list shipped because
+// of exactly that.
+//
+// The stub now starts its own fixture host on loopback and the fetcher is
+// given an allowlist holding that one address. It is a narrow weakening of the
+// SSRF guard and internal/assist/stub_fixture.go says so at length; what it
+// buys is that a run here produces a real link that survived the liveness
+// check and a real list of the pages it read.
 //
 // # Isolation
 //
@@ -88,28 +91,36 @@ test.describe("AI assistant", () => {
     // The run is over, so the spinner and its Cancel have gone again.
     await expect(status).toBeHidden();
 
-    for (const field of ["title", "category", "type", "notes", "address", "coordinates"]) {
+    for (const field of ["title", "category", "type", "notes", "address", "coordinates", "links"]) {
       await expect(
         page.locator(`[data-assist-field="${field}"] .assist-suggestion`),
         `a suggestion under ${field}`
       ).toHaveCount(1);
     }
     await expect(bar).toBeVisible();
-    await expect(page.locator(".assist__count")).toHaveText("6 suggestions");
+    await expect(page.locator(".assist__count")).toHaveText("7 suggestions");
+
+    // The pages the run actually read, listed so the proposal can be judged.
+    // Not a suggestion: there is nothing here to accept, and counting it as
+    // one is what used to leave the bar stuck on "1 suggestion" forever.
+    const sources = page.locator(".assist-sources");
+    await expect(sources).toBeVisible();
+    await expect(sources.locator("li")).toHaveCount(2);
+    await expect(sources.locator("li a").first()).toHaveText(/Kex Hostel/);
 
     // Accepting fills the field and takes the suggestion away, because it has
     // become the field above it.
     await titleSuggestion.getByRole("button", { name: "Accept" }).click();
     await expect(page.locator('input[name="title"]')).toHaveValue("Kex Hostel");
     await expect(titleSuggestion).toHaveCount(0);
-    await expect(page.locator(".assist__count")).toHaveText("5 suggestions");
+    await expect(page.locator(".assist__count")).toHaveText("6 suggestions");
 
     // Rejecting takes it away and leaves the field alone.
     const typeSuggestion = page.locator('[data-assist-field="type"] .assist-suggestion');
     await typeSuggestion.getByRole("button", { name: "Reject" }).click();
     await expect(page.locator('input[name="type"]')).toHaveValue("");
     await expect(typeSuggestion).toHaveCount(0);
-    await expect(page.locator(".assist__count")).toHaveText("4 suggestions");
+    await expect(page.locator(".assist__count")).toHaveText("5 suggestions");
 
     // Coordinates go through the Location card's own handler, so the map
     // marker moves exactly as it does when a pin is dragged.
@@ -118,12 +129,20 @@ test.describe("AI assistant", () => {
     await expect(page.locator('.location-form [name="lat"]')).not.toHaveValue("");
     await expect(page.locator("leaflet-map")).toHaveAttribute("lat", /\d/);
 
-    // Accept the rest in one go, and the bar retires itself.
+    // Accept the rest in one go, and the bar retires itself. This is the
+    // regression the milestone exists for: the sources box used to sit in the
+    // counted list with an accept that removed its node without forgetting the
+    // entry, so the count floored at one and the bar never went away.
     await page.locator('[data-action="assist-accept-all"]').click();
     await expect(page.locator(".assist-suggestion")).toHaveCount(0);
     await expect(bar).toBeHidden();
     await expect(page.locator('select[name="category"]')).toHaveValue("stay");
     await expect(page.locator('textarea[name="notes"]')).not.toHaveValue("");
+    // The accepted link is in the form's own list now.
+    await expect(page.locator(".link-list a", { hasText: "Official site" })).toHaveCount(1);
+    // Accepting the suggestions does not throw away the account of where they
+    // came from: the sources are an explanation, not an outstanding decision.
+    await expect(sources).toBeVisible();
 
     // Nothing has been written yet. Saving is what commits, exactly as if
     // every field had been typed.
@@ -156,9 +175,13 @@ test.describe("AI assistant", () => {
     // enrichment.
     await expect(page.locator('[data-assist-field="title"] .assist-suggestion')).toHaveCount(0);
 
-    // Dismiss all applies nothing at all.
+    // Dismiss all applies nothing at all, and takes the sources with it: they
+    // belong to a proposal nobody is looking at any more.
+    await expect(page.locator(".assist-sources")).toBeVisible();
     await page.locator('[data-action="assist-dismiss-all"]').click();
     await expect(page.locator(".assist-suggestion")).toHaveCount(0);
+    await expect(page.locator(".assist-sources")).toHaveCount(0);
+    await expect(page.locator(".assist__bar")).toBeHidden();
     await expect(page.locator('textarea[name="notes"]')).toHaveValue(handwritten);
 
     // And the note is still intact in the database, not merely on screen.

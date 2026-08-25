@@ -107,8 +107,14 @@ func New(opts Options) (Assistant, error) {
 	}
 
 	var p provider
+	// The stub answers with URLs on a loopback fixture host it starts itself,
+	// so the fetcher it is paired with has to be allowed to reach exactly that
+	// one address -- and nothing else, including every other loopback address.
+	// See stub_fixture.go for what this buys and what it costs.
+	fetcher := newPageFetcher()
 	if opts.LLMURL == LLMStub {
 		p = newStubProvider()
+		fetcher = newFetcherAllowing(startStubFixture().addr)
 	} else {
 		p = newHTTPProvider(opts.LLMURL, opts.LLMKey, opts.LLMModel)
 	}
@@ -134,7 +140,7 @@ func New(opts Options) (Assistant, error) {
 		opts:     opts,
 		provider: p,
 		search:   search,
-		fetcher:  newPageFetcher(),
+		fetcher:  fetcher,
 		geocoder: opts.Geocoder,
 		limits:   limits,
 	}, nil

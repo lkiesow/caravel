@@ -62,24 +62,70 @@ func (e errBlockedAddress) Error() string {
 	return fmt.Sprintf("refusing to fetch %s: %s", e.host, e.reason)
 }
 
+// addressPolicy is the fetcher's exception list, and both of its fields are
+// exceptions rather than settings.
+//
+// # Why there are any at all
+//
+// The guard refuses loopback by design, and everything reachable from a test
+// is on loopback. Without an exception the page fetcher can only ever be
+// tested against the addresses it must block, never against a server that
+// actually answers -- and Milestone 5 of Stage 16 is the standing proof of
+// what that costs: fetch_page had never worked against a real site, through
+// two milestones of green tests, because httptest serves on an IP literal and
+// only a real caller supplies a hostname.
+//
+// # Why they are two exceptions and not one
+//
+// allowPrivate switches the address check off wholesale. It is what the
+// package's own tests use, and nothing else may: an unexported field with no
+// path from an operator's environment.
+//
+// allowed is much narrower -- a set of exact host:port strings, each one an
+// address this process itself just bound. The stub provider uses it for its
+// fixture host (see stub_fixture.go), which is what lets the browser suite
+// exercise a live link and a recorded source. It is still a weakening and
+// should be read as one, but it opens one address rather than a class, the
+// address is chosen by the kernel at start-up, and no configuration value can
+// name it.
+//
+// Neither exception touches the rest of the policy: the scheme check, the
+// redirect re-check and the size and time caps all still apply to both.
+type addressPolicy struct {
+	allowPrivate bool
+	allowed      map[string]bool
+}
+
+// permits reports whether hostPort is on the exact allowlist. A URL with no
+// port cannot match, which is intended: the entries are addresses this process
+// bound, and those always carry one.
+func (p addressPolicy) permits(hostPort string) bool {
+	return p.allowed != nil && p.allowed[hostPort]
+}
+
 // pageFetcher retrieves pages, with the guard applied.
 type pageFetcher struct {
 	client *http.Client
-	// allowPrivate relaxes the address policy to permit loopback and private
-	// ranges. Only newFetcherWithPolicy(true) sets it and only tests call
-	// that, because httptest servers listen on loopback -- which is precisely
-	// what the guard exists to refuse. Everything else stays on: the scheme
-	// check, the redirect re-check and the size and time caps.
-	//
-	// An unexported field with one caller rather than a config option, so
-	// there is no path from an operator's environment to a relaxed guard.
-	allowPrivate bool
+	policy addressPolicy
 }
 
-func newPageFetcher() *pageFetcher { return newFetcherWithPolicy(false) }
+func newPageFetcher() *pageFetcher { return newFetcherWithPolicy(addressPolicy{}) }
 
-func newFetcherWithPolicy(allowPrivate bool) *pageFetcher {
-	f := &pageFetcher{allowPrivate: allowPrivate}
+// newFetcherAllowing builds a fetcher that may reach exactly these host:port
+// addresses in addition to the public internet. Everything else is refused as
+// usual. See addressPolicy for why this exists and what it does not relax.
+func newFetcherAllowing(addrs ...string) *pageFetcher {
+	allowed := make(map[string]bool, len(addrs))
+	for _, a := range addrs {
+		if a != "" {
+			allowed[a] = true
+		}
+	}
+	return newFetcherWithPolicy(addressPolicy{allowed: allowed})
+}
+
+func newFetcherWithPolicy(policy addressPolicy) *pageFetcher {
+	f := &pageFetcher{policy: policy}
 	f.client = &http.Client{
 		Timeout: fetchTimeout,
 		// The redirect target is checked before it is followed. Returning an
@@ -200,11 +246,14 @@ func (f *pageFetcher) fetchUnguarded(ctx context.Context, target string) (page, 
 }
 
 // guard applies this fetcher's address policy.
+//
+// The scheme check comes first and is never skipped, so neither exception can
+// make file:// fetchable.
 func (f *pageFetcher) guard(u *url.URL) error {
 	if err := guardScheme(u); err != nil {
 		return err
 	}
-	if f.allowPrivate {
+	if f.policy.allowPrivate || f.policy.permits(u.Host) {
 		return nil
 	}
 	return guardURL(u)
@@ -223,7 +272,11 @@ func (f *pageFetcher) dialer() *net.Dialer {
 // checkDialAddress runs after DNS resolution and before the connect, once per
 // candidate address. Its argument really is ip:port.
 func (f *pageFetcher) checkDialAddress(_, address string, _ syscall.RawConn) error {
-	if f.allowPrivate {
+	// The allowlist is matched here on the resolved ip:port as well as on the
+	// URL in guard, and the two agree because its entries are literal
+	// addresses -- there is no name in between for the resolver to change its
+	// mind about.
+	if f.policy.allowPrivate || f.policy.permits(address) {
 		return nil
 	}
 	host, _, err := net.SplitHostPort(address)

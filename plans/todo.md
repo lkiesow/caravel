@@ -161,49 +161,34 @@ down.
   has to be added to `search.formats` in `settings.yml`, and it overlaps
   heavily with ddgs, which shipped -- both are self-hosted keyless metasearch,
   so this is for people who already run one rather than a gap in coverage.
-- **Filling in a location's cover image.** **(soon)** (Stage 16, deliberately
-  out of scope; redesigned when Stage 21 was scoped.) Three parts, and the
-  first two are the assistant's.
-    - **`og:image`, from a page the agent has already read.** `extractText`
-      (`internal/assist/fetch.go:334`) already walks the document with
-      `x/net/html` to harvest the title; harvesting
-      `<meta property="og:image">` beside it costs no extra request, no
-      backend and no key, and it is the venue's own photograph of itself from
-      the page being proposed as the official link. This is the primary
-      source: it covers the hotels and restaurants Wikipedia has never heard
-      of.
-    - **Wikipedia, as the fallback.** The model returns an article title as a
-      *lookup key* -- exactly as it returns an address for the geocoder to
-      resolve -- and Caravel pulls the lead image with its licence and credit.
-      Needs a small `internal/wikimedia` client in the shape of
-      `internal/geocode`. Covers the landmarks with a good article and no
-      useful official site.
-    - **A "Search for an image" control, with no LLM in it.** The sibling of
-      the address search: Wikipedia article images always, and an image search
-      as well when a backend that can do one is configured. See the separate
-      entry below.
-  All three want provenance on `media_assets`, which has none -- the source
-  page URL, plus a credit line and licence name that a Wikimedia image has and
-  an `og:image` does not. That is a migration (`0002`) in both dialects.
-  **Generic image search is deliberately not offered to the agent**: the model
-  has no vision, so it would be choosing a photograph by the text around it,
-  and a wrong-but-plausible picture of a place you have never been is the same
-  failure mode with no tell that made Stage 16 refuse to take coordinates from
-  the model. Offering the same results to a *person* to pick from is fine,
-  which is what the third part is.
-- **Image search as an optional `Searcher` capability.** **(soon)** (Stage 21.)
-  `Searcher` (`internal/assist/search.go:36`) returns `{title, url, snippet}`
-  and cannot do images. Serper has an images endpoint and so does ddgs;
-  **Ollama Cloud's `web_search` does not**, and neither does the stub. So this
-  wants an optional `ImageSearcher` a backend *may* also implement, discovered
-  by type assertion rather than a second provider registry -- a backend that
-  cannot simply contributes nothing. Two knock-on effects: `config.go:201`
-  currently refuses `CARAVEL_SEARCH_PROVIDER` without `CARAVEL_LLM_URL` on the
-  reasoning that "web search is only used by the assistant", which stops being
-  true, so the searcher has to be built in `main.go` and shared; and a future
-  SearXNG backend would want to implement this too. Take the ddgs request and
-  response shapes from a live instance rather than from documentation --
-  Stage 16 Milestone 8 had to.
+- **`/auth/me` wants a nested `capabilities` object.** (Stage 21 Milestone 7.)
+  It now carries three flat server-capability flags beside the user fields --
+  `geocoding`, `assist` and `image_search` (`internal/httpapi/auth.go`). Two was
+  under the threshold where a reshape earns its client-visible change; three is
+  over it, and the comment on the second flag said as much in advance. The
+  change is small and touches `web/js/session.js` and every reader of those
+  three fields, which is why it belongs in its own commit rather than riding
+  along with a feature.
+- **Web search may want to leave `internal/assist`.** (Stage 21 Milestone 7.)
+  `Searcher` and its four backends live in that package because the assistant
+  was their only consumer. It no longer is: the image picker uses the same
+  backend, `cmd/caravel` builds it and `internal/httpapi` type-asserts
+  `assist.ImageSearcher` off it, so a package named for the assistant is now
+  imported for something with no LLM in it. An `internal/websearch` in the shape
+  of `internal/geocode` would be the honest arrangement. Mechanical but wide --
+  every test in `internal/assist` names one of these types.
+- **A SearXNG backend should implement `ImageSearcher` too.** (Stage 21
+  Milestone 7.) See the SearXNG entry above: image search is now an optional
+  capability a `Searcher` may also implement, and SearXNG has an images
+  category, so a backend added later would want both halves rather than only
+  the text one.
+- **The image picker offers no way to page past the first results.** (Stage 21
+  Milestone 7.) Twelve Wikipedia candidates and twelve from the web, and if none
+  of them is the picture you want, the only move is a different search term.
+  Both backends support paging (`gsroffset`, and ddgs takes a `page`), so a
+  "more" control is possible; it was left out because a grid you have to scroll
+  twice at 324px is already long, and nobody has yet wanted a thirteenth
+  candidate.
 - **AI trip-level suggestions.** (Stage 15 backlog review.) "Suggest things to
   do in Reykjavik" returning several candidate locations to add at once, rather
   than enriching one location at a time. **No longer blocked**: Stage 16 built

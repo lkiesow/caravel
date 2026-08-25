@@ -17,6 +17,7 @@ import (
 	"caravel/internal/db"
 	"caravel/internal/geocode"
 	"caravel/internal/storagefs"
+	"caravel/internal/wikimedia"
 )
 
 func init() {
@@ -55,13 +56,23 @@ type Server struct {
 	// /auth/me reports the capability as absent and the client hides the
 	// control. Same shape as GeocoderURL above.
 	Assist assist.Assistant
+	// Wikimedia backs the Wikipedia half of the image picker. Never nil in
+	// production -- it needs no configuration and no key, which is what makes
+	// "Search for an image" work on a stock instance. Nil switches that half
+	// off, which is what a test that wants no outbound calls does.
+	Wikimedia *wikimedia.Client
+	// ImageSearch is the *optional* other half: the configured search backend,
+	// when it can search for images. Nil when none is configured, or when the
+	// one that is cannot (Ollama Cloud has no images endpoint).
+	ImageSearch assist.ImageSearcher
 	// assistSlots is a counting semaphore over in-flight assist runs; see
 	// DefaultAssistMaxConcurrent. A buffered channel rather than a mutex and
 	// a counter, so the non-blocking "is there room" question is one select.
-	assistSlots    chan struct{}
-	LoginLimiter   *rateLimiter
-	GeocodeLimiter *rateLimiter
-	AssistLimiter  *rateLimiter
+	assistSlots        chan struct{}
+	LoginLimiter       *rateLimiter
+	GeocodeLimiter     *rateLimiter
+	AssistLimiter      *rateLimiter
+	ImageSearchLimiter *rateLimiter
 	// Tiles is what /api/map/config hands the frontend, already resolved
 	// against the defaults, so nothing downstream has to ask "is this the
 	// configured value or the fallback".
@@ -92,6 +103,11 @@ type Options struct {
 	Geocoder *geocode.Client
 	// Assist is the location-metadata assistant, or nil when unconfigured.
 	Assist assist.Assistant
+	// Wikimedia backs the Wikipedia half of /api/trips/{id}/image-search.
+	Wikimedia *wikimedia.Client
+	// Searcher is the configured web-search backend, shared with Assist. The
+	// image endpoint uses it only if it also implements assist.ImageSearcher.
+	Searcher assist.Searcher
 	// AssistRateLimit is runs per minute per client address. Zero takes
 	// defaultAssistRateLimit. This is the only thing bounding how *many* runs
 	// happen -- assist.Limits bounds what one run may spend -- so the
@@ -131,22 +147,35 @@ const DefaultAssistMaxConcurrent = 4
 
 func NewServer(opts Options) *Server {
 	s := &Server{
-		DB:       opts.DB,
-		Store:    opts.Store,
-		Auth:     opts.Auth,
-		Blob:     opts.Blob,
-		WebFS:    http.FS(opts.WebFS),
-		NoCache:  opts.NoCache,
-		Geocoder: opts.Geocoder,
-		Assist:   opts.Assist,
+		DB:        opts.DB,
+		Store:     opts.Store,
+		Auth:      opts.Auth,
+		Blob:      opts.Blob,
+		WebFS:     http.FS(opts.WebFS),
+		NoCache:   opts.NoCache,
+		Geocoder:  opts.Geocoder,
+		Assist:    opts.Assist,
+		Wikimedia: opts.Wikimedia,
 		// 20/minute/IP. Higher than login's 10 because a search is a normal,
 		// repeated action rather than a credential attempt, and still far
 		// under what would embarrass us upstream.
 		LoginLimiter:   newRateLimiter(10, time.Minute),
 		GeocodeLimiter: newRateLimiter(20, time.Minute),
 		AssistLimiter:  newRateLimiter(assistRateLimit(opts.AssistRateLimit), time.Minute),
-		assistSlots:    make(chan struct{}, assistMaxConcurrent(opts.AssistMaxConcurrent)),
-		Tiles:          opts.Tiles.withDefaults(),
+		// 10/minute/IP. Between the two above on purpose: one search is
+		// several upstream calls (up to three to Wikimedia, one to a metered
+		// search API) but it is still a person pressing a button, not a run
+		// that costs by the token.
+		ImageSearchLimiter: newRateLimiter(10, time.Minute),
+		assistSlots:        make(chan struct{}, assistMaxConcurrent(opts.AssistMaxConcurrent)),
+		Tiles:              opts.Tiles.withDefaults(),
+	}
+	// The image searcher is the configured backend *if* it can do images --
+	// a type assertion rather than a second registry, so a backend that
+	// cannot simply contributes nothing and the Wikipedia half carries the
+	// feature. See assist.ImageSearcher.
+	if is, ok := opts.Searcher.(assist.ImageSearcher); ok {
+		s.ImageSearch = is
 	}
 	s.router = s.buildRouter()
 	go s.sweepLimitersPeriodically()
@@ -187,6 +216,7 @@ func (s *Server) sweepLimitersPeriodically() {
 		s.LoginLimiter.sweep()
 		s.GeocodeLimiter.sweep()
 		s.AssistLimiter.sweep()
+		s.ImageSearchLimiter.sweep()
 	}
 }
 
@@ -275,6 +305,10 @@ func (s *Server) buildRouter() chi.Router {
 				r.Put("/preview-image", s.handleSetTripPreviewImage)
 				r.Post("/media", s.handleUploadMedia)
 				r.Post("/media/url", s.handleCreateMediaURL)
+				// Trip-scoped because it is reached from a trip's editor and
+				// authorized as an edit, and behind its own limiter because
+				// it spends somebody else's quota. See imagesearch.go.
+				r.With(s.rateLimitImageSearch).Get("/image-search", s.handleImageSearch)
 
 				r.Get("/files", s.handleListTripFiles)
 				r.Post("/files", s.handleUploadTripFile)

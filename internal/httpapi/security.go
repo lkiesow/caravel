@@ -116,6 +116,18 @@ func (s *Server) rateLimitGeocode(next http.Handler) http.Handler {
 	})
 }
 
+// The image picker: one press can be three calls to Wikimedia and one to a
+// metered search API, none of them ours.
+func (s *Server) rateLimitImageSearch(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !s.ImageSearchLimiter.Allow(clientIP(r)) {
+			writeError(w, http.StatusTooManyRequests, "too many image searches, try again in a moment")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // Stricter again, and for a third reason: an assist run is the only request in
 // the app that costs the instance owner real money per call. The limit is per
 // IP like the others rather than per user -- deliberately, since the owner

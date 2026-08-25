@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -30,8 +31,10 @@ import (
 // less often than memory does.
 
 type ddgsSearcher struct {
-	url    string
-	client *http.Client
+	url string
+	// imageURL is /search/images on the same service.
+	imageURL string
+	client   *http.Client
 }
 
 func newDDGSSearcher(baseURL string) *ddgsSearcher {
@@ -39,8 +42,9 @@ func newDDGSSearcher(baseURL string) *ddgsSearcher {
 		// Trailing slash tolerated: CARAVEL_SEARCH_URL is the service root
 		// ("http://localhost:8000"), and pasting it with a slash is not a
 		// configuration error worth failing over.
-		url:    strings.TrimRight(strings.TrimSpace(baseURL), "/") + "/search/text",
-		client: &http.Client{Timeout: searchTimeout},
+		url:      strings.TrimRight(strings.TrimSpace(baseURL), "/") + "/search/text",
+		imageURL: strings.TrimRight(strings.TrimSpace(baseURL), "/") + "/search/images",
+		client:   &http.Client{Timeout: searchTimeout},
 	}
 }
 
@@ -111,4 +115,98 @@ func (s *ddgsSearcher) Search(ctx context.Context, query string) ([]SearchResult
 		})
 	}
 	return out, nil
+}
+
+// SearchImages implements ImageSearcher.
+//
+// POST /search/images with the same {"query", "max_results", "backend"} the
+// text endpoint takes, answering {"results": [{"title", "image", "thumbnail",
+// "url", "width", "height", "source"}]}.
+//
+// Read off a live `ddgs api` server, and there is one thing in it no
+// documentation would have told us: **width and height come back as strings**,
+// not numbers. Decoding them into int fields silently fails the whole
+// response, so they are decoded as json.Number and converted here.
+func (s *ddgsSearcher) SearchImages(ctx context.Context, query string) ([]ImageResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, searchTimeout)
+	defer cancel()
+
+	body, err := json.Marshal(map[string]any{
+		"query":       query,
+		"max_results": imageSearchMaxResults,
+		"backend":     "auto",
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.imageURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", assistUserAgent())
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("the ddgs service at %s could not be reached (is it running?): %w", s.imageURL, err)
+	}
+	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("the ddgs service responded with status %d", resp.StatusCode)
+	}
+
+	var decoded struct {
+		Results []struct {
+			Title     string  `json:"title"`
+			Image     string  `json:"image"`
+			Thumbnail string  `json:"thumbnail"`
+			URL       string  `json:"url"`
+			Width     flexInt `json:"width"`
+			Height    flexInt `json:"height"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return nil, fmt.Errorf("the ddgs service returned a response that could not be read: %w", err)
+	}
+
+	out := make([]ImageResult, 0, len(decoded.Results))
+	for _, r := range decoded.Results {
+		if strings.TrimSpace(r.Image) == "" {
+			continue
+		}
+		out = append(out, ImageResult{
+			Title:     truncate(collapseWhitespace(r.Title), 200),
+			URL:       strings.TrimSpace(r.Image),
+			ThumbURL:  strings.TrimSpace(r.Thumbnail),
+			Width:     int(r.Width),
+			Height:    int(r.Height),
+			SourceURL: strings.TrimSpace(r.URL),
+		})
+	}
+	return out, nil
+}
+
+// flexInt reads a dimension however this service feels like sending it.
+//
+// json.Number is not enough: it refuses an empty string, and refusing one
+// field fails the whole response -- which would turn "one result has no
+// dimensions" into "the search found nothing". Anything unreadable is zero,
+// meaning unknown, which is a thing the caller can render.
+type flexInt int
+
+func (f *flexInt) UnmarshalJSON(raw []byte) error {
+	v, err := strconv.Atoi(strings.Trim(string(raw), `"`))
+	if err != nil {
+		*f = 0
+		return nil
+	}
+	*f = flexInt(v)
+	return nil
 }

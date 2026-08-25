@@ -1,7 +1,8 @@
 import { api } from "../api.js";
 import { guard, guardClick, guardForm } from "../busy.js";
-import { t, translatePage } from "../i18n.js";
+import { getLocale, t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
+import { getCurrentUser } from "../session.js";
 
 // Renders an image picker (upload a file, or paste a URL) plus a preview
 // and remove button. `tripId` scopes the upload/url endpoints (media is
@@ -15,7 +16,7 @@ import { icon } from "../icon.js";
 // `onStaged({ kind: "file", file, previewUrl } | { kind: "url", url, previewUrl } | null)`
 // reports the current pick so the caller can upload it once the entity
 // exists.
-export function renderImageField(container, { tripId, imageUrl, attachPath, onChanged, onStaged }) {
+export function renderImageField(container, { tripId, imageUrl, attachPath, onChanged, onStaged, searchSeed }) {
   const isStaging = !tripId || !attachPath;
   const staged = { kind: null, file: null, url: null, previewUrl: null, provenance: null };
 
@@ -32,8 +33,10 @@ export function renderImageField(container, { tripId, imageUrl, attachPath, onCh
             <input type="url" name="url" data-i18n-placeholder="image.urlPlaceholder" />
             <button type="submit" class="btn btn-secondary btn-row">${icon("check")} <span data-i18n="image.setUrl"></span></button>
           </form>
+          ${canSearchImages() ? `<button type="button" class="btn btn-secondary btn-row" data-action="search-image">${icon("search")} <span data-i18n="image.search"></span></button>` : ""}
           ${currentUrl ? `<button type="button" class="btn btn-secondary" data-action="remove">${icon("x")} <span data-i18n="image.remove"></span></button>` : ""}
         </div>
+        <div class="image-search" hidden></div>
         <p class="image-field__error" role="alert" hidden></p>
       </div>
     `;
@@ -107,6 +110,8 @@ export function renderImageField(container, { tripId, imageUrl, attachPath, onCh
       await setFromURL(input.value);
     });
 
+    bindImageSearch();
+
     const removeBtn = container.querySelector('[data-action="remove"]');
     if (removeBtn) {
       guardClick(removeBtn, async () => {
@@ -129,6 +134,190 @@ export function renderImageField(container, { tripId, imageUrl, attachPath, onCh
           showError(err.body?.error || t("common.error"));
         }
       });
+    }
+  }
+
+
+  // "Search for an image": the picker, and the one image feature with no
+  // assistant in it.
+  //
+  // Hidden unless the server reports the capability *and* there is a trip to
+  // scope the search to - which is why a brand-new trip does not get it: the
+  // endpoint is trip-scoped and authorized as an edit of that trip, and there
+  // is nothing yet to authorize against. Every other caller has one.
+  //
+  // It never searches per keystroke. One press can be three calls to Wikimedia
+  // and one to a metered search API, none of them ours - the same reasoning
+  // that put the address search behind a button (see bindPlaceSearch).
+  function canSearchImages() {
+    return Boolean(tripId) && Boolean(getCurrentUser()?.image_search);
+  }
+
+  function bindImageSearch() {
+    const openBtn = container.querySelector('[data-action="search-image"]');
+    if (!openBtn) return;
+    const panel = container.querySelector(".image-search");
+
+    openBtn.addEventListener("click", () => {
+      if (!panel.hidden) {
+        panel.hidden = true;
+        panel.innerHTML = "";
+        return;
+      }
+      panel.hidden = false;
+      panel.innerHTML = `
+        <form class="image-search__form">
+          <input type="search" name="q" data-i18n-placeholder="image.searchPlaceholder" />
+          <button type="submit" class="btn btn-secondary btn-row">${icon("search")} <span data-i18n="image.searchSubmit"></span></button>
+        </form>
+        <p class="image-search__status" role="status" hidden></p>
+        <div class="image-search__groups"></div>
+      `;
+      translatePage(panel);
+
+      const input = panel.querySelector('input[name="q"]');
+      // Seeded from the title the user already typed, which is usually the
+      // whole search - and searched straight away, because a control that
+      // opens with the answer already filled in and makes you press again is
+      // asking for a press it does not need.
+      const seed = (searchSeed?.() ?? "").trim();
+      input.value = seed;
+      guardForm(panel.querySelector(".image-search__form"), async () => {
+        await runImageSearch(panel, input.value.trim());
+      });
+      input.focus();
+      if (seed.length >= 2) runImageSearch(panel, seed);
+    });
+  }
+
+  async function runImageSearch(panel, query) {
+    const status = panel.querySelector(".image-search__status");
+    const groups = panel.querySelector(".image-search__groups");
+    const say = (key) => {
+      status.textContent = key ? t(key) : "";
+      status.hidden = !key;
+    };
+    groups.innerHTML = "";
+    if (query.length < 2) {
+      say("image.searchTooShort");
+      return;
+    }
+    say("image.searching");
+
+    let found;
+    try {
+      found = await api.get(`/trips/${tripId}/image-search?q=${encodeURIComponent(query)}&lang=${encodeURIComponent(getLocale())}`);
+    } catch (err) {
+      // The Go text is for the console; the user gets one sentence. The
+      // upstream services' own words are not ours to forward.
+      console.error("image search failed:", err.body?.error || err.message || err);
+      say("image.searchFailed");
+      return;
+    }
+    if (!found.groups?.length) {
+      say("image.searchNoResults");
+      return;
+    }
+    say(null);
+
+    for (const group of found.groups) {
+      const section = document.createElement("section");
+      section.className = "image-search__group";
+
+      const heading = document.createElement("h4");
+      // Wikipedia is named; a web search is named by its provider, because
+      // "some search engine found this" is not something to be vague about.
+      heading.textContent =
+        group.source === "wikipedia" ? t("image.searchFromWikipedia") : t("image.searchFromWeb", { provider: group.source });
+      section.appendChild(heading);
+
+      if (group.source !== "wikipedia") {
+        const note = document.createElement("p");
+        note.className = "image-search__note";
+        note.textContent = t("image.searchNoLicence");
+        section.appendChild(note);
+      }
+
+      const grid = document.createElement("div");
+      grid.className = "image-search__grid";
+      for (const result of group.results) {
+        grid.appendChild(renderCandidate(result, panel));
+      }
+      section.appendChild(grid);
+      groups.appendChild(section);
+    }
+  }
+
+  function renderCandidate(result, panel) {
+    const cell = document.createElement("button");
+    cell.type = "button";
+    cell.className = "image-search__result";
+
+    const img = document.createElement("img");
+    // A thumbnail is a preview only: what gets stored is the full-size URL,
+    // fetched server-side by POST /media/url exactly as a pasted link is.
+    img.src = result.thumb_url || result.url;
+    // Empty, and the caption below carries the name: an image in a grid of
+    // candidates is described by the label right under it, and reading the
+    // same words twice is worse than reading them once.
+    img.alt = "";
+    // A dead thumbnail must not leave an invisible cell that still clicks -
+    // hotlink-blocked hosts and moved files are common, and image-field's own
+    // preview already learned this lesson. The whole cell goes.
+    img.addEventListener("error", () => {
+      cell.remove();
+      pruneEmptyGroups(panel);
+    });
+    cell.appendChild(img);
+
+    const caption = document.createElement("span");
+    caption.className = "image-search__caption";
+    caption.textContent = result.title || hostOf(result.source_url || result.url);
+    cell.appendChild(caption);
+
+    const meta = document.createElement("span");
+    meta.className = "image-search__meta";
+    // Licence when there is one, host when there is not - so a Wikipedia
+    // result says what may be done with it and a web result says only where
+    // it was found, which is the whole of what is known about it.
+    meta.textContent = result.license || hostOf(result.source_url || result.url);
+    cell.appendChild(meta);
+
+    cell.addEventListener("click", async () => {
+      panel.hidden = true;
+      panel.innerHTML = "";
+      await setFromURL(result.url, {
+        source_url: result.source_url || "",
+        credit: result.credit || "",
+        license: result.license || "",
+      });
+    });
+    return cell;
+  }
+
+  // A group whose every thumbnail died is a heading over an empty box, which
+  // reads as a bug rather than as an answer. It goes, and if that was the last
+  // group the panel says what it would have said if nothing had been found -
+  // because from where the user sits, nothing was.
+  function pruneEmptyGroups(panel) {
+    const groups = panel.querySelector(".image-search__groups");
+    if (!groups) return;
+    for (const section of groups.querySelectorAll(".image-search__group")) {
+      if (!section.querySelector(".image-search__result")) section.remove();
+    }
+    if (!groups.querySelector(".image-search__group")) {
+      const status = panel.querySelector(".image-search__status");
+      if (!status) return;
+      status.textContent = t("image.searchNoResults");
+      status.hidden = false;
+    }
+  }
+
+  function hostOf(url) {
+    try {
+      return new URL(url).host;
+    } catch {
+      return "";
     }
   }
 

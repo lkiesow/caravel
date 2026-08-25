@@ -24,9 +24,13 @@ import (
 const serperSearchURL = "https://google.serper.dev/search"
 
 type serperSearcher struct {
-	url    string
-	key    string
-	client *http.Client
+	url string
+	// imageURL is the /images sibling of url. Derived rather than configured,
+	// so an operator pointing CARAVEL_SEARCH_URL at a proxy gets both
+	// endpoints from the one setting.
+	imageURL string
+	key      string
+	client   *http.Client
 }
 
 func newSerperSearcher(key, overrideURL string) *serperSearcher {
@@ -35,9 +39,10 @@ func newSerperSearcher(key, overrideURL string) *serperSearcher {
 		endpoint = strings.TrimSpace(overrideURL)
 	}
 	return &serperSearcher{
-		url:    endpoint,
-		key:    key,
-		client: &http.Client{Timeout: searchTimeout},
+		url:      endpoint,
+		imageURL: strings.TrimSuffix(endpoint, "/search") + "/images",
+		key:      key,
+		client:   &http.Client{Timeout: searchTimeout},
 	}
 }
 
@@ -104,6 +109,82 @@ func (s *serperSearcher) Search(ctx context.Context, query string) ([]SearchResu
 			Title:   strings.TrimSpace(r.Title),
 			URL:     strings.TrimSpace(r.Link),
 			Snippet: truncate(collapseWhitespace(r.Snippet), 600),
+		})
+	}
+	return out, nil
+}
+
+// SearchImages implements ImageSearcher.
+//
+// POST /images, same key and same shape as the text endpoint, answering an
+// `images` array of {title, imageUrl, imageWidth, imageHeight, thumbnailUrl,
+// link, domain}. Taken from a live response rather than from documentation:
+// `imageUrl` is the picture and `link` is the page it sits on, which is the
+// pair this feature needs and the pair easiest to get the wrong way round.
+func (s *serperSearcher) SearchImages(ctx context.Context, query string) ([]ImageResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, searchTimeout)
+	defer cancel()
+
+	body, err := json.Marshal(map[string]any{"q": query, "num": imageSearchMaxResults})
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.imageURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-API-KEY", s.key)
+	req.Header.Set("User-Agent", assistUserAgent())
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("the image search service could not be reached: %w", err)
+	}
+	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		switch resp.StatusCode {
+		case http.StatusUnauthorized, http.StatusForbidden:
+			return nil, fmt.Errorf("the image search service rejected the API key (status %d)", resp.StatusCode)
+		case http.StatusPaymentRequired:
+			return nil, fmt.Errorf("the image search service reports the account is out of credit (status 402)")
+		}
+		return nil, fmt.Errorf("the image search service responded with status %d", resp.StatusCode)
+	}
+
+	var decoded struct {
+		Images []struct {
+			Title        string `json:"title"`
+			ImageURL     string `json:"imageUrl"`
+			ImageWidth   int    `json:"imageWidth"`
+			ImageHeight  int    `json:"imageHeight"`
+			ThumbnailURL string `json:"thumbnailUrl"`
+			Link         string `json:"link"`
+		} `json:"images"`
+	}
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return nil, fmt.Errorf("the image search service returned a response that could not be read: %w", err)
+	}
+
+	out := make([]ImageResult, 0, len(decoded.Images))
+	for _, r := range decoded.Images {
+		if strings.TrimSpace(r.ImageURL) == "" {
+			continue
+		}
+		out = append(out, ImageResult{
+			Title:     truncate(collapseWhitespace(r.Title), 200),
+			URL:       strings.TrimSpace(r.ImageURL),
+			ThumbURL:  strings.TrimSpace(r.ThumbnailURL),
+			Width:     r.ImageWidth,
+			Height:    r.ImageHeight,
+			SourceURL: strings.TrimSpace(r.Link),
 		})
 	}
 	return out, nil

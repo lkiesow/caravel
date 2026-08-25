@@ -5,7 +5,7 @@
 //
 // Bump this on any static-asset change you want clients to pick up
 // immediately; old caches are dropped on activate.
-const CACHE_VERSION = "caravel-shell-v3";
+const CACHE_VERSION = "caravel-shell-v4";
 
 // The brand face is in the shell rather than left to runtime population: it
 // is in the first paint, so an offline load without it shows the fallback and

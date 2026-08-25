@@ -1153,6 +1153,94 @@ Then by hand with a real provider: a landmark (Wikipedia results), a hotel
 (image-search results), and one with neither. German, dark mode, 324×756 —
 a results grid at 324px is the interesting case.
 
+**Done.** The control shipped as planned, and the two open questions in the
+plan both resolved in favour of doing more rather than less.
+
+**The Wikipedia half offers more than one picture, and the noise gate is what
+makes that safe.** The plan hedged: `generator=images` lists *every* file on an
+article, so if that turned out noisy the fallback was the lead image alone. It
+is noisy -- and the gate handles it. Measured against the live English article
+for Meiji Shrine: 41 files, of which raster-only plus a 200px minimum keeps 32
+and drops exactly the nine that are page furniture (three SVG symbols, a
+location map, two Shinto icons, the Commons logo, a UI icon and an `.ogv`
+video). So `wikimedia.Search` makes three calls: `generator=search` for the
+lead image of each matching article, `generator=images` for the photographs on
+the best-ranked one, and a batched `imageinfo` to fill in the licences that
+`pageimages` does not return. A ranking detail worth recording, because it is
+invisible until it is wrong: the API returns pages in arbitrary order and puts
+the rank in `index`, so the results are sorted by it -- otherwise "the best
+match" is whichever page came back first, and the second call reads the wrong
+article.
+
+**Both halves are labelled rather than merged, because only one of them can be
+credited.** A Wikipedia result carries an author and a licence; Serper and ddgs
+report where a picture was found and nothing about the terms it may be used on.
+A merged list would have to invent a licence field for half of it or drop it
+from the other half, so the response is grouped by source, the web group
+carries a line saying its licences are unknown, and each cell shows its licence
+where there is one and its host where there is not.
+
+**`ImageSearcher` is an optional capability, found by type assertion.** Serper
+(`/images`) and ddgs (`/search/images`) implement it, Ollama Cloud does not and
+contributes nothing. `cmd/caravel` now builds *one* searcher and hands it to
+both the assistant and the server, `config.go`'s rule refusing a search
+provider without an LLM is gone, and the startup line reports
+`image_search_web=serper` -- or `"ollama (no image search)"`, which is the
+answer an operator would otherwise find surprising and invisible.
+
+**Reading ddgs from a live instance paid for itself again.** `pip install
+ddgs[api]`, `ddgs api`, and its `/search/images` returns **width and height as
+strings**. Decoding those into `int` fails the whole response, so a working
+search would have quietly returned nothing; `json.Number` is not enough either,
+because it refuses `""`. They are decoded through a `flexInt` whose failure
+case is zero, meaning unknown.
+
+**Verified.** `make ci` green; i18n parity at 369 keys; **the full UI suite,
+138 passed**. `go test` covers the noise gate by name rather than by count (an
+article of four SVGs, a video, an 80x60 thumbnail and two photographs returns
+the two photographs), the `index` ranking, the batched licence fill-in, the
+limit as a hard cap, a search matching nothing as an empty answer rather than
+an error, both backends against `httptest.Server` including the string
+dimensions and a missing one, the type assertion over all four backends, and
+the endpoint at 501/400/403/429 plus one source failing while the other still
+answers.
+
+The browser suite needed an encyclopaedia, so `CARAVEL_WIKIMEDIA_URL=stub`
+starts an in-process fixture that answers both API calls and serves real PNGs
+-- one of them deliberately 404, because "a dead thumbnail leaves an invisible
+cell that still clicks" is the bug worth having a fixture for. Two things came
+out of writing that test. The suite's own `blockExternalRequests` answers any
+off-origin `.png/.jpg` with a 1x1 transparent PNG so map tiles never reach a
+third party, which silently made the dead thumbnail *load* -- the spec now
+overrides that route for its own two hosts, and says why. And a group whose
+every thumbnail died left a heading over an empty box, which reads as a bug
+rather than as an answer: empty groups are now removed, and if that was the
+last one the panel says what it says when nothing was found.
+
+By hand at 324x756 in German and dark against the live provider (OpenRouter +
+nemotron, Serper): "Bild suchen" seeded from the title, ten credited Wikipedia
+results from the *German* edition for "Heger Tor Osnabrück" plus twelve from
+Serper under "Aus dem Web (serper)", no horizontal overflow, meta and warning
+text at 6:1 contrast (13px). The grid minimum was cut from 9rem to 7.5rem after
+measuring: the grid is 258px wide at 324px, so two tracks plus the gap have
+125px each and 9rem dropped the phone to a single column, doubling the scroll.
+Both round trips completed: the Wikipedia pick saved as
+`/api/media/…` at 2000px reading "Foto: MrsMyer in der Wikipedia auf Deutsch ·
+CC BY-SA 3.0" linked to the Commons file page, and the Serper pick saved with
+an empty credit and its source page, rendering as "Foto: www.tripadvisor.com"
+-- honest about knowing where it came from and nothing else.
+
+Documented in a new `docs/configuration/images.md` (in the nav, `make docs`
+green with `--strict`), including the IP-disclosure note the plan asked for:
+thumbnails are hotlinked while the grid is on screen, the full-size image never
+is, and the alternative would turn the picker into a proxy for arbitrary remote
+images.
+
+Deferred to `todo.md`: the nested `capabilities` object on `/auth/me`, now that
+there are three flat flags; moving web search out of `internal/assist`, which is
+no longer the only consumer; a SearXNG backend implementing `ImageSearcher`
+too; and paging past the first results.
+
 ---
 
 ## Build order

@@ -102,6 +102,13 @@ type Options struct {
 	SearchKey      string
 	SearchURL      string
 
+	// Searcher, when non-nil, is used instead of building one from the three
+	// settings above. Since Stage 21 Milestone 7 the image picker uses the
+	// same backend, so cmd/caravel builds one and shares it -- one set of
+	// connections and one place a misconfiguration is reported, rather than
+	// two constructions of the same thing that could disagree.
+	Searcher Searcher
+
 	// Geocoder resolves a proposed address to coordinates. Nil means the
 	// agent proposes an address with no coordinates rather than guessing
 	// them -- which is the right failure, since the alternative is a
@@ -157,9 +164,12 @@ func New(opts Options) (Assistant, error) {
 	// An unknown provider name is a startup error rather than a silent
 	// downgrade to "no search": config.Load has already validated it, so
 	// reaching here with something else means the two lists have drifted.
-	search, err := newSearcher(opts)
-	if err != nil {
-		return nil, err
+	search := opts.Searcher
+	if search == nil {
+		var err error
+		if search, err = newSearcher(opts); err != nil {
+			return nil, err
+		}
 	}
 
 	// Defaults filled and the combination checked here rather than at first

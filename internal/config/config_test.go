@@ -78,11 +78,19 @@ func TestLoadAssistValidation(t *testing.T) {
 			wantErr: "must be empty or one of",
 		},
 		{
-			// Nothing else in the app searches the web, so this is a typo
-			// rather than a configuration.
-			name:    "a search provider without an assistant is refused",
-			env:     map[string]string{"CARAVEL_SEARCH_PROVIDER": "serper"},
-			wantErr: "web search is only used by the assistant",
+			// It used to be refused: nothing else searched the web, so it read
+			// as a typo. Stage 21 Milestone 7 gave the image picker the same
+			// backend, so this is now an instance with image search and no
+			// assistant -- a combination somebody might deliberately want.
+			name: "a search provider without an assistant is now accepted",
+			env: map[string]string{
+				"CARAVEL_SEARCH_PROVIDER": "serper", "CARAVEL_SEARCH_KEY": "k",
+			},
+			check: func(t *testing.T, c Config) {
+				if c.SearchProvider != "serper" || c.LLMURL != "" {
+					t.Errorf("SearchProvider = %q, LLMURL = %q", c.SearchProvider, c.LLMURL)
+				}
+			},
 		},
 		{
 			// Dropped in Milestone 8 along with the searxng implementation:

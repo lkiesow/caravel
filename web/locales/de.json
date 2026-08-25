@@ -357,5 +357,15 @@
   "expenses.shares.former": "jemand, der nicht mehr dabei ist",
   "expenses.form.shareAll": "Mit allen teilen",
   "expenses.summaryHeading": "Übersicht",
-  "image.creditPrefix": "Foto:"
+  "image.creditPrefix": "Foto:",
+  "image.search": "Bild suchen",
+  "image.searchPlaceholder": "Wovon soll das Bild sein?",
+  "image.searchSubmit": "Suchen",
+  "image.searching": "Wird gesucht…",
+  "image.searchTooShort": "Suchbegriff zu kurz",
+  "image.searchFailed": "Die Bildersuche ist derzeit nicht verfügbar.",
+  "image.searchNoResults": "Keine Bilder gefunden. Versuche einen anderen Suchbegriff.",
+  "image.searchFromWikipedia": "Aus Wikipedia",
+  "image.searchFromWeb": "Aus dem Web ({provider})",
+  "image.searchNoLicence": "Lizenz vor der Verwendung prüfen; die Suche nennt keine."
 }

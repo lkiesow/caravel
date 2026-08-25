@@ -357,5 +357,15 @@
   "expenses.shares.former": "someone no longer on the trip",
   "expenses.form.shareAll": "Split with everyone",
   "expenses.summaryHeading": "Summary",
-  "image.creditPrefix": "Photo:"
+  "image.creditPrefix": "Photo:",
+  "image.search": "Search for an image",
+  "image.searchPlaceholder": "What is this a picture of?",
+  "image.searchSubmit": "Search",
+  "image.searching": "Searching…",
+  "image.searchTooShort": "Search term too short",
+  "image.searchFailed": "The image search is unavailable right now.",
+  "image.searchNoResults": "No images found. Try a different search term.",
+  "image.searchFromWikipedia": "From Wikipedia",
+  "image.searchFromWeb": "From the web ({provider})",
+  "image.searchNoLicence": "Check the licence before using these; the search does not report one."
 }

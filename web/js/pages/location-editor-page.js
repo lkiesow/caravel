@@ -215,6 +215,10 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       tripId,
       imageUrl: item?.image_url,
       attachPath: item ? `/items/${item.id}/image` : undefined,
+      // The title the user has already typed is usually the whole search, so
+      // the picker opens with it filled in. Read at press time rather than
+      // captured: on a new location it is typed after this card is rendered.
+      searchSeed: () => container.querySelector('.item-form-slot [name="title"]')?.value ?? "",
       onChanged: (updated) => {
         if (item) {
           item.image_id = updated.image_id;

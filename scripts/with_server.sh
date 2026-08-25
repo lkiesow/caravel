@@ -74,6 +74,10 @@ export CARAVEL_WEB_DIR=web
 export CARAVEL_LLM_URL=stub
 export CARAVEL_LLM_MODEL=stub
 export CARAVEL_SEARCH_PROVIDER=stub
+# The image picker, against an in-process fixture encyclopaedia that serves
+# real PNGs -- including one deliberately dead thumbnail. See
+# internal/wikimedia/stub.go.
+export CARAVEL_WIKIMEDIA_URL=stub
 # Saved sessions go in the temp dir too. They are cookies for *this* run's
 # server, and cookies are not scoped by port -- so two runs sharing
 # tests/ui/.auth/ would hand each other a token their own server has never

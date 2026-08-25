@@ -32,6 +32,15 @@ type userResponse struct {
 	// "capabilities" object would earn the client-visible reshape; a third
 	// probably is not.
 	Assist bool `json:"assist"`
+	// ImageSearch is the third, and the one that finally makes the case for a
+	// nested capabilities object -- noted in todo.md rather than reshaped
+	// here, since changing the shape of /auth/me is a client-visible change
+	// that deserves its own commit rather than riding along with a feature.
+	//
+	// True whenever *either* half of the picker can answer, because either
+	// alone is a working control: Wikipedia needs no configuration, and a
+	// search backend covers what Wikipedia has never heard of.
+	ImageSearch bool `json:"image_search"`
 	// IsAdmin governs account administration only — never access to another
 	// user's trips. The client uses it to decide whether to show the admin
 	// entry in the user menu; the server checks it again on every /api/admin
@@ -54,6 +63,7 @@ func (s *Server) userToResponse(r *http.Request, u db.User) userResponse {
 		HasPassword: hasPassword,
 		Geocoding:   s.Geocoder != nil,
 		Assist:      s.Assist != nil,
+		ImageSearch: s.imageSearchAvailable(),
 		IsAdmin:     u.IsAdmin,
 	}
 }

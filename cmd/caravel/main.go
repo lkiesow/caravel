@@ -18,6 +18,7 @@ import (
 	"caravel/internal/geocode"
 	"caravel/internal/httpapi"
 	"caravel/internal/storagefs"
+	"caravel/internal/wikimedia"
 )
 
 // health is the container's HEALTHCHECK, and the reason it lives in this binary
@@ -92,16 +93,31 @@ func main() {
 	// disables both.
 	geocoder := geocode.New(cfg.GeocoderURL)
 
+	// One web-search backend, shared: the assistant researches with it and
+	// the image picker searches with it. Built here rather than inside
+	// assist.New because since Stage 21 Milestone 7 it has two consumers and
+	// is no longer the assistant's private dependency -- an instance may
+	// configure a search provider with no LLM at all.
+	searcher, err := assist.NewSearcher(cfg.SearchProvider, cfg.SearchKey, cfg.SearchURL)
+	if err != nil {
+		fatal("search", err)
+	}
+
+	// Wikipedia needs no configuration and no key, which is what makes the
+	// image picker work on a stock instance.
+	wiki := wikimedia.New(cfg.WikimediaURL)
+
 	// Nil when unconfigured, which is not an error: it means the operator did
 	// not turn the assistant on. See internal/assist.
 	assistant, err := assist.New(assist.Options{
-		LLMURL:         cfg.LLMURL,
-		LLMKey:         cfg.LLMKey,
-		LLMModel:       cfg.LLMModel,
-		SearchProvider: cfg.SearchProvider,
-		SearchKey:      cfg.SearchKey,
-		SearchURL:      cfg.SearchURL,
-		Geocoder:       geocoder,
+		LLMURL:   cfg.LLMURL,
+		LLMKey:   cfg.LLMKey,
+		LLMModel: cfg.LLMModel,
+		Searcher: searcher,
+		Geocoder: geocoder,
+		// The same endpoint the image picker uses, so an instance pinned to a
+		// mirror is pinned for both.
+		WikimediaURL: cfg.WikimediaURL,
 		Limits: assist.Limits{
 			RunDuration:   cfg.AssistTimeout,
 			AnswerTimeout: cfg.AssistAnswerTimeout,
@@ -138,14 +154,16 @@ func main() {
 
 	webFS := httpapi.WebFS(webassets.FS(), cfg.WebDir)
 	server := httpapi.NewServer(httpapi.Options{
-		DB:       dbConn,
-		Store:    store,
-		Auth:     authService,
-		Blob:     blob,
-		WebFS:    webFS,
-		NoCache:  cfg.WebDir != "",
-		Geocoder: geocoder,
-		Assist:   assistant,
+		DB:        dbConn,
+		Store:     store,
+		Auth:      authService,
+		Blob:      blob,
+		WebFS:     webFS,
+		NoCache:   cfg.WebDir != "",
+		Geocoder:  geocoder,
+		Assist:    assistant,
+		Wikimedia: wiki,
+		Searcher:  searcher,
 		Tiles: httpapi.TileSettings{
 			URL:         cfg.TileURL,
 			Attribution: cfg.TileAttribution,
@@ -157,10 +175,30 @@ func main() {
 		"version", buildinfo.Version,
 		"port", cfg.Port,
 		"db", cfg.DBDriver,
-		"assist", assistant != nil)
+		"assist", assistant != nil,
+		// Reported separately from "assist" because since Milestone 7 the two
+		// are separable: the image picker works with no LLM, and its
+		// Wikipedia half works with nothing configured at all. What is worth
+		// logging is therefore the half that *is* conditional -- whether the
+		// configured search backend can also search for images.
+		"image_search_web", webImageSearch(searcher))
 	if err := http.ListenAndServe(":"+cfg.Port, server); err != nil {
 		fatal("server", err)
 	}
+}
+
+// webImageSearch names the backend behind the web half of the image picker,
+// or says why there is none. A string rather than a bool because "configured
+// but cannot do images" is the answer an operator is most likely to be
+// surprised by, and it is invisible in a true/false.
+func webImageSearch(searcher assist.Searcher) string {
+	if searcher == nil {
+		return "none"
+	}
+	if _, ok := searcher.(assist.ImageSearcher); !ok {
+		return searcher.Name() + " (no image search)"
+	}
+	return searcher.Name()
 }
 
 // setupLogging installs the process-wide logger.

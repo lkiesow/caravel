@@ -43,9 +43,10 @@ willing to run and pay for.
 | `ddgs` | `CARAVEL_SEARCH_URL` | your own host | [DDGS](https://github.com/deedy5/ddgs): `pip install ddgs[api]`, then `ddgs api`, and point the URL at it. No key, no account |
 | `stub` | — | in-process | A fake for tests. Never a real answer |
 
-A search provider set without `CARAVEL_LLM_URL` is refused at startup: nothing
-else in the app searches the web, so that combination is a typo rather than a
-configuration.
+A search provider set without `CARAVEL_LLM_URL` used to be refused at startup,
+back when nothing else in the app searched the web. The image picker now uses the
+same backend, so the two are independent — see
+[finding an image](images.md).
 
 Two honest caveats about `ddgs`, since it is the keyless option and therefore
 tempting. It works by **scraping** search engines, so a backend can break when

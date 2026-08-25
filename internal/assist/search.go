@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"caravel/internal/wikimedia"
 )
 
 // Web search, behind an interface.
@@ -40,6 +42,46 @@ type Searcher interface {
 	Name() string
 }
 
+// ImageResult is one image hit, normalised the same way SearchResult is.
+//
+// Note what is *not* here: a licence. A web image search finds pictures on
+// pages, and neither Serper nor ddgs knows on what terms any of them may be
+// used -- so an honest result carries where it was found and nothing more.
+// The Wikipedia half of the image picker does carry a licence, which is
+// exactly why the two are kept apart in the response rather than merged into
+// one list.
+type ImageResult struct {
+	Title string
+	// URL is the full-size image, which is what gets fetched and stored when
+	// somebody picks it.
+	URL string
+	// ThumbURL is the preview for the grid. Often served by the search engine
+	// rather than by the site, and often the only one of the two that is not
+	// hotlink-blocked.
+	ThumbURL      string
+	Width, Height int
+	// SourceURL is the page the image was found on -- the provenance stored
+	// alongside the picture, and the only claim about it anyone can make.
+	SourceURL string
+}
+
+// ImageSearcher is an *optional* capability a Searcher may also implement,
+// discovered by type assertion rather than by a second provider registry.
+//
+// Optional because the backends genuinely differ: Serper and ddgs both have
+// an images endpoint, Ollama Cloud has web_search and nothing else, and the
+// stub has no images at all. A backend that cannot do this simply does not
+// implement it and the picker falls back to Wikipedia, which needs no
+// configuration and is always there.
+type ImageSearcher interface {
+	SearchImages(ctx context.Context, query string) ([]ImageResult, error)
+}
+
+// imageSearchMaxResults is what an image-search backend is asked for. Larger
+// than searchMaxResults because these are thumbnails in a grid being judged by
+// eye, not text being read by a model.
+const imageSearchMaxResults = 12
+
 // searchMaxResults is what the agent asks for and what providers are told to
 // return. Enough to choose from, few enough that the list itself is not most
 // of the prompt.
@@ -53,6 +95,17 @@ const searchMaxResults = 6
 // validated the value -- reaching here with something else means the two lists
 // have drifted, which is a bug worth surfacing loudly.
 func newSearcher(opts Options) (Searcher, error) {
+	return NewSearcher(opts.SearchProvider, opts.SearchKey, opts.SearchURL)
+}
+
+// NewSearcher is newSearcher without the assistant.
+//
+// Exported as of Stage 21 Milestone 7, when web search stopped being the
+// assistant's alone: the image picker uses the same backend, so cmd/caravel
+// builds one searcher and hands it to both rather than each constructing its
+// own from the same three settings.
+func NewSearcher(provider, key, searchURL string) (Searcher, error) {
+	opts := Options{SearchProvider: provider, SearchKey: key, SearchURL: searchURL}
 	switch opts.SearchProvider {
 	case "":
 		return nil, nil
@@ -106,6 +159,42 @@ func (*stubSearcher) Search(_ context.Context, query string) ([]SearchResult, er
 			Title:   "Visit Reykjavik - official city guide",
 			URL:     "https://example.invalid/visit-reykjavik",
 			Snippet: "Practical information for visitors to Reykjavik, including accommodation listings.",
+		},
+	}, nil
+}
+
+// SearchImages makes the stub an ImageSearcher, which is what puts a second,
+// web-search group in the picker when the browser suite runs.
+//
+// Two results, and the second one is dead on purpose. "A dead thumbnail leaves
+// an invisible cell that still clicks" is a real bug of exactly this shape --
+// the image field had it for its own preview -- so the fixture has to contain
+// one, or nothing could catch it coming back.
+//
+// The first has to load, though, or the group it is in could never be looked
+// at. It borrows a picture from the stub encyclopaedia, which is the one
+// loopback host in a test run that serves images.
+func (*stubSearcher) SearchImages(_ context.Context, query string) ([]ImageResult, error) {
+	// The same escape hatch the stub encyclopaedia has, so a test can reach
+	// the "nothing at all was found" state with both sources configured.
+	if strings.Contains(strings.ToLower(query), "nothing") {
+		return nil, nil
+	}
+	live := wikimedia.StubImageURL()
+	return []ImageResult{
+		{
+			Title:     "Kex Hostel, Reykjavik. Searched for: " + strings.TrimSpace(query),
+			URL:       live,
+			ThumbURL:  live,
+			Width:     1200,
+			Height:    800,
+			SourceURL: "https://example.invalid/kex",
+		},
+		{
+			Title:     "Visit Reykjavik - a picture that will not load",
+			URL:       "https://example.invalid/visit/cover.jpg",
+			ThumbURL:  "https://example.invalid/visit/thumb.jpg",
+			SourceURL: "https://example.invalid/visit-reykjavik",
 		},
 	}, nil
 }

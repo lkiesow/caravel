@@ -61,6 +61,7 @@ export function renderSettingsTab(content, trip, { onTripUpdated, canEdit = true
         tripId: trip.id,
         imageUrl: trip.preview_image_url,
         attachPath: `/trips/${trip.id}/preview-image`,
+        searchSeed: () => trip.title ?? "",
         onChanged: (updated) => onTripUpdated(updated),
       });
     }

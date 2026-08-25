@@ -31,6 +31,14 @@ type Config struct {
 	// the control rather than offering one that cannot work.
 	GeocoderURL string
 
+	// WikimediaURL pins the Wikipedia API endpoint used by the image picker
+	// and by the assistant's cover fallback. Empty -- the normal case -- means
+	// each lookup goes to the edition matching the user language, which needs
+	// no configuration and no key. Set it for a mirror, or to the sentinel
+	// "stub" for an in-process fixture encyclopaedia (what the browser suite
+	// runs against).
+	WikimediaURL string
+
 	// The map tile layer, which the browser loads directly from whoever
 	// serves it -- unlike the geocoder above, which Caravel proxies. Empty
 	// and zero mean "not set" and take the defaults in internal/httpapi,
@@ -137,7 +145,8 @@ func Load() (Config, error) {
 		// a browser cannot promise, and a self-hosted app should not hand a
 		// user's typing to a third party without a single place to turn that
 		// off.
-		GeocoderURL: getEnv("CARAVEL_GEOCODER_URL", "https://nominatim.openstreetmap.org/search"),
+		GeocoderURL:  getEnv("CARAVEL_GEOCODER_URL", "https://nominatim.openstreetmap.org/search"),
+		WikimediaURL: os.Getenv("CARAVEL_WIKIMEDIA_URL"),
 
 		// No defaults here: internal/httpapi holds them, the same way it
 		// holds the assist limiter defaults.
@@ -217,11 +226,11 @@ func Load() (Config, error) {
 	if cfg.SearchProvider != "" && !slices.Contains(SearchProviders, cfg.SearchProvider) {
 		return Config{}, fmt.Errorf("invalid CARAVEL_SEARCH_PROVIDER %q: must be empty or one of %s", cfg.SearchProvider, strings.Join(SearchProviders, ", "))
 	}
-	// A search provider with no assistant to use it is a typo, not a
-	// configuration: nothing else in the app searches the web.
-	if cfg.SearchProvider != "" && cfg.LLMURL == "" {
-		return Config{}, fmt.Errorf("CARAVEL_SEARCH_PROVIDER is set but CARAVEL_LLM_URL is empty: web search is only used by the assistant")
-	}
+	// A search provider used to require the assistant, on the reasoning that
+	// nothing else in the app searched the web. Stage 21 Milestone 7 made that
+	// false: the "Search for an image" control in the location editor uses the
+	// same backend and has no LLM in it at all, so a provider configured on
+	// its own is now a working configuration rather than a typo.
 	// ddgs is a service the operator runs, so it has no address anyone could
 	// guess. The hosted providers default to their own endpoint and only use
 	// CARAVEL_SEARCH_URL as an override.

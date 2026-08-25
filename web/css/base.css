@@ -1695,6 +1695,101 @@ button {
   min-width: 0;
 }
 
+/* "Search for an image": the picker panel under the image controls.
+
+   A grid rather than a list, because these are judged by eye and side by side
+   is what makes that possible. auto-fill with a min(100%, ...) track so it is
+   four across on a desktop and one across at 324px without a media query --
+   and the min() matters: a bare 9rem minimum overflows a narrow phone by the
+   width of the gap. */
+.image-search {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.image-search__form {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.image-search__form input {
+  padding: 0.5rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+  flex: 1;
+  min-width: 0;
+}
+
+.image-search__status {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  margin: 0.5rem 0 0;
+}
+
+.image-search__group h4 {
+  margin: 0.75rem 0 0.25rem;
+  font-size: 0.875rem;
+}
+
+/* The web group says what it cannot tell you. Muted, but present: a picture
+   found by a search engine arrives with no licence at all, and the person
+   about to put it on a page is the one who needs to know that. */
+.image-search__note {
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+  margin: 0 0 0.5rem;
+}
+
+.image-search__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 7.5rem), 1fr));
+  gap: 0.5rem;
+}
+
+.image-search__result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.375rem;
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.image-search__result:hover,
+.image-search__result:focus-visible {
+  border-color: var(--color-accent);
+  background: var(--color-bg);
+}
+
+/* A fixed aspect box, so a portrait and a landscape candidate sit in cells of
+   the same height and the grid does not reflow as each thumbnail arrives. */
+.image-search__result img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 0.25rem;
+  background: var(--color-bg);
+}
+
+.image-search__caption {
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.image-search__meta {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
 .itinerary__hint {
   color: var(--color-text-muted);
   font-size: 0.875rem;
@@ -2337,7 +2432,8 @@ button {
      stack too - with its Set button going full width, a row would have left
      the input an unusable ~18px sliver next to it. */
   .image-field__controls,
-  .image-field__url-form {
+  .image-field__url-form,
+  .image-search__form {
     flex-direction: column;
     align-items: stretch;
   }

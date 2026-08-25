@@ -587,6 +587,42 @@ that spends money and needs the network is not something to leave in the tree.
 It lives in the session scratchpad and is rebuilt for the before-and-after
 comparison.
 
+### The model matters more than any change in this milestone
+
+A second comparison, one "Tokyo Tower" run per model with Serper and Nominatim
+held constant: five models on the Osnabrueck LiteLLM instance, three on
+OpenRouter. **14.9s to 59.1s** -- and within LiteLLM alone, same host and same
+network, 14.9s to 39.9s, which isolates the model from the wire. No lever in
+this milestone is worth anything close to that spread.
+
+All eight completed with five fields and resolved coordinates, so tool calling
+and `json_schema` work across the range including the small models. That is a
+better robustness result for the pipeline than any test gives.
+
+Two conclusions worth keeping:
+
+1. **The instance switched to `nvidia/nemotron-3.5-lightning`.** Fast (16.9s,
+   then 16.4s on a re-run -- the only model that repeated closely), three
+   sources, and turns of 590-620ms. Use it for further live runs; the
+   measurement harnesses read the model from `credentials.yaml`, so nothing
+   else needs changing.
+2. **The done-turn finding is not an artefact of one model.** It is the slowest
+   gathering turn in **seven of eight** models across two providers and four
+   vendors, mean 21% of a run -- and it is proportionally *worse* on the fast
+   models, which are the ones anyone would actually run. On nemotron the five
+   working turns average 880ms and the turn that produces nothing takes 2905ms.
+
+**Variance is larger than the tables suggest**, and this is the caveat to carry
+into the before-and-after comparison. Re-running the three OpenRouter models
+gave 27.3s for a model that had measured 59.1s, and a done turn of 17.2s where
+the first run saw 5.5s -- same model, same prompt. A single run per
+configuration is not enough to attribute a change to the change. Milestone 4's
+comparison needs repeats, not one pass.
+
+**Cost was deliberately not pursued.** It is visible on the provider's own
+dashboard, so instrumenting it here would duplicate something the operator can
+already see. Not a backlog entry either.
+
 **Not chased, by decision:** Brandenburger Tor run 1 returned no coordinates
 because Nominatim missed both the proposed address and the place-name fallback,
 while run 2 on the same place succeeded. Intermittent, correctness rather than

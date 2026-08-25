@@ -502,6 +502,96 @@ of real places re-run against the live provider, before-and-after timings in
 the plan document, and a check that the proposals did not get worse. A run
 that is twice as fast and half as good is a regression.
 
+### The measurements, and what was agreed from them
+
+Run ahead of the milestone, once Milestone 2 made it possible. Six places, two
+runs each, all **prompt mode** with `locale: en` and a real Nominatim wired --
+Hallgrimskirkja, Brooklyn Bridge, Tokyo Tower, Brandenburger Tor, Heger Tor,
+KANZASHI Tokyo Asakusa -- against `deepseek/deepseek-v4-flash-0731` on
+OpenRouter with Serper. Then six more with per-turn timings.
+
+**Mean 36.5s, range 17.9-73.5s.** Where it goes:
+
+| | mean | share |
+| --- | --- | --- |
+| Model, gathering turns | 19.5s | 53% |
+| Model, composing turn | 11.4s | 31% |
+| Tool calls (search, fetch, geocode) | 4.5s | 12% |
+| Link checks and geocode | 1.1s | 3% |
+| **Model, total** | **30.9s** | **85%** |
+
+**The single-run reading in Milestone 2 was wrong and is corrected here.** That
+run had a 53.5s composing phase and it was an outlier: across twelve runs
+composing averages 11.4s and never exceeds 22.1s. The real shape is that 85% of
+a run is the model, spread over ~4.4 sequential requests, not concentrated in
+one. `calls` was 1 in every run, so no run ever needed its answer reshaped.
+
+**What the per-turn data found, and what the milestone is now built around.**
+The last gathering turn is the one that returns no tool calls -- the model
+saying "I have enough to describe this place" and nothing else. It carries the
+whole conversation as its prompt and produces one sentence, and it is **the
+slowest gathering turn in five of six runs, averaging 6.5s = 22% of a run**.
+With the composing turn, the final two round trips are 59% of a run and one of
+them produces no information at all.
+
+So the agreed primary change is **to make the answer a tool call**: a `propose`
+tool whose parameters are the proposal schema. The model calls tools until it
+calls `propose(...)`, and those arguments are the structured answer. The prose
+turn disappears; the composing work happens in the turn that was wasted.
+
+This is deliberately *not* the shortcut Stage 16 rejected. Offering tools and a
+strict `json_schema` together is a compatibility minefield -- several servers
+constrain all output to the schema when one is set, which makes tool calls
+impossible. A tool call is ordinary tool use, which every OpenAI-compatible
+server already has to support to run this feature at all. The two-phase path
+stays as the fallback, and `completeJSON`'s validate-and-retry already covers
+the one real risk (tool arguments enforced less strictly than `strict: true`).
+
+**Revised from the pre-measurement list:**
+
+- **Parallel tool dispatch: kept, but not as a speed fix.** All tool calls
+  together are 12% of a run at 1.1s each, and only a turn issuing two or more
+  benefits. It is worth 1-2 seconds of 36. It goes in because the sequential
+  loop reads oddly beside `checkLinks`, which already fans out -- tidiness with
+  a small dividend, not the point of the milestone.
+- **Reasoning effort: keep the knob, expect nothing locally.** This model
+  spends 70-450 completion tokens a turn; it is not thinking. The variable is
+  for operators pointing at a reasoning model.
+- **Prompt caching: added to the milestone, as a spike first.** Every turn
+  resends the conversation and OpenRouter supports caching. Unmeasured, so it
+  is measure-then-decide rather than a committed change.
+- **Compaction of page text: deferred behind caching, not dropped.** See below.
+
+**Why compaction is subordinate to caching.** Compaction here means *mechanical
+truncation* -- keep the most recent tool results whole, cut older ones to a
+lead fragment. It must never mean asking a model to summarise: that is an extra
+LLM round trip, and since 85% of a run is already model time, it would make the
+run slower in order to make it cheaper. Truncation is free in wall time.
+
+The gain it can offer is bounded and now roughly known. Turn 1 has an 822-token
+prompt and costs 2-4s; the done turn has ~7-8k tokens and costs 6.5s. That is
+about 0.4-0.5s per thousand prompt tokens on this provider. Page reads are
+capped at 12KB each, so two or three of them are 6-9k tokens resent on every
+later request -- cutting five thousand of them saves roughly 2-2.5s per
+affected request. Once the propose-tool removes the done turn, one request is
+affected, so the honest estimate is **~2s, about 7%**, in exchange for possibly
+dropping a detail the model had already read.
+
+Prompt caching addresses the same cost without discarding anything: the
+repeated prefix stops being re-processed at all. That is strictly better than
+throwing information away, which is why the order is caching first, and
+compaction only if caching turns out to be unavailable or ineffective.
+
+**The harness stays throwaway.** `zz_bench_test.go` is not committed -- a test
+that spends money and needs the network is not something to leave in the tree.
+It lives in the session scratchpad and is rebuilt for the before-and-after
+comparison.
+
+**Not chased, by decision:** Brandenburger Tor run 1 returned no coordinates
+because Nominatim missed both the proposed address and the place-name fallback,
+while run 2 on the same place succeeded. Intermittent, correctness rather than
+speed, and deliberately left alone rather than added to the backlog.
+
 ---
 
 ## 5. Cover image, backend: `og:image`, Wikipedia, and provenance

@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"caravel/internal/buildinfo"
 	"caravel/internal/db"
 	"caravel/internal/imaging"
 )
@@ -278,6 +279,11 @@ func fetchImage(ctx context.Context, rawURL string) (imaging.Result, error) {
 	if err != nil {
 		return imaging.Result{}, err
 	}
+	// Identify ourselves, the same way internal/geocode and internal/wikimedia
+	// do. Not politeness: Wikimedia answers the default Go User-Agent with
+	// 403, so without this every cover the assistant found on Wikipedia failed
+	// to download while the same URL opened fine in a browser.
+	req.Header.Set("User-Agent", "Caravel/"+buildinfo.Version+" (self-hosted trip planner)")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return imaging.Result{}, err

@@ -1063,6 +1063,25 @@ image field, Save carries it through, and the view page shows "Foto: MrsMyer in
 der Wikipedia auf Deutsch · CC BY-SA 3.0" linked to the article. Credit
 contrast 6.91:1 at 13px, no horizontal overflow.
 
+**Follow-up: the image nobody could download.** The first real use found a
+403. Accepting a Wikipedia cover and saving failed with "could not fetch image
+from url: server returned status 403", for an image URL that opened fine in a
+browser. The cause is not provenance and not the assistant: `fetchImage`
+(`media.go:273`) sent no `User-Agent`, so Go sent its default, and Wikimedia
+answers the default Go agent with 403 as a matter of published policy.
+Reproduced with `curl` against the failing URL -- 200 with any real agent, 403
+with `Go-http-client/2.0` and 403 with none -- then fixed by sending the same
+identifying agent `internal/geocode` and `internal/wikimedia` already send.
+
+Worth noting how long this hid: every automated test fetches images from an
+`httptest.Server`, which serves anybody. Only a host that *enforces* a UA
+policy shows the bug, so the suite was green throughout. The new test in
+`media_fetch_test.go` behaves the way Wikimedia does -- 403 for an empty or
+default agent -- and reproduces the user-visible error string exactly; with the
+header removed it fails with "server returned status 403", with it in place it
+passes. Verified live afterwards against the exact URL from the failure report:
+HTTP 201, stored as a 2000x1125 JPEG.
+
 ---
 
 ## 7. "Search for an image", without the assistant

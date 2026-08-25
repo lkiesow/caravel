@@ -121,3 +121,14 @@ func TestTheRunTraceLeaksNeitherKeysNorPageBodies(t *testing.T) {
 		t.Errorf("the trace records no result size:\n%s", out)
 	}
 }
+
+// The composing phase is the slowest single thing a run does, and "one slow
+// request" and "two ordinary requests" want opposite fixes. Before `calls` the
+// trace could not tell them apart, which is exactly the ambiguity that made a
+// first round of measurements misleading.
+func TestTheTraceCountsComposingRequests(t *testing.T) {
+	out := runWithLogger(t, slog.LevelDebug)
+	if !strings.Contains(out, "calls=1") {
+		t.Errorf("the composing record does not report its request count:\n%s", out)
+	}
+}

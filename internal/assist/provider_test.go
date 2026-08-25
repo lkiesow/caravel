@@ -169,7 +169,7 @@ func TestProviderJSONSchemaFormat(t *testing.T) {
 	p := newHTTPProvider(f.URL, "", "m")
 
 	var out modelProposal
-	if _, err := completeJSON(context.Background(), p, chatRequest{
+	if _, _, err := completeJSON(context.Background(), p, chatRequest{
 		Messages: []chatMessage{{Role: roleUser, Content: "go"}},
 		Format:   proposalFormat(),
 	}, &out); err != nil {
@@ -232,7 +232,7 @@ func TestProviderFallsBackToJSONObject(t *testing.T) {
 	p := newHTTPProvider(f.URL, "", "m")
 
 	var out modelProposal
-	if _, err := completeJSON(context.Background(), p, chatRequest{
+	if _, _, err := completeJSON(context.Background(), p, chatRequest{
 		Messages: []chatMessage{{Role: roleUser, Content: "go"}},
 		Format:   proposalFormat(),
 	}, &out); err != nil {
@@ -246,7 +246,7 @@ func TestProviderFallsBackToJSONObject(t *testing.T) {
 	}
 
 	// Second call: the downgrade is remembered, so no wasted 400.
-	if _, err := completeJSON(context.Background(), p, chatRequest{
+	if _, _, err := completeJSON(context.Background(), p, chatRequest{
 		Messages: []chatMessage{{Role: roleUser, Content: "again"}},
 		Format:   proposalFormat(),
 	}, &out); err != nil {
@@ -269,7 +269,7 @@ func TestProviderDoesNotFallBackOnUnrelatedBadRequest(t *testing.T) {
 	p := newHTTPProvider(f.URL, "", "nope")
 
 	var out modelProposal
-	_, err := completeJSON(context.Background(), p, chatRequest{Format: proposalFormat()}, &out)
+	_, _, err := completeJSON(context.Background(), p, chatRequest{Format: proposalFormat()}, &out)
 	if err == nil {
 		t.Fatal("completeJSON succeeded, want the 400 surfaced")
 	}
@@ -315,7 +315,7 @@ func TestCompleteJSONRetriesOnWrongShape(t *testing.T) {
 	p := newHTTPProvider(f.URL, "", "m")
 
 	var out modelProposal
-	spent, err := completeJSON(context.Background(), p, chatRequest{
+	spent, _, err := completeJSON(context.Background(), p, chatRequest{
 		Messages: []chatMessage{{Role: roleUser, Content: "go"}},
 		Format:   responseFormat{Kind: formatJSONObject},
 	}, &out)
@@ -347,7 +347,7 @@ func TestCompleteJSONGivesUpAfterOneRetry(t *testing.T) {
 	p := newHTTPProvider(f.URL, "", "m")
 
 	var out modelProposal
-	_, err := completeJSON(context.Background(), p, chatRequest{Format: responseFormat{Kind: formatJSONObject}}, &out)
+	_, _, err := completeJSON(context.Background(), p, chatRequest{Format: responseFormat{Kind: formatJSONObject}}, &out)
 	if err == nil {
 		t.Fatal("completeJSON succeeded on unparseable output")
 	}
@@ -370,7 +370,7 @@ func TestCompleteJSONToleratesCodeFences(t *testing.T) {
 	p := newHTTPProvider(f.URL, "", "m")
 
 	var out modelProposal
-	if _, err := completeJSON(context.Background(), p, chatRequest{Format: responseFormat{Kind: formatJSONObject}}, &out); err != nil {
+	if _, _, err := completeJSON(context.Background(), p, chatRequest{Format: responseFormat{Kind: formatJSONObject}}, &out); err != nil {
 		t.Fatalf("completeJSON: %v", err)
 	}
 	if out.Type != "museum" {
@@ -391,7 +391,7 @@ func TestCompleteJSONIgnoresUnknownFields(t *testing.T) {
 	p := newHTTPProvider(f.URL, "", "m")
 
 	var out modelProposal
-	if _, err := completeJSON(context.Background(), p, chatRequest{Format: responseFormat{Kind: formatJSONObject}}, &out); err != nil {
+	if _, _, err := completeJSON(context.Background(), p, chatRequest{Format: responseFormat{Kind: formatJSONObject}}, &out); err != nil {
 		t.Fatalf("completeJSON: %v", err)
 	}
 	if f.calls != 1 {

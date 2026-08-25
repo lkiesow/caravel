@@ -399,19 +399,28 @@ func truncate(s string, n int) string {
 // attempt is billed.
 //
 // Returns the usage summed across every attempt, so a retry is not free in the
-// agent's budget.
-func completeJSON(ctx context.Context, p provider, req chatRequest, out any) (usage, error) {
+// agent's budget, and the number of provider requests it took -- 1 normally, 2
+// when the first answer had to be sent back for reshaping.
+//
+// The attempt count exists because of a real ambiguity in the run trace: this
+// is the slowest phase of a run by a wide margin, and "one slow request" and
+// "two ordinary requests" are entirely different problems with entirely
+// different fixes. Without the count they look identical from outside.
+//
+// It does not see the json_schema downgrade inside httpProvider.Complete,
+// which is one extra request at most once per process.
+func completeJSON(ctx context.Context, p provider, req chatRequest, out any) (usage, int, error) {
 	var total usage
 
 	resp, err := p.Complete(ctx, req)
 	if err != nil {
-		return total, err
+		return total, 1, err
 	}
 	total = addUsage(total, resp.Usage)
 
 	decodeErr := decodeJSONAnswer(resp.Content, out)
 	if decodeErr == nil {
-		return total, nil
+		return total, 1, nil
 	}
 
 	// Feed the failure back rather than restating the request: naming what was
@@ -426,14 +435,14 @@ func completeJSON(ctx context.Context, p provider, req chatRequest, out any) (us
 
 	resp, err = p.Complete(ctx, retry)
 	if err != nil {
-		return total, err
+		return total, 2, err
 	}
 	total = addUsage(total, resp.Usage)
 
 	if err := decodeJSONAnswer(resp.Content, out); err != nil {
-		return total, fmt.Errorf("assist: the model did not return the required shape after a retry: %w", err)
+		return total, 2, fmt.Errorf("assist: the model did not return the required shape after a retry: %w", err)
 	}
-	return total, nil
+	return total, 2, nil
 }
 
 // decodeJSONAnswer unmarshals a model's answer, tolerating the one deviation

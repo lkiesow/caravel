@@ -397,7 +397,7 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 
 	var raw modelProposal
 	composeStarted := time.Now()
-	used, err := completeJSON(finalCtx, a.provider, chatRequest{Messages: messages, Format: proposalFormat()}, &raw)
+	used, attempts, err := completeJSON(finalCtx, a.provider, chatRequest{Messages: messages, Format: proposalFormat()}, &raw)
 	spent = addUsage(spent, used)
 	// Logged either way. The composing turn resends the whole conversation, so
 	// it is the slowest single request of a run by a wide margin and the one
@@ -406,6 +406,10 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 	log.Debug("assist: composed",
 		"ms", time.Since(composeStarted).Milliseconds(),
 		"messages", len(messages),
+		// 2 means the first answer did not decode and was sent back for
+		// reshaping. Without this, a slow composing phase and a retried one
+		// are indistinguishable -- and they want opposite fixes.
+		"calls", attempts,
 		"tokens", used.TotalTokens,
 		"spent_tokens", spent.TotalTokens,
 		"ok", err == nil)

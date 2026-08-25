@@ -105,6 +105,33 @@ down.
       optional `item_id`, which would give a per-location cost on the location
       view. One nullable column and a select.
 
+- **Three assistant speed levers, measured and set aside.** (Stage 21
+  Milestone 4.) All three were on the table and none survived the measurements,
+  so they are recorded with the reasoning rather than silently dropped. The
+  context: 85% of a run is the model, spread over roughly 4.4 sequential
+  requests, and switching the instance to `nvidia/nemotron-3.5-lightning` took
+  a Tokyo Tower run from 59.1s to 16.4s -- more than any of these would.
+    - **A reasoning-effort knob** (`CARAVEL_LLM_REASONING_EFFORT`,
+      `CARAVEL_LLM_MAX_TOKENS` on `wireRequest`). No measured benefit on any of
+      the eight models tried: completion tokens ran 70-450 a turn, so none of
+      them are spending time thinking. Worth building for whoever points
+      Caravel at a genuine reasoning model and finds it slow -- but an unknown
+      parameter must degrade the way `json_schema` already does
+      (`provider.go:200-205`), or a server that 400s on it takes the assistant
+      down entirely.
+    - **Prompt caching.** Every turn resends the whole conversation, and
+      OpenRouter and others can cache the repeated prefix. Never measured, so
+      the size of the prize is unknown; it is the one lever that would help
+      every request in a run rather than one of them.
+    - **Compacting the conversation before composing.** Mechanical truncation
+      only -- keep the most recent tool results whole, cut older ones to a lead
+      fragment. It must **never** mean asking a model to summarise: that adds a
+      round trip to a run that is already 85% model time, making it slower in
+      order to make it cheaper. Estimated at roughly 2s (~7%) from the observed
+      0.4-0.5s per thousand prompt tokens, in exchange for possibly dropping a
+      detail the model had read. Strictly worse than caching, which keeps the
+      information; only worth revisiting if caching turns out unavailable.
+
 - **SearXNG as a search backend.** (Stage 16 Milestone 8.) Planned for that
   milestone and dropped: nobody had an instance to test against, and a backend
   verified only against a fake is a backend nobody should trust. Everything

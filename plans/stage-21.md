@@ -711,6 +711,106 @@ because Nominatim missed both the proposed address and the place-name fallback,
 while run 2 on the same place succeeded. Intermittent, correctness rather than
 speed, and deliberately left alone rather than added to the backlog.
 
+### The second checkpoint, after the model switch
+
+Re-opened before any code, because the ground had moved: the instance switched
+to `nvidia/nemotron-3.5-lightning` and the same Tokyo Tower run went from 59.1s
+to 16.4s. **The problem this milestone was written for is largely solved by a
+configuration change.** What is left is worth seconds on a 16s run, not tens of
+seconds on a 60s one, and the milestone is scoped accordingly.
+
+Where the 16.4s goes on nemotron: six model requests at 1341, 958, 603, 680,
+816 and **2905** ms, 5.4s of tool calls and 3.2s composing.
+
+**Split into 4a and 4b**, one change each, so each is measured on its own --
+which matters more than usual here, because run-to-run variance has been large
+enough to swallow a real improvement whole.
+
+- **4a, the propose-tool.** The done turn is 2.9s of 16.4s and confirmed across
+  seven of eight models. Best-evidenced change available.
+- **4b, batching and parallel dispatch.** Five tool calls arrived mostly one
+  per turn, which is *why* there were six turns. Prompting for several reads at
+  once and dispatching them concurrently attacks round trips, where 85% of the
+  time is. Less certain than 4a: a search cannot be batched with reads of its
+  own results, so the realistic saving is one or two turns.
+
+**Dropped from scope:**
+
+- **The reasoning-effort knob.** No measured benefit on any model tested --
+  completion tokens ran 70-450 a turn, so none of them are thinking. It also
+  needs the same try-then-degrade handling as `json_schema` to survive a strict
+  server. Backlog, for whoever points Caravel at a reasoning model.
+- **Prompt caching.** Not taken up. Backlog.
+- **Compaction.** Was already subordinate to caching; with caching dropped it
+  stays in the backlog on its own ~7% estimate.
+
+---
+
+## 4a. The answer becomes a tool call
+
+`propose`, a tool whose parameters are the proposal schema. The model calls
+tools until it calls `propose(...)`, and those arguments are the structured
+answer. The turn that used to say "I have enough to describe this place" and
+nothing else disappears; the composing work happens in it instead.
+
+- **Not the shortcut Stage 16 rejected.** Offering tools *and* a strict
+  `json_schema` together is a compatibility minefield -- several servers
+  constrain all output to the schema when one is set, which makes tool calls
+  impossible. A tool call is ordinary tool use, which every server already has
+  to support to run this feature at all.
+- **The two-phase path stays, as the fallback.** A turn that returns no tool
+  calls still means "done gathering", and still leads to the composing request
+  exactly as today. So a model that ignores `propose` loses nothing.
+- **A malformed `propose` is answered, not fatal.** Arguments that do not
+  decode come back to the model as a tool result saying what was wrong, which
+  is the idiom `dispatch` already uses for every other failure. The turn and
+  tool-call ceilings bound the retries.
+- **`propose` is not dispatched like the others.** It has no result to feed
+  back and it ends the run, so it is handled in the loop rather than in the
+  tool map.
+- The trace and the debug log must record **which path a run took**, or the
+  before-and-after cannot be attributed.
+
+**Verify.** `go test`: a scripted model that calls `propose` produces a
+proposal with no composing request at all; one that never calls it still gets
+the two-phase answer; a malformed `propose` is answered and the run recovers.
+Then live, against nemotron with repeats -- see the note on variance.
+
+---
+
+## 4b. Fewer round trips: batching and parallel dispatch
+
+- **Prompt for batching.** Ask the model to request every page it wants to read
+  in one turn rather than one at a time. Five calls over five turns is five
+  round trips; the same five in two turns is two.
+- **Dispatch a turn concurrently.** `agent.go` runs a turn's tool calls in a
+  plain loop. Results must be appended in call order -- a `tool` message must
+  follow its `tool_calls` and most servers reject a mismatch -- so results go
+  into a slice indexed by call and are appended after the fan-out.
+  `toolset` is already mutex-guarded and `checkLinks` already uses a
+  `WaitGroup`, so the pattern exists in the package.
+- The tool-call ceiling has to be decided **before** the fan-out rather than
+  inside it.
+
+**Verify.** `go test` for call-order preservation under concurrency, and for
+the ceiling still holding when a turn requests more calls than remain. Then
+live with repeats, watching turn counts as much as wall time: the number of
+round trips is the thing being changed.
+
+---
+
+### Measuring 4a and 4b honestly
+
+The same harness for both, and **repeats, not one pass**. Re-running three
+models earlier produced 27.3s for one that had measured 59.1s, and a done turn
+of 17.2s where the first run saw 5.5s. A single run per configuration would
+attribute noise to the change.
+
+Baseline first, on nemotron, several places, N runs each, recorded here. Then
+the same after 4a, and again after 4b. Watch two numbers, not one: wall time,
+and the number of model round trips -- the second is what both changes actually
+target, and it is far less noisy than the first.
+
 ---
 
 ## 5. Cover image, backend: `og:image`, Wikipedia, and provenance
@@ -863,7 +963,7 @@ a results grid at 324px is the interesting case.
 
 ## Build order
 
-`0 → 1 → 2 → 3 → 4 → 5 → 6 → 7`, and the order carries an argument.
+`0 → 1 → 2 → 3 → 4a → 4b → 5 → 6 → 7`, and the order carries an argument.
 
 The bug goes first because it is the thing that annoys daily and its fix is
 small. Observability (2, 3) comes before speed (4) because optimising without
@@ -887,8 +987,11 @@ either would mean building the same client twice.
   vision, so it would be choosing a photograph by the text around it. Image
   search is offered to the person, in Milestone 7, and not to the agent.
 - **Streaming the provider's composing turn.** It would make a long wait feel
-  shorter without making it shorter. Revisit if Milestone 4's numbers say the
-  composing turn is irreducible.
+  shorter without making it shorter. The numbers say composing is 3.2s of 16.4s
+  on the model this instance runs, so there is nothing left here to hide.
+- **The reasoning-effort knob, prompt caching and conversation compaction.**
+  All three dropped at the second checkpoint once the model switch had taken
+  the run from 59s to 16.4s. Backlog, with the reasoning behind each.
 - **The mobile map height.** Backlog, tagged (soon), with the scroll-trap
   warning attached.
 

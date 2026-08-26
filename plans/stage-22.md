@@ -269,6 +269,44 @@ decision `todo.md` already records for `format.js`, identical to the day
 headings right beside it — a stage-level decision, not something to settle
 inside a milestone about moving entries.
 
+**Follow-up: the reorder buttons move into the menu on a phone.** Feedback at
+the checkpoint, from a Galaxy Fold at 324px: up, down and the menu took 132px
+of a 258px row, so a location with a thumbnail showed "Flight to K…" and the
+title — the half anybody reads — lost to three controls, the rarest of which is
+reordering.
+
+Both reorder controls now exist **twice**: as buttons in the row and as items in
+the menu, with CSS choosing which set a width shows. That is the trip tab bar's
+arrangement for its "More" menu, copied deliberately
+(`trip-detail-page.js:99-103` says why): both sets exist at every width, so
+there is no resize listener, nothing to re-render on rotation, and no second
+place that could disagree with the stylesheet about the breakpoint. It matters
+more than usual on the device that raised it — a Fold changes width while the
+page is open, and resizing across 640px flips the arrangement with no reload.
+
+`renderMenu` gained a per-item `disabled` flag for the ends of the list, so the
+menu keeps a stable shape between openings rather than growing and shrinking by
+a row. The menu labels are their own keys ("Move earlier", not "Move Dinner
+earlier"): the row's icon buttons name the entry because an icon in a list needs
+disambiguating, and inside a menu that already belongs to one entry the name is
+just the action.
+
+Focus restoration had to learn the same lesson, and does it by asking the DOM
+rather than `matchMedia`: it takes the first of same-direction button,
+other-direction button, menu trigger that is enabled **and** has an
+`offsetParent`, so a `display: none` control is skipped instead of silently
+focusing nothing.
+
+**Verified.** `make ci` green (377 keys), full UI suite green at **141 passed**.
+The mobile reorder spec now drives the menu and asserts the ends are disabled
+*there*; a new spec resizes to 1024 mid-test and asserts the buttons come back
+into the row while the menu drops its copies, with no reload. The old
+"three 44px controls" geometry test became "leaves the title room to be read at
+324px" — it asserts the visible controls are exactly the menu trigger, that the
+control column takes under a quarter of the row (it took over half before), and
+that a title is not truncated. By hand at 324px the actions column measures
+44px against the previous 132px, and "Foss Hotel Reykjavik" now renders in full.
+
 ---
 
 ## 3. An expense can name a location

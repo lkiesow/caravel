@@ -80,47 +80,66 @@ test.describe("itinerary entry order", () => {
     if (tripId) await page.request.delete(`/api/trips/${tripId}`);
   });
 
-  test("moves an entry, persists it, and disables the ends", async ({
+  test("reorders from the row menu on a phone, persists it, and disables the ends", async ({
     page,
   }) => {
     await page.goto(`/trips/${tripId}/itinerary`);
     await expect(page.locator(".itinerary-day__entries > li")).toHaveCount(3);
 
-    // The order entries were added in. Before this milestone every row carried
-    // sort_order 0 and this was whatever the database chose.
+    // The order entries were added in. Before Stage 15 Milestone 4 every row
+    // carried sort_order 0 and this was whatever the database chose.
     expect(await entryTitles(page)).toEqual(TITLES);
 
     const rows = page.locator(".itinerary-day__entries > li");
-    // The ends are disabled rather than missing, so the controls do not shift
-    // position between rows.
-    await expect(rows.nth(0).locator('[data-action="move-up"]')).toBeDisabled();
+    // At this width the row itself shows only the title and the menu: the
+    // reorder buttons are display:none here and live in the menu instead
+    // (Stage 22 Milestone 2 follow-up).
     await expect(
-      rows.nth(0).locator('[data-action="move-down"]'),
-    ).toBeEnabled();
-    await expect(rows.nth(2).locator('[data-action="move-up"]')).toBeEnabled();
-    await expect(
-      rows.nth(2).locator('[data-action="move-down"]'),
-    ).toBeDisabled();
+      rows.nth(0).locator('.itinerary-entry__actions > [data-action="move-up"]'),
+    ).toBeHidden();
 
-    // Move the last one to the top, two presses, without re-aiming between
-    // them: focus follows the entry, so the second press is on whatever the
-    // first one left focused.
-    await page.getByRole("button", { name: "Move Dinner earlier" }).click();
+    // The ends are disabled rather than missing, so the menu's rows do not
+    // shift between one opening and the next.
+    await rows.nth(0).locator(".itinerary-entry__menu .menu__trigger").click();
+    await expect(
+      rows.nth(0).locator('.menu__dropdown [data-value="move-up"]'),
+    ).toBeDisabled();
+    await expect(
+      rows.nth(0).locator('.menu__dropdown [data-value="move-down"]'),
+    ).toBeEnabled();
+    await page.keyboard.press("Escape");
+
+    await rows.nth(2).locator(".itinerary-entry__menu .menu__trigger").click();
+    await expect(
+      rows.nth(2).locator('.menu__dropdown [data-value="move-up"]'),
+    ).toBeEnabled();
+    await expect(
+      rows.nth(2).locator('.menu__dropdown [data-value="move-down"]'),
+    ).toBeDisabled();
+    await page.keyboard.press("Escape");
+
+    // Move the last one to the top, two goes through the menu.
+    await entryMenu(rows.nth(2), "Move earlier");
     await expect(page.locator(".itinerary-day__entries > li")).toHaveCount(3);
     expect(await entryTitles(page)).toEqual(["Breakfast", "Dinner", "Museum"]);
 
-    await page.getByRole("button", { name: "Move Dinner earlier" }).click();
+    await entryMenu(rows.nth(1), "Move earlier");
     expect(await entryTitles(page)).toEqual(["Dinner", "Breakfast", "Museum"]);
 
-    // Focus did not fall on the floor. Dinner is now at the top, where its own
-    // "earlier" button is disabled, so focus should have gone to the enabled
-    // one on the same entry rather than nowhere.
-    const focused = await page.evaluate(() =>
-      document.activeElement?.getAttribute("aria-label"),
-    );
-    expect(focused, "focus should stay on the entry that moved").toBe(
-      "Move Dinner later",
-    );
+    // Focus did not fall on the floor. It follows the entry that moved, which
+    // at this width means that row's menu trigger - the reorder buttons are
+    // display:none and cannot take focus at all.
+    const focusedRow = await page.evaluate(() => {
+      const row = document.activeElement?.closest(".itinerary-day__entries > li");
+      return {
+        isTrigger: !!document.activeElement?.classList.contains("menu__trigger"),
+        title: row?.querySelector(".itinerary-entry__link span:not(.dot)")?.textContent,
+      };
+    });
+    expect(focusedRow, "focus should stay on the entry that moved").toEqual({
+      isTrigger: true,
+      title: "Dinner",
+    });
 
     // And it was actually saved, not just drawn.
     await page.reload();
@@ -131,45 +150,99 @@ test.describe("itinerary entry order", () => {
     ).toEqual(["Dinner", "Breakfast", "Museum"]);
   });
 
-  test("keeps three 44px controls and the title on one row at 324px", async ({
+  // The other half of the CSS switch. Same trip, same entries, one viewport
+  // wider than the breakpoint: the buttons come back into the row and the menu
+  // drops its two copies, with no reload in between - which is the point of
+  // rendering both sets rather than asking matchMedia.
+  test("puts the reorder buttons back in the row above 640px", async ({
     page,
   }) => {
+    await page.goto(`/trips/${tripId}/itinerary`);
+    await expect(page.locator(".itinerary-day__entries > li")).toHaveCount(3);
+
+    await page.setViewportSize({ width: 1024, height: 800 });
+
+    const rows = page.locator(".itinerary-day__entries > li");
+    await expect(
+      rows.nth(2).locator('.itinerary-entry__actions > [data-action="move-up"]'),
+    ).toBeVisible();
+
+    await rows.nth(2).locator(".itinerary-entry__menu .menu__trigger").click();
+    await expect(
+      rows.nth(2).locator('.menu__dropdown [data-value="move-up"]'),
+    ).toBeHidden();
+    // Remove, not "move to another day": this describe's trip has a single day,
+    // so the row never offers a destination (see renderEntries).
+    await expect(
+      rows.nth(2).locator('.menu__dropdown [data-value="remove"]'),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    // The row button still reorders, and focus still follows the entry - here
+    // to the button that was pressed, since it is the visible control.
+    await page.getByRole("button", { name: "Move Dinner earlier" }).click();
+    expect(await entryTitles(page)).toEqual(["Breakfast", "Dinner", "Museum"]);
+    const focused = await page.evaluate(() =>
+      document.activeElement?.getAttribute("aria-label"),
+    );
+    expect(focused).toBe("Move Dinner earlier");
+  });
+
+  test("leaves the title room to be read at 324px", async ({ page }) => {
     await page.goto(`/trips/${tripId}/itinerary`);
     await expect(page.locator(".itinerary-day__entries > li")).toHaveCount(3);
 
     const geometry = await page
       .locator(".itinerary-day__entries > li")
       .first()
-      .evaluate((li) => ({
-        rowScrolls: li.scrollWidth > li.clientWidth,
-        // Direct controls only: the menu's own dropdown buttons are inside
-        // this row too, and they are not what the row lays out.
-        buttons: [...li.querySelectorAll(".itinerary-entry__actions > button, .itinerary-entry__actions .menu__trigger")].map((b) => {
-          const r = b.getBoundingClientRect();
-          return {
-            action: b.dataset.action,
-            w: Math.round(r.width),
-            h: Math.round(r.height),
-          };
-        }),
-        docOverflow:
-          document.documentElement.scrollWidth -
-          document.documentElement.clientWidth,
-      }));
+      .evaluate((li) => {
+        const shown = (el) => el && el.offsetParent !== null;
+        const title = li.querySelector(".itinerary-entry__link span:not(.dot)");
+        return {
+          rowScrolls: li.scrollWidth > li.clientWidth,
+          rowWidth: li.getBoundingClientRect().width,
+          actionsWidth: li
+            .querySelector(".itinerary-entry__actions")
+            .getBoundingClientRect().width,
+          // Only what this width actually shows. The reorder buttons are
+          // rendered at every width and hidden by CSS here, and the menu's own
+          // dropdown lives inside this row too.
+          visibleControls: [...li.querySelectorAll("button")]
+            .filter(shown)
+            .map((b) => {
+              const r = b.getBoundingClientRect();
+              return {
+                action: b.dataset.action,
+                w: Math.round(r.width),
+                h: Math.round(r.height),
+              };
+            }),
+          titleTruncated: title ? title.scrollWidth > title.clientWidth : null,
+          docOverflow:
+            document.documentElement.scrollWidth -
+            document.documentElement.clientWidth,
+        };
+      });
 
-    // The third control is the overflow menu since Stage 22; Remove moved
-    // inside it rather than becoming a fourth icon in a 324px row.
-    expect(geometry.buttons.map((b) => b.action)).toEqual([
-      "move-up",
-      "move-down",
-      "toggle",
-    ]);
-    // Every one of the three, including the disabled ones - a disabled control
-    // is still something a finger lands on.
-    for (const b of geometry.buttons) {
+    // One control in the row at this width: the overflow menu. Everything else
+    // is inside it (Stage 22 Milestone 2 follow-up), which is what gives the
+    // title its room back - three 44px controls plus a thumbnail had left about
+    // a third of the row for the part people actually read.
+    expect(geometry.visibleControls.map((b) => b.action)).toEqual(["toggle"]);
+    for (const b of geometry.visibleControls) {
       expect(b.w, `${b.action} is ${b.w}x${b.h}`).toBeGreaterThanOrEqual(44);
       expect(b.h, `${b.action} is ${b.w}x${b.h}`).toBeGreaterThanOrEqual(44);
     }
+    // The regression this guards: the controls must not take back more than a
+    // quarter of the row. Before the follow-up they took over half of it.
+    expect(
+      geometry.actionsWidth,
+      `controls take ${Math.round(geometry.actionsWidth)} of ${Math.round(geometry.rowWidth)}px`,
+    ).toBeLessThan(geometry.rowWidth / 4);
+    expect(
+      geometry.titleTruncated,
+      "a short location title should not be cut off at 324px",
+    ).toBe(false);
     expect(
       geometry.rowScrolls,
       "the entry row must not scroll horizontally",

@@ -1937,6 +1937,21 @@ button {
   color: var(--color-text);
 }
 
+/* Up and down exist twice: as buttons in the row, and as items in the menu.
+   Exactly one set is visible at a time, and this is the whole switch -- there
+   is no resize listener and nothing re-renders on rotation, which is the same
+   arrangement (and the same reasoning) as the trip tab bar's More menu.
+
+   Above the breakpoint the row has space for them, so the menu drops its two
+   copies. :has() picks the <li> by the button inside it, so the component does
+   not need a per-item class for one caller. */
+@media (min-width: 641px) {
+  .itinerary-entry__menu .menu__dropdown li:has([data-value="move-up"]),
+  .itinerary-entry__menu .menu__dropdown li:has([data-value="move-down"]) {
+    display: none;
+  }
+}
+
 .icon-btn {
   display: inline-flex;
   align-items: center;
@@ -2804,10 +2819,19 @@ button {
      gives it a width, so this one measured 13.3x44 until the tap-target sweep
      started visiting the expenses route. */
   .expenses__row-trigger,
-  /* And again for the itinerary entry menu, which sits in a row whose other
-     two controls already carry the minimum. */
+  /* And again for the itinerary entry menu, which is the only control left in
+     that row at this width. */
   .itinerary-entry__trigger {
     min-width: var(--tap-min);
+  }
+
+  /* The other half of the switch above: on a phone the row keeps the title and
+     the menu, and reordering moves into the menu. Three 44px controls plus a
+     thumbnail left about a third of a 324px row for the title, which is the
+     part anybody actually reads. */
+  .itinerary-entry__actions > [data-action="move-up"],
+  .itinerary-entry__actions > [data-action="move-down"] {
+    display: none;
   }
 }
 

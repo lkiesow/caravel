@@ -224,6 +224,8 @@
   "itinerary.addDayDate": "Hinzuzufügendes Datum",
   "itinerary.moveUp": "{title} nach vorne verschieben",
   "itinerary.moveDown": "{title} nach hinten verschieben",
+  "itinerary.moveEarlier": "Nach vorne verschieben",
+  "itinerary.moveLater": "Nach hinten verschieben",
   "itinerary.entryActions": "Eintragsaktionen",
   "itinerary.moveToDay": "Auf einen anderen Tag verschieben",
   "itinerary.moveDialog": "Auf welchen Tag soll {title} verschoben werden?",

@@ -42,6 +42,11 @@ import { icon } from "../icon.js";
 // the icon wins the slot and the current item is marked by styling instead
 // (`aria-checked` still carries it for assistive tech either way).
 //
+// An item may be `disabled`, which renders it as a disabled <button> - it keeps
+// its place in the menu rather than disappearing, so the rows do not shift
+// under a finger between one opening and the next. The itinerary uses it for
+// "move up" on the first entry of a day.
+//
 // `neutralValue` names the option that means "no choice made" (e.g. the
 // locations filter's "all"). While anything else is selected, the trigger
 // takes the accent color, so a collapsed icon-only trigger - whose label is
@@ -91,7 +96,7 @@ export function renderMenu(
           .map(
             (item) => `
           <li role="none">
-            <button type="button" ${item.action ? `role="menuitem" class="menu__action${item.danger ? " menu__action--danger" : ""}"` : `role="menuitemradio" aria-checked="${item.value === active}"`} data-value="${escapeAttr(item.value)}">
+            <button type="button" ${item.action ? `role="menuitem" class="menu__action${item.danger ? " menu__action--danger" : ""}"` : `role="menuitemradio" aria-checked="${item.value === active}"`} data-value="${escapeAttr(item.value)}"${item.disabled ? " disabled" : ""}>
               ${
                 item.iconName
                   ? icon(item.iconName, { className: "menu__item-icon" })

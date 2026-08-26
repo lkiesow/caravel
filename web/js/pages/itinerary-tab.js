@@ -280,7 +280,23 @@ export async function renderItineraryTab(container, trip) {
       // is worth.
       const menuSlot = li.querySelector(".itinerary-entry__menu");
       if (menuSlot) {
-        const menuItems = [];
+        // Up and down are in the menu *as well as* in the row, and CSS decides
+        // which set a given width shows -- the same arrangement the trip tab
+        // bar uses for its "More" menu, and for the same reason: both exist at
+        // every width, so there is no resize listener and nothing to re-render
+        // when a phone is rotated or a Fold is opened.
+        //
+        // At 324px the three icons plus a thumbnail left about a third of the
+        // row for the title, which is the half people actually read. Reordering
+        // is also the rarest thing done here, so on a phone it is the part that
+        // goes behind a tap.
+        //
+        // Disabled at the ends rather than absent, matching the row: a menu
+        // whose items move between openings is one you have to read every time.
+        const menuItems = [
+          { value: "move-up", label: t("itinerary.moveEarlier"), iconName: "chevron-up", action: true, disabled: index === 0 },
+          { value: "move-down", label: t("itinerary.moveLater"), iconName: "chevron-down", action: true, disabled: index === day.entries.length - 1 },
+        ];
         // Nowhere to move it to on a one-day trip, so the row does not offer
         // it. A disabled item that never becomes enabled is a control that
         // exists to say no.
@@ -298,6 +314,8 @@ export async function renderItineraryTab(container, trip) {
           ariaLabel: "itinerary.entryActions",
           items: menuItems,
           onSelect: guarded.wrap(async (action) => {
+            if (action === "move-up") return moveEntry(el, day, index, -1);
+            if (action === "move-down") return moveEntry(el, day, index, 1);
             if (action === "move") return moveToDay(day, entry);
             await api.delete(`/itinerary/days/${day.id}/entries/${entry.id}`);
             day.entries = day.entries.filter((e) => e.id !== entry.id);
@@ -386,9 +404,17 @@ export async function renderItineraryTab(container, trip) {
     // matches "Remove" inside row 1 before it reaches row 2, and focus would
     // land in a closed popup.
     const movedRow = el.querySelector(`.itinerary-day__entries > li:nth-child(${target + 1})`);
-    const sameWay = movedRow?.querySelector(`[data-action="move-${delta < 0 ? "up" : "down"}"]`);
-    const otherWay = movedRow?.querySelector(`[data-action="move-${delta < 0 ? "down" : "up"}"]`);
-    (sameWay && !sameWay.disabled ? sameWay : otherWay)?.focus();
+    // Whichever control the current width actually shows. Under 640px the row
+    // buttons are display:none and cannot take focus at all, so the menu
+    // trigger is the thing to return to; above it, the buttons are. Asking the
+    // DOM which is visible beats asking matchMedia the same question in a
+    // second place that could disagree with the stylesheet.
+    const candidates = [
+      movedRow?.querySelector(`.itinerary-entry__actions > [data-action="move-${delta < 0 ? "up" : "down"}"]`),
+      movedRow?.querySelector(`.itinerary-entry__actions > [data-action="move-${delta < 0 ? "down" : "up"}"]`),
+      movedRow?.querySelector(".itinerary-entry__menu .menu__trigger"),
+    ];
+    candidates.find((c) => c && !c.disabled && c.offsetParent !== null)?.focus();
 
     try {
       await api.put(`/itinerary/days/${day.id}/entries/order`, {

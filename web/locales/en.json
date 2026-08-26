@@ -224,6 +224,8 @@
   "itinerary.addDayDate": "Date to add",
   "itinerary.moveUp": "Move {title} earlier",
   "itinerary.moveDown": "Move {title} later",
+  "itinerary.moveEarlier": "Move earlier",
+  "itinerary.moveLater": "Move later",
   "itinerary.entryActions": "Entry actions",
   "itinerary.moveToDay": "Move to another day",
   "itinerary.moveDialog": "Move {title} to which day?",

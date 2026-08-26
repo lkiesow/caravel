@@ -821,7 +821,8 @@ a:visited {
    the answer, and a field narrower than the dialog would read as one of a
    row of controls rather than the whole point of the box. Field styling
    itself is shared with the editor forms above. */
-.dialog__input {
+.dialog__input,
+.dialog__select {
   display: block;
   width: 100%;
   margin: 0 0 1.25rem;
@@ -1605,7 +1606,8 @@ button {
    below it -- which is also an input[type=search] and is covered here via
    `.location-form input`. */
 .assist__prompt,
-.dialog__input {
+.dialog__input,
+.dialog__select {
   padding: 0.5rem;
   border-radius: 0.375rem;
   border: 1px solid var(--color-border);
@@ -1913,6 +1915,26 @@ button {
   gap: 0.125rem;
   margin-left: auto;
   flex-shrink: 0;
+}
+
+/* The entry row's overflow menu (Stage 22): remove, and move to another day.
+   Styled as its two siblings in the row are rather than as a button, so the
+   three controls read as one group -- the same shape the checklist row and the
+   expenses row already use. */
+.itinerary-entry__trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: var(--radius);
+}
+
+.itinerary-entry__trigger:hover {
+  color: var(--color-text);
 }
 
 .icon-btn {
@@ -2781,7 +2803,10 @@ button {
      blanket `button` rule gives an icon-only trigger its height but nothing
      gives it a width, so this one measured 13.3x44 until the tap-target sweep
      started visiting the expenses route. */
-  .expenses__row-trigger {
+  .expenses__row-trigger,
+  /* And again for the itinerary entry menu, which sits in a row whose other
+     two controls already carry the minimum. */
+  .itinerary-entry__trigger {
     min-width: var(--tap-min);
   }
 }

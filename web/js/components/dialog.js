@@ -66,6 +66,29 @@ export function promptDialog({ messageKey, message, value = "", placeholderKey, 
   });
 }
 
+// A one-choice prompt: a message, a <select> and Save/Cancel. Resolves to the
+// chosen value, or to null if the user dismissed it -- the same
+// answer-or-null contract promptDialog has, and for the same reason.
+//
+// `options` is [{ value, label }] with the label already translated or already
+// formatted (the itinerary passes dates through Intl), because the component
+// cannot know how a caller wants its values named. `value` preselects one.
+//
+// A select rather than a list of buttons: the itinerary can offer a fortnight
+// of days, and fourteen stacked buttons is a dialog that scrolls on a phone,
+// where a native select opens the platform picker people already know.
+export function selectDialog({ messageKey, message, options, value = "", labelKey, confirmKey = "common.save" }) {
+  return open({
+    messageKey,
+    message,
+    select: { options, value, labelKey },
+    buttons: [
+      { labelKey: "common.cancel", value: "cancel", className: "btn-secondary", iconName: "x" },
+      { labelKey: confirmKey, value: "confirm", className: "btn-primary", iconName: "check" },
+    ],
+  });
+}
+
 // A message with a single dismiss button. Resolves when it's closed.
 export function alertDialog({ messageKey, message }) {
   return open({
@@ -79,7 +102,7 @@ let nextId = 0;
 
 // `message` (a ready string) wins over `messageKey` when both are given, for
 // the rare caller that has to interpolate.
-function open({ messageKey, message, buttons, input }) {
+function open({ messageKey, message, buttons, input, select }) {
   const dialog = document.createElement("dialog");
   dialog.className = "dialog";
   const messageId = `dialog-message-${nextId++}`;
@@ -110,6 +133,35 @@ function open({ messageKey, message, buttons, input }) {
     dialog.appendChild(inputEl);
   }
 
+  let selectEl = null;
+  if (select) {
+    selectEl = document.createElement("select");
+    selectEl.className = "dialog__select";
+    for (const option of select.options) {
+      const el = document.createElement("option");
+      el.value = option.value;
+      // textContent, not innerHTML: a label can be a location title somebody
+      // typed, and the same rule the menu component follows applies here.
+      el.textContent = option.label;
+      selectEl.appendChild(el);
+    }
+    selectEl.value = select.value ?? "";
+    // The message is the field's label. It is already the dialog's accessible
+    // name through aria-labelledby; pointing the select at it too means the
+    // control is named rather than being an unlabelled combobox.
+    if (select.labelKey) selectEl.setAttribute("aria-label", t(select.labelKey));
+    else selectEl.setAttribute("aria-labelledby", messageId);
+    // Enter confirms, matching the input path above -- without it Enter falls
+    // through to <dialog>'s default button, which is Cancel.
+    selectEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        dialog.close("confirm");
+      }
+    });
+    dialog.appendChild(selectEl);
+  }
+
   const actions = document.createElement("div");
   actions.className = "dialog__actions";
   for (const button of buttons) {
@@ -134,15 +186,20 @@ function open({ messageKey, message, buttons, input }) {
     dialog.addEventListener("close", () => {
       const value = dialog.returnValue;
       const text = inputEl?.value ?? "";
+      const chosen = selectEl?.value ?? "";
       dialog.remove();
-      // With an input, the answer *is* the text - or null when dismissed, so
-      // "saved an empty string" stays distinguishable from "cancelled".
-      resolve(inputEl ? (value === "confirm" ? text : null) : value);
+      // With an input or a select, the answer *is* what it holds - or null when
+      // dismissed, so "saved an empty string" stays distinguishable from
+      // "cancelled".
+      if (inputEl) resolve(value === "confirm" ? text : null);
+      else if (selectEl) resolve(value === "confirm" ? chosen : null);
+      else resolve(value);
     });
     dialog.showModal();
-    // The input, not the first button: the point of the dialog is to type in
-    // it, and <dialog> autofocuses the first focusable child otherwise.
+    // The field, not the first button: the point of the dialog is to answer
+    // with it, and <dialog> autofocuses the first focusable child otherwise.
     inputEl?.focus();
     inputEl?.select();
+    selectEl?.focus();
   });
 }

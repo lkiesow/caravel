@@ -108,6 +108,16 @@ down.
       optional `item_id`, which would give a per-location cost on the location
       view. One nullable column and a select.
 
+- **The move dialog can only offer days the itinerary already has.** (Stage 22
+  Milestone 2.) `moveToDay` builds its `<select>` from the days the tab is
+  showing -- the trip range plus anything added outside it -- so moving an entry
+  to a date that has no day yet means adding the day first, with the control at
+  the bottom of the tab, and then moving. The API is not the limitation: it
+  takes a date and creates the day itself, which is exactly what makes an
+  arbitrary date possible. What it needs is a UI decision -- a date input beside
+  the select, or an "another date..." option that swaps the select for one --
+  and neither is obviously worth the second control until somebody wants it.
+
 - **Assistant round trips: batching and parallel tool dispatch.** (Stage 21
   Milestone 4b, dropped after 4a was measured.) `agent.go` dispatches a turn's
   tool calls in a plain sequential loop, which reads oddly beside `checkLinks`
@@ -384,13 +394,6 @@ down.
   sweep only catches controls whose *only* name is the translated string, so an
   empty label on anything with visible text is still invisible to it. A third
   language would multiply this decision rather than inherit it.
-- **An itinerary entry can be moved, but only through the API.** (Stage 19
-  Milestone 3; half-built in Stage 22 Milestone 1.) `PATCH
-  /api/itinerary/days/{dayId}/entries/{entryId}` with `{"to_date": ...}` now
-  moves an entry between days, keeping its note, in one transaction. What is
-  missing is the client affordance -- nothing in `itinerary-tab.js` calls it, so
-  rescheduling in the browser still means remove-and-re-add. Stage 22
-  Milestone 2 is that half.
 - **Two concurrent UI runs still share Playwright's `test-results/`.** (Stage 19
   Milestone 1.) Everything else about a run is now private to it -- port,
   database, uploads, saved sessions -- but the output directory is still the

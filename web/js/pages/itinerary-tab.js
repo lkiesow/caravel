@@ -3,7 +3,8 @@ import { createGuard, guard, guardClick, guardForm } from "../busy.js";
 import { t, translatePage } from "../i18n.js";
 import { navigate } from "../router.js";
 import { icon } from "../icon.js";
-import { confirmDialog } from "../components/dialog.js";
+import { alertDialog, confirmDialog, selectDialog } from "../components/dialog.js";
+import { renderMenu } from "../components/menu.js";
 import { renderLoading } from "../components/loading.js";
 import { canEdit } from "../trip-role.js";
 
@@ -265,24 +266,91 @@ export async function renderItineraryTab(container, trip) {
             ? `<span class="itinerary-entry__actions">
           <button class="icon-btn" data-action="move-up" ${index === 0 ? "disabled" : ""} aria-label="${escapeAttr(t("itinerary.moveUp", { title: entry.item_title }))}">${icon("chevron-up")}</button>
           <button class="icon-btn" data-action="move-down" ${index === day.entries.length - 1 ? "disabled" : ""} aria-label="${escapeAttr(t("itinerary.moveDown", { title: entry.item_title }))}">${icon("chevron-down")}</button>
-          <button class="icon-remove" data-action="remove" aria-label="${escapeAttr(t("common.remove"))}">${icon("x")}</button>
+          <span class="itinerary-entry__menu"></span>
         </span>`
             : ""
         }
       `;
       const guarded = entryGuard(el);
-      li.querySelector('[data-action="remove"]')?.addEventListener(
-        "click",
-        guarded.wrap(async () => {
-          await api.delete(`/itinerary/days/${day.id}/entries/${entry.id}`);
-          day.entries = day.entries.filter((e) => e.id !== entry.id);
-          renderEntries(el, day);
-        })
-      );
+      // Remove used to be a third icon in this row. Moving to another day would
+      // have made it a fourth, which is the pile-up the checklist row and the
+      // file row both already answered with a menu. Up and down stay as
+      // buttons: they are the one-tap action people repeat, and burying them
+      // two taps deep to tidy the row would be a worse trade than the tidiness
+      // is worth.
+      const menuSlot = li.querySelector(".itinerary-entry__menu");
+      if (menuSlot) {
+        const menuItems = [];
+        // Nowhere to move it to on a one-day trip, so the row does not offer
+        // it. A disabled item that never becomes enabled is a control that
+        // exists to say no.
+        if (days.length > 1) {
+          menuItems.push({ value: "move", label: t("itinerary.moveToDay"), iconName: "calendar", action: true });
+        }
+        menuItems.push({ value: "remove", label: t("common.remove"), iconName: "x", action: true, danger: true });
+        renderMenu(menuSlot, {
+          iconName: "ellipsis-vertical",
+          chevron: false,
+          triggerClass: "itinerary-entry__trigger",
+          // Empty rather than omitted: every row in this menu is an action, so
+          // the trigger stays silent. Same reasoning as the checklist row.
+          label: "",
+          ariaLabel: "itinerary.entryActions",
+          items: menuItems,
+          onSelect: guarded.wrap(async (action) => {
+            if (action === "move") return moveToDay(day, entry);
+            await api.delete(`/itinerary/days/${day.id}/entries/${entry.id}`);
+            day.entries = day.entries.filter((e) => e.id !== entry.id);
+            renderEntries(el, day);
+          }),
+        });
+      }
       li.querySelector('[data-action="move-up"]')?.addEventListener("click", guarded.wrap(() => moveEntry(el, day, index, -1)));
       li.querySelector('[data-action="move-down"]')?.addEventListener("click", guarded.wrap(() => moveEntry(el, day, index, 1)));
       list.appendChild(li);
     });
+  }
+
+  // Moving an entry to another day (Stage 22).
+  //
+  // Deliberately *not* optimistic, unlike the reorder below. Two days change,
+  // the target day may not have existed until the server created it, and both
+  // days come back renumbered -- reconstructing all of that locally to save one
+  // GET would be three chances to disagree with the server about what happened.
+  //
+  // The dialog offers the itinerary's own days, which is every date the tab is
+  // already showing: the trip range plus anything added outside it. A date that
+  // is on neither is reachable by adding the day first, which is the control
+  // right at the bottom of this tab.
+  async function moveToDay(day, entry) {
+    const choices = days.filter((d) => d.date !== day.date);
+    if (!choices.length) return;
+
+    const toDate = await selectDialog({
+      message: t("itinerary.moveDialog", { title: entry.item_title }),
+      labelKey: "itinerary.moveDayLabel",
+      confirmKey: "itinerary.moveConfirm",
+      options: choices.map((d) => ({ value: d.date, label: formatDate(d.date) })),
+      // The next day is the overwhelmingly common destination -- something
+      // planned for today that did not happen goes to tomorrow.
+      value: (choices.find((d) => d.date > day.date) ?? choices[0]).date,
+    });
+    if (!toDate) return;
+
+    try {
+      await api.patch(`/itinerary/days/${day.id}/entries/${entry.id}`, { to_date: toDate });
+    } catch (err) {
+      console.error("move failed", err);
+      await alertDialog({ messageKey: "itinerary.moveFailed" });
+      return;
+    }
+
+    // Open the day it landed on. Moving something and being shown no evidence
+    // of where it went is the failure mode this whole feature is against.
+    openDates.add(toDate);
+    days = await api.get(`/trips/${trip.id}/itinerary`);
+    days.forEach((d) => (d.entries ??= []));
+    render();
   }
 
   // Up/down rather than drag-and-drop. The entries are a list of real links
@@ -313,7 +381,11 @@ export async function renderItineraryTab(container, trip) {
     // nothing (measured - it left document.activeElement on <body>). So the
     // same-direction button is preferred and the opposite one is the fallback,
     // which is always enabled because the entry just came from there.
-    const movedRow = el.querySelector(`.itinerary-day__entries li:nth-child(${target + 1})`);
+    // The child combinator is load-bearing since Stage 22 put a menu in each
+    // row: the menu dropdown is a <ul> of its own, so a descendant `li` selector
+    // matches "Remove" inside row 1 before it reaches row 2, and focus would
+    // land in a closed popup.
+    const movedRow = el.querySelector(`.itinerary-day__entries > li:nth-child(${target + 1})`);
     const sameWay = movedRow?.querySelector(`[data-action="move-${delta < 0 ? "up" : "down"}"]`);
     const otherWay = movedRow?.querySelector(`[data-action="move-${delta < 0 ? "down" : "up"}"]`);
     (sameWay && !sameWay.disabled ? sameWay : otherWay)?.focus();

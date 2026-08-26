@@ -221,6 +221,54 @@ note intact, and that a reload shows the same. Then a manual pass at 324×756
 against `make dev` — the select and dialog have to be usable at phone width and
 carry the tap-target minimum.
 
+**Done.** As planned: up and down stay as icon buttons, Remove and **Move to
+another day** sit behind a `⋮` menu, and the move opens a dialog listing the
+itinerary's other days. Not optimistic — the itinerary is re-read and
+re-rendered, and the target day is added to `openDates` so the entry is visible
+where it landed.
+
+**`dialog.js` gained `selectDialog`** rather than the tab hand-rolling a modal.
+It is `promptDialog` with a `<select>` in place of the input, resolving to the
+chosen value or to null when dismissed — the same answer-or-null contract, so
+"chose the first option" stays distinguishable from "changed their mind". A
+select rather than a row of buttons because a fortnight of days is fourteen
+buttons on a 324px phone, where a native select opens the picker people already
+know.
+
+**One real regression was introduced and caught by driving the page**, not by
+any test: putting a menu in each row nests a second `<ul>` inside every entry
+`<li>`, so `.itinerary-day__entries li:nth-child(2)` began matching the
+*Remove* item inside row 1 before reaching row 2. That selector is the reorder's
+focus restoration, so moving an entry would have put focus inside a closed
+popup. Both the component and the spec now use the `> li` child combinator, with
+a comment saying why. The same nesting broke four existing assertions in
+`itinerary-order.spec.js` that counted rows as `.itinerary-day__entries li` —
+all four failed loudly, which is the outcome to want.
+
+Also updated: the spec's tap-target test now expects `move-up, move-down,
+toggle` as the row's three controls and probes only the row's own buttons
+(the dropdown's live inside the same `<li>`), removal goes through a new
+`entryMenu()` helper, and the note at the head of the second describe saying
+"there is no way to move an entry to another day" is no longer true and no
+longer there.
+
+**Verified.** `make ci` green (375 keys in sync across both locales); the full
+UI suite green at **140 passed**, which is what proves the menu did not disturb
+the a11y-name, heading and tap-target sweeps. Two new specs cover the move
+end to end (note preserved, survives a reload) and a cancelled dialog writing
+nothing. Driven by hand at 324×756: the trigger measures 44×44, the dialog is
+260px wide inside a 324px viewport with no overflow, focus lands on the select,
+the current day is absent from the options and the next day is preselected, a
+one-day trip offers no move item at all, and the German pass reads correctly
+throughout.
+
+One thing seen and deliberately not fixed here: the day labels in the dialog
+render as "Thu, 3 Sept 2026" even in German, because this tab's `formatDate`
+calls `Intl` with an undefined locale. That is the existing browser-locale
+decision `todo.md` already records for `format.js`, identical to the day
+headings right beside it — a stage-level decision, not something to settle
+inside a milestone about moving entries.
+
 ---
 
 ## 3. An expense can name a location

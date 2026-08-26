@@ -687,6 +687,26 @@ func (s *sqliteStore) UpsertItineraryDayNotes(ctx context.Context, newID, tripID
 	return sqliteItineraryDayToDomain(row), nil
 }
 
+func (s *sqliteStore) EnsureItineraryDay(ctx context.Context, newID, tripID, date string) (ItineraryDay, error) {
+	row, err := s.q.GetItineraryDayByTripAndDate(ctx, sqlitegen.GetItineraryDayByTripAndDateParams{TripID: tripID, Date: date})
+	if err == nil {
+		return sqliteItineraryDayToDomain(row), nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return ItineraryDay{}, err
+	}
+	inserted, err := s.q.InsertItineraryDay(ctx, sqlitegen.InsertItineraryDayParams{
+		ID:     newID,
+		TripID: tripID,
+		Date:   date,
+		Notes:  nullString(nil),
+	})
+	if err != nil {
+		return ItineraryDay{}, err
+	}
+	return sqliteItineraryDayToDomain(inserted), nil
+}
+
 func (s *sqliteStore) ListItineraryDaysByTrip(ctx context.Context, tripID string) ([]ItineraryDay, error) {
 	rows, err := s.q.ListItineraryDaysByTrip(ctx, tripID)
 	if err != nil {
@@ -770,6 +790,19 @@ func (s *sqliteStore) SetItineraryEntrySortOrder(ctx context.Context, id, itiner
 		ID:             id,
 		ItineraryDayID: itineraryDayID,
 		SortOrder:      int64(sortOrder),
+	})
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+func (s *sqliteStore) SetItineraryEntryDay(ctx context.Context, id, fromDayID, toDayID string, sortOrder int) (bool, error) {
+	n, err := s.q.SetItineraryEntryDay(ctx, sqlitegen.SetItineraryEntryDayParams{
+		ID:                 id,
+		FromItineraryDayID: fromDayID,
+		ToItineraryDayID:   toDayID,
+		SortOrder:          int64(sortOrder),
 	})
 	if err != nil {
 		return false, err

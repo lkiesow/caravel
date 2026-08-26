@@ -312,6 +312,19 @@ type Store interface {
 	// way itinerary_days rows come into existence — see plan Section 5) and
 	// sets its notes. newID is used only if a new row must be inserted.
 	UpsertItineraryDayNotes(ctx context.Context, newID, tripID, date string, notes *string) (ItineraryDay, error)
+	// EnsureItineraryDay returns the day for (tripID, date), creating it with
+	// no notes if it does not exist yet. It differs from
+	// UpsertItineraryDayNotes in the one way that matters to a caller who only
+	// wants the row to exist: passing nil notes to the upsert *clears* the
+	// notes of a day that already has them, which is right for "set the notes
+	// to nothing" and wrong for "make sure this day is there". newID is used
+	// only if a row must be inserted.
+	//
+	// Two callers racing to create the same day is a unique-constraint
+	// violation on (trip_id, date) rather than a silent second row, and the
+	// error is returned as-is: inside a transaction there is nothing useful to
+	// do with it locally, so the caller rolls back and the client retries.
+	EnsureItineraryDay(ctx context.Context, newID, tripID, date string) (ItineraryDay, error)
 	ListItineraryDaysByTrip(ctx context.Context, tripID string) ([]ItineraryDay, error)
 	GetItineraryDayByID(ctx context.Context, id string) (ItineraryDay, error)
 	// DeleteItineraryDay removes the day and, through the entries table's
@@ -328,6 +341,11 @@ type Store interface {
 	// SetItineraryEntrySortOrder reports whether it matched a row, so a reorder
 	// naming an entry from another day fails rather than silently doing nothing.
 	SetItineraryEntrySortOrder(ctx context.Context, id, itineraryDayID string, sortOrder int) (bool, error)
+	// SetItineraryEntryDay moves an entry to another day, giving it a position
+	// there at the same time. fromDayID is the day the entry is expected to be
+	// on: reporting false rather than moving something unexpected is what makes
+	// a move safe to run against a client that read the itinerary a moment ago.
+	SetItineraryEntryDay(ctx context.Context, id, fromDayID, toDayID string, sortOrder int) (bool, error)
 	DeleteItineraryEntry(ctx context.Context, id, itineraryDayID string) (bool, error)
 
 	CreateFile(ctx context.Context, p CreateFileParams) (File, error)

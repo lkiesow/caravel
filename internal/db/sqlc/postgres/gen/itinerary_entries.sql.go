@@ -153,6 +153,41 @@ func (q *Queries) ListItineraryEntriesByTrip(ctx context.Context, tripID string)
 	return items, nil
 }
 
+const setItineraryEntryDay = `-- name: SetItineraryEntryDay :execrows
+UPDATE itinerary_entries
+SET itinerary_day_id = $1,
+    sort_order = $2
+WHERE id = $3 AND itinerary_day_id = $4
+`
+
+type SetItineraryEntryDayParams struct {
+	ToItineraryDayID   string `json:"to_itinerary_day_id"`
+	SortOrder          int32  `json:"sort_order"`
+	ID                 string `json:"id"`
+	FromItineraryDayID string `json:"from_itinerary_day_id"`
+}
+
+// Moving an entry to another day. Both columns change together: an entry that
+// arrives on a new day needs a place in that day order, and leaving the old
+// number behind would put it in the middle of the target day rather than at
+// the end. The caller renumbers both days afterwards.
+//
+// The predicate names the day the entry is expected to be on -- the same belt
+// as SetItineraryEntrySortOrder above. Zero rows means the entry moved under
+// the caller, which a move must treat as a conflict rather than as success.
+func (q *Queries) SetItineraryEntryDay(ctx context.Context, arg SetItineraryEntryDayParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setItineraryEntryDay,
+		arg.ToItineraryDayID,
+		arg.SortOrder,
+		arg.ID,
+		arg.FromItineraryDayID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const setItineraryEntrySortOrder = `-- name: SetItineraryEntrySortOrder :execrows
 UPDATE itinerary_entries
 SET sort_order = $1

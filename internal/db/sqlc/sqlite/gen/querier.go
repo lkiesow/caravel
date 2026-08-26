@@ -221,6 +221,15 @@ type Querier interface {
 	// rules should not share one statement.
 	SetFileVisibility(ctx context.Context, arg SetFileVisibilityParams) (File, error)
 	SetItemImage(ctx context.Context, arg SetItemImageParams) (Item, error)
+	// Moving an entry to another day. Both columns change together: an entry that
+	// arrives on a new day needs a place in that day order, and leaving the old
+	// number behind would put it in the middle of the target day rather than at
+	// the end. The caller renumbers both days afterwards.
+	//
+	// The predicate names the day the entry is expected to be on -- the same belt
+	// as SetItineraryEntrySortOrder above. Zero rows means the entry moved under
+	// the caller, which a move must treat as a conflict rather than as success.
+	SetItineraryEntryDay(ctx context.Context, arg SetItineraryEntryDayParams) (int64, error)
 	// The day id is part of the predicate, not just the id: it keeps a reorder from
 	// renumbering an entry that belongs to a different day.
 	SetItineraryEntrySortOrder(ctx context.Context, arg SetItineraryEntrySortOrderParams) (int64, error)

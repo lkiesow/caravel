@@ -45,6 +45,7 @@ type roleFixture struct {
 	fileID      string
 	mediaID     string
 	dayID       string
+	entryID     string
 	expenseID   string
 }
 
@@ -108,6 +109,12 @@ func setupRole(t *testing.T, role db.TripRole) *roleFixture {
 	f.dayID = *decode[struct {
 		ID *string `json:"id"`
 	}](t, w).ID
+
+	// One entry on that day, so the per-entry routes have something to name.
+	f.entryID = ts.mustCreate(
+		http.MethodPost, "/api/itinerary/days/"+f.dayID+"/entries", owner,
+		`{"item_id":"`+f.itemID+`"}`, http.StatusCreated,
+	)
 
 	if role == db.RoleOwner {
 		f.actor = owner
@@ -202,6 +209,8 @@ func roleRoutes() []route {
 			lit(`{"title":"edited","amount_minor":1600,"spent_on":"2026-08-20"}`), db.RoleEditor},
 		{http.MethodPost, func(f *roleFixture) string { return "/api/itinerary/days/" + f.dayID + "/entries" },
 			func(f *roleFixture) string { return `{"item_id":"` + f.itemID + `"}` }, db.RoleEditor},
+		{http.MethodPatch, func(f *roleFixture) string { return "/api/itinerary/days/" + f.dayID + "/entries/" + f.entryID },
+			lit(`{"to_date":"2026-08-22"}`), db.RoleEditor},
 		// Deletes, last because they destroy the fixture — but each row gets a
 		// fresh one anyway, so the ordering is only belt and braces.
 		{http.MethodDelete, item(""), lit(""), db.RoleEditor},

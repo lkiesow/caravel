@@ -380,6 +380,11 @@ func (s *Server) buildRouter() chi.Router {
 			// statement about the whole day, and the body is every entry id in
 			// the order they should end up in.
 			r.Put("/entries/order", s.handleReorderItineraryEntries)
+			// PATCH on the entry, with the target *date* in the body: the path
+			// names the day the entry is on now, which is what authorizes the
+			// call. See handleMoveItineraryEntry for why a date and not a day
+			// id.
+			r.Patch("/entries/{entryId}", s.handleMoveItineraryEntry)
 			r.Delete("/entries/{entryId}", s.handleDeleteItineraryEntry)
 		})
 

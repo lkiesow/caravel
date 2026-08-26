@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"sort"
@@ -327,6 +328,158 @@ func (s *Server) handleReorderItineraryEntries(w http.ResponseWriter, r *http.Re
 }
 
 var errItineraryEntryVanished = errors.New("itinerary entry vanished mid-reorder")
+
+type moveItineraryEntryRequest struct {
+	ToDate string `json:"to_date"`
+}
+
+type moveItineraryEntryResponse struct {
+	DayID     string `json:"day_id"`
+	Date      string `json:"date"`
+	SortOrder int    `json:"sort_order"`
+}
+
+// handleMoveItineraryEntry reassigns an entry to another day, keeping its note
+// and everything else about it -- which is the whole point. Before this, moving
+// something meant deleting it from one day and adding it to the other, and the
+// note went with the deletion.
+//
+// The path names the day the entry is on today (that is what authorizes the
+// call) and the body names the date it should end up on. A *date* rather than a
+// day id, deliberately: the target day may have no row yet, since a day inside
+// the trip range is a placeholder synthesized by handleGetItinerary until
+// something is written to it. Taking an id would mean the client had to create
+// the day first, in a second request that can succeed while the move fails --
+// the non-atomic shape Stage 09 spent two milestones removing from location
+// creation. Taking a date lets the day be created inside the same transaction.
+//
+// The entry lands at the end of the target day. There is no "insert at position
+// N" here: the client can reorder afterwards with the endpoint that already
+// exists, and an ordering argument would be a second way to say the same thing.
+func (s *Server) handleMoveItineraryEntry(w http.ResponseWriter, r *http.Request) {
+	from, _, ok := s.loadItineraryDay(w, r, db.RoleEditor)
+	if !ok {
+		return
+	}
+	entryID := chi.URLParam(r, "entryId")
+
+	var req moveItineraryEntryRequest
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if _, err := time.Parse("2006-01-02", req.ToDate); err != nil {
+		writeError(w, http.StatusBadRequest, "to_date must be in YYYY-MM-DD format")
+		return
+	}
+
+	// The entry has to be on the day the path names before anything else
+	// happens, so a wrong pairing is a 404 rather than a transaction that finds
+	// out at the end. It also gives the no-op branch below something to answer
+	// with.
+	current, err := s.Store.ListItineraryEntriesByDay(r.Context(), from.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not move the entry")
+		return
+	}
+	position := -1
+	for i, e := range current {
+		if e.ID == entryID {
+			position = i
+			break
+		}
+	}
+	if position < 0 {
+		writeError(w, http.StatusNotFound, "entry not found")
+		return
+	}
+
+	// Moving an entry to the day it is already on is not an error and not a
+	// write: answering 200 with where it is means a client that computed the
+	// same date twice does not have to special-case it.
+	if req.ToDate == from.Date {
+		writeJSON(w, http.StatusOK, moveItineraryEntryResponse{DayID: from.ID, Date: from.Date, SortOrder: current[position].SortOrder})
+		return
+	}
+
+	var landed moveItineraryEntryResponse
+	err = s.Store.WithTx(r.Context(), func(store db.Store) error {
+		// EnsureItineraryDay rather than UpsertItineraryDayNotes: the upsert
+		// takes notes and would clear the target day's notes on the way past.
+		to, err := store.EnsureItineraryDay(r.Context(), uuid.NewString(), from.TripID, req.ToDate)
+		if err != nil {
+			return err
+		}
+		existing, err := store.ListItineraryEntriesByDay(r.Context(), to.ID)
+		if err != nil {
+			return err
+		}
+
+		moved, err := store.SetItineraryEntryDay(r.Context(), entryID, from.ID, to.ID, len(existing))
+		if err != nil {
+			return err
+		}
+		if !moved {
+			// Checked above, so reaching here means the entry left the source
+			// day between the check and the write.
+			return errItineraryEntryVanished
+		}
+
+		// Both days are renumbered from 0, the same repair
+		// handleReorderItineraryEntries performs: the source day would
+		// otherwise keep a gap where the entry was, and the target day inherits
+		// whatever numbering it already had, which for a day untouched since
+		// before Stage 15 Milestone 4 is every row at 0.
+		if err := renumberItineraryDay(r.Context(), store, from.ID); err != nil {
+			return err
+		}
+		if err := renumberItineraryDay(r.Context(), store, to.ID); err != nil {
+			return err
+		}
+
+		after, err := store.ListItineraryEntriesByDay(r.Context(), to.ID)
+		if err != nil {
+			return err
+		}
+		landed = moveItineraryEntryResponse{DayID: to.ID, Date: to.Date}
+		for _, e := range after {
+			if e.ID == entryID {
+				landed.SortOrder = e.SortOrder
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, errItineraryEntryVanished) {
+			writeError(w, http.StatusConflict, "the entry moved while it was being moved")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "could not move the entry")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, landed)
+}
+
+// renumberItineraryDay rewrites one day sort_order values as 0..n-1 in their
+// current order. Shared by the move, which has two days to repair; the reorder
+// handler keeps its own loop because it is writing an order the caller supplied
+// rather than compacting the one that is stored.
+func renumberItineraryDay(ctx context.Context, store db.Store, dayID string) error {
+	entries, err := store.ListItineraryEntriesByDay(ctx, dayID)
+	if err != nil {
+		return err
+	}
+	for i, e := range entries {
+		if e.SortOrder == i {
+			continue
+		}
+		if _, err := store.SetItineraryEntrySortOrder(ctx, e.ID, dayID, i); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 func (s *Server) handleDeleteItineraryEntry(w http.ResponseWriter, r *http.Request) {
 	day, _, ok := s.loadItineraryDay(w, r, db.RoleEditor)

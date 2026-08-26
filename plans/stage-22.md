@@ -148,6 +148,49 @@ another day getting 404, and a same-day move being a no-op.
 `internal/db` queries, which is exactly the case CLAUDE.md says to run both
 dialects for.
 
+**Done.** `PATCH /api/itinerary/days/{dayId}/entries/{entryId}` with
+`{"to_date": "YYYY-MM-DD"}`, as planned, answering
+`{day_id, date, sort_order}`.
+
+**The `UpsertItineraryDayNotes` worry the plan flagged was real**, and worse
+than "check the ON CONFLICT clause" suggested: there is no `ON CONFLICT` at
+all. The method is an update-then-insert pair in each store
+(`sqlite_store.go:661`, `postgres_store.go:833`), and passing nil notes takes
+the *update* branch on a day that already exists — setting `notes` to NULL.
+Using it here would have silently wiped the target day's notes on every move
+onto a day that had any. So the store gained `EnsureItineraryDay(ctx, newID,
+tripID, date)` instead: get by (trip, date), insert with no notes only if
+absent, never touch an existing row. `TestMoveItineraryEntryLeavesTargetDayNotesAlone`
+pins it in both directions.
+
+Also built: `SetItineraryEntryDay` (one `:execrows` query, both dialects
+regenerated and read rather than diffed — all four args substituted), and
+`renumberItineraryDay`, a helper the move needs twice. It compacts a stored
+order rather than applying a supplied one, which is why
+`handleReorderItineraryEntries` keeps its own loop instead of calling it — the
+two are doing different jobs and merging them would have meant a flag.
+
+Deviations from the plan, both small: the entry's membership of the source day
+is checked *before* the transaction rather than discovered inside it, so a
+wrong pairing is a plain 404 instead of a rolled-back conflict — and it gives
+the same-day no-op branch a `sort_order` to answer with. And the no-op branch
+answers before opening a transaction at all.
+
+**Verified.** `make ci` green, and `make test-postgres` green (123s for
+`internal/httpapi`) — which is what exercises the `int32`/`int64` split and the
+Postgres `time.Parse(dateLayout)` path in `EnsureItineraryDay`. Seven new tests
+in `itinerary_move_test.go`: note and entry id survive the move, both days come
+back numbered 0..n-1, a date with no row yet is a valid destination, day notes
+on both ends are untouched, a same-day move is a 200 no-op that writes nothing,
+five bad inputs are rejected without moving anything, and a cross-trip attempt
+is a 404. The role matrix (`roles_test.go`) gained the route and an `entryID`
+fixture, so viewer-403 and stranger-404 come from the existing sweep.
+
+**The renumber assertion was mutation-checked** rather than trusted: removing
+the source-day renumber makes the day come back as `[0 2]` and the test fails
+on it. Worth doing, because a test that reads the order through
+`GET /itinerary` would pass on a gapped day if it only compared titles.
+
 ---
 
 ## 2. The move, in the browser

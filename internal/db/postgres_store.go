@@ -864,6 +864,31 @@ func (s *postgresStore) UpsertItineraryDayNotes(ctx context.Context, newID, trip
 	return postgresItineraryDayToDomain(row), nil
 }
 
+func (s *postgresStore) EnsureItineraryDay(ctx context.Context, newID, tripID, date string) (ItineraryDay, error) {
+	parsedDate, err := time.Parse(dateLayout, date)
+	if err != nil {
+		return ItineraryDay{}, err
+	}
+
+	row, err := s.q.GetItineraryDayByTripAndDate(ctx, postgresgen.GetItineraryDayByTripAndDateParams{TripID: tripID, Date: parsedDate})
+	if err == nil {
+		return postgresItineraryDayToDomain(row), nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return ItineraryDay{}, err
+	}
+	inserted, err := s.q.InsertItineraryDay(ctx, postgresgen.InsertItineraryDayParams{
+		ID:     newID,
+		TripID: tripID,
+		Date:   parsedDate,
+		Notes:  nullString(nil),
+	})
+	if err != nil {
+		return ItineraryDay{}, err
+	}
+	return postgresItineraryDayToDomain(inserted), nil
+}
+
 func (s *postgresStore) ListItineraryDaysByTrip(ctx context.Context, tripID string) ([]ItineraryDay, error) {
 	rows, err := s.q.ListItineraryDaysByTrip(ctx, tripID)
 	if err != nil {
@@ -949,6 +974,21 @@ func (s *postgresStore) SetItineraryEntrySortOrder(ctx context.Context, id, itin
 		// int32 here where sqlite takes int64: the two generated packages differ
 		// on integer width, which is exactly the sort of thing only a build
 		// catches today (see the postgres note in todo.md).
+		SortOrder: int32(sortOrder),
+	})
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+func (s *postgresStore) SetItineraryEntryDay(ctx context.Context, id, fromDayID, toDayID string, sortOrder int) (bool, error) {
+	n, err := s.q.SetItineraryEntryDay(ctx, postgresgen.SetItineraryEntryDayParams{
+		ID:                 id,
+		FromItineraryDayID: fromDayID,
+		ToItineraryDayID:   toDayID,
+		// int32 here where sqlite takes int64, the same dialect difference
+		// SetItineraryEntrySortOrder notes above.
 		SortOrder: int32(sortOrder),
 	})
 	if err != nil {

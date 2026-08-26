@@ -29,3 +29,17 @@ ORDER BY sort_order;
 UPDATE itinerary_entries
 SET sort_order = sqlc.arg(sort_order)
 WHERE id = sqlc.arg(id) AND itinerary_day_id = sqlc.arg(itinerary_day_id);
+
+-- Moving an entry to another day. Both columns change together: an entry that
+-- arrives on a new day needs a place in that day order, and leaving the old
+-- number behind would put it in the middle of the target day rather than at
+-- the end. The caller renumbers both days afterwards.
+--
+-- The predicate names the day the entry is expected to be on -- the same belt
+-- as SetItineraryEntrySortOrder above. Zero rows means the entry moved under
+-- the caller, which a move must treat as a conflict rather than as success.
+-- name: SetItineraryEntryDay :execrows
+UPDATE itinerary_entries
+SET itinerary_day_id = sqlc.arg(to_itinerary_day_id),
+    sort_order = sqlc.arg(sort_order)
+WHERE id = sqlc.arg(id) AND itinerary_day_id = sqlc.arg(from_itinerary_day_id);

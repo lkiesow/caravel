@@ -384,16 +384,13 @@ down.
   sweep only catches controls whose *only* name is the translated string, so an
   empty label on anything with visible text is still invisible to it. A third
   language would multiply this decision rather than inherit it.
-- **An itinerary entry cannot be moved to another day.** (Stage 19 Milestone 3.)
-  `internal/httpapi/itinerary.go` has create, reorder and delete for an entry and
-  nothing that reassigns its `itinerary_day_id`; there is no client affordance
-  either. So rescheduling something means removing it from one day and adding it
-  again on the other, losing any note on the entry in the process. The reorder
-  endpoint already renumbers a whole day inside a transaction, so a move is the
-  same shape across two days -- the awkward part is the API, since entries are
-  addressed as `/itinerary/days/{dayId}/entries/{entryId}` and a move changes the
-  first half of that path. Found while writing the spec: the milestone had
-  planned to *test* this, on the assumption it existed.
+- **An itinerary entry can be moved, but only through the API.** (Stage 19
+  Milestone 3; half-built in Stage 22 Milestone 1.) `PATCH
+  /api/itinerary/days/{dayId}/entries/{entryId}` with `{"to_date": ...}` now
+  moves an entry between days, keeping its note, in one transaction. What is
+  missing is the client affordance -- nothing in `itinerary-tab.js` calls it, so
+  rescheduling in the browser still means remove-and-re-add. Stage 22
+  Milestone 2 is that half.
 - **Two concurrent UI runs still share Playwright's `test-results/`.** (Stage 19
   Milestone 1.) Everything else about a run is now private to it -- port,
   database, uploads, saved sessions -- but the output directory is still the

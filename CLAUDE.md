@@ -82,7 +82,9 @@ check, i18n key parity, `go test`. Don't rely on CI to catch it first.
   today) — `scripts/check_i18n.py` enforces this in `make ci`. Easy to
   forget when you're only looking at English copy.
 - **Database migrations.** The schema was squashed to a single `0001_init` pair
-  per dialect in Stage 18, so the next schema change is `0002_...`. New changes
+  per dialect in Stage 18; `0002_media_provenance` followed in Stage 21, so the
+  next schema change is `0003_...`. Check the directory rather than this line —
+  it is the kind of number that goes stale. New changes
   are sequential `000N_name.up/down.sql` files, written for *both* dialects
   (`internal/db/migrations/sqlite/` and `.../postgres/`). After editing
   `internal/db/sqlc/queries/*.sql`, run `sqlc generate` by hand from

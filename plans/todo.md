@@ -36,23 +36,26 @@ down.
   only fix is re-uploading the picture. Noted so it is not mistaken later for
   the fix having failed.
 
-- **The assistant is slow, and regularly gives up.** **(soon)** (Stage 21.)
-  "The assistant took too long and was stopped. Try a narrower description."
-  arrives often enough to be the normal outcome for some places. Nothing
-  currently says why. Where to look first, from reading the loop rather than
-  from measurement: the gathering deadline does *not* produce that message --
-  hitting it ends the research and the run still answers
-  (`internal/assist/agent.go:245-252`) -- so `assist_timeout` can only come
-  from the caller's context or a provider call's own deadline, and the
-  composing turn resends the entire conversation including every page's 12KB
-  of extracted text. Stage 16 Milestone 8 already had to raise `AnswerTimeout`
-  from 60s to 2m for exactly that. Levers not yet pulled: tool calls within a
-  turn are dispatched sequentially (`agent.go:278-296`) though `toolset` is
-  already mutex-guarded; nothing tunable reaches the provider except a
-  hard-coded `temperature: 0.2` (`provider.go:212`), so there is no
-  `reasoning_effort` or `max_tokens` knob, and the right value may differ per
-  step and per model; and the conversation is never compacted before the
-  composing turn.
+- **The assistant is slow, and regularly gives up.** (Stage 21; largely
+  answered there, and this is what is left.) The complaint was real and the
+  cause was mostly the **model**: Stage 21 Milestone 4 measured eight of them
+  across two providers at 14.9s to 59.1s on the same run, and switching the
+  instance to `nvidia/nemotron-3.5-lightning` took a Tokyo Tower run from 59.1s
+  to 16.4s -- more than any code change on the table was worth. Milestones 2
+  and 3 also made a slow run **diagnosable** rather than mysterious: the debug
+  log and the in-editor trace now carry per-request timings, the tool calls and
+  `answered_by`, so "why was that run slow" is answerable from outside a
+  debugger for the first time.
+
+  What is genuinely still open: nobody has caught an `assist_timeout` *with the
+  trace in hand* and confirmed where it comes from. The gathering deadline does
+  not produce it -- hitting that ends the research and the run still answers
+  (`internal/assist/agent.go:245-252`) -- so it is the caller's context or a
+  provider call's own deadline, and `AnswerTimeout` has already been raised
+  once (Stage 16 Milestone 8, 60s to 2m). Next time one happens, read the trace
+  before changing anything. The remaining code-level levers are recorded
+  separately below, under "Three assistant speed levers" and "Assistant round
+  trips" -- both measured, both below this system's run-to-run noise floor.
 
 - **A cover photo set by URL on the *new trip* form is only validated at Create
   time.** (Stage 07; half-fixed in Stage 09 Milestone 4.) The URL is staged

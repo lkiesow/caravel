@@ -19,7 +19,7 @@ func expense(id, payer string, amount int64) db.Expense {
 	return e
 }
 
-// Stable pointers per id, cached the way payerNamer caches in production. A
+// Stable pointers per id, cached the way expenseNamer caches in production. A
 // fresh pointer per call would make struct comparison test pointer identity
 // rather than the values -- which is exactly what the determinism test below
 // was reporting before this was a map.

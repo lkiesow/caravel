@@ -1238,6 +1238,7 @@ func (s *sqliteStore) CreateExpense(ctx context.Context, p CreateExpenseParams) 
 		AmountMinor: p.AmountMinor,
 		SpentOn:     p.SpentOn,
 		PayerUserID: nullString(p.PayerUserID),
+		ItemID:      nullString(p.ItemID),
 		CreatedAt:   formatTime(p.CreatedAt),
 	})
 	if err != nil {
@@ -1278,6 +1279,7 @@ func (s *sqliteStore) UpdateExpense(ctx context.Context, p UpdateExpenseParams) 
 		AmountMinor: p.AmountMinor,
 		SpentOn:     p.SpentOn,
 		PayerUserID: nullString(p.PayerUserID),
+		ItemID:      nullString(p.ItemID),
 	})
 	if err != nil {
 		return Expense{}, mapNotFound(err)
@@ -1325,6 +1327,7 @@ func sqliteExpenseToDomain(e sqlitegen.Expense) Expense {
 		AmountMinor: e.AmountMinor,
 		SpentOn:     e.SpentOn,
 		PayerUserID: strPtr(e.PayerUserID),
+		ItemID:      strPtr(e.ItemID),
 		CreatedAt:   parseTime(e.CreatedAt),
 	}
 }

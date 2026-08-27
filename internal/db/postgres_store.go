@@ -678,6 +678,7 @@ func (s *postgresStore) CreateExpense(ctx context.Context, p CreateExpenseParams
 		AmountMinor: p.AmountMinor,
 		SpentOn:     spentOn,
 		PayerUserID: nullString(p.PayerUserID),
+		ItemID:      nullString(p.ItemID),
 		CreatedAt:   p.CreatedAt.UTC(),
 	})
 	if err != nil {
@@ -722,6 +723,7 @@ func (s *postgresStore) UpdateExpense(ctx context.Context, p UpdateExpenseParams
 		AmountMinor: p.AmountMinor,
 		SpentOn:     spentOn,
 		PayerUserID: nullString(p.PayerUserID),
+		ItemID:      nullString(p.ItemID),
 	})
 	if err != nil {
 		return Expense{}, mapNotFound(err)
@@ -772,6 +774,7 @@ func postgresExpenseToDomain(e postgresgen.Expense) Expense {
 		AmountMinor: e.AmountMinor,
 		SpentOn:     e.SpentOn.Format(dateLayout),
 		PayerUserID: strPtr(e.PayerUserID),
+		ItemID:      strPtr(e.ItemID),
 		CreatedAt:   e.CreatedAt,
 	}
 }

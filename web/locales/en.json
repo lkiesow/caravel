@@ -338,6 +338,8 @@
   "expenses.form.title": "What was it for",
   "expenses.form.amount": "Amount ({currency})",
   "expenses.form.date": "Date",
+  "expenses.form.item": "Location (optional)",
+  "expenses.form.itemNone": "No location",
   "expenses.error.title": "Say what the money was spent on.",
   "expenses.error.amount": "Enter an amount, for example {example}.",
   "expenses.error.date": "Pick the day it was spent.",

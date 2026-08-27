@@ -49,6 +49,7 @@ type Expense struct {
 	SpentOn     string         `json:"spent_on"`
 	PayerUserID sql.NullString `json:"payer_user_id"`
 	CreatedAt   string         `json:"created_at"`
+	ItemID      sql.NullString `json:"item_id"`
 }
 
 type ExpenseShare struct {

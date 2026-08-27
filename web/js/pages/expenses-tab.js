@@ -51,6 +51,20 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
       members = [];
     }
   }
+  // The trip's locations, for the optional "what was this for" select. Loaded
+  // in a try/catch and degrading to no select rather than taking the ledger
+  // down: the amounts are the point of this tab, and a link to a location is a
+  // convenience on top of them. Read-only callers skip the request entirely --
+  // they get no form to put a select in, and the rows carry the location's
+  // title from the server.
+  let items = [];
+  if (!readOnly) {
+    try {
+      items = await api.get(`/trips/${trip.id}/items`);
+    } catch {
+      items = [];
+    }
+  }
   // The expense being edited, or null when the form is an add form.
   let editing = null;
   // Kept across re-renders so a failed save can say why without the message
@@ -336,6 +350,7 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
     li.innerHTML = `
       <span class="expenses__row-main">
         <span class="expenses__row-title"></span>
+        <span class="expenses__row-item" hidden></span>
         ${shared ? `<span class="expenses__row-payer"></span>` : ""}
         ${shared ? `<span class="expenses__row-share"></span>` : ""}
         ${shared ? `<span class="expenses__row-shares"></span>` : ""}
@@ -361,6 +376,26 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
         name: payerLabel({ user_id: expense.payer_user_id, display_name: expense.payer_display_name }),
       });
     }
+    // The location this was for, when it names one -- most expenses do not, and
+    // the line stays hidden for those. A real <a href> with data-link rather
+    // than a click handler: the router intercepts those, so navigation stays
+    // client-side while middle-click, open-in-new-tab and "copy link address"
+    // keep working. Same reasoning itinerary-tab.js gives for its entry link.
+    //
+    // This is the whole point of the link: reading "Ferry, 45.00" a month later
+    // and wanting to know which ferry, the answer is one tap away, where the
+    // picture and the notes are.
+    const itemEl = li.querySelector(".expenses__row-item");
+    if (expense.item_id && expense.item_title) {
+      const link = document.createElement("a");
+      link.href = `/trips/${trip.id}/locations/${expense.item_id}`;
+      link.dataset.link = "";
+      link.className = "expenses__row-item-link";
+      link.textContent = expense.item_title;
+      itemEl.appendChild(link);
+      itemEl.hidden = false;
+    }
+
     // On its own line rather than joined to the payer with a "·". Together they
     // ran to about 38 characters, which does not fit the row at 324px -- and
     // the half that got truncated was the amount, the one number on the line
@@ -434,6 +469,20 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
           <input type="date" name="spentOn" required />
         </label>
         ${
+          items.length
+            ? `<label>
+          <span data-i18n="expenses.form.item"></span>
+          <!-- Optional, and empty by default: most expenses are not about one
+               place, and a select that insisted would mean inventing a
+               location for the groceries. -->
+          <select name="itemId">
+            <option value="" data-i18n="expenses.form.itemNone"></option>
+            ${items.map((i) => `<option value="${i.id}"></option>`).join("")}
+          </select>
+        </label>`
+            : ""
+        }
+        ${
           shared && members.length
             ? `<label>
           <span data-i18n="expenses.form.payer"></span>
@@ -495,6 +544,15 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
       options[options.length - 1].textContent = t("expenses.payer.none");
     }
 
+    // Location options, named the same way and for the same reason: a location
+    // title is whatever somebody typed.
+    if (form.elements.itemId) {
+      const options = [...form.elements.itemId.options];
+      items.forEach((item, i) => {
+        options[i + 1].textContent = item.title;
+      });
+    }
+
     // Share checkboxes, labelled the same way as the payer options.
     const shareBoxes = [...card.querySelectorAll('[name="share"]')];
     shareBoxes.forEach((box, i) => {
@@ -533,6 +591,10 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
       const editingIDs = editing.share_user_ids || [];
       for (const box of shareBoxes) box.checked = editingIDs.includes(box.value);
       if (shareAll) shareAll.checked = shareBoxes.every((b) => b.checked);
+      // A location deleted since is no longer in the select, and the value
+      // falls through to "none" -- which is what the server holds for it too,
+      // the column being ON DELETE SET NULL.
+      if (form.elements.itemId) form.elements.itemId.value = editing.item_id || "";
     } else {
       // A new expense defaults to today, clamped into the trip's own dates when
       // it has them: entering yesterday's dinner is a correction, entering one
@@ -588,6 +650,10 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
         // than whoever opened the form.
         payer_user_id: payerFromForm(form),
         share_user_ids: sharesFromForm(),
+        // Empty means "no location", and is sent rather than omitted: the
+        // server reads an absent item_id as none, so on a PATCH that clears an
+        // existing link either way -- sending it explicitly says so out loud.
+        item_id: form.elements.itemId?.value || null,
       };
 
       try {

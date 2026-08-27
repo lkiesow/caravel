@@ -95,7 +95,10 @@ type CreateExpenseParams struct {
 	AmountMinor int64
 	SpentOn     string
 	PayerUserID *string
-	CreatedAt   time.Time
+	// ItemID must name a location on the same trip, which the caller checks --
+	// the column has no way to express it, since items carry their own trip_id.
+	ItemID    *string
+	CreatedAt time.Time
 }
 
 // UpdateExpenseParams keeps TripID where UpdateTripParams dropped its OwnerID:
@@ -108,6 +111,9 @@ type UpdateExpenseParams struct {
 	AmountMinor int64
 	SpentOn     string
 	PayerUserID *string
+	// Absent means "no location", not "leave it alone": an expense is edited as
+	// a whole, the way its four original fields already are.
+	ItemID *string
 }
 
 type CreateChecklistParams struct {

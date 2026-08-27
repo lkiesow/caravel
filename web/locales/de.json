@@ -338,6 +338,8 @@
   "expenses.form.title": "Wofür war es",
   "expenses.form.amount": "Betrag ({currency})",
   "expenses.form.date": "Datum",
+  "expenses.form.item": "Ort (optional)",
+  "expenses.form.itemNone": "Kein Ort",
   "expenses.error.title": "Gib an, wofür das Geld ausgegeben wurde.",
   "expenses.error.amount": "Gib einen Betrag ein, zum Beispiel {example}.",
   "expenses.error.date": "Wähle den Tag der Ausgabe.",

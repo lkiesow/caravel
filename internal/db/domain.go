@@ -107,7 +107,13 @@ type Expense struct {
 	AmountMinor int64
 	SpentOn     string
 	PayerUserID *string
-	CreatedAt   time.Time
+	// ItemID is the location this expense was for, or nil. Nil is the common
+	// case and stays valid: groceries and fuel are not about one place. It goes
+	// to nil rather than taking the expense with it when the location is
+	// deleted (ON DELETE SET NULL, migration 0003), because the money was still
+	// spent.
+	ItemID    *string
+	CreatedAt time.Time
 }
 
 // ExpenseShare records that one person is among those an expense was for. No

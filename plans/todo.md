@@ -100,13 +100,16 @@ down.
 
 ## Planned features
 
-- **Expenses: what Stage 17 left out.** (Stage 17.) The feature shipped --
-  expenses, per-trip currency, who paid, per-expense share sets, per-person
-  totals and balances with suggested transfers. What it deliberately does not
-  do:
-    - **Linking an expense to a location.** The original Stage 01 sketch had an
-      optional `item_id`, which would give a per-location cost on the location
-      view. One nullable column and a select.
+- **Expenses: a per-location total, considered and dropped.** (Stage 17; the
+  link itself built in Stage 22 Milestone 3.) An expense can now name the
+  location it was for, and the row links to it -- which is what the Stage 01
+  sketch was after. The *other* half of that sketch, a per-location cost shown
+  on the location view, was planned for Stage 22 and cut before it was built:
+  the question the link answers is "what was this expense", not "what did this
+  place cost", and a second aggregate beside the trip total is a second
+  implementation of the same arithmetic. `GET /api/items/{itemId}/expenses` and
+  a spending card are what it would take. Not outstanding work -- a decision,
+  recorded so it is not re-litigated as an oversight.
 
 - **The move dialog can only offer days the itinerary already has.** (Stage 22
   Milestone 2.) `moveToDay` builds its `<select>` from the days the tab is

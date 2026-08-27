@@ -358,6 +358,55 @@ the location leaving the expense with a null `item_id` and its amount intact.
 Extend `tests/ui/expenses.spec.js`: set a location through the form, then follow
 the row's link and assert `window.location.pathname` is the location page.
 
+**Done.** Migration `0003_expense_item` for both dialects — one nullable
+`item_id` with `ON DELETE SET NULL` and an index — plus `item_id` on
+`CreateExpense`/`UpdateExpense`, a select in the form, and the location as a
+link on the row. `check_migrations.py` confirms three pairs per dialect, both
+agreeing.
+
+**`payerNamer` became `expenseNamer`.** Resolving the location title is the same
+job it already did for the payer — an id in a row, a name in the response,
+cached per request so twenty rows naming two locations cost two lookups — and
+giving it a second cache under a name that said "payer" would have been the
+worse of the two options. Ten call sites, mechanical.
+
+Validation went into `requireTripItem`, beside `requireTripMember` which does
+exactly this for the payer, and it delegates to the existing
+`requireSameTrip` (`authz.go:290`) rather than open-coding the comparison. A
+location from another trip and a nonexistent id are both 400s naming the field,
+which is what `requireSameTrip` already answers for a media asset.
+
+Deviation from the plan, on a detail the plan got slightly wrong: the client
+sends `item_id` **explicitly as null** when the select is empty rather than
+omitting it. Omitting works — the server reads absent as none — but on a PATCH
+that silently clears an existing link, and saying so out loud is worth two
+characters.
+
+**Verified.** `make ci` green (379 keys in sync); `make test-postgres` green
+(118s for `internal/httpapi`), which is the run that matters for a schema and
+query change. Five new Go tests in `expense_item_test.go`: create with a
+location, create without one both ways (absent and explicit null), PATCH setting
+and clearing it, a location from another trip and a nonexistent id both refused
+on create *and* update with nothing written, and — the load-bearing one —
+deleting the location leaving the expense with its 24000 intact and its link
+cleared. A `CASCADE` typed by mistake would fail that test rather than quietly
+changing what a trip cost.
+
+Full UI suite green at **144 passed**, with three new specs: setting a location
+from the form and following the row's link to the location page, clearing it
+again from the same select (total unchanged, `item_id` null), and the expense
+surviving the location's deletion. By hand at 324px: the row fits without
+scrolling, the link reads as a link in accent colour, the German pass gives
+"Ort (optional)" / "Kein Ort" with no overflow.
+
+One thing worth recording because it cost time and was *not* a bug: a first
+attempt to drive the form through the MCP tools appeared not to persist the
+link, and capturing the request showed the client sending `item_id` correctly
+all along. Repeating the same steps as ordinary UI clicks worked, and the
+committed spec passes. It was harness noise between a scripted `selectOption`
+and the following click, not a race in the page — nothing re-renders that form
+between opening it and submitting it.
+
 ---
 
 ## 4. `/auth/me` grows a `capabilities` object

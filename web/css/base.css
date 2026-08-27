@@ -3315,6 +3315,7 @@ button {
 .expenses__row-title,
 .expenses__row-payer,
 .expenses__row-share,
+.expenses__row-item,
 .expenses__row-shares {
   min-width: 0;
   overflow: hidden;
@@ -3324,9 +3325,24 @@ button {
 
 .expenses__row-payer,
 .expenses__row-share,
+.expenses__row-item,
 .expenses__row-shares {
   font-size: 0.8125rem;
   color: var(--color-text-muted);
+}
+
+/* The location an expense was for (Stage 22). A link, and it says so -- this is
+   the one thing on the row you can follow, and a muted line that happens to be
+   clickable would not be found. It keeps the muted size of its neighbours
+   rather than competing with the title above it. */
+.expenses__row-item-link {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+.expenses__row-item-link:hover,
+.expenses__row-item-link:focus-visible {
+  text-decoration: underline;
 }
 
 /* The share line only appears when an expense was *not* split with everyone,

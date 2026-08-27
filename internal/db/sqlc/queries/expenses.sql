@@ -1,6 +1,6 @@
 -- name: CreateExpense :one
-INSERT INTO expenses (id, trip_id, title, amount_minor, spent_on, payer_user_id, created_at)
-VALUES (sqlc.arg(id), sqlc.arg(trip_id), sqlc.arg(title), sqlc.arg(amount_minor), sqlc.arg(spent_on), sqlc.arg(payer_user_id), sqlc.arg(created_at))
+INSERT INTO expenses (id, trip_id, title, amount_minor, spent_on, payer_user_id, item_id, created_at)
+VALUES (sqlc.arg(id), sqlc.arg(trip_id), sqlc.arg(title), sqlc.arg(amount_minor), sqlc.arg(spent_on), sqlc.arg(payer_user_id), sqlc.arg(item_id), sqlc.arg(created_at))
 RETURNING *;
 
 -- name: GetExpenseByID :one
@@ -38,7 +38,8 @@ UPDATE expenses
 SET title = sqlc.arg(title),
     amount_minor = sqlc.arg(amount_minor),
     spent_on = sqlc.arg(spent_on),
-    payer_user_id = sqlc.arg(payer_user_id)
+    payer_user_id = sqlc.arg(payer_user_id),
+    item_id = sqlc.arg(item_id)
 WHERE id = sqlc.arg(id) AND trip_id = sqlc.arg(trip_id)
 RETURNING *;
 

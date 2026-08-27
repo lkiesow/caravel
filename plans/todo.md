@@ -177,14 +177,6 @@ down.
   has to be added to `search.formats` in `settings.yml`, and it overlaps
   heavily with ddgs, which shipped -- both are self-hosted keyless metasearch,
   so this is for people who already run one rather than a gap in coverage.
-- **`/auth/me` wants a nested `capabilities` object.** (Stage 21 Milestone 7.)
-  It now carries three flat server-capability flags beside the user fields --
-  `geocoding`, `assist` and `image_search` (`internal/httpapi/auth.go`). Two was
-  under the threshold where a reshape earns its client-visible change; three is
-  over it, and the comment on the second flag said as much in advance. The
-  change is small and touches `web/js/session.js` and every reader of those
-  three fields, which is why it belongs in its own commit rather than riding
-  along with a feature.
 - **Web search may want to leave `internal/assist`.** (Stage 21 Milestone 7.)
   `Searcher` and its four backends live in that package because the assistant
   was their only consumer. It no longer is: the image picker uses the same

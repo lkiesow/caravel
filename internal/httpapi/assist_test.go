@@ -115,7 +115,7 @@ func TestAuthMeReportsAssistCapability(t *testing.T) {
 	t.Run("off by default", func(t *testing.T) {
 		ts := newTestServer(t)
 		cookie := ts.login("alice")
-		if got := ts.assistCapability(cookie); got {
+		if got := ts.capability(cookie, "assist"); got {
 			t.Error("/auth/me reported assist=true with no assistant configured")
 		}
 	})
@@ -124,23 +124,8 @@ func TestAuthMeReportsAssistCapability(t *testing.T) {
 		ts := newTestServer(t)
 		ts.Assist = fakeAssistant{}
 		cookie := ts.login("alice")
-		if got := ts.assistCapability(cookie); !got {
+		if got := ts.capability(cookie, "assist"); !got {
 			t.Error("/auth/me reported assist=false with an assistant configured")
 		}
 	})
-}
-
-func (ts *testServer) assistCapability(cookie *http.Cookie) bool {
-	ts.t.Helper()
-	rec := ts.do(http.MethodGet, "/api/auth/me", cookie, "")
-	if rec.Code != http.StatusOK {
-		ts.t.Fatalf("/auth/me status = %d", rec.Code)
-	}
-	var body struct {
-		Assist bool `json:"assist"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		ts.t.Fatalf("decode /auth/me: %v", err)
-	}
-	return body.Assist
 }

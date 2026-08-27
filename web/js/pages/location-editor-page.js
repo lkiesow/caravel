@@ -11,7 +11,7 @@ import { renderLoading } from "../components/loading.js";
 import { renderNotFoundPage } from "./not-found-page.js";
 import { canEdit, isShared } from "../trip-role.js";
 import "../components/leaflet-map.js";
-import { getCurrentUser } from "../session.js";
+import { hasCapability } from "../session.js";
 import { renderAssistPanel } from "../components/assist-panel.js";
 
 // Both modes render the same cards, in the same order - Basic info, Cover
@@ -527,7 +527,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
   // costs an external service a request, and OSM's usage policy is the reason
   // this goes through our own endpoint at all (internal/httpapi/geocode.go).
   function bindPlaceSearch(form, syncMapFromFields, syncHint) {
-    if (!getCurrentUser()?.geocoding) return;
+    if (!hasCapability("geocoding")) return;
 
     const panel = container.querySelector(".location-search");
     const input = form.placeQuery;

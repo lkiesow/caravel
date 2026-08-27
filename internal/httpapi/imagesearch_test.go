@@ -207,5 +207,10 @@ func (ts *testServer) capability(cookie *http.Cookie, name string) bool {
 	if rec.Code != http.StatusOK {
 		ts.t.Fatalf("/auth/me status = %d", rec.Code)
 	}
-	return decode[map[string]any](ts.t, rec)[name] == true
+	// Reads through the nested object rather than the top level: the three
+	// server capabilities moved under "capabilities" in Stage 22, and a helper
+	// still looking at the top level would report every capability as absent
+	// while passing its own type check.
+	caps, _ := decode[map[string]any](ts.t, rec)["capabilities"].(map[string]any)
+	return caps[name] == true
 }

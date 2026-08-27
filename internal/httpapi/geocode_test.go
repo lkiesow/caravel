@@ -252,8 +252,8 @@ func TestAuthMeReportsGeocodingCapability(t *testing.T) {
 			if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 				t.Fatalf("decode: %v", err)
 			}
-			if got.Geocoding != tc.want {
-				t.Errorf("geocoding = %v, want %v", got.Geocoding, tc.want)
+			if got.Capabilities.Geocoding != tc.want {
+				t.Errorf("capabilities.geocoding = %v, want %v", got.Capabilities.Geocoding, tc.want)
 			}
 		})
 	}

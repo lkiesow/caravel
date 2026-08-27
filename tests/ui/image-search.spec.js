@@ -28,7 +28,7 @@ test.describe("image search", () => {
     await login(page);
 
     const me = await (await page.request.get("/api/auth/me")).json();
-    test.skip(!me.image_search, "needs a server started with CARAVEL_WIKIMEDIA_URL=stub");
+    test.skip(!me.capabilities.image_search, "needs a server started with CARAVEL_WIKIMEDIA_URL=stub");
 
     // The suite's blanket interceptor answers *any* off-origin .png/.jpg with a
     // 1x1 transparent PNG, so map tiles never reach a third party. That is

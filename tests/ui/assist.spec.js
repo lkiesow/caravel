@@ -43,7 +43,7 @@ test.describe("AI assistant", () => {
     // not broken anything, and a red suite that means "you did not set an env
     // var" trains people to ignore red suites.
     const me = await (await page.request.get("/api/auth/me")).json();
-    test.skip(!me.assist, "needs a server started with CARAVEL_LLM_URL=stub");
+    test.skip(!me.capabilities.assist, "needs a server started with CARAVEL_LLM_URL=stub");
 
     const res = await page.request.post("/api/trips", { data: { title: "UI suite: assist spec" } });
     expect(res.status(), "create the spec's own trip").toBe(201);
@@ -292,7 +292,12 @@ test.describe("AI assistant", () => {
     await page.route("**/api/auth/me", async (route) => {
       const response = await route.fetch();
       const body = await response.json();
-      await route.fulfill({ response, json: { ...body, assist: false } });
+      // The nested object has to be spread on its own: a shallow spread of the
+      // payload would carry the original capabilities through untouched.
+      await route.fulfill({
+        response,
+        json: { ...body, capabilities: { ...body.capabilities, assist: false } },
+      });
     });
 
     await page.goto(`/trips/${tripId}/locations/new`);

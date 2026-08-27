@@ -1,7 +1,7 @@
 import { api } from "../api.js";
 import { t, translatePage, getLocale } from "../i18n.js";
 import { icon } from "../icon.js";
-import { getCurrentUser } from "../session.js";
+import { hasCapability } from "../session.js";
 
 // The "Search via AI" control, and the suggestions it produces.
 //
@@ -30,7 +30,7 @@ import { getCurrentUser } from "../session.js";
 //
 // # Hidden unless the server can do it
 //
-// `getCurrentUser().assist` is a server capability. A control that could only
+// `hasCapability("assist")` is a server capability. A control that could only
 // ever report "not enabled" is worse than no control.
 
 // The progress keys the server may send, spelled out for two reasons. An
@@ -74,7 +74,7 @@ const ERROR_KEYS = {
 const FIELD_NAMES = ["title", "category", "type", "notes", "address"];
 
 export function renderAssistPanel(container, { tripId, root, readCurrent, applyField, applyLink, applyCoordinates, applyCover }) {
-  if (!getCurrentUser()?.assist) {
+  if (!hasCapability("assist")) {
     container.hidden = true;
     return { destroy() {} };
   }

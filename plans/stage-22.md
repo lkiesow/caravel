@@ -428,6 +428,45 @@ milestone and not a line in Milestone 5.
 silently hides a control, and `assist.spec.js`, `image-search.spec.js` and
 `locations.spec.js` each depend on one of these flags being read correctly.
 
+**Done.** `/auth/me` now answers
+`{id, username, display_name, has_password, capabilities: {geocoding, assist,
+image_search}, is_admin}`. `is_admin` deliberately stayed a top-level user
+field: unlike the other three it genuinely is a property of the account.
+
+**Only three flags, not the four the plan wrote.** `reverse_geocoding` belongs
+to Milestone 5 and does not exist yet; adding a flag for a capability the server
+has no code for would be a lie the client could read. The reshape is the whole
+commit, which is what this milestone was for.
+
+**The client got `hasCapability(name)` rather than three call sites reaching
+through two levels of optional chaining.** `web/js/session.js` is now the only
+place that knows the payload's shape — which is exactly the lesson of the flat
+version it replaced — and it answers false when the user is not loaded yet,
+since a control that needs a capability should not render before the app knows
+whether it exists. The three readers (`image-field.js`, `assist-panel.js`,
+`location-editor-page.js`) each dropped their `getCurrentUser` import entirely.
+
+**A missed reader was caught by a test, which is the outcome to want.** There
+were *two* helpers in the Go suite asking `/auth/me` the same question, and
+`assistCapability` in `assist_test.go` was still reading the flat field —
+reporting the capability as absent while type-checking perfectly.
+`TestAuthMeReportsAssistCapability` failed on it. It is now deleted and both
+call sites go through the shared `ts.capability(cookie, name)`, so the tests
+have one reader too.
+
+**Verified.** `make ci` green. Full UI suite green at **144 passed**, and the
+capability-gated specs were confirmed to have actually *run* rather than
+skipped — `assist.spec.js` (4 tests) and `image-search.spec.js` (2) all
+executed, including the one that fakes `capabilities.assist` off through a
+route interception and asserts the panel disappears. That interception needed
+its own fix: a shallow spread of the payload carries the original capabilities
+through untouched, so the nested object has to be spread on its own. By hand
+against `make dev`: the payload has no flat flags left, and with
+`geocoding: true`, `assist: false`, `image_search: true` the address search and
+image search controls render while the assist slot stays hidden.
+
+No `make test-postgres` for this one: it touches no query and no schema.
+
 ---
 
 ## 5. Reverse geocoding: a point becomes an address you accept

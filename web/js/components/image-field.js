@@ -2,7 +2,7 @@ import { api } from "../api.js";
 import { guard, guardClick, guardForm } from "../busy.js";
 import { getLocale, t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
-import { getCurrentUser } from "../session.js";
+import { hasCapability } from "../session.js";
 
 // Renders an image picker (upload a file, or paste a URL) plus a preview
 // and remove button. `tripId` scopes the upload/url endpoints (media is
@@ -150,7 +150,7 @@ export function renderImageField(container, { tripId, imageUrl, attachPath, onCh
   // and one to a metered search API, none of them ours - the same reasoning
   // that put the address search behind a button (see bindPlaceSearch).
   function canSearchImages() {
-    return Boolean(tripId) && Boolean(getCurrentUser()?.image_search);
+    return Boolean(tripId) && hasCapability("image_search");
   }
 
   function bindImageSearch() {

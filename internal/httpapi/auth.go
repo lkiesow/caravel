@@ -19,33 +19,44 @@ type userResponse struct {
 	// screen asks rather than assuming, so it is already right when an external
 	// provider arrives.
 	HasPassword bool `json:"has_password"`
-	// Geocoding is a *server* capability rather than anything about this user,
-	// and it rides along here because /auth/me is the one call the app already
-	// makes at boot. The alternative was a second endpoint fetched by the one
-	// screen that needs it; if a third capability ever turns up, that trade
-	// is worth revisiting.
-	Geocoding bool `json:"geocoding"`
-	// Assist is the second server capability to ride along here, for the same
-	// reason as Geocoding: /auth/me is the one call the app already makes at
-	// boot, and the location editor needs the answer before it decides what to
-	// render. Two flags is still under the threshold where a nested
-	// "capabilities" object would earn the client-visible reshape; a third
-	// probably is not.
-	Assist bool `json:"assist"`
-	// ImageSearch is the third, and the one that finally makes the case for a
-	// nested capabilities object -- noted in todo.md rather than reshaped
-	// here, since changing the shape of /auth/me is a client-visible change
-	// that deserves its own commit rather than riding along with a feature.
+	// Capabilities is what this *server* can do, not anything about this user.
+	// It rides along on /auth/me because that is the one call the app already
+	// makes at boot, and several screens need the answer before they decide
+	// what to render -- the alternative was a second endpoint fetched by the
+	// one screen that needs it.
 	//
-	// True whenever *either* half of the picker can answer, because either
-	// alone is a working control: Wikipedia needs no configuration, and a
-	// search backend covers what Wikipedia has never heard of.
-	ImageSearch bool `json:"image_search"`
+	// Nested since Stage 22. The three flags were flat fields for three
+	// stages, each arriving with a comment saying the next one would make the
+	// case for a reshape; the third one said so outright. Grouping them says
+	// what they have in common -- none of them is a property of the account
+	// they are sitting next to -- and stops a fourth from making /auth/me read
+	// like a settings dump.
+	Capabilities capabilitiesResponse `json:"capabilities"`
 	// IsAdmin governs account administration only — never access to another
-	// user's trips. The client uses it to decide whether to show the admin
+	// user's trips. It stays a user field, because unlike the three above it
+	// genuinely is one. The client uses it to decide whether to show the admin
 	// entry in the user menu; the server checks it again on every /api/admin
 	// route, because a hidden menu item is not a permission.
 	IsAdmin bool `json:"is_admin"`
+}
+
+// capabilitiesResponse is what the instance is configured to do.
+//
+// Every one of these is a "the operator did not set this up" switch rather than
+// a permission: a client that finds one false must not render the control at
+// all, because the endpoint behind it answers 501 and a control whose only
+// possible answer is "not enabled on this server" is worse than no control.
+// The server checks its own configuration again on every such route regardless.
+type capabilitiesResponse struct {
+	// Geocoding is address search, from CARAVEL_GEOCODER_URL.
+	Geocoding bool `json:"geocoding"`
+	// Assist is the AI location assistant, from CARAVEL_LLM_URL.
+	Assist bool `json:"assist"`
+	// ImageSearch is true whenever *either* half of the picker can answer,
+	// because either alone is a working control: Wikipedia needs no
+	// configuration, and a search backend covers what Wikipedia has never
+	// heard of.
+	ImageSearch bool `json:"image_search"`
 }
 
 func (s *Server) userToResponse(r *http.Request, u db.User) userResponse {
@@ -61,10 +72,12 @@ func (s *Server) userToResponse(r *http.Request, u db.User) userResponse {
 		Username:    u.Username,
 		DisplayName: u.DisplayName,
 		HasPassword: hasPassword,
-		Geocoding:   s.Geocoder != nil,
-		Assist:      s.Assist != nil,
-		ImageSearch: s.imageSearchAvailable(),
-		IsAdmin:     u.IsAdmin,
+		Capabilities: capabilitiesResponse{
+			Geocoding:   s.Geocoder != nil,
+			Assist:      s.Assist != nil,
+			ImageSearch: s.imageSearchAvailable(),
+		},
+		IsAdmin: u.IsAdmin,
 	}
 }
 

@@ -23,6 +23,11 @@ const nominatimTwoResults = `[
 ]`
 
 // stubGeocoder points ts at a fake upstream and returns the requests it saw.
+//
+// The configured URL ends in /search, matching a real deployment: since Stage 22
+// the reverse endpoint is *derived* from it by swapping that last segment, so a
+// bare host here would leave every reverse test testing the "cannot derive one"
+// path instead of the lookup. The handler sees which path was asked for.
 func stubGeocoder(t *testing.T, ts *testServer, handler http.HandlerFunc) *[]*http.Request {
 	t.Helper()
 	var seen []*http.Request
@@ -31,7 +36,7 @@ func stubGeocoder(t *testing.T, ts *testServer, handler http.HandlerFunc) *[]*ht
 		handler(w, r)
 	}))
 	t.Cleanup(upstream.Close)
-	ts.Geocoder = geocode.New(upstream.URL)
+	ts.Geocoder = geocode.New(upstream.URL + "/search")
 	return &seen
 }
 
@@ -254,6 +259,181 @@ func TestAuthMeReportsGeocodingCapability(t *testing.T) {
 			}
 			if got.Capabilities.Geocoding != tc.want {
 				t.Errorf("capabilities.geocoding = %v, want %v", got.Capabilities.Geocoding, tc.want)
+			}
+		})
+	}
+}
+
+// Reverse geocoding: a coordinate to an address (Stage 22 Milestone 5).
+
+func TestReverseGeocodeReturnsAnAddress(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login("alice")
+	seen := stubGeocoder(t, ts, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"display_name":"Laugavegur 1, Reykjavík","lat":"64.147","lon":"-21.933"}`)
+	})
+
+	rec := ts.do(http.MethodGet, "/api/geocode/reverse?lat=64.1466&lng=-21.9426", cookie, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+	}
+
+	var got geocode.Result
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got.DisplayName != "Laugavegur 1, Reykjavík" {
+		t.Errorf("display_name = %q", got.DisplayName)
+	}
+	// The coordinates asked about come back, not the ones upstream matched: the
+	// client is going to keep the point the user chose and take only the
+	// address, so the payload must not invite it to move the marker.
+	if got.Lat != 64.1466 || got.Lng != -21.9426 {
+		t.Errorf("got %v,%v, want the queried 64.1466,-21.9426", got.Lat, got.Lng)
+	}
+
+	if len(*seen) != 1 {
+		t.Fatalf("upstream saw %d requests, want 1", len(*seen))
+	}
+	// The derived endpoint, not the configured one.
+	if path := (*seen)[0].URL.Path; path != "/reverse" {
+		t.Errorf("upstream path = %q, want /reverse", path)
+	}
+}
+
+func TestReverseGeocodeIs501WhenNotConfigured(t *testing.T) {
+	t.Run("no geocoder at all", func(t *testing.T) {
+		ts := newTestServer(t)
+		cookie := ts.login("alice")
+		rec := ts.do(http.MethodGet, "/api/geocode/reverse?lat=64.1&lng=-21.9", cookie, "")
+		if rec.Code != http.StatusNotImplemented {
+			t.Errorf("status = %d, want 501", rec.Code)
+		}
+	})
+
+	// The case that makes reverse_geocoding a separate capability: address
+	// search works, and no reverse endpoint can be derived from its URL.
+	t.Run("a geocoder whose URL has no derivable reverse endpoint", func(t *testing.T) {
+		ts := newTestServer(t)
+		cookie := ts.login("alice")
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprint(w, nominatimTwoResults)
+		}))
+		t.Cleanup(upstream.Close)
+		ts.Geocoder = geocode.New(upstream.URL + "/lookup")
+
+		if rec := ts.do(http.MethodGet, "/api/geocode?q=Reykjavik", cookie, ""); rec.Code != http.StatusOK {
+			t.Fatalf("forward search status = %d, want it still working", rec.Code)
+		}
+		rec := ts.do(http.MethodGet, "/api/geocode/reverse?lat=64.1&lng=-21.9", cookie, "")
+		if rec.Code != http.StatusNotImplemented {
+			t.Errorf("reverse status = %d, want 501", rec.Code)
+		}
+	})
+}
+
+// Nothing at that point is a 404, not an empty 200: a client must not be able
+// to mistake it for a blank address worth accepting.
+func TestReverseGeocodeIs404WhenThereIsNothingThere(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login("alice")
+	stubGeocoder(t, ts, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"error":"Unable to geocode"}`)
+	})
+
+	rec := ts.do(http.MethodGet, "/api/geocode/reverse?lat=0&lng=0", cookie, "")
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404 (body %s)", rec.Code, rec.Body.String())
+	}
+}
+
+func TestReverseGeocodeIs502WhenUpstreamFails(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login("alice")
+	stubGeocoder(t, ts, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+
+	rec := ts.do(http.MethodGet, "/api/geocode/reverse?lat=64.1&lng=-21.9", cookie, "")
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502", rec.Code)
+	}
+}
+
+// Range-checked rather than merely parseable, and refused here: forwarding a
+// latitude of 500 to a volunteer-run service to be rejected is rude in a way
+// that scales with how often the client bug fires.
+func TestReverseGeocodeRejectsBadCoordinates(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login("alice")
+	seen := stubGeocoder(t, ts, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"display_name":"Somewhere","lat":"1","lon":"1"}`)
+	})
+
+	for _, query := range []string{
+		"",
+		"lat=64.1",
+		"lng=-21.9",
+		"lat=&lng=",
+		"lat=north&lng=west",
+		"lat=91&lng=0",
+		"lat=-91&lng=0",
+		"lat=0&lng=181",
+		"lat=0&lng=-181",
+		"lat=NaN&lng=0",
+		"lat=Inf&lng=0",
+	} {
+		t.Run(query, func(t *testing.T) {
+			rec := ts.do(http.MethodGet, "/api/geocode/reverse?"+query, cookie, "")
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("status = %d, want 400 (body %s)", rec.Code, rec.Body.String())
+			}
+		})
+	}
+
+	if len(*seen) != 0 {
+		t.Errorf("upstream saw %d requests; a refused coordinate must not leave the building", len(*seen))
+	}
+}
+
+func TestReverseGeocodeNeedsASession(t *testing.T) {
+	ts := newTestServer(t)
+	stubGeocoder(t, ts, func(w http.ResponseWriter, r *http.Request) {})
+	rec := ts.do(http.MethodGet, "/api/geocode/reverse?lat=64.1&lng=-21.9", nil, "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", rec.Code)
+	}
+}
+
+// The capability flag and the endpoint must agree: a client that trusts
+// /auth/me and finds the control fails anyway is worse off than one with no
+// control at all.
+func TestReverseGeocodingCapabilityMatchesTheEndpoint(t *testing.T) {
+	cases := []struct {
+		name     string
+		endpoint func(base string) string
+		want     bool
+	}{
+		{"a search endpoint", func(base string) string { return base + "/search" }, true},
+		{"an endpoint with no derivable reverse", func(base string) string { return base + "/lookup" }, false},
+		{"no geocoder", nil, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ts := newTestServer(t)
+			cookie := ts.login("alice")
+			if tc.endpoint != nil {
+				upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+				t.Cleanup(upstream.Close)
+				ts.Geocoder = geocode.New(tc.endpoint(upstream.URL))
+			}
+
+			if got := ts.capability(cookie, "reverse_geocoding"); got != tc.want {
+				t.Errorf("capabilities.reverse_geocoding = %v, want %v", got, tc.want)
+			}
+			rec := ts.do(http.MethodGet, "/api/geocode/reverse?lat=64.1&lng=-21.9", cookie, "")
+			if reachable := rec.Code != http.StatusNotImplemented; reachable != tc.want {
+				t.Errorf("the endpoint answered %d while the capability said %v", rec.Code, tc.want)
 			}
 		})
 	}

@@ -23,9 +23,12 @@ package geocode
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"caravel/internal/buildinfo"
@@ -42,6 +45,11 @@ const (
 	// MinQueryLen keeps obviously-pointless queries from leaving the building.
 	// Nominatim rejects them anyway; this saves the round trip.
 	MinQueryLen = 2
+	// maxResponseBytes bounds what a reply may be. Five candidates of address
+	// text is a few kilobytes; anything approaching this is a misconfigured URL
+	// answering with something that is not a geocoder, and reading all of it
+	// into memory is the only harm it could do here.
+	maxResponseBytes = 1 << 20
 )
 
 // Result is one candidate place. The JSON tags are part of Caravel's own API
@@ -90,18 +98,130 @@ func (c *Client) Search(ctx context.Context, query string) ([]Result, error) {
 	if c == nil {
 		return nil, ErrNotConfigured
 	}
+	body, err := c.get(ctx, c.url, map[string]string{
+		"q":      query,
+		"format": "jsonv2",
+		"limit":  strconv.Itoa(MaxResults),
+	})
+	if err != nil {
+		return nil, err
+	}
 
+	var raw []nominatimResult
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, err
+	}
+
+	out := make([]Result, 0, len(raw))
+	for _, item := range raw {
+		result, ok := item.toResult()
+		// One unparseable row should not fail the whole search; skip it and
+		// return the rest.
+		if !ok {
+			continue
+		}
+		out = append(out, result)
+	}
+	return out, nil
+}
+
+// ReverseURL derives the reverse endpoint from the configured search endpoint,
+// and reports false when it cannot.
+//
+// Nominatim serves /search and /reverse as siblings, so swapping the last path
+// segment is the whole derivation. The alternative was a second environment
+// variable, which nobody wants to set and which would be wrong far more often
+// than it was right.
+//
+// When the configured URL does not end in /search the answer is false rather
+// than a guess: an operator pointing Caravel at something that is merely
+// Nominatim-compatible on one path should get "reverse geocoding is not
+// available" -- which the client can then not offer -- instead of a control
+// that fails against a URL this package invented.
+func (c *Client) ReverseURL() (string, bool) {
+	if c == nil {
+		return "", false
+	}
+	u, err := url.Parse(c.url)
+	if err != nil {
+		return "", false
+	}
+	trimmed := strings.TrimSuffix(u.Path, "/")
+	if !strings.HasSuffix(trimmed, "/search") {
+		return "", false
+	}
+	u.Path = strings.TrimSuffix(trimmed, "search") + "reverse"
+	return u.String(), true
+}
+
+// ReverseAvailable reports whether Reverse can be called at all -- a configured
+// client whose endpoint the derivation above understands. It is what the server
+// capability flag on /auth/me is built from, so a client never offers the
+// control on an instance where it could only fail.
+func (c *Client) ReverseAvailable() bool {
+	_, ok := c.ReverseURL()
+	return ok
+}
+
+// Reverse turns a coordinate back into an address.
+//
+// The opposite direction from Search, and the asymmetry is real: a search has
+// many candidates or none, a reverse lookup has exactly one answer or none. So
+// this returns a single Result, and ErrNoResult when the upstream found nothing
+// there -- the middle of an ocean being the honest example.
+//
+// The Result carries the *queried* coordinates rather than the ones upstream
+// echoes back. Nominatim answers with the location of the thing it matched,
+// which for a click in a car park is the building next door; the caller asked
+// about a point they chose, and moving it under them is not this function's
+// business. Only the address is news.
+func (c *Client) Reverse(ctx context.Context, lat, lng float64) (Result, error) {
+	if c == nil {
+		return Result{}, ErrNotConfigured
+	}
+	endpoint, ok := c.ReverseURL()
+	if !ok {
+		return Result{}, ErrNoReverseEndpoint
+	}
+	body, err := c.get(ctx, endpoint, map[string]string{
+		"lat":    strconv.FormatFloat(lat, 'f', -1, 64),
+		"lon":    strconv.FormatFloat(lng, 'f', -1, 64),
+		"format": "jsonv2",
+	})
+	if err != nil {
+		return Result{}, err
+	}
+
+	// A single object here, not an array -- and on a miss Nominatim answers 200
+	// with {"error":...}, which decodes into a zero-valued struct rather than
+	// failing. That is why the emptiness check below is the one that matters.
+	var raw nominatimResult
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return Result{}, err
+	}
+	if raw.DisplayName == "" {
+		return Result{}, ErrNoResult
+	}
+	return Result{DisplayName: raw.DisplayName, Lat: lat, Lng: lng}, nil
+}
+
+// get performs one upstream request and returns its body. Shared by Search and
+// Reverse: the timeout, the identifying User-Agent and the non-200 handling are
+// conditions of using the service rather than anything about which endpoint is
+// being called, and having two copies of them was how one of them would come to
+// omit the User-Agent.
+func (c *Client) get(ctx context.Context, rawURL string, params map[string]string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, Timeout)
 	defer cancel()
 
-	endpoint, err := url.Parse(c.url)
+	endpoint, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, err
 	}
 	q := endpoint.Query()
-	q.Set("q", query)
-	q.Set("format", "jsonv2")
-	q.Set("limit", strconv.Itoa(MaxResults))
+	for k, v := range params {
+		q.Set(k, v)
+	}
 	endpoint.RawQuery = q.Encode()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
@@ -122,24 +242,7 @@ func (c *Client) Search(ctx context.Context, query string) ([]Result, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, ErrUpstreamStatus{Code: resp.StatusCode}
 	}
-
-	var raw []nominatimResult
-	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
-		return nil, err
-	}
-
-	out := make([]Result, 0, len(raw))
-	for _, item := range raw {
-		lat, latErr := strconv.ParseFloat(item.Lat, 64)
-		lng, lngErr := strconv.ParseFloat(item.Lon, 64)
-		// One unparseable row should not fail the whole search; skip it and
-		// return the rest.
-		if latErr != nil || lngErr != nil || item.DisplayName == "" {
-			continue
-		}
-		out = append(out, Result{DisplayName: item.DisplayName, Lat: lat, Lng: lng})
-	}
-	return out, nil
+	return io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 }
 
 // The subset of Nominatim's response we use. Note lat/lon arrive as *strings*,
@@ -149,6 +252,26 @@ type nominatimResult struct {
 	Lat         string `json:"lat"`
 	Lon         string `json:"lon"`
 }
+
+// toResult parses one upstream row, reporting false for a row that cannot be
+// used -- unparseable coordinates, or no name to show.
+func (n nominatimResult) toResult() (Result, bool) {
+	lat, latErr := strconv.ParseFloat(n.Lat, 64)
+	lng, lngErr := strconv.ParseFloat(n.Lon, 64)
+	if latErr != nil || lngErr != nil || n.DisplayName == "" {
+		return Result{}, false
+	}
+	return Result{DisplayName: n.DisplayName, Lat: lat, Lng: lng}, true
+}
+
+// ErrNoResult means the lookup succeeded and there is nothing at that point.
+// Distinct from an error, because "no address here" is an answer.
+var ErrNoResult = errors.New("geocode: no result for that location")
+
+// ErrNoReverseEndpoint means the configured endpoint is not one this package can
+// derive a /reverse URL from. Callers should ask ReverseAvailable first; this is
+// what happens when they do not.
+var ErrNoReverseEndpoint = errors.New("geocode: cannot derive a reverse endpoint from the configured URL")
 
 // ErrUpstreamStatus is a non-200 from the geocoder.
 type ErrUpstreamStatus struct{ Code int }

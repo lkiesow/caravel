@@ -195,3 +195,159 @@ test.describe("the location editor, end to end", () => {
     ).toBe(404);
   });
 });
+
+// Reverse geocoding: a point becomes an address you accept (Stage 22
+// Milestone 5).
+//
+// Every test here intercepts **Caravel's own** /api/geocode/reverse rather than
+// letting the request through. That is not a convenience: `with_server.sh`
+// stubs the LLM and the search backend but leaves CARAVEL_GEOCODER_URL at its
+// default, which is OpenStreetMap's public Nominatim (see todo.md, "The UI
+// suite reaches the real Nominatim"). Asserting this end to end for real would
+// widen that dependency, so the client is driven against a canned answer and
+// the server half is owned by Go tests -- internal/geocode/geocode_test.go for
+// the URL derivation and the mapping, internal/httpapi/geocode_test.go for the
+// statuses.
+test.describe("looking up an address for a point", () => {
+  test.use({ viewport: MOBILE });
+
+  const ADDRESS = "Vonarstræti 4, 101 Reykjavík, Ísland";
+  let tripId;
+
+  test.beforeEach(async ({ page }) => {
+    await login(page);
+    const res = await page.request.post("/api/trips", {
+      data: { title: "UI suite: reverse geocoding" },
+    });
+    expect(res.status(), "create the spec's own trip").toBe(201);
+    tripId = (await res.json()).id;
+  });
+
+  test.afterEach(async ({ page }) => {
+    if (tripId) await page.request.delete(`/api/trips/${tripId}`);
+    tripId = null;
+  });
+
+  // Answers the lookup with `body`, and records every call so a test can assert
+  // that nothing left the building when it should not have.
+  async function stubReverse(page, { status = 200, body = null } = {}) {
+    const calls = [];
+    await page.route("**/api/geocode/reverse*", async (route) => {
+      calls.push(route.request().url());
+      await route.fulfill({
+        status,
+        contentType: "application/json",
+        body: JSON.stringify(
+          body ?? { display_name: ADDRESS, lat: 64.1466, lng: -21.9426 },
+        ),
+      });
+    });
+    return calls;
+  }
+
+  test("offers the address and fills the field only when accepted", async ({ page }) => {
+    const calls = await stubReverse(page);
+    await gotoRoute(page, `/trips/${tripId}/locations/new`);
+
+    const button = page.locator('[data-action="lookup-address"]');
+    const offer = page.locator(".location-reverse__offer");
+    const address = page.locator('.location-form [name="address"]');
+
+    // Nothing to look up yet: visible, so it reads as something that will work
+    // once there is a point, but disabled until there is one.
+    await expect(button).toBeVisible();
+    await expect(button).toBeDisabled();
+    await expect(offer).toBeHidden();
+
+    await page.locator('.location-form [name="lat"]').fill("64.1466");
+    await page.locator('.location-form [name="lng"]').fill("-21.9426");
+    await expect(button).toBeEnabled();
+    // Filling coordinates must not fire a lookup by itself: every query costs a
+    // volunteer-run service a request, and placing a pin takes several goes.
+    expect(calls, "no lookup before the button is pressed").toHaveLength(0);
+
+    await button.click();
+    await expect(offer).toBeVisible();
+    await expect(page.locator(".location-reverse__value")).toHaveText(ADDRESS);
+    // Offered, not applied. A hand-written address is often better than a
+    // geocoder's, so nothing is overwritten until Accept is pressed.
+    await expect(address).toHaveValue("");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toContain("lat=64.1466");
+    expect(calls[0]).toContain("lng=-21.9426");
+
+    await page.locator('[data-action="accept-address"]').click();
+    await expect(address).toHaveValue(ADDRESS);
+    await expect(offer).toBeHidden();
+
+    // And it is a real value on the form, not decoration: it saves.
+    await page.locator('[name="title"]').fill("Harpa");
+    await page.locator('[data-action="save"]').click();
+    await expect(page).toHaveURL(new RegExp(`/trips/${tripId}/locations/[0-9a-f-]+$`));
+    // Read from the item's own endpoint: the trip listing does not carry the
+    // address, it lives on the location detail (see itemLocationResponse).
+    const items = await (await page.request.get(`/api/trips/${tripId}/items`)).json();
+    expect(items).toHaveLength(1);
+    const stored = await (await page.request.get(`/api/items/${items[0].id}`)).json();
+    expect(stored.location?.address).toBe(ADDRESS);
+  });
+
+  test("drops a stale offer when the point moves", async ({ page }) => {
+    await stubReverse(page);
+    await gotoRoute(page, `/trips/${tripId}/locations/new`);
+
+    await page.locator('.location-form [name="lat"]').fill("64.1466");
+    await page.locator('.location-form [name="lng"]').fill("-21.9426");
+    await page.locator('[data-action="lookup-address"]').click();
+    await expect(page.locator(".location-reverse__offer")).toBeVisible();
+
+    // The offered address belongs to the old point. Accepting it after moving
+    // the pin would file an address for somewhere else entirely.
+    await page.locator('.location-form [name="lat"]').fill("48.8584");
+    await expect(page.locator(".location-reverse__offer")).toBeHidden();
+    await expect(page.locator('[data-action="accept-address"]')).toBeHidden();
+  });
+
+  test("says so when there is no address there, and when the service is down", async ({ page }) => {
+    await stubReverse(page, { status: 404, body: { error: "no address found for that location" } });
+    await gotoRoute(page, `/trips/${tripId}/locations/new`);
+
+    await page.locator('.location-form [name="lat"]').fill("0");
+    await page.locator('.location-form [name="lng"]').fill("0");
+    await page.locator('[data-action="lookup-address"]').click();
+
+    // 404 is an answer -- the middle of an ocean has no address -- and reads
+    // differently from the service being unreachable.
+    const status = page.locator(".location-reverse__status");
+    await expect(status).toHaveText("No address found for this point.");
+    await expect(page.locator(".location-reverse__offer")).toBeHidden();
+
+    await page.unroute("**/api/geocode/reverse*");
+    await stubReverse(page, { status: 502, body: { error: "unreachable" } });
+    await page.locator('[data-action="lookup-address"]').click();
+    await expect(status).toHaveText(/unavailable right now/);
+  });
+
+  test("is absent entirely when the server cannot do it", async ({ page }) => {
+    // The capability is faked off rather than a second server being started,
+    // the way assist.spec.js does it. reverse_geocoding is its own flag because
+    // an instance can have working address search and no reverse endpoint.
+    await page.route("**/api/auth/me", async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      await route.fulfill({
+        response,
+        json: {
+          ...body,
+          capabilities: { ...body.capabilities, reverse_geocoding: false },
+        },
+      });
+    });
+
+    await gotoRoute(page, `/trips/${tripId}/locations/new`);
+    // The address search above it is a separate capability and stays.
+    await expect(page.locator(".location-search")).toBeVisible();
+    await expect(page.locator(".location-reverse")).toBeHidden();
+    await expect(page.locator('[data-action="lookup-address"]')).toBeHidden();
+  });
+});

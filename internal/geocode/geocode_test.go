@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -89,5 +90,163 @@ func TestSearchSendsAnIdentifyingUserAgent(t *testing.T) {
 	}
 	if ua == "" || ua == "Go-http-client/1.1" {
 		t.Errorf("User-Agent = %q, want an identifying one", ua)
+	}
+}
+
+// Reverse geocoding (Stage 22 Milestone 5).
+//
+// The derivation is the part worth pinning hardest: the reverse endpoint is
+// *computed* from the configured search URL rather than configured separately,
+// so a wrong derivation would send a user's coordinates to a URL this package
+// invented.
+
+func TestReverseURLDerivation(t *testing.T) {
+	cases := []struct {
+		name     string
+		endpoint string
+		want     string
+		wantOK   bool
+	}{
+		{
+			name:     "the public instance",
+			endpoint: "https://nominatim.openstreetmap.org/search",
+			want:     "https://nominatim.openstreetmap.org/reverse",
+			wantOK:   true,
+		},
+		{
+			name:     "a self-hosted instance under a path prefix",
+			endpoint: "https://maps.example.org/nominatim/search",
+			want:     "https://maps.example.org/nominatim/reverse",
+			wantOK:   true,
+		},
+		{
+			name:     "a trailing slash",
+			endpoint: "https://nominatim.example.org/search/",
+			want:     "https://nominatim.example.org/reverse",
+			wantOK:   true,
+		},
+		{
+			name:     "a query string is preserved",
+			endpoint: "https://maps.example.org/search?key=abc",
+			want:     "https://maps.example.org/reverse?key=abc",
+			wantOK:   true,
+		},
+		// The honest refusals. An endpoint this package does not recognise gets
+		// "unavailable" rather than a URL guessed from it.
+		{name: "not a search endpoint", endpoint: "https://maps.example.org/geocode", wantOK: false},
+		{name: "no path at all", endpoint: "https://maps.example.org", wantOK: false},
+		{name: "search is only a prefix", endpoint: "https://maps.example.org/searching", wantOK: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := New(tc.endpoint)
+			got, ok := c.ReverseURL()
+			if ok != tc.wantOK {
+				t.Fatalf("ReverseURL() ok = %v, want %v (got %q)", ok, tc.wantOK, got)
+			}
+			if ok && got != tc.want {
+				t.Errorf("ReverseURL() = %q, want %q", got, tc.want)
+			}
+			if c.ReverseAvailable() != tc.wantOK {
+				t.Errorf("ReverseAvailable() = %v, want %v", c.ReverseAvailable(), tc.wantOK)
+			}
+		})
+	}
+}
+
+func TestReverseAvailableIsFalseWhenDisabled(t *testing.T) {
+	// nil is the off switch for the whole package, so it must not claim a
+	// capability either.
+	if New("").ReverseAvailable() {
+		t.Error("ReverseAvailable() = true on a disabled client")
+	}
+	var c *Client
+	if _, err := c.Reverse(context.Background(), 64.1, -21.9); !errors.Is(err, ErrNotConfigured) {
+		t.Errorf("err = %v, want ErrNotConfigured", err)
+	}
+}
+
+func TestReverseReturnsTheAddressAndTheQueriedPoint(t *testing.T) {
+	var gotPath, gotQuery string
+	var gotUA string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotQuery, gotUA = r.URL.Path, r.URL.RawQuery, r.Header.Get("User-Agent")
+		// Nominatim answers a reverse lookup with one object, not an array, and
+		// echoes the coordinates of whatever it matched -- here deliberately
+		// different from the ones asked about.
+		fmt.Fprint(w, `{"display_name":"Laugavegur 1, Reykjavik","lat":"64.147","lon":"-21.933"}`)
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL + "/search")
+	got, err := c.Reverse(context.Background(), 64.1466, -21.9426)
+	if err != nil {
+		t.Fatalf("Reverse: %v", err)
+	}
+
+	if gotPath != "/reverse" {
+		t.Errorf("upstream path = %q, want /reverse", gotPath)
+	}
+	// lon, not lng: the wire name is the provider's, and getting it wrong
+	// returns an address for the equator.
+	for _, want := range []string{"lat=64.1466", "lon=-21.9426", "format=jsonv2"} {
+		if !strings.Contains(gotQuery, want) {
+			t.Errorf("query %q is missing %q", gotQuery, want)
+		}
+	}
+	if !strings.HasPrefix(gotUA, "Caravel/") {
+		t.Errorf("User-Agent = %q, want the identifying one -- it is a condition of using the public instance", gotUA)
+	}
+
+	if got.DisplayName != "Laugavegur 1, Reykjavik" {
+		t.Errorf("DisplayName = %q", got.DisplayName)
+	}
+	// The point asked about, not the one upstream matched: the caller chose
+	// those coordinates and this function does not move them.
+	if got.Lat != 64.1466 || got.Lng != -21.9426 {
+		t.Errorf("got %v,%v back, want the queried 64.1466,-21.9426", got.Lat, got.Lng)
+	}
+}
+
+func TestReverseTreatsAnEmptyAnswerAsNoResult(t *testing.T) {
+	// The middle of an ocean: Nominatim answers 200 with an error object, which
+	// decodes cleanly into a zero-valued struct. Without the emptiness check
+	// that would look like a successful lookup of a nameless place.
+	for name, body := range map[string]string{
+		"nominatim error object": `{"error":"Unable to geocode"}`,
+		"empty object":           `{}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprint(w, body)
+			}))
+			defer srv.Close()
+
+			_, err := New(srv.URL+"/search").Reverse(context.Background(), 0, 0)
+			if !errors.Is(err, ErrNoResult) {
+				t.Errorf("err = %v, want ErrNoResult", err)
+			}
+		})
+	}
+}
+
+func TestReverseReportsAnUpstreamFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	_, err := New(srv.URL+"/search").Reverse(context.Background(), 64.1, -21.9)
+	var status ErrUpstreamStatus
+	if !errors.As(err, &status) || status.Code != http.StatusServiceUnavailable {
+		t.Errorf("err = %v, want ErrUpstreamStatus{503}", err)
+	}
+}
+
+func TestReverseOnAnUnderivableEndpoint(t *testing.T) {
+	_, err := New("https://maps.example.org/geocode").Reverse(context.Background(), 64.1, -21.9)
+	if !errors.Is(err, ErrNoReverseEndpoint) {
+		t.Errorf("err = %v, want ErrNoReverseEndpoint", err)
 	}
 }

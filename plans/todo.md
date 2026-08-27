@@ -232,12 +232,6 @@ down.
 - **A trip journal with photos.** (Stage 01.) A `journal_entries` table
   (trip_id, date, body markdown) reusing the existing `media_assets` pipeline
   for photos.
-- **Reverse geocoding.** (Stage 13 Milestone 5.) `/api/geocode` turns a name into
-  coordinates; the opposite — clicking the map and getting a suggested address
-  for the `address` field — is not built. Nominatim has a `/reverse` endpoint, so
-  it is a second handler on the same proxy and the same limiter, but it needs a
-  decision about whether it fills the field automatically (surprising, and it
-  would overwrite a hand-written address) or offers the result to accept.
 - **Federation between self-hosted instances.** (Stage 01.) Real sync-protocol
   design still needed; v1 only avoided the integer-PK and local-only-ID mistakes
   that would have made it harder later.
@@ -378,6 +372,12 @@ down.
   dependency all the same: the fix is a stub geocoder behind the same sentinel
   the LLM and search providers already use, so the suite stops asking a
   volunteer-run service for the same three coordinates on every run.
+
+  Stage 22 Milestone 5 worked *around* this rather than fixing it: the reverse
+  geocoding specs intercept Caravel's own `/api/geocode/reverse` and answer it
+  from the spec, so the new tests add nothing to the outbound traffic. That is
+  the right move for a client-side assertion and no move at all for the two
+  older specs, which still call out.
 
 - **The sweeps run in German at one combination only.** (Stage 19 Milestone 4.)
   `routes.spec.js` sweeps overflow and tap targets in German at mobile/light,

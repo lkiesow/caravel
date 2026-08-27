@@ -57,6 +57,12 @@ type capabilitiesResponse struct {
 	// configuration, and a search backend covers what Wikipedia has never
 	// heard of.
 	ImageSearch bool `json:"image_search"`
+	// ReverseGeocoding is the opposite direction of Geocoding: a coordinate to
+	// an address. It is a *separate* flag rather than implied by Geocoding
+	// because the reverse endpoint is derived from the configured search URL
+	// and the derivation can fail -- an instance can have working address
+	// search and no reverse lookup. See geocode.ReverseURL.
+	ReverseGeocoding bool `json:"reverse_geocoding"`
 }
 
 func (s *Server) userToResponse(r *http.Request, u db.User) userResponse {
@@ -73,9 +79,10 @@ func (s *Server) userToResponse(r *http.Request, u db.User) userResponse {
 		DisplayName: u.DisplayName,
 		HasPassword: hasPassword,
 		Capabilities: capabilitiesResponse{
-			Geocoding:   s.Geocoder != nil,
-			Assist:      s.Assist != nil,
-			ImageSearch: s.imageSearchAvailable(),
+			Geocoding:        s.Geocoder != nil,
+			Assist:           s.Assist != nil,
+			ImageSearch:      s.imageSearchAvailable(),
+			ReverseGeocoding: s.Geocoder.ReverseAvailable(),
 		},
 		IsAdmin: u.IsAdmin,
 	}

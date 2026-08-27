@@ -139,6 +139,14 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
               <input type="text" name="address" />
             </label>
             <div data-assist-field="address"></div>
+            <div class="location-reverse" hidden>
+              <button type="button" class="btn btn-secondary btn-row" data-action="lookup-address">${icon("map-pin")} <span data-i18n="location.form.lookupAddress"></span></button>
+              <p class="location-reverse__status" role="status" hidden></p>
+              <div class="location-reverse__offer" hidden>
+                <p class="location-reverse__value"></p>
+                <button type="button" class="btn btn-secondary btn-row" data-action="accept-address">${icon("check")} <span data-i18n="location.form.lookupAccept"></span></button>
+              </div>
+            </div>
             <label class="location-form__checkbox">
               <input type="checkbox" name="showOnMap" checked />
               <span data-i18n="location.form.showOnMap"></span>
@@ -501,6 +509,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     }
     syncHint();
     bindPlaceSearch(form, syncMapFromFields, syncHint);
+    bindAddressLookup(form);
     // The card has no button of its own any more - these values are read
     // back by save(). Enter in a coordinate field saves the page, via the
     // same submit-plus-keydown pair the Basic info card uses and for the same
@@ -599,6 +608,117 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       e.preventDefault();
       e.stopPropagation();
       search();
+    });
+  }
+
+  // Reverse geocoding: the coordinates you have, turned into an address you
+  // may accept (Stage 22 Milestone 5).
+  //
+  // Three decisions, all of them deliberate:
+  //
+  // - **A button, not automatic.** A click on the map or a marker drag does not
+  //   fire a lookup. Every query costs a volunteer-run service a request, which
+  //   is the reason the place search above searches on Enter rather than per
+  //   keystroke; a lookup per map click would break that rule quietly, and
+  //   placing a pin takes several clicks to get right.
+  // - **Offered, never applied.** The answer appears with an Accept button and
+  //   the address field is not touched until it is pressed. An address is often
+  //   hand-written and better than what a geocoder returns -- "Foss Hotel, room
+  //   4" beats "Þórunnartún 1, 105 Reykjavík" for the person reading it later
+  //   -- and overwriting that to be tidy is a loss. The place search already
+  //   makes the same call, filling only an *empty* address field.
+  // - **Hidden unless the server can do it.** Its own capability rather than
+  //   `geocoding`, because the reverse endpoint is derived from the configured
+  //   search URL and the derivation can fail (see geocode.ReverseURL): an
+  //   instance can have working address search and no reverse lookup.
+  function bindAddressLookup(form) {
+    if (!hasCapability("reverse_geocoding")) return;
+
+    const panel = container.querySelector(".location-reverse");
+    const button = container.querySelector('[data-action="lookup-address"]');
+    const status = container.querySelector(".location-reverse__status");
+    const offer = container.querySelector(".location-reverse__offer");
+    const value = container.querySelector(".location-reverse__value");
+    const accept = container.querySelector('[data-action="accept-address"]');
+    panel.hidden = false;
+
+    const setStatus = (key) => {
+      status.textContent = key ? t(key) : "";
+      status.hidden = !key;
+    };
+    const clearOffer = () => {
+      offer.hidden = true;
+      value.textContent = "";
+    };
+
+    // Nothing to look up without a point. Disabled rather than hidden, so the
+    // control is visible as something that will work once there are
+    // coordinates -- the same reasoning the "show on map" hint beside it uses.
+    const syncEnabled = () => {
+      button.disabled = !(form.lat.value.trim() && form.lng.value.trim());
+    };
+    for (const name of ["lat", "lng"]) {
+      form[name].addEventListener("input", () => {
+        syncEnabled();
+        // A stale offer is worse than none: the address belonged to the old
+        // point, and accepting it after moving the pin would file the wrong
+        // one.
+        clearOffer();
+        setStatus(null);
+      });
+    }
+    syncEnabled();
+    // The map writes the fields directly rather than through an input event, so
+    // picking a point has to re-check this itself.
+    const picker = container.querySelector(".location-form__map");
+    for (const event of ["location-picked", "position-found"]) {
+      picker.addEventListener(event, () => {
+        syncEnabled();
+        clearOffer();
+        setStatus(null);
+      });
+    }
+
+    // Guarded through busy.js rather than a local flag, like every other write
+    // in this editor -- this one is a read, but it is a read that costs
+    // somebody else a request, so a double press is worth dropping.
+    const guarded = createGuard({ elements: button });
+    button.addEventListener(
+      "click",
+      guarded.wrap(async () => {
+        clearOffer();
+        setStatus("location.form.lookingUp");
+        const query = new URLSearchParams({ lat: form.lat.value.trim(), lng: form.lng.value.trim() });
+        let found;
+        try {
+          found = await api.get(`/geocode/reverse?${query}`);
+        } catch (err) {
+          // 404 is "there is no address there", which is an answer rather than
+          // a failure and reads differently. Anything else is the service
+          // being unreachable.
+          console.error(err);
+          setStatus(err?.status === 404 ? "location.form.lookupNothing" : "location.form.lookupFailed");
+          return;
+        }
+        if (!found?.display_name) {
+          setStatus("location.form.lookupNothing");
+          return;
+        }
+        setStatus(null);
+        value.textContent = found.display_name;
+        offer.hidden = false;
+        accept.focus();
+      })
+    );
+
+    accept.addEventListener("click", () => {
+      // Overwrites whatever is in the field, unlike the place search: pressing
+      // Accept *is* the decision to use this address, and having asked for it
+      // and been given it, having it silently not applied would be the
+      // surprise.
+      form.address.value = value.textContent;
+      clearOffer();
+      form.address.focus();
     });
   }
 

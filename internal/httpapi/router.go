@@ -266,6 +266,10 @@ func (s *Server) buildRouter() chi.Router {
 		// Behind RequireAuth as well as its own limiter: this endpoint spends
 		// an external service's quota, so it is not for anonymous callers.
 		r.With(auth.RequireAuth, s.rateLimitGeocode).Get("/geocode", s.handleGeocode)
+		// The same limiter as the forward direction, deliberately: both spend
+		// the same third party's budget, and giving the new one its own bucket
+		// would double what one client can ask of them.
+		r.With(auth.RequireAuth, s.rateLimitGeocode).Get("/geocode/reverse", s.handleReverseGeocode)
 
 		// Account administration. requireAdmin sits inside RequireAuth: an
 		// anonymous caller gets 401 and a logged-in non-admin 403, which are

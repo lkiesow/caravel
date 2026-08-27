@@ -502,6 +502,82 @@ the real Nominatim"); do **not** widen that dependency. Point
 want the stub-geocoder work the backlog describes, keep the assertion to the
 control's presence and enabled/disabled state and record the gap.
 
+**Done.** `Reverse(ctx, lat, lng)`, `ReverseURL()` and `ReverseAvailable()` in
+`internal/geocode`; `GET /api/geocode/reverse?lat=&lng=` behind the same auth
+and the same limiter as the forward direction; a **Look up address** button in
+the location editor that offers the answer with an Accept button and never
+writes the field on its own; and `capabilities.reverse_geocoding` on
+`/auth/me`, which is the fourth flag Milestone 4 reshaped for.
+
+The derivation works as planned — swap a trailing `/search` for `/reverse`, and
+report unavailable rather than guess when the URL does not end that way. Three
+things came out differently or needed more care than the plan said:
+
+- **`Search` and `Reverse` share one `get` helper.** The timeout, the
+  identifying User-Agent and the non-200 handling are conditions of using the
+  service rather than properties of an endpoint, and two copies of them was how
+  one would eventually omit the User-Agent — the thing that gets anonymous
+  traffic blocked. The body is read through an `io.LimitReader` while we are
+  there.
+- **`Reverse` returns the *queried* coordinates, not the ones upstream echoes
+  back.** Nominatim answers with the location of whatever it matched, which for
+  a click in a car park is the building next door. The caller asked about a
+  point they chose; only the address is news. Both the package test and the
+  handler test pin this, because a payload that invited the client to move the
+  marker would be a bug nobody would notice until they looked at the map.
+- **A miss is a 404, not an empty 200.** Nominatim answers a lookup in the
+  middle of an ocean with `200 {"error":...}`, which decodes cleanly into a
+  zero-valued struct — so without an emptiness check that reads as a successful
+  lookup of a nameless place. `ErrNoResult` distinguishes it, and the client
+  says "No address found for this point" rather than offering a blank.
+
+Two smaller decisions in the client: the button is **disabled** rather than
+hidden without coordinates, so it reads as something that will work once there
+is a point; and any change to the coordinates **drops a pending offer**, because
+an address for the old point is worse than none — accepting it after moving the
+pin would file the wrong one. Coordinates set by the map fire no `input` event,
+so the picker's `location-picked` and `position-found` are wired to the same
+clearing.
+
+**A stale-token trap in `base.css` was avoided by reading the file.** The offer
+panel first said `background: var(--color-surface-muted, var(--color-bg))`, and
+there is a comment forty lines below explaining that a previous rule did exactly
+that, that `--color-surface-muted` exists nowhere, and that a var() always
+falling through to its fallback is the case `tests/ui/contrast.js` warns gives
+meaningless readings. It uses `--color-bg` directly.
+
+**`stubGeocoder` in the Go tests now configures `.../search`.** It pointed at a
+bare host, which after this change is a URL no reverse endpoint can be derived
+from — so every reverse test would have exercised the "cannot derive one" path
+while looking like it tested a lookup.
+
+**Verified.** `make ci` green (384 keys in sync). Eleven new Go tests: seven
+derivation cases including three honest refusals, the queried-coordinates
+contract, the User-Agent, `ErrNoResult` from both shapes of empty answer, the
+upstream 503, and at the HTTP layer 501 (no geocoder, *and* a geocoder whose URL
+has no derivable reverse while forward search still works), 404, 502, 401, and
+eleven rejected coordinate pairs — with an assertion that a refused coordinate
+never reached the upstream at all. A final test asserts the capability flag and
+the endpoint agree, since a client that trusts `/auth/me` and finds the control
+fails anyway is worse off than one with no control.
+
+Full UI suite green at **148 passed**, four new specs. **They intercept
+Caravel's own `/api/geocode/reverse` rather than letting it through**: the plan
+said not to widen the real-Nominatim dependency, and `with_server.sh` leaves
+`CARAVEL_GEOCODER_URL` at its default. So the client is driven end to end
+against a canned answer — offer, no-write-until-accepted, accept, save, read
+back through the API — while the server half stays with the Go tests. That is
+better than the plan's fallback of asserting only the control's presence, and it
+needed no stub-geocoder plumbing. The specs also cover the stale-offer drop, the
+404 and 502 messages, and the control being absent when the capability is off.
+
+By hand at 324×756 against `make dev` (one real Nominatim call, deliberately):
+the button is 44px tall and disabled until there are coordinates, a genuine
+Reykjavík address arrives, the field stays empty until Accept, focus moves to
+Accept and then to the address field, a long address wraps inside the panel with
+no page overflow, and the German pass reads "Adresse ermitteln" / "Diese Adresse
+übernehmen".
+
 ---
 
 ## 6. A pasted Google Maps link becomes coordinates

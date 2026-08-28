@@ -296,47 +296,82 @@ test.describe("the trip map with a mouse", () => {
     expect((await zoomAndHint(page)).hintShown, "the hint is for the gesture that did not work").toBe(false);
   });
 
-  // Reported after Milestone 6 landed: Ctrl + wheel zoomed the whole site in
-  // Firefox and the map did nothing.
+  // Reported twice while testing Milestone 6, and the second report is why the
+  // wheel is now handled here rather than by Leaflet.
   //
-  // The cause was a dependency, not a missing feature. Ctrl + wheel is bound
-  // to page zoom in every browser, and suppressing that needs preventDefault
-  // on the wheel event. We were not calling it -- we let the event through and
-  // relied on Leaflet's own handler to do it, which makes cancelling a
-  // browser-level action depend on a third party's handler being reached and
-  // enabled.
+  // First: Ctrl + wheel zoomed the whole site in Firefox. That was ours -- we
+  // let the event through and relied on Leaflet's handler to cancel the
+  // browser default, which makes cancelling a browser-level action depend on
+  // somebody else's handler being reached.
   //
-  // So what is asserted here is the *independence*: with Leaflet's wheel
-  // handler switched off, a Ctrl + wheel must still come back cancelled.
-  // Asserting only "the default was prevented" would pass either way, since
-  // Leaflet prevents it too -- which is exactly why the original test missed
-  // this. (A synthetic wheel cannot trigger real browser zoom at all, so the
-  // cancellation is the only part of this a spec can see; the zoom itself was
-  // confirmed by hand.)
-  test("Ctrl + wheel is cancelled by us, not only by Leaflet", async ({ page }) => {
+  // Then, with the default cancelled, the map still would not zoom on the
+  // reporter's machine, in a build where it zoomed correctly everywhere it
+  // could be measured. Rather than keep guessing at a mechanism that cannot be
+  // reproduced, the component now performs the zoom itself from the
+  // *direction* of the wheel alone. These tests pin that down across the
+  // event shapes real devices send.
+  const wheelZoom = async (page, init) => {
+    const before = await page.evaluate(() => document.querySelector("leaflet-map")._map.getZoom());
+    const cancelled = await page.evaluate((i) => {
+      const host = document.querySelector("leaflet-map");
+      return !host.shadowRoot
+        .getElementById("map")
+        .dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, ...i }));
+    }, init);
+    // Leaflet animates the zoom, so the level settles a few frames later; a
+    // synchronous read here would race it and report no change.
+    await page.waitForTimeout(350);
+    const after = await page.evaluate(() => document.querySelector("leaflet-map")._map.getZoom());
+    return { zoomed: after - before, cancelled };
+  };
+
+  test("Ctrl + wheel zooms the map, whatever shape the wheel event has", async ({ page }) => {
     await login(page);
     await gotoTripMap(page);
 
-    const results = await page.evaluate(() => {
-      const host = document.querySelector("leaflet-map");
-      const mapEl = host.shadowRoot.getElementById("map");
-      // Take Leaflet out of the picture entirely.
-      host._map.scrollWheelZoom.disable();
-
-      const send = (ctrlKey) =>
-        // dispatchEvent returns false when a listener called preventDefault.
-        !mapEl.dispatchEvent(
-          new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: -120, ctrlKey })
-        );
-
-      return { ctrlCancelled: send(true), plainCancelled: send(false) };
+    // A mouse notch in Firefox arrives as three *lines*; in Chrome as a
+    // hundred pixels. A trackpad or a tilting wheel adds a horizontal
+    // component to the same gesture. All of them are the same intent.
+    expect(await wheelZoom(page, { ctrlKey: true, deltaY: -3, deltaMode: 1 }), "lines").toEqual({
+      zoomed: 1,
+      cancelled: true,
     });
-
-    expect(results.ctrlCancelled, "Ctrl + wheel must be cancelled, or the browser zooms the page").toBe(true);
+    expect(await wheelZoom(page, { ctrlKey: true, deltaY: -100, deltaMode: 0 }), "pixels").toEqual({
+      zoomed: 1,
+      cancelled: true,
+    });
     expect(
-      results.plainCancelled,
-      "a plain wheel must NOT be cancelled, or the page could no longer scroll over the map"
-    ).toBe(false);
+      await wheelZoom(page, { ctrlKey: true, deltaY: -100, deltaX: -4, deltaMode: 0 }),
+      "a wheel that also reports a horizontal component"
+    ).toEqual({ zoomed: 1, cancelled: true });
+    expect(await wheelZoom(page, { ctrlKey: true, deltaY: 100, deltaMode: 0 }), "down zooms out").toEqual({
+      zoomed: -1,
+      cancelled: true,
+    });
+    // Meta for the Mac, where Ctrl is the operating system's own zoom.
+    expect(await wheelZoom(page, { metaKey: true, deltaY: -100, deltaMode: 0 }), "meta").toEqual({
+      zoomed: 1,
+      cancelled: true,
+    });
+  });
+
+  test("a plain wheel is left entirely alone, so the page can scroll", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+
+    // Not cancelled is the load-bearing half: cancelling it would stop the
+    // page scrolling over the map, which is the complaint that started this.
+    expect(await wheelZoom(page, { deltaY: -100, deltaMode: 0 })).toEqual({ zoomed: 0, cancelled: false });
+  });
+
+  test("Leaflet is not the one zooming, so it cannot swallow the gesture", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+
+    const enabled = await page.evaluate(() =>
+      document.querySelector("leaflet-map")._map.scrollWheelZoom.enabled()
+    );
+    expect(enabled, "Leaflet's wheel handler must stay off; one piece of code owns the wheel").toBe(false);
   });
 
   test("the hint goes away on its own", async ({ page }) => {

@@ -43,6 +43,12 @@ const SINGLE_MARKER_ZOOM = 14;
 // enough that it is gone before it becomes the thing you are looking at.
 const GESTURE_HINT_MS = 1500;
 
+// Wheel pixels per zoom level, and the ceiling on what a single flick may
+// bank. 60 is Leaflet's own wheelPxPerZoomLevel, so one mouse notch (which
+// Firefox reports as 3 lines, i.e. 60px) is exactly one level.
+const WHEEL_PX_PER_ZOOM = 60;
+const WHEEL_ACCUM_CAP = 240;
+
 // Category colour for a marker, for items whose category is unknown or not
 // one of the three the app defines (the single-marker mode gets it from an
 // attribute, so it can legitimately be absent).
@@ -511,7 +517,15 @@ class LeafletMap extends HTMLElement {
     // needs no touchstart/touchend juggling of our own, which the Stage 13
     // plan had budgeted for: enabling dragging mid-touchstart would have been
     // too late for Leaflet's own listener to see that same gesture anyway.
-    const map = L.map(mapEl, { attributionControl: true, dragging: !isCoarsePointer() });
+    // scrollWheelZoom: false because the wheel is handled entirely in
+    // bindGestureGate below -- see the reasoning there. Leaflet's own handler
+    // being off is what makes the gesture deterministic: there is exactly one
+    // piece of code deciding what a wheel does.
+    const map = L.map(mapEl, {
+      attributionControl: true,
+      dragging: !isCoarsePointer(),
+      scrollWheelZoom: false,
+    });
     this._map = map;
 
     L.tileLayer(tiles.tile_url, {
@@ -851,18 +865,11 @@ class LeafletMap extends HTMLElement {
       "wheel",
       (e) => {
         if (e.ctrlKey || e.metaKey) {
-          // The zoom gesture. Leaflet will do the zooming - it is still
-          // listening, with its own tuned debouncing - but suppressing the
-          // *browser's* default is this listener's job, not Leaflet's.
-          //
-          // Ctrl + wheel is bound to page zoom in every browser, and Firefox
-          // duly zoomed the whole site while the map appeared to do nothing.
-          // Leaflet does call preventDefault in its own handler, and relying
-          // on that was the bug: it makes suppressing a browser-level action
-          // depend on a third party's handler being reached and enabled. Doing
-          // it here, in the capture phase on the parent, is the earliest point
-          // available and depends on nothing.
+          // Ctrl + wheel is bound to page zoom in every browser, so this has
+          // to be cancelled here, in the capture phase, before anything else
+          // looks at it.
           e.preventDefault();
+          this.zoomByWheel(e);
           return;
         }
         // A plain wheel is deliberately *not* prevented: the whole point is
@@ -891,6 +898,56 @@ class LeafletMap extends HTMLElement {
       },
       { passive: true }
     );
+  }
+
+  // Zoom the map for a Ctrl-held wheel.
+  //
+  // Leaflet's own scroll-wheel handler is switched off and this replaces it,
+  // after two rounds of the gesture not working on the reporter's machine
+  // while working everywhere it could be measured.
+  //
+  // Be honest about what is and is not known here. The failure was real and
+  // reproducible for them - Ctrl + wheel zoomed nothing, in both the version
+  // that passed the event to Leaflet untouched and the version that only
+  // cancelled the browser default first - and it could not be reproduced here
+  // at all: driven through Playwright, Leaflet zooms correctly for line,
+  // pixel and page deltas, with or without a horizontal component. So the
+  // mechanism inside Leaflet is *unknown*. Two theories were checked against
+  // the running code and both were wrong: getWheelDelta does not discard an
+  // event carrying deltaX (the deltaY branches are tested first), and
+  // _performZoom's sigmoid cannot round a nonzero delta to no zoom while
+  // zoomSnap is 1. Do not repeat either as the explanation.
+  //
+  // What this does instead is shrink the surface. Leaflet decides how far to
+  // zoom from an accumulated, normalised, sigmoid-shaped magnitude; this uses
+  // only the *direction*, which every device and every deltaMode agrees on.
+  // Magnitude decides pacing and nothing else.
+  // Deltas are normalised to pixels with Leaflet's own factors, accumulated,
+  // and every 60px is one zoom level -- so one notch of a mouse wheel is one
+  // level, and a trackpad glides rather than leaping. The accumulator is
+  // clamped so a flick cannot bank a dozen levels, and reset after each step
+  // so the next notch starts fresh.
+  zoomByWheel(e) {
+    const map = this._map;
+    if (!map) return;
+
+    // Lines and pages converted with Leaflet's own factors, so the feel is
+    // unchanged for the devices that were already working.
+    const px = e.deltaMode === 1 ? e.deltaY * 20 : e.deltaMode === 2 ? e.deltaY * 60 : e.deltaY;
+    if (!px) return;
+
+    const banked = (this._wheelAccum || 0) + px;
+    this._wheelAccum = Math.max(-WHEEL_ACCUM_CAP, Math.min(WHEEL_ACCUM_CAP, banked));
+    if (Math.abs(this._wheelAccum) < WHEEL_PX_PER_ZOOM) return;
+
+    // deltaY is positive scrolling *down*, which is zooming out.
+    const step = this._wheelAccum > 0 ? -1 : 1;
+    this._wheelAccum = 0;
+
+    // setZoomAround rather than setZoom: the point under the cursor stays
+    // under the cursor, which is what makes wheel zoom feel like a map rather
+    // than a slideshow.
+    map.setZoomAround(map.mouseEventToContainerPoint(e), map.getZoom() + step);
   }
 
   // Show the overlay, and take it away again. Re-triggering while it is up

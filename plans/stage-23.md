@@ -629,6 +629,48 @@ is precisely how this got through. Reverting the one line reproduces the
 failure (`Ctrl + wheel must be cancelled, or the browser zooms the page:
 Expected true, Received false`). `make ci` green, 168 passed.
 
+**Second follow-up: the map still would not zoom, so the wheel is ours now.**
+The first follow-up fixed the page zoom and nothing else - Ctrl + wheel
+cancelled the browser default and then did nothing at all, leaving no way to
+zoom the map by wheel.
+
+Leaflet's `scrollWheelZoom` is now off and `zoomByWheel` replaces it.
+
+**What is known and what is not**, because a wrong explanation here would cost
+the next person real time. The failure was reproducible for the reporter and
+not reproducible here *at all*: driven through Playwright, Leaflet zooms
+correctly for line, pixel and page deltas, with and without a horizontal
+component, on both a synthetic and a real trusted wheel. Two theories were
+checked against the running code and **both were wrong**: `getWheelDelta` does
+not discard an event carrying `deltaX` (the `deltaY` branches are tested
+first - measured, not read), and `_performZoom`'s sigmoid cannot round a
+nonzero delta to no zoom while `zoomSnap` is 1. So the mechanism inside Leaflet
+is unknown, and the code says so rather than inventing one.
+
+What the replacement does is shrink the surface rather than diagnose it.
+Leaflet decides how far to zoom from an accumulated, normalised,
+sigmoid-shaped magnitude; `zoomByWheel` uses only the **direction**, which
+every device and every `deltaMode` agrees on. Magnitude decides pacing alone:
+deltas are converted to pixels with Leaflet's own factors, accumulated, and
+every 60px is one level - one mouse notch is one level, a trackpad glides - with
+the accumulator clamped so a flick cannot bank a dozen levels. `setZoomAround`
+keeps the point under the cursor fixed.
+
+**Verified** on the running dev server with real trusted input: Ctrl + wheel
+took the map from zoom 2 to 4 over two notches while `innerWidth` and
+`devicePixelRatio` never moved (no page zoom), and a plain wheel afterwards
+left the map alone. Three new specs pin the contract: Ctrl + wheel zooms and
+cancels for lines, pixels, a wheel carrying a horizontal component, the
+zoom-out direction and Meta-instead-of-Ctrl; a plain wheel neither zooms nor
+cancels, the second half being load-bearing since cancelling it would stop the
+page scrolling over the map; and Leaflet's handler is asserted to be **off**,
+so one piece of code owns the wheel. `make ci` green, 170 passed.
+
+Note the animation trap the specs had to account for: `setZoomAround` animates,
+so reading `getZoom()` synchronously after dispatching races it and reports no
+change. A first version of these measurements said the zoom had not happened
+when it had.
+
 ---
 
 ## 7. The mobile map grows

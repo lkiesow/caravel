@@ -228,13 +228,16 @@ down.
   revisiting only if pasting links turns out to be how people actually create
   locations.
 
-- **A resolved Maps link names the place in English.** (Stage 22 Milestone 6.)
-  The resolver sends no `Accept-Language`, so Google answers in its default and
-  the Brandenburger Tor arrives as "Brandenburg Gate" -- which then becomes the
-  title. Forwarding the app locale would fix it, and the same question applies
-  to `internal/geocode`, which does not send one either. One decision, two call
-  sites: is the name that gets suggested the one in the app's language, or the
-  one in the local language of the place?
+- **A resolved Maps link names the place in whatever language the link was made
+  in.** (Stage 22 Milestone 6, third follow-up.) The locale is now forwarded on
+  all three outbound calls, and Nominatim honours it -- an address comes back as
+  Deutschland or Germany as asked. Google does not: the name comes from the
+  `/maps/place/<name>/` segment, which is baked into a short link when it is
+  created, and neither `Accept-Language` nor `hl=` changes it (measured against
+  the live service). So a title suggested from a link may be in someone else's
+  language. Nothing to fix from this side; the only lever would be dropping the
+  name and asking Nominatim for one, which would be a worse name more often
+  than not.
 
 - **Google Maps interoperability: the outbound half.** (Stage 13; the inbound
   half built in Stage 22 Milestone 6.) Pasting a Maps link into the address

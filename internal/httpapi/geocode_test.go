@@ -526,3 +526,62 @@ func TestResolveMapLinkEndpointNeedsASession(t *testing.T) {
 		t.Errorf("status = %d, want 401", rec.Code)
 	}
 }
+
+// The locale the client asks for reaches the upstream, and a malformed one is
+// dropped rather than forwarded: it ends up in a request to a third party, so
+// it goes through the same normaliseLocale the assistant uses.
+func TestGeocodeForwardsTheLocale(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login("alice")
+	seen := stubGeocoder(t, ts, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, nominatimTwoResults)
+	})
+
+	cases := []struct {
+		name string
+		sent string
+		want string // the accept-language expected upstream, "" for none
+	}{
+		{"a plain language", "de", "de"},
+		{"a region tag", "de-DE", "de-DE"},
+		{"absent", "", ""},
+		// Anything that is not a language tag is dropped, not forwarded.
+		{"an injection attempt", "de&format=xml", ""},
+		{"a newline", "de\nX-Evil: 1", ""},
+		{"absurdly long", strings.Repeat("d", 40), ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			*seen = nil
+			path := "/api/geocode?q=Reykjavik"
+			if tc.sent != "" {
+				path += "&locale=" + url.QueryEscape(tc.sent)
+			}
+			if rec := ts.do(http.MethodGet, path, cookie, ""); rec.Code != http.StatusOK {
+				t.Fatalf("status = %d", rec.Code)
+			}
+			if len(*seen) != 1 {
+				t.Fatalf("upstream saw %d requests, want 1", len(*seen))
+			}
+			if got := (*seen)[0].URL.Query().Get("accept-language"); got != tc.want {
+				t.Errorf("accept-language = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestReverseGeocodeForwardsTheLocale(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login("alice")
+	seen := stubGeocoder(t, ts, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"display_name":"Somewhere","lat":"1","lon":"2"}`)
+	})
+
+	rec := ts.do(http.MethodGet, "/api/geocode/reverse?lat=64.1&lng=-21.9&locale=de", cookie, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+	}
+	if got := (*seen)[0].URL.Query().Get("accept-language"); got != "de" {
+		t.Errorf("accept-language = %q, want de", got)
+	}
+}

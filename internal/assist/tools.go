@@ -307,7 +307,10 @@ func (t *toolset) doGeocode(ctx context.Context, args json.RawMessage) (string, 
 		return "", fmt.Errorf("the query was empty")
 	}
 
-	results, err := t.geocoder.Search(ctx, in.Query)
+	// No locale, as in resolveCoordinates: the model is given the
+	// coordinates and the display name is only context for it, so the
+	// language they are named in does not change the answer.
+	results, err := t.geocoder.Search(ctx, in.Query, "")
 	if err != nil {
 		return "", fmt.Errorf("the lookup failed: %w", err)
 	}

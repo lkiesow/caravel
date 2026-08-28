@@ -94,15 +94,18 @@ func (errNotConfigured) Error() string { return "geocode: no geocoder is configu
 //
 // A non-nil, possibly empty slice on success, so callers can tell "searched,
 // found nothing" from "did not search".
-func (c *Client) Search(ctx context.Context, query string) ([]Result, error) {
+//
+// locale is the language to name places in, or empty for the provider's
+// default. See withLocale.
+func (c *Client) Search(ctx context.Context, query, locale string) ([]Result, error) {
 	if c == nil {
 		return nil, ErrNotConfigured
 	}
-	body, err := c.get(ctx, c.url, map[string]string{
+	body, err := c.get(ctx, c.url, withLocale(map[string]string{
 		"q":      query,
 		"format": "jsonv2",
 		"limit":  strconv.Itoa(MaxResults),
-	})
+	}, locale))
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +178,7 @@ func (c *Client) ReverseAvailable() bool {
 // which for a click in a car park is the building next door; the caller asked
 // about a point they chose, and moving it under them is not this function's
 // business. Only the address is news.
-func (c *Client) Reverse(ctx context.Context, lat, lng float64) (Result, error) {
+func (c *Client) Reverse(ctx context.Context, lat, lng float64, locale string) (Result, error) {
 	if c == nil {
 		return Result{}, ErrNotConfigured
 	}
@@ -183,11 +186,11 @@ func (c *Client) Reverse(ctx context.Context, lat, lng float64) (Result, error) 
 	if !ok {
 		return Result{}, ErrNoReverseEndpoint
 	}
-	body, err := c.get(ctx, endpoint, map[string]string{
+	body, err := c.get(ctx, endpoint, withLocale(map[string]string{
 		"lat":    strconv.FormatFloat(lat, 'f', -1, 64),
 		"lon":    strconv.FormatFloat(lng, 'f', -1, 64),
 		"format": "jsonv2",
-	})
+	}, locale))
 	if err != nil {
 		return Result{}, err
 	}
@@ -203,6 +206,24 @@ func (c *Client) Reverse(ctx context.Context, lat, lng float64) (Result, error) 
 		return Result{}, ErrNoResult
 	}
 	return Result{DisplayName: raw.DisplayName, Lat: lat, Lng: lng}, nil
+}
+
+// withLocale adds the language to ask for names in, when there is one.
+//
+// Nominatim takes this as a query parameter rather than as an Accept-Language
+// header -- both work, and the parameter is the documented one. Empty means
+// "do not ask", which leaves the provider's default: names in whatever the
+// local language is. That is the right answer for a caller with no user in
+// front of it, which is why it is a value rather than a setting.
+//
+// The value reaching here has already been checked by the HTTP layer
+// (normaliseLocale); this does not re-validate, but it also cannot inject
+// anything, since url.Values escapes what it encodes.
+func withLocale(params map[string]string, locale string) map[string]string {
+	if locale != "" {
+		params["accept-language"] = locale
+	}
+	return params
 }
 
 // get performs one upstream request and returns its body. Shared by Search and

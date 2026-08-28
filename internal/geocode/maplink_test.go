@@ -122,7 +122,7 @@ func TestResolveMapLinkReadsAFullURLWithoutAnyRequest(t *testing.T) {
 			// request for any of these, it would have to reach the real
 			// google.com to succeed, and the assertions below would be the
 			// least of it.
-			got, err := ResolveMapLink(context.Background(), tc.url)
+			got, err := ResolveMapLink(context.Background(), tc.url, "")
 			if err != nil {
 				t.Fatalf("ResolveMapLink: %v", err)
 			}
@@ -140,7 +140,7 @@ func TestResolveMapLinkReadsAFullURLWithoutAnyRequest(t *testing.T) {
 // follows the screen while !3d stays on the place you clicked.
 func TestResolveMapLinkPrefersTheMarkerOverTheViewport(t *testing.T) {
 	got, err := ResolveMapLink(context.Background(),
-		"https://www.google.com/maps/place/Somewhere/@10.0,10.0,17z/data=!4m6!3m5!8m2!3d64.1418!4d-21.9266")
+		"https://www.google.com/maps/place/Somewhere/@10.0,10.0,17z/data=!4m6!3m5!8m2!3d64.1418!4d-21.9266", "")
 	if err != nil {
 		t.Fatalf("ResolveMapLink: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestResolveMapLinkRefusesWhatItWillNotFollow(t *testing.T) {
 	}
 	for name, raw := range cases {
 		t.Run(name, func(t *testing.T) {
-			_, err := ResolveMapLink(context.Background(), raw)
+			_, err := ResolveMapLink(context.Background(), raw, "")
 			if !errors.Is(err, ErrNotAMapLink) {
 				t.Errorf("err = %v, want ErrNotAMapLink", err)
 			}
@@ -234,7 +234,7 @@ func TestResolveMapLinkFollowsAShortener(t *testing.T) {
 	}))
 	defer final.Close()
 
-	got, err := stubResolver(hostOf(t, final)).resolve(context.Background(), final.URL+"/abc123")
+	got, err := stubResolver(hostOf(t, final)).resolve(context.Background(), final.URL+"/abc123", "")
 	if err != nil {
 		t.Fatalf("ResolveMapLink: %v", err)
 	}
@@ -264,7 +264,7 @@ func TestResolveMapLinkRefusesARedirectOffTheAllowlist(t *testing.T) {
 	defer shortener.Close()
 
 	// Only the shortener is allowed; the redirect target is not.
-	_, err := stubResolver(hostOf(t, shortener)).resolve(context.Background(), shortener.URL+"/abc123")
+	_, err := stubResolver(hostOf(t, shortener)).resolve(context.Background(), shortener.URL+"/abc123", "")
 	if !errors.Is(err, ErrNotAMapLink) {
 		t.Errorf("err = %v, want the redirect to have been refused", err)
 	}
@@ -280,7 +280,7 @@ func TestResolveMapLinkStillRefusesPrivateAddresses(t *testing.T) {
 		policy:    safefetch.PublicOnly(),
 		allowHost: func(host string) bool { return host == "127.0.0.1:9" },
 	}
-	_, err := r.resolve(context.Background(), "http://127.0.0.1:9/abc")
+	_, err := r.resolve(context.Background(), "http://127.0.0.1:9/abc", "")
 	var blocked safefetch.ErrBlocked
 	if !errors.As(err, &blocked) {
 		t.Errorf("err = %v (%T), want safefetch.ErrBlocked -- the address guard is not the host allowlist", err, err)
@@ -299,7 +299,7 @@ func TestResolveMapLinkReportsALinkWithNoCoordinates(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := stubResolver(hostOf(t, srv)).resolve(context.Background(), srv.URL+"/abc123")
+	_, err := stubResolver(hostOf(t, srv)).resolve(context.Background(), srv.URL+"/abc123", "")
 	if !errors.Is(err, ErrNoCoordinates) {
 		t.Errorf("err = %v, want ErrNoCoordinates", err)
 	}
@@ -311,9 +311,50 @@ func TestResolveMapLinkReportsAnUpstreamFailure(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := stubResolver(hostOf(t, srv)).resolve(context.Background(), srv.URL+"/gone")
+	_, err := stubResolver(hostOf(t, srv)).resolve(context.Background(), srv.URL+"/gone", "")
 	var status ErrUpstreamStatus
 	if !errors.As(err, &status) || status.Code != http.StatusNotFound {
 		t.Errorf("err = %v, want ErrUpstreamStatus{404}", err)
+	}
+}
+
+// The Accept-Language is sent, and travels the whole redirect chain.
+//
+// What it does *not* do -- measured against the real service, and recorded in
+// expand() -- is change the name: that comes from the /maps/place/<name>/
+// segment, which Google bakes into a short link when it is created. This test
+// pins that the header goes out, not that Google honours it.
+func TestResolveMapLinkSendsAcceptLanguage(t *testing.T) {
+	var got []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, r.Header.Get("Accept-Language"))
+		if strings.HasPrefix(r.URL.Path, "/maps/") {
+			fmt.Fprint(w, "ok")
+			return
+		}
+		http.Redirect(w, r, "/maps/place/Brandenburger+Tor/@52.5163,13.3777,17z/data=!3d52.5163!4d13.3777", http.StatusFound)
+	}))
+	defer srv.Close()
+
+	if _, err := stubResolver(hostOf(t, srv)).resolve(context.Background(), srv.URL+"/abc", "de"); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if len(got) == 0 || got[0] != "de" {
+		t.Errorf("Accept-Language = %v, want de on the first request", got)
+	}
+	// It has to survive the redirect too, since the page that carries the name
+	// is the one at the end of the chain.
+	for i, header := range got {
+		if header != "de" {
+			t.Errorf("request %d sent Accept-Language %q, want de all the way down the chain", i, header)
+		}
+	}
+
+	got = nil
+	if _, err := stubResolver(hostOf(t, srv)).resolve(context.Background(), srv.URL+"/abc", ""); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if len(got) == 0 || got[0] != "" {
+		t.Errorf("Accept-Language = %v, want none when no locale was asked for", got)
 	}
 }

@@ -118,15 +118,16 @@ type mapLinkResolver struct {
 // ResolveMapLink turns a Google Maps link into a coordinate, following a
 // shortener if it has to.
 //
-// The returned Result carries the place name when the URL spells one out, so a
-// caller can offer it for an empty address field the way a search result is
-// offered. Lat and Lng are the point the link identifies.
-func ResolveMapLink(ctx context.Context, rawURL string) (Result, error) {
+// The returned Result carries the place name when the URL spells one out --
+// which the client uses as the location's title -- and Lat/Lng are the point
+// the link identifies. locale is the language to ask Google to name it in, or
+// empty for its default, which is English.
+func ResolveMapLink(ctx context.Context, rawURL, locale string) (Result, error) {
 	r := &mapLinkResolver{policy: safefetch.PublicOnly(), allowHost: isMapLinkHost}
-	return r.resolve(ctx, rawURL)
+	return r.resolve(ctx, rawURL, locale)
 }
 
-func (r *mapLinkResolver) resolve(ctx context.Context, rawURL string) (Result, error) {
+func (r *mapLinkResolver) resolve(ctx context.Context, rawURL, locale string) (Result, error) {
 	parsed, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil {
 		return Result{}, ErrNotAMapLink
@@ -141,7 +142,7 @@ func (r *mapLinkResolver) resolve(ctx context.Context, rawURL string) (Result, e
 		return result, nil
 	}
 
-	expanded, err := r.expand(ctx, parsed)
+	expanded, err := r.expand(ctx, parsed, locale)
 	if err != nil {
 		return Result{}, err
 	}
@@ -159,7 +160,7 @@ func (r *mapLinkResolver) resolve(ctx context.Context, rawURL string) (Result, e
 // some third party. The two are independent: being on the host allowlist does
 // not get past the address guard, which is what
 // TestResolveMapLinkStillRefusesPrivateAddresses pins.
-func (r *mapLinkResolver) expand(ctx context.Context, target *url.URL) (*url.URL, error) {
+func (r *mapLinkResolver) expand(ctx context.Context, target *url.URL, locale string) (*url.URL, error) {
 	client := r.policy.Client(safefetch.Options{
 		Timeout:      Timeout,
 		MaxRedirects: 5,
@@ -178,6 +179,28 @@ func (r *mapLinkResolver) expand(ctx context.Context, target *url.URL) (*url.URL
 	// Not a condition of use here the way it is for Nominatim, but being
 	// nameable is the polite half of automated traffic either way.
 	req.Header.Set("User-Agent", mapLinkUserAgent)
+	// The language to name the place in, asked for and -- measured -- **not
+	// granted**, at least for a short link.
+	//
+	// The name this resolver returns comes from the `/maps/place/<name>/`
+	// segment of the expanded URL, and Google bakes that into a short link's
+	// canonical URL when the link is created. Neither `Accept-Language: de` nor
+	// an `hl=de` parameter changes it: the Brandenburger Tor comes back as
+	// "Brandenburg Gate" whatever is asked for, because that is the name in the
+	// URL. Only whoever created the link could have made it German.
+	//
+	// Sent anyway, and deliberately: it costs one header, it is the correct
+	// thing to ask, and the reason it does not help is Google's rather than
+	// ours -- a link whose canonical URL was made in a German session already
+	// carries a German name. A header rather than hl= because this is a
+	// redirect chain, and a header travels it.
+	//
+	// The consequence is a known limitation rather than a bug: a title
+	// suggested from a link may be in the language of whoever made the link.
+	// The address, which comes from Nominatim, does follow the locale.
+	if locale != "" {
+		req.Header.Set("Accept-Language", locale)
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {

@@ -1,6 +1,6 @@
 import { api } from "../api.js";
 import { createGuard, guardClick } from "../busy.js";
-import { t, translatePage } from "../i18n.js";
+import { t, translatePage, getLocale } from "../i18n.js";
 import { navigate } from "../router.js";
 import { renderItemForm } from "../components/location-form.js";
 import { renderImageField } from "../components/image-field.js";
@@ -581,7 +581,12 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       button.disabled = true;
       let found;
       try {
-        found = await api.get(`/geocode?q=${encodeURIComponent(query)}`);
+        // The locale rides along on all three of these: it is the language to
+        // name places in, and the app's language is a browser setting the
+        // server cannot infer. Same reasoning as the assistant's own locale
+        // field -- somebody running a German UI on an English system is the
+        // ordinary case.
+        found = await api.get(`/geocode?q=${encodeURIComponent(query)}&locale=${encodeURIComponent(getLocale())}`);
       } catch (err) {
         // The Go error is for the console; the user gets one sentence saying
         // the search is unavailable, not a status code.
@@ -646,7 +651,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       button.disabled = true;
       let place;
       try {
-        place = await api.get(`/geocode/link?url=${encodeURIComponent(link)}`);
+        place = await api.get(`/geocode/link?url=${encodeURIComponent(link)}&locale=${encodeURIComponent(getLocale())}`);
       } catch (err) {
         console.error(err);
         // 404 means the link was followed and names no single place -- a
@@ -767,7 +772,11 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       guarded.wrap(async () => {
         clearOffer();
         setStatus("location.form.lookingUp");
-        const query = new URLSearchParams({ lat: form.lat.value.trim(), lng: form.lng.value.trim() });
+        const query = new URLSearchParams({
+          lat: form.lat.value.trim(),
+          lng: form.lng.value.trim(),
+          locale: getLocale(),
+        });
         let found;
         try {
           found = await api.get(`/geocode/reverse?${query}`);

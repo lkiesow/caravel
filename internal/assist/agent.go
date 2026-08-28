@@ -678,7 +678,10 @@ func (a *Agent) buildProposal(ctx context.Context, req Request, raw modelProposa
 			if from.query == "" {
 				continue
 			}
-			results, err := a.geocoder.Search(ctx, from.query)
+			// No locale: this search resolves an address to coordinates and
+			// the display name it returns is discarded, so asking for one
+			// language over another would change nothing here.
+			results, err := a.geocoder.Search(ctx, from.query, "")
 			if err != nil || len(results) == 0 {
 				log.Debug("assist: geocode missed", "from", from.source, "query", from.query, "err", err)
 				continue

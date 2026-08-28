@@ -18,6 +18,22 @@ import (
 // The package moved out in Stage 16 Milestone 3 so internal/assist could reach
 // it. See its doc comment for why the browser does not call Nominatim itself.
 
+// requestLocale is the language the caller wants places named in.
+//
+// It comes from the client rather than from the Accept-Language header, for the
+// reason the assistant's own locale field gives: the app's language is a
+// setting in the browser (localStorage), and it is routinely *not* what the
+// browser advertises -- somebody running a German UI on an English system is
+// the ordinary case, not the odd one.
+//
+// Empty when absent or malformed, which means "do not ask" and leaves the
+// provider's default: names in the local language of the place. normaliseLocale
+// is the same check the assistant applies before a locale reaches a third
+// party.
+func requestLocale(r *http.Request) string {
+	return normaliseLocale(r.URL.Query().Get("locale"))
+}
+
 func (s *Server) handleGeocode(w http.ResponseWriter, r *http.Request) {
 	if s.Geocoder == nil {
 		// 501 rather than 404: the route exists, the capability is switched
@@ -33,7 +49,7 @@ func (s *Server) handleGeocode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	results, err := s.Geocoder.Search(r.Context(), query)
+	results, err := s.Geocoder.Search(r.Context(), query, requestLocale(r))
 	if err != nil {
 		// Deliberately not 500 and deliberately not the upstream's own words:
 		// this is somebody else's service being slow or unhappy, which is a
@@ -70,7 +86,7 @@ func (s *Server) handleReverseGeocode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := s.Geocoder.Reverse(r.Context(), lat, lng)
+	result, err := s.Geocoder.Reverse(r.Context(), lat, lng, requestLocale(r))
 	if err != nil {
 		// Nothing there is not a failure -- the middle of an ocean has no
 		// address. 404 rather than an empty 200, so a client cannot mistake it
@@ -136,7 +152,7 @@ func (s *Server) handleResolveMapLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := geocode.ResolveMapLink(r.Context(), raw)
+	result, err := geocode.ResolveMapLink(r.Context(), raw, requestLocale(r))
 	if err != nil {
 		switch {
 		case errors.Is(err, geocode.ErrNotAMapLink):

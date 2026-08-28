@@ -29,7 +29,7 @@ func TestSearchOnNilClientIsAnErrorNotAPanic(t *testing.T) {
 	var c *Client
 	// A missed nil check should fail where it happens, not three frames later
 	// in a nil dereference.
-	_, err := c.Search(context.Background(), "Reykjavik")
+	_, err := c.Search(context.Background(), "Reykjavik", "")
 	if !errors.Is(err, ErrNotConfigured) {
 		t.Errorf("err = %v, want ErrNotConfigured", err)
 	}
@@ -46,7 +46,7 @@ func TestSearchSkipsUnparseableRowsRatherThanFailing(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got, err := New(srv.URL).Search(context.Background(), "Reykjavik")
+	got, err := New(srv.URL).Search(context.Background(), "Reykjavik", "")
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestSearchReturnsEmptyNotNil(t *testing.T) {
 
 	// "searched, found nothing" must be distinguishable from "did not search",
 	// and the handler serialises this straight to JSON where nil becomes null.
-	got, err := New(srv.URL).Search(context.Background(), "zzzz")
+	got, err := New(srv.URL).Search(context.Background(), "zzzz", "")
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestSearchSendsAnIdentifyingUserAgent(t *testing.T) {
 
 	// A condition of using OSM's public instance, not politeness: anonymous
 	// bulk traffic is what gets blocked.
-	if _, err := New(srv.URL).Search(context.Background(), "Reykjavik"); err != nil {
+	if _, err := New(srv.URL).Search(context.Background(), "Reykjavik", ""); err != nil {
 		t.Fatalf("Search: %v", err)
 	}
 	if ua == "" || ua == "Go-http-client/1.1" {
@@ -162,7 +162,7 @@ func TestReverseAvailableIsFalseWhenDisabled(t *testing.T) {
 		t.Error("ReverseAvailable() = true on a disabled client")
 	}
 	var c *Client
-	if _, err := c.Reverse(context.Background(), 64.1, -21.9); !errors.Is(err, ErrNotConfigured) {
+	if _, err := c.Reverse(context.Background(), 64.1, -21.9, ""); !errors.Is(err, ErrNotConfigured) {
 		t.Errorf("err = %v, want ErrNotConfigured", err)
 	}
 }
@@ -180,7 +180,7 @@ func TestReverseReturnsTheAddressAndTheQueriedPoint(t *testing.T) {
 	defer srv.Close()
 
 	c := New(srv.URL + "/search")
-	got, err := c.Reverse(context.Background(), 64.1466, -21.9426)
+	got, err := c.Reverse(context.Background(), 64.1466, -21.9426, "")
 	if err != nil {
 		t.Fatalf("Reverse: %v", err)
 	}
@@ -223,7 +223,7 @@ func TestReverseTreatsAnEmptyAnswerAsNoResult(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			_, err := New(srv.URL+"/search").Reverse(context.Background(), 0, 0)
+			_, err := New(srv.URL+"/search").Reverse(context.Background(), 0, 0, "")
 			if !errors.Is(err, ErrNoResult) {
 				t.Errorf("err = %v, want ErrNoResult", err)
 			}
@@ -237,7 +237,7 @@ func TestReverseReportsAnUpstreamFailure(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := New(srv.URL+"/search").Reverse(context.Background(), 64.1, -21.9)
+	_, err := New(srv.URL+"/search").Reverse(context.Background(), 64.1, -21.9, "")
 	var status ErrUpstreamStatus
 	if !errors.As(err, &status) || status.Code != http.StatusServiceUnavailable {
 		t.Errorf("err = %v, want ErrUpstreamStatus{503}", err)
@@ -245,8 +245,52 @@ func TestReverseReportsAnUpstreamFailure(t *testing.T) {
 }
 
 func TestReverseOnAnUnderivableEndpoint(t *testing.T) {
-	_, err := New("https://maps.example.org/geocode").Reverse(context.Background(), 64.1, -21.9)
+	_, err := New("https://maps.example.org/geocode").Reverse(context.Background(), 64.1, -21.9, "")
 	if !errors.Is(err, ErrNoReverseEndpoint) {
 		t.Errorf("err = %v, want ErrNoReverseEndpoint", err)
+	}
+}
+
+// The language to name places in (Stage 22 Milestone 6, second follow-up).
+//
+// Empty means "do not ask", which leaves the provider's default -- names in the
+// local language of the place. That is the right answer for a caller with no
+// user in front of it, which is what both assist call sites are.
+func TestLocaleReachesTheUpstream(t *testing.T) {
+	var gotQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		if strings.HasSuffix(r.URL.Path, "/reverse") {
+			fmt.Fprint(w, `{"display_name":"Somewhere","lat":"1","lon":"2"}`)
+			return
+		}
+		fmt.Fprint(w, `[{"display_name":"Somewhere","lat":"1","lon":"2"}]`)
+	}))
+	defer srv.Close()
+	c := New(srv.URL + "/search")
+
+	cases := []struct {
+		name   string
+		call   func()
+		locale string
+		want   bool
+	}{
+		{"search with a locale", func() { _, _ = c.Search(context.Background(), "x", "de") }, "de", true},
+		{"search without one", func() { _, _ = c.Search(context.Background(), "x", "") }, "", false},
+		{"reverse with a locale", func() { _, _ = c.Reverse(context.Background(), 1, 2, "de") }, "de", true},
+		{"reverse without one", func() { _, _ = c.Reverse(context.Background(), 1, 2, "") }, "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			gotQuery = ""
+			tc.call()
+			has := strings.Contains(gotQuery, "accept-language="+tc.locale) && tc.locale != ""
+			if has != tc.want {
+				t.Errorf("query = %q, want accept-language %v", gotQuery, tc.want)
+			}
+			if !tc.want && strings.Contains(gotQuery, "accept-language") {
+				t.Errorf("query = %q, want no accept-language at all", gotQuery)
+			}
+		})
 	}
 }

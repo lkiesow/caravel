@@ -768,6 +768,44 @@ real short link: title "Brandenburg Gate", coordinates set, address empty,
 button enabled — then one press of Look up address and Accept fills the genuine
 Pariser Platz address.
 
+**Third follow-up: the locale is forwarded, and it helps in one of the two
+places.** The name arriving as "Brandenburg Gate" rather than "Brandenburger
+Tor" was the last loose end. All three outbound calls now carry the app's
+language: `Search` and `Reverse` add Nominatim's `accept-language` parameter,
+and the map-link resolver sends an `Accept-Language` header. It comes from the
+client rather than from the browser's own header, for the reason the
+assistant's `locale` field already gives — the app's language is a
+`localStorage` setting, and a German UI on an English system is the ordinary
+case. `normaliseLocale`, which the assistant already uses before a locale
+reaches a third party, is the validation.
+
+**Nominatim honours it. Google does not, and that was measured rather than
+assumed:**
+
+| | with `locale=de` | with `locale=en` |
+| --- | --- | --- |
+| reverse geocode | Quadriga **mit** Victoria, …, **Deutschland** | Quadriga **with** Victoria, …, **Germany** |
+| map link | Brandenburg Gate | Brandenburg Gate |
+
+The name a link resolves to comes from the `/maps/place/<name>/` segment of the
+expanded URL, and Google bakes that in when the short link is *created*: neither
+`Accept-Language: de` nor `hl=de` moves it, verified against the live service.
+Only whoever made the link could have made it German. The header is sent anyway
+— one header, the correct thing to ask, and a link created in a German session
+already carries a German name — with the finding recorded in `expand()` so the
+next reader does not re-run the experiment.
+
+Both assist call sites pass an empty locale, which preserves their behaviour
+exactly: they resolve an address to coordinates and discard the display name,
+so the language it comes back in changes nothing.
+
+**Verified.** `make ci` green, full UI suite green at **153 passed**. New tests:
+the parameter reaches Nominatim for both verbs and is absent when no locale is
+asked for; the header travels the whole redirect chain; and at the HTTP layer a
+table of six locales including `de&format=xml`, an embedded newline and a
+40-character string — each of which is dropped rather than forwarded to a third
+party. Live: the reverse lookup returns Deutschland/Germany as asked.
+
 ---
 
 ## 7. Two writes that lie, and sweep-up

@@ -728,6 +728,46 @@ it fails with "a resolved link must enable the lookup ... Received: disabled".
 link fills the fields and enables the button, a search result does the same, and
 clearing a field disables it again.
 
+**Second follow-up: the name is a name, not an address.** The live test also
+showed the link filling the *address* field with "Brandenburg Gate", which is
+the name of the site. That raised two questions, both answered by measurement
+before deciding anything.
+
+**Can more metadata be had from the link? No.** The expanded page is 219KB of
+JavaScript whose `og:title` is literally "Google Maps" and whose
+`og:description` is "Find local businesses, view maps and get driving
+directions". The street address appears **nowhere** in the HTML — grep for
+"Pariser Platz" returns 0 hits — because the content is rendered from an
+undocumented `APP_INITIALIZATION_STATE` blob that would break on any Google
+change. The expanded URL does carry a place id and a Knowledge Graph MID, but
+turning either into an address needs Google's paid Places API and a key.
+
+**And it is not needed, because Milestone 5 already built the answer.**
+Reverse-geocoding the point the link gives produces
+"Quadriga mit Victoria, 1, Pariser Platz, ..., 10117, Deutschland" — a real
+address, from the geocoder this app already talks to.
+
+So, decided with the person driving the stage: **keep the paste in the Location
+card** rather than promoting it to a top-of-editor control (no new UI, no
+competition with the assist panel for that slot; promoting it later is easy and
+better informed), and **fill the title and the coordinates, never the address**.
+The name goes to the title when the title is empty, the address is left for the
+**Look up address** button one press away — which the first follow-up had just
+made reachable — and the placeholder now says the field takes a link.
+
+The status message names the title it set (`"…and “{name}” used as the
+title."`), because the title lives in the card *above* this one and is off
+screen at 324px: a silent change to a field you cannot see is the thing to
+avoid. `setStatus` grew a params argument rather than a caller writing
+`textContent` past it.
+
+**Verified.** `make ci` green (389 keys), full UI suite green at **153 passed**,
+two specs rewritten (the title is set and the address left empty; a typed title
+survives, and the message then claims only the coordinates). By hand with the
+real short link: title "Brandenburg Gate", coordinates set, address empty,
+button enabled — then one press of Look up address and Accept fills the genuine
+Pariser Platz address.
+
 ---
 
 ## 7. Two writes that lie, and sweep-up

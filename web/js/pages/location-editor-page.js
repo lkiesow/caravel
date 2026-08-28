@@ -559,8 +559,8 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     const results = container.querySelector(".location-search__results");
     panel.hidden = false;
 
-    const setStatus = (key) => {
-      status.textContent = key ? t(key) : "";
+    const setStatus = (key, params) => {
+      status.textContent = key ? t(key, params) : "";
       status.hidden = !key;
     };
 
@@ -660,9 +660,31 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
 
       form.lat.value = place.lat;
       form.lng.value = place.lng;
-      if (place.display_name && !form.address.value.trim()) form.address.value = place.display_name;
       coordinatesChanged();
-      setStatus("location.form.linkResolved");
+
+      // The name goes in the *title*, not the address -- it is the name of the
+      // place ("Brandenburg Gate"), which is what a title is for, and putting
+      // it where an address goes was simply wrong. The address is deliberately
+      // left alone: the link does not carry one, and the only way to a real
+      // address is the Look up address button a few fields down, which is one
+      // press and now correctly enabled by the coordinates this just set.
+      //
+      // Nothing more is available from the link, and this was measured rather
+      // than assumed: the expanded page is 219KB of JavaScript whose og: tags
+      // read "Google Maps" and "Find local businesses", the street address
+      // appears nowhere in the HTML, and the place id in the URL only becomes
+      // an address through Google's paid API.
+      //
+      // Only into an empty title, like every other suggestion in this editor:
+      // a name from a link does not get to overwrite what somebody typed.
+      const named = place.display_name && !itemForm.readValues().title.trim();
+      if (named) itemForm.setValues({ title: place.display_name });
+
+      // The title lives in the card *above* this one, so on a phone it is off
+      // screen -- which is why the message says what happened rather than
+      // leaving the user to scroll up and find out.
+      if (named) setStatus("location.form.linkResolvedTitled", { name: place.display_name });
+      else setStatus("location.form.linkResolved");
       input.value = "";
     }
 

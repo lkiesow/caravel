@@ -218,6 +218,24 @@ down.
       deliberate Stage 12 decision. Making either follow the account means a
       column on `users` and an endpoint to write it — worth answering once for
       both, not twice.
+- **Starting a location from a pasted link, promoted.** (Stage 22 Milestone 6,
+  second follow-up.) The Maps-link paste lives in the Location card's search
+  field, which is where you look for a place. It now fills the title as well as
+  the coordinates, which is most of the value a first-class "start this location
+  from a link" control at the top of the editor would add -- and that control
+  was considered and deliberately not built: it needs its own card and i18n and
+  specs, and it competes with the assist panel for the same slot. Worth
+  revisiting only if pasting links turns out to be how people actually create
+  locations.
+
+- **A resolved Maps link names the place in English.** (Stage 22 Milestone 6.)
+  The resolver sends no `Accept-Language`, so Google answers in its default and
+  the Brandenburger Tor arrives as "Brandenburg Gate" -- which then becomes the
+  title. Forwarding the app locale would fix it, and the same question applies
+  to `internal/geocode`, which does not send one either. One decision, two call
+  sites: is the name that gets suggested the one in the app's language, or the
+  one in the local language of the place?
+
 - **Google Maps interoperability: the outbound half.** (Stage 13; the inbound
   half built in Stage 22 Milestone 6.) Pasting a Maps link into the address
   search now resolves it to coordinates. What is left is the other direction:

@@ -398,7 +398,7 @@ test.describe("pasting a Google Maps link", () => {
     return calls;
   }
 
-  test("fills the coordinates from a short link, and names the place", async ({ page }) => {
+  test("fills the coordinates and the title, and leaves the address alone", async ({ page }) => {
     const linkCalls = await stubLink(page);
     // Nothing may reach the address search: a link is not a search term, and
     // sending it to Nominatim as one finds nothing.
@@ -414,10 +414,20 @@ test.describe("pasting a Google Maps link", () => {
 
     await expect(page.locator('.location-form [name="lat"]')).toHaveValue("64.1418");
     await expect(page.locator('.location-form [name="lng"]')).toHaveValue("-21.9266");
-    // The name the URL carried, offered into an empty address field the way a
-    // search result's is.
-    await expect(page.locator('.location-form [name="address"]')).toHaveValue("Hallgrímskirkja");
-    await expect(page.locator(".location-search__status")).toHaveText("Coordinates taken from the link.");
+    // The name the URL carries is the name of the *place*, so it goes in the
+    // title -- which is in the card above this one. Putting it in the address
+    // field is what the first version did, and "Brandenburg Gate" is not an
+    // address.
+    await expect(page.locator('.item-form [name="title"]')).toHaveValue("Hallgrímskirkja");
+    // And the address is left empty rather than filled with something that is
+    // not one. A Maps link carries no address (measured: the expanded page's
+    // og: tags say "Google Maps" and the street address is not in the HTML at
+    // all), so the honest answer is the Look up address button, one press away
+    // and enabled by the coordinates this just set.
+    await expect(page.locator('.location-form [name="address"]')).toHaveValue("");
+    // The message names what happened, because the title it changed is off
+    // screen at this width.
+    await expect(page.locator(".location-search__status")).toHaveText(/Hallgrímskirkja.*used as the title/);
     // The field is emptied: the link has been consumed, and leaving it there
     // invites a second press that does the same thing again.
     await expect(page.locator('[name="placeQuery"]')).toHaveValue("");
@@ -427,19 +437,22 @@ test.describe("pasting a Google Maps link", () => {
     expect(searchCalls, "a link must not be sent to the address search").toHaveLength(0);
   });
 
-  test("leaves a hand-written address alone", async ({ page }) => {
+  test("leaves a title somebody typed alone", async ({ page }) => {
     await stubLink(page);
     await gotoRoute(page, `/trips/${tripId}/locations/new`);
 
-    const address = page.locator('.location-form [name="address"]');
-    await address.fill("Foss Hotel, room 4");
+    const title = page.locator('.item-form [name="title"]');
+    await title.fill("The gate we meet at");
     await page.locator('[name="placeQuery"]').fill(SHORT_LINK);
     await page.locator('[data-action="search-place"]').click();
 
     await expect(page.locator('.location-form [name="lat"]')).toHaveValue("64.1418");
     // The coordinates are what was asked for; the name is a guess about what to
     // call the place, and it does not get to overwrite what somebody typed.
-    await expect(address).toHaveValue("Foss Hotel, room 4");
+    await expect(title).toHaveValue("The gate we meet at");
+    // The message says only what it did, so it does not claim a title it left
+    // alone.
+    await expect(page.locator(".location-search__status")).toHaveText("Coordinates taken from the link.");
   });
 
   test("says which way a link failed", async ({ page }) => {

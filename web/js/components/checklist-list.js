@@ -251,17 +251,38 @@ export async function renderChecklistList(container, tripId, { readOnly = false,
         <span class="${item.checked ? "checklist-item__text--done" : ""}">${escapeHtml(item.text)}</span>
       </label>
       <span class="checklist-item__actions"></span>
+      <p class="checklist-item__error" role="alert" hidden></p>
     `;
 
     if (canWrite) {
       // Guarded on the box itself: a tick that is still being saved cannot be
       // un-ticked into a second, racing PATCH.
       const box = li.querySelector('input[type="checkbox"]');
+      const failure = li.querySelector(".checklist-item__error");
       box.addEventListener(
         "change",
         guard(
           async (e) => {
-            const updated = await api.patch(`/checklists/${checklist.id}/items/${item.id}`, { checked: e.target.checked });
+            failure.hidden = true;
+            let updated;
+            try {
+              updated = await api.patch(`/checklists/${checklist.id}/items/${item.id}`, { checked: e.target.checked });
+            } catch (err) {
+              // Put the box back rather than leaving it showing a state the
+              // server does not hold, and say so. Without this the tick simply
+              // stayed where the click put it -- so an item you believed was
+              // packed was not, and nothing anywhere said otherwise. The
+              // admin page's open-signup toggle is the same shape.
+              //
+              // item.checked and the strikethrough are deliberately untouched:
+              // they still describe what the server holds, which is what the
+              // box is being returned to.
+              console.error("could not save the tick", err);
+              e.target.checked = item.checked;
+              failure.textContent = t("checklists.tickFailed");
+              failure.hidden = false;
+              return;
+            }
             item.checked = updated.checked;
             li.querySelector("span").className = item.checked ? "checklist-item__text--done" : "";
           },

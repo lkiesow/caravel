@@ -519,6 +519,7 @@ a:visited {
 .members-add__error,
 .admin-new-user__error,
 .admin-users__error,
+.checklist-item__error,
 .image-field__error {
   color: var(--color-text);
   font-size: 0.875rem;
@@ -2395,9 +2396,25 @@ button {
 
 .checklist-item {
   display: flex;
+  /* Wraps since Stage 22 Milestone 7, so a failed tick can put its message on
+     a line of its own under the row rather than squeezing into it. Nothing
+     else in the row wraps: the label takes the space and the menu is fixed. */
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
+}
+
+/* A tick that could not be saved says so where the disagreement is. A dialog
+   would interrupt somebody working down a packing list; this is the shared
+   error callout (see the rule it joins above), given a full line here. */
+.checklist-item__error {
+  flex-basis: 100%;
+  margin: 0.25rem 0 0;
+}
+
+.checklist-item__error[hidden] {
+  display: none;
 }
 
 .checklist-item label {

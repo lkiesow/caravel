@@ -223,3 +223,90 @@ test.describe("checklists, end to end", () => {
     }
   });
 });
+
+// A tick that could not be saved (Stage 22 Milestone 7).
+//
+// The failure mode this closes: the PATCH had no catch, so a failed request
+// left the box showing the state the click gave it while the server held the
+// other one, and nothing said so. An item you believed was packed was not.
+test.describe("a checklist tick that fails", () => {
+  test.use({ viewport: MOBILE });
+
+  let tripId;
+  let checklistId;
+
+  test.beforeEach(async ({ page }) => {
+    await login(page);
+    const trip = await page.request.post("/api/trips", {
+      data: { title: "UI suite: failed tick" },
+    });
+    expect(trip.status(), "create the spec's own trip").toBe(201);
+    tripId = (await trip.json()).id;
+
+    const list = await page.request.post(`/api/trips/${tripId}/checklists`, {
+      data: { title: "Packing" },
+    });
+    expect(list.status()).toBe(201);
+    checklistId = (await list.json()).id;
+    expect(
+      (await page.request.post(`/api/checklists/${checklistId}/items`, { data: { text: "Passport" } })).status(),
+    ).toBe(201);
+  });
+
+  test.afterEach(async ({ page }) => {
+    if (tripId) await page.request.delete(`/api/trips/${tripId}`);
+    tripId = null;
+  });
+
+  test("puts the box back and says so", async ({ page }) => {
+    await page.route(`**/api/checklists/${checklistId}/items/*`, async (route) => {
+      if (route.request().method() !== "PATCH") return route.continue();
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "nope" }),
+      });
+    });
+
+    await page.goto(`/trips/${tripId}/checklists`);
+    const box = page.locator(".checklist-item input[type=checkbox]");
+    const text = page.locator(".checklist-item__text--done");
+    await expect(box).not.toBeChecked();
+
+    await box.check();
+
+    // The box goes back to what the server holds, rather than staying where the
+    // click put it.
+    await expect(box, "a failed tick must not leave the box ticked").not.toBeChecked();
+    await expect(page.locator(".checklist-item__error")).toBeVisible();
+    await expect(page.locator(".checklist-item__error")).toHaveText(/could not be saved/);
+    // And the strikethrough never moved: it describes the stored state, which
+    // is the state the box has been returned to.
+    await expect(text).toHaveCount(0);
+
+    // The server agrees with what is on screen -- which is the whole claim.
+    const stored = await (await page.request.get(`/api/trips/${tripId}/checklists`)).json();
+    expect(stored[0].items[0].checked).toBe(false);
+  });
+
+  test("clears the message once a tick succeeds", async ({ page }) => {
+    let failNext = true;
+    await page.route(`**/api/checklists/${checklistId}/items/*`, async (route) => {
+      if (route.request().method() !== "PATCH") return route.continue();
+      if (!failNext) return route.continue();
+      failNext = false;
+      await route.fulfill({ status: 503, contentType: "application/json", body: "{}" });
+    });
+
+    await page.goto(`/trips/${tripId}/checklists`);
+    const box = page.locator(".checklist-item input[type=checkbox]");
+    await box.check();
+    await expect(page.locator(".checklist-item__error")).toBeVisible();
+
+    // A message that outlived the problem would be its own kind of lie.
+    await box.check();
+    await expect(box).toBeChecked();
+    await expect(page.locator(".checklist-item__error")).toBeHidden();
+    await expect(page.locator(".checklist-item__text--done")).toBeVisible();
+  });
+});

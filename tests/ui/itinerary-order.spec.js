@@ -150,6 +150,49 @@ test.describe("itinerary entry order", () => {
     ).toEqual(["Dinner", "Breakfast", "Museum"]);
   });
 
+  // Two presses in quick succession both count (Stage 22 Milestone 7).
+  //
+  // The reorder is optimistic, so by the time the first PUT answers the button
+  // that was pressed has been redrawn and there is nothing to disable. The busy
+  // guard used to hold the flag, which meant the second press did nothing at
+  // all -- correct, in that two overlapping reorders can be answered in either
+  // order, but not what was asked for. It now queues instead.
+  test("queues a second reorder rather than dropping it", async ({ page }) => {
+    await page.goto(`/trips/${tripId}/itinerary`);
+    await expect(page.locator(".itinerary-day__entries > li")).toHaveCount(3);
+
+    // Hold the first request open long enough that the second press lands while
+    // it is still in flight -- which is the whole scenario.
+    const sent = [];
+    await page.route("**/entries/order", async (route) => {
+      sent.push(JSON.parse(route.request().postData()).entry_ids);
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      await route.continue();
+    });
+
+    const rows = page.locator(".itinerary-day__entries > li");
+    await entryMenu(rows.nth(2), "Move earlier");
+    await entryMenu(rows.nth(1), "Move earlier");
+
+    // Locally both presses applied immediately, as they always did.
+    expect(await entryTitles(page)).toEqual(["Dinner", "Breakfast", "Museum"]);
+
+    // And the server ends up with that order, which is the half that used to be
+    // lost. Waiting on the API rather than on a timer: the second request is
+    // sent only once the first has answered.
+    await expect
+      .poll(async () => {
+        const days = await (await page.request.get(`/api/trips/${tripId}/itinerary`)).json();
+        const day = days.find((d) => (d.entries || []).length === 3);
+        return (day?.entries || []).map((e) => e.item_title);
+      }, { timeout: 10000 })
+      .toEqual(["Dinner", "Breakfast", "Museum"]);
+
+    // Coalesced, not queued one-per-press: the second request carries the final
+    // order rather than replaying each step.
+    expect(sent.length, `requests sent: ${JSON.stringify(sent)}`).toBeLessThanOrEqual(2);
+  });
+
   // The other half of the CSS switch. Same trip, same entries, one viewport
   // wider than the breakpoint: the buttons come back into the row and the menu
   // drops its two copies, with no reload in between - which is the point of

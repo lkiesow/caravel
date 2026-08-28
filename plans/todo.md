@@ -80,13 +80,6 @@ down.
   mind that CDP silently delivers nothing outside the viewport, so a taller
   map makes "scroll the target into view first" matter more, not less.
 
-- **A failed checklist tick leaves the box disagreeing with the server.**
-  (Noticed in Stage 20 Milestone 5.) `checklist-list.js`'s item checkbox has no
-  `try/catch`: if the PATCH fails, the box keeps the state the click gave it
-  while the server holds the other one, and nothing says so. The admin page's
-  open-signup toggle is the model -- it puts the box back and prints a message.
-  Stage 20 guarded the box against a *second* request; it did not give it an
-  error path.
 - **A new location's cover photo and files are still a post-create upload.**
   (The remainder of "create-mode writes aren't atomic", Stage 06 Milestone 4.)
   Stage 09 Milestones 1–2 made the location and its links/dates one transactional
@@ -310,13 +303,6 @@ down.
   sequential batch upload. Both work; neither is the shared idiom, so a reader
   finds three ways of saying "in flight". Folding either in means teaching the
   guard about a set of controls rather than one, and about cancellation.
-- **A dropped reorder is dropped, not queued.** (Stage 20 Milestone 5.) The
-  itinerary's move up/down is optimistic: it redraws before the PUT answers, so
-  the pressed button no longer exists to disable and the guard's flag is the
-  only thing stopping a second press. That press therefore does nothing at all -
-  correct (two overlapping reorders can be answered in either order, leaving the
-  stale one stored) but not kind. Queueing the second move, or sending the final
-  order once the first answers, would be.
 - **`confirmDialog` hardcodes a trash icon for every danger confirmation.**
   **(soon)** (Stage 14 Milestone 3.) `components/dialog.js` picks the icon from
   `danger` alone (`trash-2` when set, `check` when not), which is right for the
@@ -502,6 +488,17 @@ else runs this.
   notes from `git log` between tags instead and pass them as the release body, or
   accept thin notes and treat the compare link as the changelog. The stage plans
   are arguably the real changelog either way.
+
+- **The screenshot set does not show an expense linked to a location.** (Stage
+  22 Milestone 7.) `make screenshots` was re-run for this stage and the tour now
+  shows the itinerary row's menu and the expense form's Location field, but no
+  row in `expenses.png` actually *names* a location, so the link itself is
+  invisible. Dressing it in `gen_screenshots.mjs` was considered and dropped: the
+  seeded expenses and locations share no titles, so any pairing would come from
+  a heuristic, and a heuristic that links "Fuel, Route 1" to a hotel is the
+  waterfall-offered-a-hostel failure that file already warns about. The honest
+  fix is a seeded expense that names a seeded location, in `cmd/seed` where the
+  pairing can be deliberate.
 
 - **The documentation screenshots go stale silently.** (Stage 18 Milestone 11.)
   `make screenshots` regenerates them and `scripts/check_screenshots.py` keeps

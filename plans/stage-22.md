@@ -839,6 +839,56 @@ making the PATCH fail (route interception) and asserting the box returns to its
 prior state *and* a message is shown. `itinerary-order.spec.js` for two rapid
 presses producing the final order on the server, not the first one.
 
+**Done.** Both fixes as planned, plus the sweep.
+
+**The checklist tick** now wraps its PATCH: on failure the box returns to
+`item.checked` — the state the *server* holds — and a message appears on its own
+line under the row. `item.checked` and the strikethrough are deliberately left
+alone, because they already describe what is stored, which is what the box is
+being returned to. The message joins `base.css`'s shared error-callout rule
+rather than becoming a tenth bespoke error style; that rule exists because five
+copies were once collapsed into it, and adding a sixth caller is the cheap half
+of the lesson. `.checklist-item` gained `flex-wrap` so the line has somewhere to
+go.
+
+**The reorder queues instead of being dropped.** Reordering came *out* of the
+day's busy guard — that guard was the thing dropping the second press — and got
+its own one-in-flight-plus-pending state per day. The pending flag is cleared
+*before* each send rather than after, so a press landing during a request sets
+it again instead of being swallowed by the request it arrived too late for. Ten
+rapid presses are at most two requests, and the second carries the final order.
+Remove and move-to-another-day stay guarded: they are structural changes to the
+day, not an order to be coalesced.
+
+Worth stating what this trades: a reorder can now overlap a delete on the same
+day, and the server will refuse the stale order with a 400. That path already
+existed and already ends in re-reading the day from the server, which is the
+right answer — so the failure is self-correcting rather than new.
+
+**The sweep.** `make screenshots` regenerated the set: the tour now shows the
+itinerary row's `⋮` menu with full titles beside it, and the expense form's
+Location field. Eleven of fifteen images changed, most of them only because the
+seeded photos and relative dates land differently on each run. `plans/todo.md`
+lost the two entries this milestone implemented and gained one the sweep
+surfaced — no row in `expenses.png` actually names a location, and dressing one
+was considered and dropped because the seeded expenses and locations share no
+titles, so any pairing would come from a heuristic and a heuristic that links
+"Fuel, Route 1" to a hotel is the failure `gen_screenshots.mjs` already warns
+about.
+
+**Verified.** `make ci` green (390 keys). Full UI suite green at **156 passed**,
+with three new specs: a failed tick returning the box and showing a message with
+the server agreeing, the message clearing once a tick succeeds, and two rapid
+reorders producing the final order on the server in at most two requests. The
+reorder spec was **checked against the unfixed code** and fails there — on the
+*local* order, since the old guard dropped the whole call rather than only its
+request.
+
+One flake on the first full run: `register.spec.js` failed once and passed both
+in isolation and on a re-run. That is the shape of the login-limiter entry
+already in `todo.md` (10/min/IP, and a full run spends several), though I did
+not capture the message to confirm it.
+
 ---
 
 ## Build order

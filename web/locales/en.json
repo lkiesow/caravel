@@ -294,6 +294,7 @@
   "checklists.renamePrompt": "New name for this list",
   "checklists.listActions": "List actions",
   "checklists.itemActions": "Item actions",
+  "checklists.tickFailed": "That change could not be saved. The item is shown as the server has it.",
   "checklists.editItem": "Edit",
   "checklists.editItemPrompt": "New text for this item",
   "item.detail.files": "Files",

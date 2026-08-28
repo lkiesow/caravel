@@ -272,6 +272,12 @@ export async function renderItineraryTab(container, trip) {
         }
       `;
       const guarded = entryGuard(el);
+      const guardedEntryAction = guarded.wrap(async (action) => {
+        if (action === "move") return moveToDay(day, entry);
+        await api.delete(`/itinerary/days/${day.id}/entries/${entry.id}`);
+        day.entries = day.entries.filter((e) => e.id !== entry.id);
+        renderEntries(el, day);
+      });
       // Remove used to be a third icon in this row. Moving to another day would
       // have made it a fourth, which is the pile-up the checklist row and the
       // file row both already answered with a menu. Up and down stay as
@@ -313,18 +319,18 @@ export async function renderItineraryTab(container, trip) {
           label: "",
           ariaLabel: "itinerary.entryActions",
           items: menuItems,
-          onSelect: guarded.wrap(async (action) => {
+          // Reordering is deliberately outside the guard -- it queues rather
+          // than being dropped, see moveEntry. Everything else here is a
+          // structural change to the day and stays guarded.
+          onSelect: (action) => {
             if (action === "move-up") return moveEntry(el, day, index, -1);
             if (action === "move-down") return moveEntry(el, day, index, 1);
-            if (action === "move") return moveToDay(day, entry);
-            await api.delete(`/itinerary/days/${day.id}/entries/${entry.id}`);
-            day.entries = day.entries.filter((e) => e.id !== entry.id);
-            renderEntries(el, day);
-          }),
+            return guardedEntryAction(action);
+          },
         });
       }
-      li.querySelector('[data-action="move-up"]')?.addEventListener("click", guarded.wrap(() => moveEntry(el, day, index, -1)));
-      li.querySelector('[data-action="move-down"]')?.addEventListener("click", guarded.wrap(() => moveEntry(el, day, index, 1)));
+      li.querySelector('[data-action="move-up"]')?.addEventListener("click", () => moveEntry(el, day, index, -1));
+      li.querySelector('[data-action="move-down"]')?.addEventListener("click", () => moveEntry(el, day, index, 1));
       list.appendChild(li);
     });
   }
@@ -381,7 +387,15 @@ export async function renderItineraryTab(container, trip) {
   // renumbers a day in one transaction, so a reorder cannot be observed
   // half-applied. On failure the day is reloaded from the server rather than
   // left showing an order that was not saved.
-  async function moveEntry(el, day, index, delta) {
+  //
+  // A second press while the first is in flight is *queued*, not dropped
+  // (Stage 22 Milestone 7). It used to be dropped: the shared busy guard held
+  // the flag, so pressing move-up twice quickly moved the entry one place and
+  // silently ignored the second press. That was correct -- two overlapping
+  // reorders can be answered in either order, leaving the stale one stored --
+  // but it is not what the user asked for, and there is no button left to
+  // disable, because the row is redrawn before the request answers.
+  function moveEntry(el, day, index, delta) {
     const target = index + delta;
     if (target < 0 || target >= day.entries.length) return;
 
@@ -416,10 +430,42 @@ export async function renderItineraryTab(container, trip) {
     ];
     candidates.find((c) => c && !c.disabled && c.offsetParent !== null)?.focus();
 
+    sendOrder(el, day);
+  }
+
+  // One in-flight order request per day, with the latest order queued behind
+  // it. Presses are absorbed by the local state either way -- day.entries is
+  // already the order the user is looking at -- so the queue holds a *flag*
+  // rather than a list of orders: whatever the day looks like when the current
+  // request answers is what gets sent next. Ten rapid presses are two requests,
+  // and the second one carries the final order.
+  //
+  // Serialised rather than concurrent because the answers can arrive in either
+  // order, and the loser would be what the server keeps.
+  const orderRequests = new WeakMap();
+
+  async function sendOrder(el, day) {
+    let state = orderRequests.get(el);
+    if (!state) {
+      state = { inFlight: false, pending: false };
+      orderRequests.set(el, state);
+    }
+    if (state.inFlight) {
+      state.pending = true;
+      return;
+    }
+
+    state.inFlight = true;
     try {
-      await api.put(`/itinerary/days/${day.id}/entries/order`, {
-        entry_ids: reordered.map((e) => e.id),
-      });
+      do {
+        // Cleared before the send, not after: a press that lands *during* this
+        // request has to set it again, or it would be swallowed by the
+        // request it arrived too late for.
+        state.pending = false;
+        await api.put(`/itinerary/days/${day.id}/entries/order`, {
+          entry_ids: day.entries.map((e) => e.id),
+        });
+      } while (state.pending);
     } catch (err) {
       console.error("reorder failed", err);
       // The server is the authority on the order, so re-read this day rather
@@ -437,6 +483,8 @@ export async function renderItineraryTab(container, trip) {
       } catch (reloadErr) {
         console.error("could not re-read the day after a failed reorder", reloadErr);
       }
+    } finally {
+      state.inFlight = false;
     }
   }
 

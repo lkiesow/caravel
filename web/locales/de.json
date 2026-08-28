@@ -294,6 +294,7 @@
   "checklists.renamePrompt": "Neuer Name für diese Liste",
   "checklists.listActions": "Listenaktionen",
   "checklists.itemActions": "Eintragsaktionen",
+  "checklists.tickFailed": "Diese Änderung konnte nicht gespeichert werden. Der Eintrag wird so angezeigt, wie er auf dem Server steht.",
   "checklists.editItem": "Bearbeiten",
   "checklists.editItemPrompt": "Neuer Text für diesen Eintrag",
   "item.detail.files": "Dateien",

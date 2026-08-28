@@ -7,7 +7,11 @@ import (
 	"io/fs"
 	"net/http"
 	"path"
+	"sort"
 	"strings"
+	"time"
+
+	"caravel/internal/buildinfo"
 )
 
 // Static assets ship inside the binary, and until Stage 23 they shipped with
@@ -136,4 +140,88 @@ func (s *Server) serveStatic(fileServer http.Handler, w http.ResponseWriter, r *
 	}
 
 	fileServer.ServeHTTP(w, r)
+}
+
+// swVersionPlaceholder is what web/sw.js carries on disk, and what
+// handleServiceWorker substitutes on the way out. It has to be inside a
+// string literal in the file, because scripts/check_js.sh parses sw.js with
+// node --check and a bare token would not be valid JavaScript.
+const swVersionPlaceholder = "__CARAVEL_BUILD__"
+
+// assetTreeFingerprint hashes the whole asset tree down to one short string:
+// the ETags of every file, in path order, hashed again.
+//
+// This is what keys the service worker's cache, and it is a better key than
+// the build version for the reason the version looked attractive: the version
+// changes on every commit, including the many that touch only Go, and each
+// change throws away every asset every client has cached. The fingerprint
+// changes exactly when a served file does, which is precisely the condition
+// under which a client must drop what it has.
+func assetTreeFingerprint(tags assetETagMap) string {
+	paths := make([]string, 0, len(tags))
+	for p := range tags {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+	sum := sha256.New()
+	for _, p := range paths {
+		_, _ = io.WriteString(sum, p)
+		_, _ = io.WriteString(sum, "=")
+		_, _ = io.WriteString(sum, tags[p])
+		_, _ = io.WriteString(sum, "\n")
+	}
+	return hex.EncodeToString(sum.Sum(nil))[:12]
+}
+
+// serviceWorkerVersion is the cache key the worker runs with.
+//
+// Both halves are here on purpose. The fingerprint is what makes it correct;
+// the build version is what makes a cache legible in DevTools, where
+// "caravel-shell-a1b2c3d4e5f6" alone tells nobody which deploy it belongs to.
+// In dev there is no fingerprint - the ETag map is not built, because the
+// files change under the process - so the version stands alone, and nothing
+// is cached there anyway.
+func (s *Server) serviceWorkerVersion() string {
+	if len(s.assetETags) == 0 {
+		return buildinfo.Version
+	}
+	return buildinfo.Version + "-" + assetTreeFingerprint(s.assetETags)
+}
+
+// handleServiceWorker serves /sw.js with its cache key substituted in.
+//
+// The point is not that the worker can read a version; it is that the *bytes
+// of this file change when a deploy changes the assets*. That is the only
+// thing a browser watches to decide the worker has been updated, and it is
+// what makes install-and-purge happen on its own instead of waiting for
+// somebody to remember to edit a constant. CACHE_VERSION had been edited four
+// times in the project's life, against a web/js directory that changes
+// constantly.
+func (s *Server) handleServiceWorker(w http.ResponseWriter, r *http.Request) {
+	f, err := s.WebFS.Open("/sw.js")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	defer f.Close()
+	body, err := io.ReadAll(f)
+	if err != nil {
+		http.Error(w, "could not read service worker", http.StatusInternalServerError)
+		return
+	}
+	out := strings.ReplaceAll(string(body), swVersionPlaceholder, s.serviceWorkerVersion())
+
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	if s.NoCache {
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	} else {
+		// The worker script is the one file that must never be served stale
+		// from the HTTP cache: it is what discovers every other update. A
+		// browser caps this at 24h of its own accord; no-cache plus a
+		// validator makes it a 304 rather than a refetch when nothing moved.
+		sum := sha256.Sum256([]byte(out))
+		w.Header().Set("ETag", `"`+hex.EncodeToString(sum[:])[:16]+`"`)
+		w.Header().Set("Cache-Control", "no-cache")
+	}
+	http.ServeContent(w, r, "sw.js", time.Time{}, strings.NewReader(out))
 }

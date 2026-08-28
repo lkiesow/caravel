@@ -208,6 +208,75 @@ this milestone: load the app, `make build` with a changed string in a JS
 module, restart, reload **without** a force reload, and see the change. Record
 the before/after in the Done paragraph.
 
+**Done.** `/sw.js` is now a route (`handleServiceWorker`) rather than a plain
+file, substituting `__CARAVEL_BUILD__` in `web/sw.js` on the way out.
+
+**Deviation from the plan, and the reason.** The plan said key the cache on
+`buildinfo.Version` with a content hash as fallback. It is the other way round:
+the key is `buildinfo.Version + "-" + assetTreeFingerprint(...)`, and the
+fingerprint is what makes it correct. The version alone changes on every
+commit, including the many that touch only Go, and each change would throw away
+every asset every client has cached. The fingerprint - the ETags of every file,
+in path order, hashed again - changes exactly when a served file does. The
+version stays in the string because a cache called
+`caravel-shell-a1b2c3d4e5f6` tells nobody in DevTools which deploy it belongs
+to. In dev there is no fingerprint (the ETag map is not built) so the version
+stands alone, and nothing is cached there anyway.
+
+**A second deviation: code is network-first, not stale-while-revalidate.** The
+plan said SWR for all assets. Writing it exposed the flaw: SWR answers the
+first load after a deploy from the old cache and only *then* refreshes, so a
+new build takes **two** reloads to appear - a smaller version of the bug this
+milestone exists to fix. So navigations and code (`.js`, `.css`, `.json`) go
+network-first, and only fonts, icons and images keep SWR, where an instant hit
+is worth having and being one version behind for a single load costs nothing.
+Network-first is cheap precisely because of Milestone 1: an unchanged module is
+a conditional request and a 304, not a refetch.
+
+**A latent break Milestone 1 introduced, fixed here.** `isCacheable` refused any
+response whose `Cache-Control` contained `no-cache` - written when only dev sent
+such a header. Milestone 1 made *every production asset* send `no-cache`, which
+silently switched the service worker's cache off entirely. It now refuses only
+`no-store`, which is the honest reading: `no-cache` means "keep it, revalidate
+before use", and revalidating is exactly what the new strategy does. Also
+rewritten: `isCacheable` takes `(response, allowHTML)` rather than a request,
+because a `Request` built in script cannot have mode `"navigate"` - the
+constructor refuses it - so deriving the HTML guard from `request.mode` made the
+precache fail its own check.
+
+**Verified against the actual complaint, with a negative control.** A git
+worktree at `8699f14` (pre-Stage-23) and the working tree were each built with a
+marker written into `web/js/app.js`, so the marker proves the *module graph*
+came fresh rather than just `index.html`. Both were driven to the same steady
+state: service worker controlling, 54 assets in its runtime cache.
+
+- **Old code, port 8131.** Deployed MARKER-TWO; `curl` confirmed the server
+  served it. The browser then read MARKER-ONE on reload, and on a second and
+  third reload. `fetch("/js/app.js", {cache: "no-store"})` *also* returned
+  MARKER-ONE, because the worker intercepts it - which is why a force reload was
+  the only workaround. Cache key stayed `caravel-shell-v4` throughout.
+- **New code, port 8132.** Same deploy. The served key changed on its own from
+  `caravel-shell-dev-5f6bf275e5dc` to `caravel-shell-dev-b8d44aae88a3`, and
+  **one plain reload** showed MARKER-TWO with the old cache gone.
+
+Offline was re-checked, since it is the reason a worker exists at all: with the
+server stopped, a steady-state client still rendered the full login page and ran
+its module graph (the marker was readable), serving 54 entries from cache.
+
+**One transient gap, accepted.** Going offline *during* the first load after a
+deploy loses the code cache: those module responses went into the outgoing
+cache, which the new worker's `activate` then purges, leaving only the six
+precached shell URLs. The next online load repopulates all 54. Standard
+purge-on-activate behaviour, converging after one load; noted rather than
+worked around.
+
+Also: four Go tests (substitution happens, the key tracks the asset tree and
+holds still when nothing changes, dev mode still substitutes and keeps
+`no-store`, and `web/sw.js` really does contain the placeholder the handler
+looks for - a rename on either side would otherwise silently restore the bug).
+`make ci` green, full UI suite green at 156 passed. `CLAUDE.md`'s instruction to
+bump `CACHE_VERSION` by hand was removed, since it is no longer true.
+
 ---
 
 ## 3. Creating a location becomes one request — the server

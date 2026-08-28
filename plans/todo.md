@@ -564,33 +564,27 @@ down.
 Nothing here is needed to keep developing; all of it is needed before anyone
 else runs this.
 
-- **A new version does not reach the browser without a force reload.** (User's
-  notes, Stage 23 planning. Reported as browser caching, and it is not. The
-  HTTP-layer half landed in Stage 23 Milestone 1; what is below is what is
-  left.)
-  `web/sw.js:54-73` is a **cache-first service worker with no revalidation**: it
-  runtime-populates every same-origin GET — all 43 JS modules, the locales, the
-  icon sprite, the Leaflet vendor copy — into a single cache keyed on a
-  hand-edited `CACHE_VERSION`, and `activate` only purges when that constant
-  changes. It has been touched four times in the project's life while `web/js`
-  changed constantly, and `CLAUDE.md` documents bumping it as a manual step.
-  A force reload bypasses the service worker, which is exactly why it is the
-  workaround that works.
-  **Done in Milestone 1**, and no longer part of this: assets now carry a
-  content-derived `ETag` and `Cache-Control: no-cache`, so the HTTP layer can
-  revalidate; and a missing asset path answers a real 404 instead of 200 with
-  `index.html`, which had let the service worker cache an HTML document under a
-  JS module URL permanently.
-  **What is left** is the service worker itself: derive `CACHE_VERSION` from
-  `internal/buildinfo` (already stamped, already surfaced at `/api/health`, with
-  a content-hash fallback for the `dev`/`unknown` builds) so the constant stops
-  being a manual step, and replace cache-first-forever with network-first for
-  navigations and stale-while-revalidate for assets. Note also that
-  `skipWaiting()` + `clients.claim()` swap the worker under a running page, so a
-  live tab can mix module versions.
-  A build step with hashed filenames would also solve it and is **not** the
-  cheap answer here: there is no import map and 194 bare relative imports, and
-  `package.json:6` records the absence of a bundler as deliberate.
+- **A service worker update can leave one tab mixing two builds.** (Stage 23
+  Milestone 2; the rest of the stale-asset entry was implemented there and is
+  gone.) The worker calls `skipWaiting()` and `clients.claim()`, so a new build
+  takes over a page that is already running. Navigations and code are
+  network-first now, so a reload is always coherent -- but a module imported
+  lazily *after* the swap (there is one, the Leaflet vendor copy in
+  `leaflet-map.js:438`) is fetched under the new cache while the modules around
+  it came from the old one. Low risk, since that import is a vendored library
+  that rarely changes, and the alternative -- dropping `skipWaiting()` so the
+  new worker waits for every tab to close -- delays the fix this milestone was
+  for. The real answer if it ever bites is to notice `controllerchange` and
+  offer a reload rather than to stop claiming.
+
+- **Going offline during the first load after a deploy loses the code cache.**
+  (Stage 23 Milestone 2.) The new worker's `activate` purges the previous
+  cache, and the modules that load *during* that first post-deploy navigation
+  went into the outgoing one -- so a client that goes offline in that window has
+  only the six precached shell URLs and cannot boot. The next online load
+  repopulates all 54 entries. This is ordinary purge-on-activate behaviour and
+  it converges after one load; fixing it would mean precaching the module graph
+  on install, which is the brittle enumeration `web/sw.js` was written to avoid.
 
 - **The RPM has no repository, and no real-host verification of its unit.**
   (Stage 18, RPM follow-up.) Packages are attached to each GitHub release, so

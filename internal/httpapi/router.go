@@ -428,6 +428,11 @@ func (s *Server) buildRouter() chi.Router {
 		})
 	})
 
+	// Ahead of the static tree because it is not served as a plain file: the
+	// build fingerprint is substituted into it, which is what makes a deploy
+	// invalidate the worker's cache without anyone editing a constant.
+	r.Get("/sw.js", s.handleServiceWorker)
+
 	fileServer := http.FileServer(s.WebFS)
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		s.serveStatic(fileServer, w, r)

@@ -3,6 +3,9 @@ package httpapi
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"testing/fstest"
 )
@@ -163,5 +166,105 @@ func TestAssetETagsFollowContent(t *testing.T) {
 	changed["js/app.js"] = &fstest.MapFile{Data: []byte("export const hello = 2;\n")}
 	if buildAssetETags(changed)["/js/app.js"] == tags["/js/app.js"] {
 		t.Fatal("changed content kept its ETag; a new build would never reach a cached client")
+	}
+}
+
+// swFS is staticFS plus a worker carrying the placeholder, which is what the
+// real web/sw.js looks like on disk.
+func swFS() fstest.MapFS {
+	fsys := staticFS()
+	fsys["sw.js"] = &fstest.MapFile{
+		Data: []byte(`const CACHE_VERSION = "caravel-shell-` + swVersionPlaceholder + `";` + "\n"),
+	}
+	return fsys
+}
+
+func newSWServer(t *testing.T, noCache bool) *testServer {
+	t.Helper()
+	return newTestServerWith(t, nil, func(o *Options) {
+		o.WebFS = swFS()
+		o.NoCache = noCache
+	})
+}
+
+// The whole mechanism: the worker the browser receives must never still carry
+// the placeholder, because a constant that does not change is exactly the
+// manual step this replaces.
+func TestServiceWorkerVersionIsSubstituted(t *testing.T) {
+	ts := newSWServer(t, false)
+
+	res := getStatic(ts, "/sw.js", nil)
+	if res.Code != http.StatusOK {
+		t.Fatalf("GET /sw.js = %d, want 200", res.Code)
+	}
+	body := res.Body.String()
+	if strings.Contains(body, swVersionPlaceholder) {
+		t.Fatalf("the placeholder reached the browser: %q", body)
+	}
+	if want := ts.Server.serviceWorkerVersion(); !strings.Contains(body, want) {
+		t.Fatalf("body %q does not carry the version %q", body, want)
+	}
+	if ct := res.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/javascript") {
+		t.Fatalf("Content-Type = %q, want text/javascript", ct)
+	}
+	// The worker script is what discovers every other update, so it must not
+	// be served stale from the HTTP cache either.
+	if got := res.Header().Get("Cache-Control"); got != "no-cache" {
+		t.Fatalf("Cache-Control = %q, want no-cache", got)
+	}
+	if res.Header().Get("ETag") == "" {
+		t.Fatal("/sw.js carried no ETag")
+	}
+}
+
+// The key must change when a served asset changes, and hold still when
+// nothing does — the two halves of "a deploy invalidates the cache, and only
+// a deploy does".
+func TestServiceWorkerVersionTracksTheAssetTree(t *testing.T) {
+	base := swFS()
+	ts := newTestServerWith(t, nil, func(o *Options) { o.WebFS = base })
+	first := ts.Server.serviceWorkerVersion()
+
+	same := newTestServerWith(t, nil, func(o *Options) { o.WebFS = swFS() })
+	if got := same.Server.serviceWorkerVersion(); got != first {
+		t.Fatalf("an unchanged tree produced two keys: %q then %q", first, got)
+	}
+
+	changed := swFS()
+	changed["js/app.js"] = &fstest.MapFile{Data: []byte("export const hello = 99;\n")}
+	moved := newTestServerWith(t, nil, func(o *Options) { o.WebFS = changed })
+	if got := moved.Server.serviceWorkerVersion(); got == first {
+		t.Fatalf("a changed asset kept the cache key %q; clients would never drop the old files", got)
+	}
+}
+
+// In dev there is no fingerprint, because the ETag map is not built: the
+// files change under the running process. The worker still gets a key and
+// still must not carry the placeholder.
+func TestServiceWorkerInDevMode(t *testing.T) {
+	ts := newSWServer(t, true)
+
+	res := getStatic(ts, "/sw.js", nil)
+	if res.Code != http.StatusOK {
+		t.Fatalf("GET /sw.js = %d, want 200", res.Code)
+	}
+	if strings.Contains(res.Body.String(), swVersionPlaceholder) {
+		t.Fatal("dev mode served the placeholder unsubstituted")
+	}
+	if got := res.Header().Get("Cache-Control"); got != "no-cache, no-store, must-revalidate" {
+		t.Fatalf("dev Cache-Control = %q, want the no-store header", got)
+	}
+}
+
+// The real web/sw.js has to carry the placeholder the handler looks for. A
+// rename on either side would otherwise ship a worker whose cache key is a
+// literal that never changes, silently restoring the bug.
+func TestRealServiceWorkerCarriesThePlaceholder(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "..", "web", "sw.js"))
+	if err != nil {
+		t.Fatalf("read web/sw.js: %v", err)
+	}
+	if !strings.Contains(string(body), swVersionPlaceholder) {
+		t.Fatalf("web/sw.js does not contain %s; the substitution would be a no-op", swVersionPlaceholder)
 	}
 }

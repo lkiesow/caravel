@@ -201,8 +201,11 @@ check, i18n key parity, `go test`. Don't rely on CI to catch it first.
   every raster size and `web/icons/favicon.svg` come from one source; it needs
   `cairosvg`. `gen_brand_fonts.py` subsets the distribution's OFL Montserrat
   (`julietaula-montserrat-fonts` on Fedora) and needs `fonttools[woff]`. A
-  static-asset change also wants `CACHE_VERSION` in `web/sw.js` bumped, or
-  clients keep the old files. The rules for using the assets (palette, clear
+  static-asset change used to also want `CACHE_VERSION` in `web/sw.js` bumped
+  by hand; since Stage 23 Milestone 2 it does not. The server substitutes the
+  build version plus a fingerprint of the whole asset tree into `sw.js` on the
+  way out (`handleServiceWorker`), so the key changes exactly when a served
+  file does. The rules for using the assets (palette, clear
   space, minimum sizes, PNG-vs-SVG) live in `docs/assets/brand/README.md`.
 
 - **Adding a new icon.** Icons come from a committed sprite

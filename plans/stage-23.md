@@ -128,6 +128,55 @@ carries an `ETag` and a second request with `If-None-Match` gets 304, (b)
 200 `index.html`, (d) with `NoCache` set the ETag is absent and the no-store
 header is present. Plus `make ci`.
 
+**Done.** `internal/httpapi/staticassets.go` is new and holds all three parts:
+`buildAssetETags` walks the tree once at startup and hashes each file to 16 hex
+characters of SHA-256, `isAssetRequest` decides whether a miss is a missing
+asset or a client-side route, and `serveStatic` is what the `NotFound` handler
+now delegates to. `router.go` keeps only the wiring: an `assetETags` field on
+`Server`, one call in `NewServer` guarded by `!opts.NoCache`, and a
+three-line `NotFound`.
+
+Two decisions worth recording. The tag is **content-derived, not
+version-derived** — a version-keyed tag would change on every release whether
+or not the file did, throwing away every cached asset each time, which is the
+opposite of the point. And the map is built **eagerly**: 71 files and 1.3MB
+hash in milliseconds, and doing it at startup keeps the serving path a map
+lookup with no locking. An unreadable file is skipped rather than fatal, so it
+serves as it did before this existed.
+
+`/` gets `/index.html`'s tag explicitly — the shell is reached under that name
+far more often, since it is what every deep link falls back to.
+
+Verified three ways. Six Go tests in `staticassets_test.go` cover the ETag and
+the 304, a stale validator still getting 200, the shell's tag matching under
+both names, seven missing asset paths 404ing, three deep links still reaching
+the shell, and dev mode growing no validator. As a negative control the fix was
+disabled (`isAssetRequest` returning false, the ETag branch short-circuited) and
+three of the six failed, then passed again on restore — so they are testing the
+change and not the scaffolding. Then, against a **production-mode binary**
+(embedded FS, no `CARAVEL_WEB_DIR`, port 8123): `/js/app.js` came back
+`Etag: "ef62e8e0811d0cdd"` with `Cache-Control: no-cache`, the conditional GET
+304ed, a bogus `If-None-Match` got 200, `/js/does-not-exist.js` 404ed as
+`text/plain` where it previously answered 200 with `index.html`, and
+`/trips/abc` still served the shell. All 70 servable files answered 200 with an
+ETag (`/index.html` 301s to `/`, which is `http.FileServer`'s own behaviour and
+predates this). Loading the app in a browser against that binary: 53 requests,
+no 404s, zero console errors or warnings. `make ci` green and the full UI suite
+green at 156 passed.
+
+Two things this did **not** do, deliberately. The UI suite runs with
+`CARAVEL_WEB_DIR=web` (`scripts/with_server.sh:69`), so it exercises the dev
+path and cannot see the ETags at all — the Go tests and the manual
+production-binary pass are the coverage for that half. And a directory URL such
+as `/js/` still reaches `http.FileServer`'s listing rather than 404ing, since
+`Open` succeeds for a directory; noted in the backlog rather than fixed here,
+as it predates this milestone and the source is public anyway.
+
+Unrelated but found while verifying: 31 abandoned `with_server.sh` servers, up
+to two days old, were holding the whole 8090-8120 port range and made
+`make test-ui` fail with "no free port". Killed by matching
+`/tmp/tmp.*/caravel` on their exe paths, and added to the backlog.
+
 ---
 
 ## 2. The service worker learns the build version

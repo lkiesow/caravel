@@ -46,6 +46,10 @@ type Server struct {
 	Blob    storagefs.Blob
 	WebFS   http.FileSystem // static assets (embedded, or a live directory in dev)
 	NoCache bool            // true when serving from a live directory (dev mode)
+	// assetETags maps a URL path to the strong ETag of the file it serves,
+	// hashed once at startup. Nil in dev, where NoCache says not to keep
+	// anything and the files change under the process anyway.
+	assetETags assetETagMap
 	// Geocoder resolves place names to coordinates for /api/geocode. Nil
 	// means address search is switched off: the endpoint reports that plainly
 	// and the client hides the control. Shared with Assist below, which
@@ -169,6 +173,13 @@ func NewServer(opts Options) *Server {
 		ImageSearchLimiter: newRateLimiter(10, time.Minute),
 		assistSlots:        make(chan struct{}, assistMaxConcurrent(opts.AssistMaxConcurrent)),
 		Tiles:              opts.Tiles.withDefaults(),
+	}
+	// Hashing the asset tree is skipped in dev: the files change under the
+	// running process, so a startup snapshot of their hashes would be wrong
+	// by the first edit, and NoCache already tells the browser to keep none
+	// of it.
+	if !opts.NoCache {
+		s.assetETags = buildAssetETags(opts.WebFS)
 	}
 	// The image searcher is the configured backend *if* it can do images --
 	// a type assertion rather than a second registry, so a backend that
@@ -419,15 +430,7 @@ func (s *Server) buildRouter() chi.Router {
 
 	fileServer := http.FileServer(s.WebFS)
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
-		if s.NoCache {
-			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-		}
-		// SPA fallback: serve index.html for any non-API path so client-side
-		// routing (History API) works on a hard refresh/deep link.
-		if _, err := s.WebFS.Open(r.URL.Path); err != nil {
-			r.URL.Path = "/"
-		}
-		fileServer.ServeHTTP(w, r)
+		s.serveStatic(fileServer, w, r)
 	})
 
 	return r

@@ -471,6 +471,28 @@ down.
   sweep only catches controls whose *only* name is the translated string, so an
   empty label on anything with visible text is still invisible to it. A third
   language would multiply this decision rather than inherit it.
+- **`with_server.sh` leaks its server when a run dies badly.** (Found while
+  verifying Stage 23 Milestone 1.) The script picks a free port in 8090-8120 and
+  builds a throwaway binary into a `/tmp/tmp.XXXX` directory, and normally
+  cleans both up. It does not always: 31 abandoned servers were found holding
+  the *entire* range, the oldest two days old, at which point `make test-ui`
+  fails with "no free port in 8090-8120 -- set PORT=... to pick another range".
+  The message is accurate and says nothing about the real cause, so the fix
+  divides in two: make the cleanup survive whatever is killing it (a trap that
+  covers the signals it does not currently catch, or a pidfile the next run
+  reaps), and have the no-free-port message say that the range is held by
+  processes matching `/tmp/tmp.*/caravel` and how to clear them. Until then, the
+  manual sweep is to kill the PIDs whose `/proc/PID/exe` resolves under
+  `/tmp/tmp.*/caravel` -- matching on the exe path rather than the process name,
+  which the developer's own `make dev` server also has.
+
+- **A directory URL under the asset tree still gets a listing.** (Noted in Stage
+  23 Milestone 1.) `serveStatic` sends a *missing* asset path to a real 404, but
+  `s.WebFS.Open("/js/")` succeeds for a directory, so the request never takes
+  that branch and `http.FileServer` renders its index of every module. Harmless
+  on a self-hosted app whose source is public, and it predates the milestone
+  that noticed it; the fix is one `Stat` for `IsDir` in the same place.
+
 - **Two concurrent UI runs still share Playwright's `test-results/`.** (Stage 19
   Milestone 1.) Everything else about a run is now private to it -- port,
   database, uploads, saved sessions -- but the output directory is still the
@@ -543,33 +565,32 @@ Nothing here is needed to keep developing; all of it is needed before anyone
 else runs this.
 
 - **A new version does not reach the browser without a force reload.** (User's
-  notes, Stage 23 planning. Reported as browser caching, and it is not.)
+  notes, Stage 23 planning. Reported as browser caching, and it is not. The
+  HTTP-layer half landed in Stage 23 Milestone 1; what is below is what is
+  left.)
   `web/sw.js:54-73` is a **cache-first service worker with no revalidation**: it
   runtime-populates every same-origin GET — all 43 JS modules, the locales, the
   icon sprite, the Leaflet vendor copy — into a single cache keyed on a
   hand-edited `CACHE_VERSION`, and `activate` only purges when that constant
   changes. It has been touched four times in the project's life while `web/js`
   changed constantly, and `CLAUDE.md` documents bumping it as a manual step.
-  Nothing else is in play to correct it: production sets no `Cache-Control` and
-  no `ETag`, and `embed.FS` reports a zero modtime so `http.ServeContent` omits
-  `Last-Modified` too — an embedded build ships its assets with no validator and
-  no freshness directive at all. A force reload bypasses the service worker,
-  which is exactly why it is the workaround that works.
-  Two aggravators worth fixing in the same breath. `router.go:427` rewrites any
-  unknown path to `/`, so a stale client asking for a since-deleted
-  `/js/foo.js` gets `index.html` with **200**, and the service worker caches
-  that HTML under the JS URL permanently. And `skipWaiting()` +
-  `clients.claim()` swap the worker under a running page, so a live tab can mix
-  module versions.
+  A force reload bypasses the service worker, which is exactly why it is the
+  workaround that works.
+  **Done in Milestone 1**, and no longer part of this: assets now carry a
+  content-derived `ETag` and `Cache-Control: no-cache`, so the HTTP layer can
+  revalidate; and a missing asset path answers a real 404 instead of 200 with
+  `index.html`, which had let the service worker cache an HTML document under a
+  JS module URL permanently.
+  **What is left** is the service worker itself: derive `CACHE_VERSION` from
+  `internal/buildinfo` (already stamped, already surfaced at `/api/health`, with
+  a content-hash fallback for the `dev`/`unknown` builds) so the constant stops
+  being a manual step, and replace cache-first-forever with network-first for
+  navigations and stale-while-revalidate for assets. Note also that
+  `skipWaiting()` + `clients.claim()` swap the worker under a running page, so a
+  live tab can mix module versions.
   A build step with hashed filenames would also solve it and is **not** the
   cheap answer here: there is no import map and 194 bare relative imports, and
-  `package.json:6` records the absence of a bundler as deliberate. The small
-  fixes are an ETag from the embedded content plus `Cache-Control: no-cache`, a
-  real 404 for missing asset paths, a `CACHE_VERSION` derived from
-  `internal/buildinfo` (already stamped and already surfaced at `/api/health`,
-  with a content-hash fallback for the `dev`/`unknown` builds), and a fetch
-  strategy of network-first for navigations and stale-while-revalidate for
-  assets.
+  `package.json:6` records the absence of a bundler as deliberate.
 
 - **The RPM has no repository, and no real-host verification of its unit.**
   (Stage 18, RPM follow-up.) Packages are attached to each GitHub release, so

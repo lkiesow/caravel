@@ -93,29 +93,77 @@ down.
   endpoint. Softened a lot by Stage 07 Milestone 9's preview-error handler: a URL
   the browser itself can't load is already flagged in the card before Create is
   pressed.
-- **The map is half the screen on a phone.** **(soon)** (Stage 21.)
+- **The map is half the screen on a phone.** **(soon)** (Stage 21; the stated
+  blocker re-examined in Stage 23 planning and found already answered.)
   `web/js/components/leaflet-map.js:257-269` caps `#map` at
   `min(50vh, 20rem)` under `@media (max-width: 640px)`, which at 324x756
-  leaves the map smaller than it wants to be for actually reading one. It
-  should be able to grow -- but never past the screen. **The cap is not an
-  oversight**: it is the Stage 13 Milestone 1 fix for the map swallowing the
-  page scroll. A flat 50vh left about 67px of page below the map at 324x756,
-  so a drag starting in the lower half had nowhere to go but the map, and the
-  legend's `order: -1` (moving it above the map) exists partly to leave a
-  drag-safe strip to start a page drag in. So raising the height needs an
-  answer for where the page is still draggable. `tests/ui/map.gesture.spec.js`
-  is what would catch a regression, and it drives real touch through CDP --
-  mind that CDP silently delivers nothing outside the viewport, so a taller
-  map makes "scroll the target into view first" matter more, not less.
+  leaves the map smaller than it wants to be for actually reading one.
+  This entry used to say the cap was load-bearing -- the Stage 13 Milestone 1
+  fix for the map swallowing the page scroll, with the legend's `order: -1`
+  leaving a drag-safe strip to start a page drag in. That reasoning is from
+  *before* the same milestone landed `dragging: !isCoarsePointer()`
+  (`leaflet-map.js:454`). With Leaflet's drag handler off on a coarse pointer,
+  a one-finger drag over the map is never consumed by the map at any height,
+  so the page stays draggable everywhere and the strip is not what makes it
+  work. The cap is belt-and-braces, not the fix.
+  What raising it does need is that the blanket rule be made **mode-specific**
+  first: the component mounts three ways -- the trip Map tab
+  (`trip-detail-page.js:131`, plain `:host`), the location view
+  (`location-view-page.js:92`, `:host([lat])`, 16rem) and the editor picker
+  (`location-editor-page.js:164`, `:host([pick])`, 20rem) -- and one `#map`
+  rule covers all of them, so a big number would put a full-height map inside
+  a form card. Note the two smaller modes are currently *inflated* to 320px by
+  that same rule.
+  `tests/ui/map.gesture.spec.js` is what would catch a regression, and it
+  drives real touch through CDP -- mind that CDP silently delivers nothing
+  outside the viewport, so a taller map makes "scroll the target into view
+  first" matter more, not less.
 
-- **A new location's cover photo and files are still a post-create upload.**
-  (The remainder of "create-mode writes aren't atomic", Stage 06 Milestone 4.)
+- **A failed cover photo on a new location creates a second location.**
+  (The remainder of "create-mode writes aren't atomic", Stage 06 Milestone 4;
+  the duplicate half found in Stage 23 planning. Reported by the user.)
   Stage 09 Milestones 1–2 made the location and its links/dates one transactional
   request, but a photo and files can't ride in a JSON body, so they're staged in
-  memory and `flushUploads()` writes them once the create returns an ID. If that
-  fails the location exists without them; the failure reports inline in the Basic
-  info card and the page stays put, so it can be retried. Closing the gap
-  entirely means a multipart create endpoint — not obviously worth it.
+  memory and `flushUploads()` writes them once the create returns an ID.
+  This entry used to say a failure there was merely retryable. It is not:
+  `location-editor-page.js:348-368` never assigns the created item to the page's
+  `item` binding, so on the failure branch the page is still in **create** mode
+  — heading, button label, back link, and the image and file fields still
+  staging. Pressing Save again therefore runs `POST /trips/{id}/items` a second
+  time and creates a *second* location, once per retry; Cancel navigates away and
+  silently leaves the first one behind, coverless. The `saveGuard` does not help,
+  it guards concurrent submits only.
+  Two fixes of different depth. The cheap one is to adopt the created item and
+  re-render into edit mode, which makes a retry complete the location rather than
+  duplicate it — resumable, not atomic. The honest one is a multipart create
+  endpoint carrying the JSON, the cover and the files in one request: mint the
+  item ID up front (`CreateItem` already takes a caller-generated one) and the
+  file storage key that needs it (`files.go:134`), write the blobs, then one
+  `WithTx` for item, nested rows, media asset and file rows together.
+
+- **The coordinate picker does not go to the coordinates you type.** (User's
+  notes, Stage 23 planning.) `leaflet-map.js:622-630` recentres the pick marker
+  on the first render, and after that only when the point has left the viewport
+  — a rule written to stop the map yanking on every keystroke. It has a hole
+  at the case that matters most: an editor opened with no coordinates sits at
+  the world view, zoom 2, and a marker dropped anywhere on Earth is inside
+  *those* bounds. So filling in latitude and longitude moves a pin the user
+  cannot see, on a map that never zooms in. The fix is to treat the marker's
+  *creation* on an untouched map as an initial render; "untouched" wants a flag
+  set from the map's own `zoomend`/`dragend` rather than a zoom-level test, or
+  a deliberate zoom-out to 2 is mistaken for it.
+
+- **The mouse wheel over a map zooms it instead of scrolling the page.** (User's
+  notes, Stage 23 planning.) `scrollWheelZoom` appears nowhere in the codebase,
+  so Leaflet's default — enabled — applies to all three maps on desktop, and a
+  page scroll that happens to pass under the cursor turns into a zoom. The
+  embedded-Google-Maps convention is the answer: require Ctrl (or Meta) for the
+  wheel to zoom, and show a brief semi-transparent overlay explaining it when a
+  plain wheel arrives. The touch half of the same problem is already solved
+  — `dragging: !isCoarsePointer()` (`leaflet-map.js:454`) plus a `map.twoFingerHint`
+  caption — but that caption is permanent and sits below the map rather than
+  appearing when the one-finger drag it describes actually happens, so it wants
+  folding into the same overlay.
 
 ---
 
@@ -493,6 +541,35 @@ down.
 
 Nothing here is needed to keep developing; all of it is needed before anyone
 else runs this.
+
+- **A new version does not reach the browser without a force reload.** (User's
+  notes, Stage 23 planning. Reported as browser caching, and it is not.)
+  `web/sw.js:54-73` is a **cache-first service worker with no revalidation**: it
+  runtime-populates every same-origin GET — all 43 JS modules, the locales, the
+  icon sprite, the Leaflet vendor copy — into a single cache keyed on a
+  hand-edited `CACHE_VERSION`, and `activate` only purges when that constant
+  changes. It has been touched four times in the project's life while `web/js`
+  changed constantly, and `CLAUDE.md` documents bumping it as a manual step.
+  Nothing else is in play to correct it: production sets no `Cache-Control` and
+  no `ETag`, and `embed.FS` reports a zero modtime so `http.ServeContent` omits
+  `Last-Modified` too — an embedded build ships its assets with no validator and
+  no freshness directive at all. A force reload bypasses the service worker,
+  which is exactly why it is the workaround that works.
+  Two aggravators worth fixing in the same breath. `router.go:427` rewrites any
+  unknown path to `/`, so a stale client asking for a since-deleted
+  `/js/foo.js` gets `index.html` with **200**, and the service worker caches
+  that HTML under the JS URL permanently. And `skipWaiting()` +
+  `clients.claim()` swap the worker under a running page, so a live tab can mix
+  module versions.
+  A build step with hashed filenames would also solve it and is **not** the
+  cheap answer here: there is no import map and 194 bare relative imports, and
+  `package.json:6` records the absence of a bundler as deliberate. The small
+  fixes are an ETag from the embedded content plus `Cache-Control: no-cache`, a
+  real 404 for missing asset paths, a `CACHE_VERSION` derived from
+  `internal/buildinfo` (already stamped and already surfaced at `/api/health`,
+  with a content-hash fallback for the `dev`/`unknown` builds), and a fetch
+  strategy of network-first for navigations and stale-while-revalidate for
+  assets.
 
 - **The RPM has no repository, and no real-host verification of its unit.**
   (Stage 18, RPM follow-up.) Packages are attached to each GitHub release, so

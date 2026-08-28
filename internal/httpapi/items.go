@@ -269,6 +269,16 @@ func (s *Server) handleCreateItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A multipart body carries the cover photo and the files alongside the
+	// item, so the whole location commits or does not -- see items_create.go.
+	// The JSON path below stays exactly as it was: it is what the assistant
+	// and every other caller send, and readJSON's unknown-field strictness is
+	// part of its contract.
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		s.createItemMultipart(w, r, trip)
+		return
+	}
+
 	var req itemRequest
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -279,39 +289,8 @@ func (s *Server) handleCreateItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	showOnMap := true
-	if req.ShowOnMap != nil {
-		showOnMap = *req.ShowOnMap
-	}
-	sortOrder := 0
-	if req.SortOrder != nil {
-		sortOrder = *req.SortOrder
-	}
-
-	now := time.Now().UTC()
-	var item db.Item
-	err := s.Store.WithTx(r.Context(), func(store db.Store) error {
-		created, err := store.CreateItem(r.Context(), db.CreateItemParams{
-			ID:        uuid.NewString(),
-			TripID:    trip.ID,
-			Category:  req.Category,
-			Type:      req.Type,
-			Title:     req.Title,
-			Notes:     req.Notes,
-			ShowOnMap: showOnMap,
-			SortOrder: sortOrder,
-			CreatedAt: now,
-			UpdatedAt: now,
-		})
-		if err != nil {
-			return err
-		}
-		if err := writeItemNested(r.Context(), store, created.ID, req); err != nil {
-			return err
-		}
-		item = created
-		return nil
-	})
+	// Same transaction as the multipart path, with no image and no files.
+	item, err := s.createItemTx(r.Context(), trip, uuid.NewString(), req, nil, nil)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not create item")
 		return

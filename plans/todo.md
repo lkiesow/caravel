@@ -120,26 +120,20 @@ down.
   first" matter more, not less.
 
 - **A failed cover photo on a new location creates a second location.**
-  (The remainder of "create-mode writes aren't atomic", Stage 06 Milestone 4;
-  the duplicate half found in Stage 23 planning. Reported by the user.)
-  Stage 09 Milestones 1–2 made the location and its links/dates one transactional
-  request, but a photo and files can't ride in a JSON body, so they're staged in
-  memory and `flushUploads()` writes them once the create returns an ID.
-  This entry used to say a failure there was merely retryable. It is not:
-  `location-editor-page.js:348-368` never assigns the created item to the page's
-  `item` binding, so on the failure branch the page is still in **create** mode
-  — heading, button label, back link, and the image and file fields still
-  staging. Pressing Save again therefore runs `POST /trips/{id}/items` a second
-  time and creates a *second* location, once per retry; Cancel navigates away and
-  silently leaves the first one behind, coverless. The `saveGuard` does not help,
-  it guards concurrent submits only.
-  Two fixes of different depth. The cheap one is to adopt the created item and
-  re-render into edit mode, which makes a retry complete the location rather than
-  duplicate it — resumable, not atomic. The honest one is a multipart create
-  endpoint carrying the JSON, the cover and the files in one request: mint the
-  item ID up front (`CreateItem` already takes a caller-generated one) and the
-  file storage key that needs it (`files.go:134`), write the blobs, then one
-  `WithTx` for item, nested rows, media asset and file rows together.
+  (Stage 06 Milestone 4; the duplicate half found in Stage 23 planning.
+  Reported by the user. **Server half done in Stage 23 Milestone 3**, client
+  half still open.) `POST /trips/{id}/items` now takes a multipart body
+  carrying the item JSON, the cover and the files, and commits all of it in
+  one transaction or none of it -- so the server can no longer produce a
+  half-made location. What is left is the editor, which still does the old
+  three-request dance: `location-editor-page.js:348-368` creates the item,
+  then `flushUploads()` attaches the cover and the files, and on failure
+  returns *without* assigning the created item to the page's `item` binding.
+  So the page stays in create mode and pressing Save again posts a second
+  location, once per retry; Cancel leaves the first behind, coverless. The fix
+  is Milestone 4: build a `FormData` in create mode, delete `flushUploads`,
+  and let the one failure path leave the draft in place -- which is now
+  correct, because nothing was created.
 
 - **The coordinate picker does not go to the coordinates you type.** (User's
   notes, Stage 23 planning.) `leaflet-map.js:622-630` recentres the pick marker

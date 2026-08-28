@@ -196,11 +196,15 @@ func TestCreateItemRejectsInvalidNestedValues(t *testing.T) {
 type failingStore struct {
 	db.Store
 	failCreateItemLink bool
+	// failCreateFile proves the multipart create is atomic across *all* of
+	// its writes: it fires after the item, its nested rows, the media asset
+	// and the image attachment have all been written inside the transaction.
+	failCreateFile bool
 }
 
 func (f failingStore) WithTx(ctx context.Context, fn func(db.Store) error) error {
 	return f.Store.WithTx(ctx, func(tx db.Store) error {
-		return fn(failingStore{Store: tx, failCreateItemLink: f.failCreateItemLink})
+		return fn(failingStore{Store: tx, failCreateItemLink: f.failCreateItemLink, failCreateFile: f.failCreateFile})
 	})
 }
 
@@ -209,6 +213,13 @@ func (f failingStore) CreateItemLink(ctx context.Context, p db.CreateItemLinkPar
 		return db.ItemLink{}, errors.New("injected CreateItemLink failure")
 	}
 	return f.Store.CreateItemLink(ctx, p)
+}
+
+func (f failingStore) CreateFile(ctx context.Context, p db.CreateFileParams) (db.File, error) {
+	if f.failCreateFile {
+		return db.File{}, errors.New("injected CreateFile failure")
+	}
+	return f.Store.CreateFile(ctx, p)
 }
 
 func TestCreateItemRollsBackWhenANestedWriteFails(t *testing.T) {

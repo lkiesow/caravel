@@ -315,6 +315,59 @@ unreachable `image_url`, an oversized file, an invalid `item` part — asserting
 in every case that `GET /trips/{id}/items` still returns **nothing**. Plus
 `make test-postgres`, since this exercises `WithTx` across four tables.
 
+**Done.** New `internal/httpapi/items_create.go`. `handleCreateItem` now
+dispatches on `Content-Type`: a `multipart/form-data` body goes to
+`createItemMultipart`, everything else takes the JSON path unchanged.
+
+The ordering is the whole design, and it is worth stating in one line: parse,
+validate, decode and fetch **everything** first, so every rejection happens
+before a single write; then the blobs; then one `WithTx` for the item, its
+nested location/links/dates, the media asset, the image attachment and every
+file row. The item ID is minted before the transaction opens, because a file's
+storage key contains it (`files.go:134`) and the blobs go down first.
+
+The blob orphaned by a rolled-back transaction is documented in the handler
+rather than papered over. It is the impurity the code already had
+(`handleUploadMedia` stores before `CreateMediaAsset`), it is invisible - no
+location exists and nothing references it - and the alternative, writing blobs
+inside the transaction, cannot be rolled back either, because the blob store is
+a filesystem.
+
+Two decisions the plan did not settle. `maxItemCreateBytes` is **100MB for the
+whole request**, deliberately not the sum of the per-part limits: a 50MB image
+plus four 50MB files would be a quarter of a gigabyte in one request, which is
+not a location being created. Per-part limits still apply on top
+(`maxImageUploadBytes`, `maxFileUploadBytes`), and a location wanting more can
+be created first and have files added from its own page. And sending both an
+`image` part and an `image_url` is a **400** rather than a silent
+preference - guessing which was meant would put the wrong picture on the
+location.
+
+Reused rather than reimplemented: `itemRequest.validate`, `writeItemNested`,
+`imaging.DecodeAndResize`, `fetchImage`, `sniffContentType`,
+`extensionForContentType`, `truncateBytes`/`optional` for provenance, and
+`db.FileVisibility.Valid()`'s "unrecognised means trip" default. The provenance
+sanitising matches `handleCreateMediaURL` exactly, including dropping a
+malformed `source_url` rather than refusing the image over it.
+
+**Verified** by eleven new Go tests, all green on **both dialects** (`make ci`
+and `make test-postgres`). The happy path asserts the item, the nested
+location, links, dates, the cover (`image_id` and `image_url` both non-null)
+and two files with their *positional* notes and visibilities landing on the
+right file. Every failure test ends on the same assertion - `GET
+/trips/{id}/items` returns zero - for an undecodable image, an unfetchable
+`image_url`, five kinds of bad `item` part (no title, bad category, unknown
+field, not JSON, a link with no URL), a missing `item` part, both image forms
+at once, an oversize file, and a stranger with no editor role.
+
+The strongest of them is `TestCreateItemMultipartRollsBackEveryWriteTogether`,
+which extends the existing `failingStore` with a `failCreateFile` flag: it
+fires on the *last* write in the transaction, after the item, the nested rows,
+the media asset and the image attachment have all been inserted. Nothing
+survives - no location, and no orphan file row at the trip level either.
+`TestCreateItemJSONPathStillWorks` guards the path that was not supposed to
+change, including its unknown-field strictness.
+
 ---
 
 ## 4. Creating a location becomes one request — the editor

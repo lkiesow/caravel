@@ -119,21 +119,18 @@ down.
   outside the viewport, so a taller map makes "scroll the target into view
   first" matter more, not less.
 
-- **A failed cover photo on a new location creates a second location.**
-  (Stage 06 Milestone 4; the duplicate half found in Stage 23 planning.
-  Reported by the user. **Server half done in Stage 23 Milestone 3**, client
-  half still open.) `POST /trips/{id}/items` now takes a multipart body
-  carrying the item JSON, the cover and the files, and commits all of it in
-  one transaction or none of it -- so the server can no longer produce a
-  half-made location. What is left is the editor, which still does the old
-  three-request dance: `location-editor-page.js:348-368` creates the item,
-  then `flushUploads()` attaches the cover and the files, and on failure
-  returns *without* assigning the created item to the page's `item` binding.
-  So the page stays in create mode and pressing Save again posts a second
-  location, once per retry; Cancel leaves the first behind, coverless. The fix
-  is Milestone 4: build a `FormData` in create mode, delete `flushUploads`,
-  and let the one failure path leave the draft in place -- which is now
-  correct, because nothing was created.
+- **A create failure shows the server's raw Go error to the user.** (Noticed
+  during Stage 23 Milestone 4's manual pass; pre-existing, and not caused by
+  the multipart create.) A cover the server cannot fetch puts `could not fetch
+  image from url: Get "http://...": dial tcp ...: connect: connection refused`
+  into the Basic info card's error line -- a Go error string, untranslated, in
+  an app whose every other string comes from `web/locales/`. It comes from
+  `writeError(..., "could not fetch image from url: "+err.Error())`, and
+  `handleCreateMediaURL` has said the same thing since Stage 03. It is
+  *useful* -- it names the real cause, which a generic message would not -- so
+  the fix is probably an error code the client can translate plus the detail
+  kept for the console, not simply hiding it. Worth deciding rather than
+  drifting, since this is the failure a person is most likely to meet.
 
 - **The coordinate picker does not go to the coordinates you type.** (User's
   notes, Stage 23 planning.) `leaflet-map.js:622-630` recentres the pick marker

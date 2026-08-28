@@ -28,13 +28,19 @@ import { renderAssistPanel } from "../components/assist-panel.js";
 // there is nothing to guard against navigating away from: either Save was
 // pressed and everything landed, or it wasn't and nothing did.
 //
-// Two things still cannot ride along in a JSON body, and both are uploads:
-// the cover photo and files. In edit mode they write immediately
-// against the existing item (image-field.js and file-list.js each take
-// a path and own their own request). In create mode there is no item to
-// attach them to yet, so they stage in memory and flushUploads() writes
-// them after the create returns an ID - the one remaining non-atomic step,
-// reported through the Basic info card's error line if it fails.
+// The cover photo and the files cannot ride in a JSON body, so create mode
+// sends a multipart one instead (Stage 23 Milestones 3-4): the item as JSON
+// in an "item" part, the staged cover and the staged files alongside it, and
+// the server commits all of it in one transaction or none of it. In edit mode
+// they still write immediately against the existing item - image-field.js and
+// file-list.js each take a path and own their own request - because there is
+// already something to attach them to.
+//
+// What that replaced is worth remembering, because the failure was quiet: the
+// create returned an ID, flushUploads() then wrote the cover, and a failure
+// there left the location saved without it. The page did not adopt the item
+// it had just created, so it was still in create mode, and pressing Save
+// again made a *second* location.
 export async function renderLocationEditorPage(container, { tripId, itemId }) {
   let item = null;
   renderLoading(container);
@@ -345,74 +351,66 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     if (location) body.location = location;
     else if (item?.location) body.location = { lat: null, lng: null, address: null };
 
+    // Create sends the whole location at once, edit sends the item alone.
+    //
+    // The asymmetry is not an oversight: on an existing location the cover and
+    // the files are written the moment they are picked, through their own
+    // endpoints, because there is already an item to attach them to. Only a
+    // location that does not exist yet has to carry them along.
     let saved;
     try {
-      saved = item ? await api.patch(`/items/${item.id}`, body) : await api.post(`/trips/${tripId}/items`, body);
+      saved = item
+        ? await api.patch(`/items/${item.id}`, body)
+        : await api.postForm(`/trips/${tripId}/items`, buildCreateForm(body));
     } catch (err) {
+      // Nothing was created, so there is nothing to clean up and nothing to
+      // adopt: the draft is still on the page and Save can simply be pressed
+      // again. This used to be the sharp edge -- the item was created, the
+      // cover failed, and because the page never learned it was now editing
+      // rather than creating, the next Save made a second location.
       itemForm.showError(err.body?.error);
       return;
-    }
-
-    // Uploads staged in create mode have an item to attach to now. A failure
-    // here leaves the location itself saved, so it reports and stays put
-    // rather than navigating away from a half-finished page.
-    if (!item) {
-      const failure = await flushUploads(saved.id);
-      if (failure) {
-        itemForm.showError(failure);
-        return;
-      }
     }
 
     navigate(`/trips/${tripId}/locations/${saved.id}`);
   }
 
+  // Everything a new location is made of, in one multipart body: the item as
+  // JSON in an "item" part, the staged cover as either a file or a URL with
+  // its provenance, and the staged files.
+  //
+  // The notes and visibilities are *positional* -- the nth file_note belongs
+  // to the nth file -- which is what the server reads and the only ordering
+  // multipart offers. So an empty string is appended rather than skipped when
+  // a file has no note, or every later file would take the wrong one.
+  function buildCreateForm(body) {
+    const form = new FormData();
+    form.append("item", JSON.stringify(body));
+
+    if (draft.image?.kind === "file") {
+      form.append("image", draft.image.file);
+    } else if (draft.image?.kind === "url") {
+      form.append("image_url", draft.image.url);
+      // The provenance rides along, or a cover the assistant found is stored
+      // with no record of whose photograph it is -- and unlike the image
+      // itself, that cannot be recovered afterwards.
+      const provenance = draft.image.provenance ?? {};
+      if (provenance.source_url) form.append("source_url", provenance.source_url);
+      if (provenance.credit) form.append("credit", provenance.credit);
+      if (provenance.license) form.append("license", provenance.license);
+    }
+
+    for (const file of draft.files) {
+      form.append("file", file.file);
+      form.append("file_note", file.note ?? "");
+      form.append("file_visibility", file.visibility ?? "");
+    }
+    return form;
+  }
+
   function cancel() {
     if (draft.image?.kind === "file" && draft.image.previewUrl) URL.revokeObjectURL(draft.image.previewUrl);
     navigate(item ? `/trips/${tripId}/locations/${item.id}` : `/trips/${tripId}`);
-  }
-
-  // Writes the cover photo and files staged during create against the
-  // item that was just created - the two things a JSON body can't carry.
-  // Returns an error message, or null when everything landed.
-  async function flushUploads(savedId) {
-    try {
-      if (draft.image) {
-        let asset;
-        if (draft.image.kind === "file") {
-          const formData = new FormData();
-          formData.append("file", draft.image.file);
-          const res = await fetch(`/api/trips/${tripId}/media`, { method: "POST", body: formData, credentials: "same-origin" });
-          asset = await res.json();
-          if (!res.ok) throw new Error(asset.error || "upload failed");
-        } else {
-          // The provenance rides along, or a cover the assistant found is
-          // stored with no record of whose photograph it is -- and unlike the
-          // image itself, that cannot be recovered afterwards.
-          asset = await api.post(`/trips/${tripId}/media/url`, {
-            url: draft.image.url,
-            ...(draft.image.provenance ?? {}),
-          });
-        }
-        await api.put(`/items/${savedId}/image`, { media_asset_id: asset.id });
-      }
-
-      for (const file of draft.files) {
-        const formData = new FormData();
-        formData.append("file", file.file);
-        if (file.note) formData.append("note", file.note);
-        // Staged picks carry the visibility chosen before the location existed;
-        // without this the choice would be collected and then quietly dropped
-        // on flush, which is worse than never offering it.
-        if (file.visibility) formData.append("visibility", file.visibility);
-        const res = await fetch(`/api/items/${savedId}/files`, { method: "POST", body: formData, credentials: "same-origin" });
-        const body = await res.json();
-        if (!res.ok) throw new Error(body.error || "upload failed");
-      }
-    } catch (err) {
-      return err.body?.error || err.message || t("common.error");
-    }
-    return null;
   }
 
   // "Edit {title}" needs the item's title interpolated into the string,

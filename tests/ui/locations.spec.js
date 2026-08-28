@@ -20,6 +20,12 @@ import { login, gotoRoute } from "./helpers/scenarios.js";
 
 const MOBILE = { width: 324, height: 756 };
 
+// A 1x1 PNG, the same fixture trip-editor.spec.js uses for a cover photo.
+const PIXEL = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64"
+);
+
 test.describe("the location editor, end to end", () => {
   test.use({ viewport: MOBILE });
 
@@ -529,5 +535,125 @@ test.describe("pasting a Google Maps link", () => {
     await expect(page.locator(".location-search__result")).toHaveCount(1);
     expect(searchCalls).toHaveLength(1);
     expect(linkCalls, "a search term must not be sent to the link resolver").toHaveLength(0);
+  });
+});
+
+// Creating a location is one request, and either all of it happens or none of
+// it does (Stage 23 Milestones 3-4).
+test.describe("creating a location is atomic", () => {
+  test.use({ viewport: MOBILE });
+
+  let tripId;
+
+  test.beforeEach(async ({ page }) => {
+    await login(page);
+    const res = await page.request.post("/api/trips", { data: { title: "UI suite: atomic create" } });
+    expect(res.status(), "create the spec's own trip").toBe(201);
+    tripId = (await res.json()).id;
+  });
+
+  test.afterEach(async ({ page }) => {
+    if (tripId) await page.request.delete(`/api/trips/${tripId}`);
+    tripId = null;
+  });
+
+  // The bug this replaced, and the reason the count is what gets asserted.
+  //
+  // Before Stage 23 Milestones 3-4, Create wrote the location first and then
+  // attached the cover. A cover the server could not fetch failed *after* the
+  // location existed, and the page never adopted the item it had just made --
+  // so it was still in create mode, and the obvious thing to do next (fix the
+  // picture, press Create again) posted a second location. Once per retry.
+  //
+  // So the assertion here is not "an error is shown". It is that the trip has
+  // no locations after the failure, and exactly one after the retry.
+  test("a cover the server cannot fetch creates no location at all, and the retry creates exactly one", async ({
+    page,
+  }) => {
+    const count = async () => {
+      const res = await page.request.get(`/api/trips/${tripId}/items`);
+      expect(res.status()).toBe(200);
+      return (await res.json()).length;
+    };
+
+    await gotoRoute(page, `/trips/${tripId}/locations/new`);
+    await page.locator('.item-form input[name="title"]').fill("Hotel Ranga");
+    await page.locator('.item-form select[name="category"]').selectOption("stay");
+    await page.locator('.item-form input[name="type"]').fill("hotel");
+
+    // Port 1 is not listening, so the server's fetch fails at dial without
+    // involving anybody else's host. The browser cannot load the preview
+    // either, which is realistic -- but staging does not depend on that, so
+    // the URL is still carried into the create.
+    await page.locator('.image-field input[name="url"]').fill("http://127.0.0.1:1/cover.png");
+    await page.locator(".image-field__url-form button[type=submit]").click();
+
+    expect(await count(), "nothing should exist before Create is pressed").toBe(0);
+
+    await page.locator('[data-action="save"]').click();
+
+    // The failure is reported where the form's other failures are reported.
+    await expect(page.locator(".item-form__error")).toBeVisible();
+
+    // The whole point. Before this change it was 1, and 2 after the retry.
+    expect(await count(), "a failed create must leave no location behind").toBe(0);
+
+    // The page must still be in create mode -- same button, no delete card --
+    // because that is the truth: nothing was created.
+    await expect(page.locator('[data-action="save"]')).toHaveText("Create location");
+    await expect(page.locator('[data-action="delete"]')).toHaveCount(0);
+
+    // Fix the picture and try again, which is exactly what a person would do.
+    await page.locator('.image-field input[type="file"]').setInputFiles({
+      name: "cover.png",
+      mimeType: "image/png",
+      buffer: PIXEL,
+    });
+    await page.locator('[data-action="save"]').click();
+
+    await expect(page).toHaveURL(new RegExp(`/trips/${tripId}/locations/[^/]+$`));
+    expect(await count(), "the retry must create one location, not a second one").toBe(1);
+
+    // And the cover landed with it, in the same request.
+    const items = await (await page.request.get(`/api/trips/${tripId}/items`)).json();
+    expect(items[0].image_url, "the cover must have ridden along with the create").toBeTruthy();
+  });
+
+  // The other half: everything a create can carry, carried in one request.
+  test("create sends the cover and the files in the same request as the item", async ({ page }) => {
+    await gotoRoute(page, `/trips/${tripId}/locations/new`);
+    await page.locator('.item-form input[name="title"]').fill("Hotel Ranga");
+    await page.locator('.item-form select[name="category"]').selectOption("stay");
+    await page.locator('.item-form input[name="type"]').fill("hotel");
+
+    await page.locator('.image-field input[type="file"]').setInputFiles({
+      name: "cover.png",
+      mimeType: "image/png",
+      buffer: PIXEL,
+    });
+    await page.locator(".file-drop input[type=file]").setInputFiles({
+      name: "booking.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("confirmation 12345"),
+    });
+
+    // One POST to the items collection, and no separate media or file writes:
+    // that is what "one request" means, and it is checkable from here.
+    const posts = [];
+    page.on("request", (req) => {
+      if (req.method() === "POST" && req.url().includes("/api/")) posts.push(new URL(req.url()).pathname);
+    });
+
+    await page.locator('[data-action="save"]').click();
+    await expect(page).toHaveURL(new RegExp(`/trips/${tripId}/locations/[^/]+$`));
+
+    expect(posts, "the create must be a single POST carrying everything").toEqual([`/api/trips/${tripId}/items`]);
+
+    const items = await (await page.request.get(`/api/trips/${tripId}/items`)).json();
+    expect(items).toHaveLength(1);
+    expect(items[0].image_url, "the cover landed").toBeTruthy();
+
+    const files = await (await page.request.get(`/api/items/${items[0].id}/files`)).json();
+    expect(files.map((f) => f.filename), "the file landed").toEqual(["booking.txt"]);
   });
 });

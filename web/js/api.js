@@ -21,6 +21,29 @@ async function request(method, path, body) {
   return data;
 }
 
+// POST a multipart body.
+//
+// Separate from post() rather than a branch inside it, because the two differ
+// in more than the payload: the browser has to set Content-Type itself so it
+// can include the multipart boundary, which means the JSON header must not be
+// sent at all, and the body has to be handed over untouched rather than
+// stringified. Everything after that -- the 204, the JSON error body, the
+// ApiError -- is the same, and worth sharing rather than hand-rolling at the
+// call site the way the location editor used to.
+async function postForm(path, formData) {
+  const res = await fetch(`/api${path}`, {
+    method: "POST",
+    body: formData,
+    credentials: "same-origin",
+  });
+
+  if (res.status === 204) return null;
+
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data;
+}
+
 // POST that reads a Server-Sent Events response, calling onEvent per event.
 //
 // Not EventSource: that can only issue a GET with no body, and the one
@@ -93,6 +116,7 @@ function parseSSEChunk(chunk) {
 export const api = {
   get: (path) => request("GET", path),
   post: (path, body) => request("POST", path, body),
+  postForm,
   put: (path, body) => request("PUT", path, body),
   patch: (path, body) => request("PATCH", path, body),
   delete: (path) => request("DELETE", path),

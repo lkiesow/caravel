@@ -391,6 +391,52 @@ the image and presses Create once more and asserts exactly one location exists.
 That assertion — the count — is the whole point; today it would be two. Mobile
 pass at 324×756.
 
+**Done.** `commitSave` now branches: edit sends the same JSON PATCH it always
+did, create sends a `FormData` through a new `api.postForm`. `flushUploads` is
+deleted - its only reason to exist was that a photo cannot ride in a JSON body.
+The failure path is now a single `catch` that shows the error and returns, and
+that is *correct* rather than a compromise: nothing was created, so the draft
+sitting on the page is the whole truth and Save can simply be pressed again.
+
+`api.postForm` was added rather than branching inside `post()`: the browser has
+to set `Content-Type` itself so it can include the multipart boundary, so the
+JSON header must not be sent and the body must be handed over unstringified.
+Everything after that - the 204, the JSON error body, the `ApiError` - is
+shared, instead of the raw `fetch` the editor used to hand-roll twice.
+
+The staged notes and visibilities are appended **positionally**, one
+`file_note` and one `file_visibility` per `file`, with an empty string where
+there is none - skipping would shift every later file onto the wrong note.
+
+**Verified with a negative control, which is what makes this convincing.** Two
+specs in a new `creating a location is atomic` describe block, with its own
+trip. The first stages a cover URL the server cannot fetch
+(`http://127.0.0.1:1/`, refused at dial, nobody else's host involved), presses
+Create, and asserts the trip still lists **zero** locations - then fixes the
+picture, presses Create again, and asserts exactly **one**, with its cover. The
+second asserts the create is a single POST by recording every `/api/` POST the
+page makes and comparing the list to `["/api/trips/{id}/items"]`.
+
+Reverting *only* `location-editor-page.js` to its committed state and re-running
+both: the first fails on `a failed create must leave no location behind:
+Expected 0, Received 1`, and the second fails with an extra
+`/api/trips/{id}/media` in the POST list. So they catch the actual bug, not the
+scaffolding. Restored, both green; full suite 158 passed, up from 156.
+
+**Manual pass at 324x756**, and it nearly recorded a false pass worth
+remembering: the first attempt showed the right *outcome* for the wrong
+*reason*. `make dev` was still running the pre-Milestone-3 binary, so the
+multipart body hit the old JSON handler and `readJSON` rejected it - a 400 and
+no location, which looks identical to success. `scripts/dev_server.sh restart
+"MARKER=send either an image file"` exists for exactly this and confirmed the
+new binary before the pass was redone. Then: the error line read `could not
+fetch image from url: ... connection refused` (the real one, from the multipart
+handler), the trip still had 2 locations, the button still said "Create
+location", there was no delete card, the title and the staged image were both
+still on the page, and nothing overflowed 324px. Replacing the cover with a
+real PNG and pressing Create once landed on the view page with **exactly one**
+copy of the location and its cover attached.
+
 ---
 
 ## 5. The picker goes to the coordinates you type

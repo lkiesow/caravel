@@ -116,6 +116,42 @@ test.describe("map gestures on a real touch device", () => {
     expect(after.lng).toBeCloseTo(before.lng, 6);
   });
 
+  // Stage 23 Milestone 6. The one-finger drag correctly does nothing to the
+  // map -- and used to say so with a caption standing permanently under it,
+  // which explained nothing to anyone who never made the gesture and cost a
+  // line of screen to everybody. Now it is said when it happens, and this is
+  // the only project that can prove it: the hint is driven by a real
+  // touchmove.
+  test("a one-finger drag explains the gesture it did not perform", async ({ page }) => {
+    await showMap(page);
+    const before = await mapState(page);
+    const centre = { x: before.box.x + before.box.width / 2, y: before.box.y + before.box.height / 2 };
+    expect(centre.y, "the finger must land inside the viewport").toBeGreaterThan(0);
+    expect(centre.y).toBeLessThan(before.innerHeight);
+
+    const hintShown = () =>
+      page.evaluate(() => {
+        const el = document.querySelector("leaflet-map").shadowRoot.querySelector(".gesture-hint");
+        return { shown: !!el && !el.hidden, text: el?.textContent?.trim() };
+      });
+
+    expect((await hintShown()).shown, "nothing should be over the map before the gesture").toBe(false);
+
+    await drag(cdp, [centre], 0, -120);
+
+    const seen = await hintShown();
+    expect(seen.shown, "a one-finger drag should say why the map did not move").toBe(true);
+    expect(seen.text).toMatch(/two fingers/i);
+
+    // And it must take itself away again.
+    await expect
+      .poll(async () => (await hintShown()).shown, {
+        message: "the overlay must not sit on the map indefinitely",
+        timeout: 5000,
+      })
+      .toBe(false);
+  });
+
   test("two fingers pan the map and leave the page where it was", async ({ page }) => {
     await showMap(page);
     const before = await mapState(page);

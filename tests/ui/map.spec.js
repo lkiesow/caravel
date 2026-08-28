@@ -85,6 +85,10 @@ function readMap(page) {
       map: box(sr.getElementById("map")),
       legend: box(sr.querySelector(".legend")),
       hint: sr.querySelector(".gesture-hint")?.textContent?.trim() ?? null,
+      hintShown: (() => {
+        const el = sr.querySelector(".gesture-hint");
+        return el ? !el.hidden : false;
+      })(),
       dragging: host._map.dragging.enabled(),
       touchZoom: host._map.touchZoom.enabled(),
       innerHeight: window.innerHeight,
@@ -119,6 +123,39 @@ test.describe("the trip map at phone width", () => {
     ).toBeLessThanOrEqual(innerHeight / 2);
   });
 
+  // The overlay must cover the map and nothing else. On a phone the legend
+  // moves into the flow *above* the map (Stage 13's order: -1), so an overlay
+  // pinned to the wrapper's inset: 0 dims the legend too -- and the shadow
+  // root does not inherit base.css's border-box reset, so its padding stood it
+  // another 32px taller than the map on top of that. Both were real, and both
+  // are only visible at this width.
+  test("the gesture hint covers the map and not the legend", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+
+    const boxes = await page.evaluate(() => {
+      const host = document.querySelector("leaflet-map");
+      host.showGestureHint("x");
+      clearTimeout(host._hintTimer);
+      const sr = host.shadowRoot;
+      const b = (el) => {
+        const r = el.getBoundingClientRect();
+        return { top: Math.round(r.top), height: Math.round(r.height) };
+      };
+      return {
+        hint: b(sr.querySelector(".gesture-hint")),
+        map: b(sr.getElementById("map")),
+        legend: b(sr.querySelector(".legend")),
+      };
+    });
+
+    expect(boxes.hint.top, "the overlay should start where the map does").toBe(boxes.map.top);
+    expect(boxes.hint.height, "and be exactly as tall").toBe(boxes.map.height);
+    expect(boxes.hint.top, "leaving the legend readable").toBeGreaterThanOrEqual(
+      boxes.legend.top + boxes.legend.height
+    );
+  });
+
   test("a one-finger drag is left to the page on a touch device", async ({ page }) => {
     await pretendCoarsePointer(page);
     await login(page);
@@ -132,8 +169,13 @@ test.describe("the trip map at phone width", () => {
     // pinch centre's delta even at scale 1, so two fingers pan as well as zoom
     // (TouchZoom._onTouchMove in the vendored leaflet.esm.js).
     expect(touchZoom, "two-finger pan/zoom must survive").toBe(true);
-    // A silently changed gesture is a broken map as far as the user knows.
-    expect(hint, "the changed gesture should be spelled out").toBeTruthy();
+    // The gesture is still spelled out, but only when it happens (Stage 23
+    // Milestone 6): a caption standing under the map at all times explained
+    // nothing to the person who never made the gesture, and cost a line of
+    // screen to everyone. That it *does* appear on a one-finger drag is
+    // asserted in map.gesture.spec.js, which drives real touch.
+    const { hintShown } = await readMap(page);
+    expect(hintShown, "the hint should wait for the gesture rather than stand there").toBe(false);
   });
 });
 
@@ -196,12 +238,76 @@ test.describe("the tile layer follows the server's configuration", () => {
 test.describe("the trip map with a mouse", () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 
-  test("dragging still works and no touch hint appears", async ({ page }) => {
+  test("dragging still works and no hint stands over the map", async ({ page }) => {
     await login(page);
     await gotoTripMap(page);
-    const { dragging, hint } = await readMap(page);
+    const { dragging, hintShown } = await readMap(page);
     expect(dragging, "a fine pointer should keep click-and-drag panning").toBe(true);
-    expect(hint, "the two-finger hint is touch-only").toBeNull();
+    expect(hintShown, "the hint should not be showing before any gesture").toBe(false);
+  });
+
+  // Stage 23 Milestone 6. Reported: "if you scroll down and the mouse cursor
+  // lands over the map, you start zooming into the map". Leaflet's wheel
+  // handler zooms on any wheel event, so a page scroll that crossed the map
+  // became a zoom -- and on a map that is most of the screen, that is most
+  // scrolls.
+  async function wheelOverMap(page, { ctrl }) {
+    return page.evaluate((withCtrl) => {
+      const host = document.querySelector("leaflet-map");
+      const mapEl = host.shadowRoot.getElementById("map");
+      const before = host._map.getZoom();
+      mapEl.dispatchEvent(
+        new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: -240, ctrlKey: withCtrl })
+      );
+      return before;
+    }, ctrl);
+  }
+
+  const zoomAndHint = (page) =>
+    page.evaluate(() => {
+      const host = document.querySelector("leaflet-map");
+      const hint = host.shadowRoot.querySelector(".gesture-hint");
+      return { zoom: host._map.getZoom(), hintShown: !!hint && !hint.hidden, hintText: hint?.textContent?.trim() };
+    });
+
+  test("a plain wheel scrolls the page and says why, instead of zooming", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+
+    const before = await wheelOverMap(page, { ctrl: false });
+
+    // Leaflet debounces the zoom it would have performed, so give it more
+    // than wheelDebounceTime to prove the zoom never arrives.
+    await page.waitForTimeout(200);
+    const after = await zoomAndHint(page);
+    expect(after.zoom, "a plain wheel must not zoom the map").toBe(before);
+    expect(after.hintShown, "and must explain why nothing happened").toBe(true);
+    expect(after.hintText).toContain("Ctrl");
+  });
+
+  test("Ctrl and the wheel still zoom, with no hint in the way", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+
+    const before = await wheelOverMap(page, { ctrl: true });
+    await expect
+      .poll(async () => (await zoomAndHint(page)).zoom, { message: "Ctrl + wheel should zoom" })
+      .not.toBe(before);
+    expect((await zoomAndHint(page)).hintShown, "the hint is for the gesture that did not work").toBe(false);
+  });
+
+  test("the hint goes away on its own", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+
+    await wheelOverMap(page, { ctrl: false });
+    expect((await zoomAndHint(page)).hintShown).toBe(true);
+    await expect
+      .poll(async () => (await zoomAndHint(page)).hintShown, {
+        message: "the overlay must not sit on the map indefinitely",
+        timeout: 5000,
+      })
+      .toBe(false);
   });
 });
 
@@ -606,11 +712,12 @@ test.describe("the location editor's coordinate picker", () => {
   test("but leaves a map the person has already moved where they put it", async ({ page }) => {
     await openNewLocation(page);
 
-    // A wheel over the map is the cheapest genuine user gesture, and it is one
-    // of the four this is keyed on. Zoom in twice so the change is visible.
+    // Ctrl + wheel is the zoom gesture since Milestone 6, and a plain wheel is
+    // deliberately not one: it scrolls the page and leaves the map alone, so
+    // it must not count as the person having positioned this map either.
     await page.evaluate(() => {
       const mapEl = document.querySelector(".location-form__map").shadowRoot.getElementById("map");
-      mapEl.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -100 }));
+      mapEl.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: -100, ctrlKey: true }));
     });
     await expect.poll(async () => (await view(page)).zoom).toBeGreaterThan(2);
     const moved = await view(page);
@@ -625,6 +732,32 @@ test.describe("the location editor's coordinate picker", () => {
     // have moved: the person chose this view.
     const after = await view(page);
     expect(after.zoom, "a map the person zoomed must not be re-zoomed under them").toBe(moved.zoom);
+  });
+
+  // The two milestones meet here, and the meeting is easy to get wrong: a
+  // plain wheel scrolls the page (Milestone 6), so it must not be recorded as
+  // the person having positioned the map (Milestone 5). Getting this wrong
+  // means typed coordinates silently stop zooming for anyone who scrolled the
+  // page past the map first -- which is most people, since the map sits well
+  // down the editor.
+  test("scrolling the page past the map does not stop typed coordinates zooming", async ({ page }) => {
+    await openNewLocation(page);
+
+    await page.evaluate(() => {
+      const mapEl = document.querySelector(".location-form__map").shadowRoot.getElementById("map");
+      mapEl.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 240 }));
+    });
+    await page.waitForTimeout(200);
+    expect((await view(page)).zoom, "a plain wheel must not have zoomed the map").toBe(2);
+
+    await page.locator('.location-form input[name="lat"]').fill("48.8584");
+    await page.locator('.location-form input[name="lng"]').fill("2.2945");
+
+    await expect
+      .poll(async () => (await view(page)).zoom, {
+        message: "typing should still zoom after a plain wheel over the map",
+      })
+      .toBeGreaterThan(5);
   });
 
   test("a point placed by clicking the map keeps the zoom the click was made at", async ({ page }) => {

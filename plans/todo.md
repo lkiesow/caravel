@@ -132,17 +132,15 @@ down.
   kept for the console, not simply hiding it. Worth deciding rather than
   drifting, since this is the failure a person is most likely to meet.
 
-- **The mouse wheel over a map zooms it instead of scrolling the page.** (User's
-  notes, Stage 23 planning.) `scrollWheelZoom` appears nowhere in the codebase,
-  so Leaflet's default — enabled — applies to all three maps on desktop, and a
-  page scroll that happens to pass under the cursor turns into a zoom. The
-  embedded-Google-Maps convention is the answer: require Ctrl (or Meta) for the
-  wheel to zoom, and show a brief semi-transparent overlay explaining it when a
-  plain wheel arrives. The touch half of the same problem is already solved
-  — `dragging: !isCoarsePointer()` (`leaflet-map.js:454`) plus a `map.twoFingerHint`
-  caption — but that caption is permanent and sits below the map rather than
-  appearing when the one-finger drag it describes actually happens, so it wants
-  folding into the same overlay.
+- **The zoom hint names Ctrl on every platform.** (Stage 23 Milestone 6.) The
+  gate accepts Ctrl *or* Meta, so Cmd + wheel zooms on a Mac, but the string
+  `map.ctrlZoomHint` says "Ctrl" everywhere -- Google Maps shows the Mac key
+  instead. Fixing it means either platform detection in the component or two
+  strings chosen at render time, and neither is worth it until somebody runs
+  this on a Mac and says so. Note also that macOS binds Ctrl + wheel to its own
+  screen zoom, so a Mac user pressing the key the hint names may get the
+  operating system rather than the map -- which is the other half of the reason
+  the string should probably follow the platform.
 
 ---
 

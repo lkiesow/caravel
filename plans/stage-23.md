@@ -538,6 +538,59 @@ appears after a one-finger touch drag in the `chromium-gestures` project.
 `tests/ui/map.gesture.spec.js` must stay green unchanged — the one-finger page
 scroll and the two-finger pan are not being altered.
 
+**Done.** The wheel is gated by *intercepting* rather than by turning Leaflet's
+handler off, and the placement of that interception is the load-bearing detail:
+a capture-phase listener on `.map-wrap`, the map container's **parent**.
+Leaflet registers its own wheel listener on the container itself, and on a
+shared target capture-versus-bubble does not decide the order - registration
+order does. Capturing on the parent runs first whatever Leaflet did. A plain
+wheel gets `stopPropagation()` and nothing else: no `preventDefault`, so the
+page scrolls exactly as it would anywhere else, and Leaflet simply never sees
+the event. Ctrl (or Meta) held, and it passes straight through to the zoom that
+was always there. Turning the handler off and on instead would not work: Leaflet
+attaches its listener at `enable()` time, so the wheel event that started the
+gesture would never reach it.
+
+The permanent caption is gone. The overlay it became sits over the map,
+`pointer-events: none` so it cannot eat the gesture it describes, `role=status`
+with `aria-live=polite` rather than an alert - it explains what just did *not*
+happen, and interrupting a screen reader for that would be worse than useless.
+It fades rather than snapping, and honours `prefers-reduced-motion`. The touch
+half fires on `touchmove` with one finger, not `touchstart`, so a tap - which in
+pick mode places a point - never triggers it. New key `map.ctrlZoomHint` in both
+locales; `map.twoFingerHint` is reused as-is.
+
+**A flaw in my own work, caught by the suite.** Milestone 5's flag counted *any*
+wheel over the map as "the person positioned this map". Once a plain wheel
+scrolls the page instead of zooming, that is simply wrong - and it quietly
+undid Milestone 5 for anyone who scrolled the page past the map before typing
+coordinates. The wheel now counts only when Ctrl or Meta is held, and the
+interaction has its own test (`scrolling the page past the map does not stop
+typed coordinates zooming`) so it cannot regress silently.
+
+**Two layout bugs found by measuring at 324px, not by looking.** The overlay was
+pinned to `.map-wrap`'s `inset: 0`, which at wide widths is the map - but on a
+phone Stage 13 moves the legend into the flow *above* the map, so the overlay
+dimmed the legend too. Fixed with a shared `--map-height` custom property that
+both `#map` and the overlay read, so the two boxes cannot drift; the mobile
+value folds the old `min-height` into one `max(min(50vh, 20rem), 16rem)`
+expression. That left it still 32px too tall, which was the trap the legend
+rule in the same file already records: **base.css's border-box reset does not
+pierce the shadow root**, so `padding: 1rem` was being added to the height.
+`box-sizing: border-box` on the overlay fixed it, and an assertion now pins
+overlay top and height to the map's.
+
+**Verified with a negative control.** Disabling the gate reproduces the
+complaint exactly: `a plain wheel must not zoom the map: Expected 8, Received
+10`. Restored, the suite covers a plain wheel not zooming and showing the hint,
+Ctrl+wheel zooming with no hint, the hint clearing itself, the overlay not
+standing over the map before any gesture, and its box matching the map's at
+324px. The touch half is asserted in `map.gesture.spec.js`, the only project
+that drives real touch: a one-finger drag now shows "two fingers" and then
+clears, and both pre-existing gesture tests stay green unchanged. `make ci`
+green, full suite 167 passed (up from 161). Looked at on both viewports: the
+map dims, the text centres, the legend and controls stay legible.
+
 ---
 
 ## 7. The mobile map grows

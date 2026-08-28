@@ -39,6 +39,10 @@ const CATEGORY_COLORS = {
 // past what most providers actually render.
 const SINGLE_MARKER_ZOOM = 14;
 
+// How long the gesture hint stays up. Long enough to read six words, short
+// enough that it is gone before it becomes the thing you are looking at.
+const GESTURE_HINT_MS = 1500;
+
 // Category colour for a marker, for items whose category is unknown or not
 // one of the three the app defines (the single-marker mode gets it from an
 // attribute, so it can legitimately be absent).
@@ -110,6 +114,7 @@ const styles = `
     flex-direction: column;
     height: 60vh;
     min-height: 24rem;
+    --map-height: 100%;
   }
   :host([lat]) {
     height: 16rem;
@@ -138,8 +143,14 @@ const styles = `
        document whatever the library does mid-animation. */
     overflow: hidden;
   }
+  /* --map-height is what the map box measures, and it exists so the gesture
+     overlay can be exactly that tall without restating the expression. At wide
+     widths the legend is absolutely positioned, so .map-wrap *is* the map and
+     100% is right; the mobile block below puts the legend into the flow above
+     the map, at which point "the whole wrapper" and "the map" stop being the
+     same box - and an overlay pinned to inset: 0 would dim the legend too. */
   #map {
-    height: 100%;
+    height: var(--map-height);
     border-radius: 0.5rem;
   }
   .legend {
@@ -234,10 +245,54 @@ const styles = `
 
   /* Rendered only on coarse pointers (see render()), where one-finger drag
      deliberately no longer pans the map. */
+  /* The gesture hint, shown *when the gesture happens* rather than standing
+     permanently under the map (Stage 23 Milestone 6). Two things it must never
+     do: cover the map for longer than it takes to read, and eat the gesture it
+     is describing - hence pointer-events: none, so a second wheel or a
+     two-finger pan goes straight through it to the map underneath.
+
+     role="status" and aria-live="polite" rather than an alert: it is an
+     explanation of what just did not happen, and interrupting a screen reader
+     mid-sentence for it would be worse than useless. */
   .gesture-hint {
-    margin: 0.5rem 0 0;
-    font-size: 0.8rem;
-    color: var(--color-text-muted, #666);
+    position: absolute;
+    /* Pinned to the bottom of the wrapper and given the map's own height,
+       rather than inset: 0 - see --map-height above. */
+    inset: auto 0 0 0;
+    height: var(--map-height);
+    /* base.css's global border-box reset does not pierce this shadow root -
+       the same trap the legend rule below records. Without this the 1rem
+       padding is added to the height and the overlay stands 32px taller than
+       the map, dimming the legend above it. */
+    box-sizing: border-box;
+    z-index: 500;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    text-align: center;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.55);
+    /* The overlay is not a control, so it does not take focus and does not
+       need a focus ring; it is announced instead. */
+    pointer-events: none;
+    opacity: 1;
+    transition: opacity 150ms ease-out;
+  }
+  .gesture-hint[hidden] {
+    /* [hidden] alone would be display:none, which cannot transition. Keeping
+       it in the layout and fading it out is what makes the appearance and the
+       disappearance both readable. */
+    display: flex;
+    opacity: 0;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .gesture-hint {
+      transition: none;
+    }
   }
 
   /* On narrow viewports the legend, absolutely positioned over the map's
@@ -264,9 +319,10 @@ const styles = `
       height: auto;
       flex: none;
     }
-    #map {
-      height: min(50vh, 20rem);
-      min-height: 16rem;
+    :host {
+      /* max(...) rather than a separate min-height, so one expression is the
+         whole answer and the overlay can share it. */
+      --map-height: max(min(50vh, 20rem), 16rem);
     }
     .legend {
       position: static;
@@ -398,6 +454,7 @@ class LeafletMap extends HTMLElement {
       <style>${styles}</style>
       <div class="map-wrap">
         <div id="map"></div>
+        <p class="gesture-hint" role="status" aria-live="polite" hidden></p>
         ${
           chromeless
             ? ""
@@ -421,7 +478,6 @@ class LeafletMap extends HTMLElement {
         }
       </div>
       ${this.hasAttribute("locate") ? `<p class="locate-status" role="status" hidden></p>` : ""}
-      ${isCoarsePointer() ? `<p class="gesture-hint">${t("map.twoFingerHint")}</p>` : ""}
     `;
 
     if (!chromeless && !this._items.length) {
@@ -489,9 +545,22 @@ class LeafletMap extends HTMLElement {
       this._userMovedMap = true;
     };
     mapEl.addEventListener("mousedown", noteUserMovedMap);
-    mapEl.addEventListener("wheel", noteUserMovedMap, { passive: true });
     mapEl.addEventListener("touchstart", noteUserMovedMap, { passive: true });
     mapEl.addEventListener("keydown", noteUserMovedMap);
+    // A wheel counts only when it is the zoom gesture. Since Milestone 6 a
+    // plain wheel scrolls the *page* and deliberately leaves the map alone,
+    // so treating it as "the person positioned this map" would be wrong -- and
+    // would quietly undo Milestone 5, by stopping typed coordinates from
+    // zooming for anyone who had scrolled the page past the map first.
+    mapEl.addEventListener(
+      "wheel",
+      (e) => {
+        if (e.ctrlKey || e.metaKey) noteUserMovedMap();
+      },
+      { passive: true }
+    );
+
+    this.bindGestureGate(mapEl);
 
     this.plotMarkers();
 
@@ -753,6 +822,71 @@ class LeafletMap extends HTMLElement {
     }
 
     this._map.setView([lat, lng], HERE_ZOOM, { animate: false });
+  }
+
+  // A scroll that happens to pass under the cursor must not zoom the map.
+  //
+  // Leaflet's scrollWheelZoom handler zooms on *any* wheel event, so a page
+  // scroll that crossed the map turned into a zoom - and on a map that is
+  // most of the screen, that is most scrolls. The embedded-Google-Maps
+  // convention is the fix: the wheel zooms only while Ctrl (or Meta, for the
+  // Mac) is held, and a plain wheel says so and scrolls the page.
+  //
+  // Implemented by intercepting rather than by turning the handler off,
+  // because enabling it mid-gesture is too late for the event that started
+  // the gesture: Leaflet attaches its listener when the handler is enabled,
+  // and the wheel event already in flight would never reach it. So the
+  // handler stays on and a plain wheel is stopped before it arrives.
+  //
+  // The listener sits on .map-wrap, in the capture phase, and that placement
+  // is load-bearing. Leaflet registers its own listener on the map container
+  // itself, and on a shared target the capture/bubble distinction does not
+  // decide the order - registration order does. Capturing on the *parent*
+  // means this runs first whatever Leaflet did.
+  bindGestureGate(mapEl) {
+    const wrap = this.shadowRoot.querySelector(".map-wrap");
+    if (!wrap) return;
+
+    wrap.addEventListener(
+      "wheel",
+      (e) => {
+        if (e.ctrlKey || e.metaKey) return; // let Leaflet have it
+        // Not preventDefault: the whole point is that the page scrolls the
+        // way it would anywhere else. Only Leaflet is kept from seeing it.
+        e.stopPropagation();
+        this.showGestureHint(t("map.ctrlZoomHint"));
+      },
+      { capture: true }
+    );
+
+    // The touch half. Dragging is already disabled on a coarse pointer
+    // (Stage 13), so a one-finger drag scrolls the page and the map ignores
+    // it -- correct, and silent about why. This is the explanation, and it
+    // fires on touchmove rather than touchstart so that a tap, which in pick
+    // mode places a point, never triggers it.
+    if (!isCoarsePointer()) return;
+    mapEl.addEventListener(
+      "touchmove",
+      (e) => {
+        if (e.touches.length !== 1) return; // two fingers already work
+        this.showGestureHint(t("map.twoFingerHint"));
+      },
+      { passive: true }
+    );
+  }
+
+  // Show the overlay, and take it away again. Re-triggering while it is up
+  // restarts the clock rather than stacking timers, so holding a scroll does
+  // not leave it flickering.
+  showGestureHint(message) {
+    const hint = this.shadowRoot.querySelector(".gesture-hint");
+    if (!hint) return;
+    hint.textContent = message;
+    hint.hidden = false;
+    clearTimeout(this._hintTimer);
+    this._hintTimer = setTimeout(() => {
+      hint.hidden = true;
+    }, GESTURE_HINT_MS);
   }
 
   // The component's one output in pick mode. Composed, because it has to

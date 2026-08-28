@@ -349,6 +349,10 @@ class LeafletMap extends HTMLElement {
     // is allowed to touch the DOM once its awaits resolve.
     const generation = (this._generation = (this._generation || 0) + 1);
 
+    // A render builds a new Leaflet map, so whatever the person did to the
+    // previous one does not carry over.
+    this._userMovedMap = false;
+
     const lat = this.getAttribute("lat");
     const lng = this.getAttribute("lng");
     if (lat != null && lng != null) {
@@ -468,6 +472,26 @@ class LeafletMap extends HTMLElement {
       // Leaflet ignores this entirely for a URL with no {s}.
       subdomains: "abcd",
     }).addTo(map);
+
+    // Has the person moved this map themselves? syncPickMarker needs to know,
+    // so that typing coordinates into the form can zoom to them without
+    // yanking a map somebody has already positioned.
+    //
+    // Real input events rather than Leaflet's zoomend/dragend, and that is the
+    // point: setView fires those too, so a flag fed by them would be set by
+    // our *own* recentring - including the world view this very component
+    // takes when it opens with no coordinates, which would disable the
+    // feature outright. mousedown covers dragging, the zoom buttons and
+    // double-click zoom; wheel covers wheel zoom; touchstart covers pinch;
+    // keydown covers the arrow and +/- keys. None of them can be raised by
+    // setView.
+    const noteUserMovedMap = () => {
+      this._userMovedMap = true;
+    };
+    mapEl.addEventListener("mousedown", noteUserMovedMap);
+    mapEl.addEventListener("wheel", noteUserMovedMap, { passive: true });
+    mapEl.addEventListener("touchstart", noteUserMovedMap, { passive: true });
+    mapEl.addEventListener("keydown", noteUserMovedMap);
 
     this.plotMarkers();
 
@@ -603,6 +627,7 @@ class LeafletMap extends HTMLElement {
       return;
     }
 
+    const creating = !this._pickMarker;
     if (this._pickMarker) {
       this._pickMarker.setLatLng([lat, lng]);
     } else {
@@ -619,11 +644,28 @@ class LeafletMap extends HTMLElement {
       this._pickMarker.on("dragend", () => this.emitPick(this._pickMarker.getLatLng()));
     }
 
-    // Recentre on the first render, and afterwards only if the point has
-    // moved out of sight - otherwise typing into the coordinate fields would
-    // yank the map on every keystroke, and not recentring at all would let
-    // the marker silently vanish off the edge.
-    if (initial) {
+    // Three cases, and the middle one is the fix for a real complaint.
+    //
+    // The old rule was "recentre on the first render, and afterwards only if
+    // the point has moved out of sight". That left a hole exactly where it
+    // mattered: an editor opened with no coordinates sits at the world view,
+    // zoom 2, where *every* point on Earth is inside the bounds. So filling in
+    // a latitude and longitude moved a pin the person could not see, on a map
+    // that never zoomed in.
+    //
+    // So the marker first appearing on a map the person has not moved
+    // themselves is treated like a first render. Not a zoom-level test: a
+    // deliberate zoom-out to 2 would look identical to the untouched world
+    // view. And not on every update either -- once the marker exists, the
+    // out-of-sight rule takes over, so typing does not yank the map with each
+    // keystroke.
+    //
+    // Coordinates that came *from* the map - a click, a marker drag - never
+    // reach the first branch, because placing them required a mousedown on
+    // the map, which is exactly what noteUserMovedMap watches for. That is
+    // deliberate: somebody who clicks a spot at the zoom they chose should
+    // keep that zoom.
+    if (initial || (creating && !this._userMovedMap)) {
       this._map.setView([lat, lng], SINGLE_MARKER_ZOOM, { animate: false });
     } else if (!this._map.getBounds().contains([lat, lng])) {
       this._map.setView([lat, lng], this._map.getZoom(), { animate: false });

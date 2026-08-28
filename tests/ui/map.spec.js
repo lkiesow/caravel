@@ -570,6 +570,78 @@ test.describe("the location editor's coordinate picker", () => {
       .toBe(0);
   });
 
+  // Stage 23 Milestone 5. The complaint: "if a geo-location is set in the
+  // location editor, the location is shown on the map, but the map is not
+  // zoomed in to / centered on the set location."
+  //
+  // The old rule recentred on the first render and afterwards only when the
+  // point left the viewport. An editor opened with no coordinates sits at the
+  // world view, zoom 2, where every point on Earth is inside the bounds - so
+  // typing moved a pin nobody could see.
+  const view = (page) =>
+    page.evaluate(() => {
+      const el = document.querySelector(".location-form__map");
+      const c = el._map.getCenter();
+      return { zoom: el._map.getZoom(), lat: c.lat, lng: c.lng };
+    });
+
+  test("typing coordinates zooms to them instead of moving an invisible pin", async ({ page }) => {
+    await openNewLocation(page);
+
+    const before = await view(page);
+    expect(before.zoom, "an empty editor should start at the world view").toBe(2);
+
+    await page.locator('.location-form input[name="lat"]').fill("48.8584");
+    await page.locator('.location-form input[name="lng"]').fill("2.2945");
+
+    await expect.poll(async () => (await view(page)).zoom, {
+      message: "the map should zoom to the typed point, not stay at world view",
+    }).toBeGreaterThan(5);
+
+    const after = await view(page);
+    expect(after.lat, "and centre on it").toBeCloseTo(48.8584, 1);
+    expect(after.lng).toBeCloseTo(2.2945, 1);
+  });
+
+  test("but leaves a map the person has already moved where they put it", async ({ page }) => {
+    await openNewLocation(page);
+
+    // A wheel over the map is the cheapest genuine user gesture, and it is one
+    // of the four this is keyed on. Zoom in twice so the change is visible.
+    await page.evaluate(() => {
+      const mapEl = document.querySelector(".location-form__map").shadowRoot.getElementById("map");
+      mapEl.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -100 }));
+    });
+    await expect.poll(async () => (await view(page)).zoom).toBeGreaterThan(2);
+    const moved = await view(page);
+
+    await page.locator('.location-form input[name="lat"]').fill("48.8584");
+    await page.locator('.location-form input[name="lng"]').fill("2.2945");
+    await expect
+      .poll(() => page.evaluate(() => document.querySelector(".location-form__map").shadowRoot.querySelectorAll(".leaflet-marker-icon").length))
+      .toBe(1);
+
+    // The point is inside the visible bounds at this zoom, so nothing should
+    // have moved: the person chose this view.
+    const after = await view(page);
+    expect(after.zoom, "a map the person zoomed must not be re-zoomed under them").toBe(moved.zoom);
+  });
+
+  test("a point placed by clicking the map keeps the zoom the click was made at", async ({ page }) => {
+    await openNewLocation(page);
+
+    const before = await view(page);
+    await clickPickerAt(page, 0.5, 0.4, ".location-form__map");
+    await expect(page.locator(".location-form__map")).toHaveAttribute("lat", /.+/);
+
+    // Clicking is how you say "there", at the zoom you are already looking at.
+    // Zooming to 14 underneath that would throw away the view they chose --
+    // and it is only avoided because placing the point took a mousedown on the
+    // map, which is what marks the map as moved by the person.
+    const after = await view(page);
+    expect(after.zoom, "a clicked point must not re-zoom the map").toBe(before.zoom);
+  });
+
   test("an existing location opens on its own point, not the world view", async ({ page }) => {
     const created = await page.request.post(`/api/trips/${tripId}/items`, {
       data: {

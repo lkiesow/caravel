@@ -459,6 +459,54 @@ latitude and longitude, assert the zoom is now `SINGLE_MARKER_ZOOM` and the
 centre is within a small epsilon of the typed point. Then pan away, type a
 nearby point, and assert the map did **not** jump.
 
+**Done.** `syncPickMarker`'s rule is now `initial || (creating &&
+!this._userMovedMap)`, where `creating` is "the pick marker did not exist a
+moment ago". Once the marker exists the old out-of-sight branch takes over
+unchanged, so typing still does not yank the map on every keystroke.
+
+**Deviation from the plan, and it matters.** The plan said to feed the
+"untouched" flag from the map's own `zoomend`/`dragend`. That cannot work here:
+`setView` fires those too, so the flag would be set by *our own* recentring -
+including the `setView([20, 0], 2)` this component performs when it opens with
+no coordinates, which would disable the feature outright on the very screen it
+is for. The flag is fed instead by four real input events on the map container
+- `mousedown`, `wheel`, `touchstart`, `keydown` - none of which `setView` can
+raise. Between them they cover dragging, the zoom buttons, double-click zoom,
+wheel zoom, pinch, and the arrow and +/- keys.
+
+**A case the plan did not consider, and which this handles for free.** Placing
+a point by *clicking the map* also fills the coordinate fields, and zooming to
+14 underneath that would throw away the view the person deliberately chose.
+Because a click requires a `mousedown` on the map, the flag is already set by
+the time the marker is created, so a clicked point keeps its zoom. The same is
+true of a marker drag. Only coordinates that arrive from somewhere other than
+the map - typing, an address-search result, a pasted Maps link, the assistant -
+zoom in.
+
+**Verified with a negative control.** Three new specs in `map.spec.js`'s
+existing picker describe: typing zooms (world view, zoom 2, to zoom > 5 centred
+on the point); a map the person has wheel-zoomed is left where they put it; and
+a point placed by clicking keeps the click's zoom. Reverting the rule to the old
+`if (initial)` and re-running reproduces the complaint exactly - `the map should
+zoom to the typed point, not stay at world view: Expected > 5, Received 2` -
+while the two guard tests still pass, which is right: they assert the map is
+*not* moved, and the old rule never moved it either. They are guards against the
+new behaviour over-firing, not against the bug.
+
+Restored, all green: full UI suite 161 passed (up from 158), `make ci` green.
+Mobile pass at 324x756 against `make dev`: zoom 2 and centre [20, 0] before,
+zoom 14 and centre [64.1466, -21.9426] after typing, one marker, and the page
+does not overflow.
+
+**A known transient, not worth more machinery.** The fields update on `input`,
+so typing a latitude and longitude by hand can briefly form a valid pair out of
+half-typed numbers - "6" and "-2" before "63.8" and "-20.3" - and the marker is
+created at that intermediate point, zooming there. Every keystroke after that
+goes through the out-of-sight branch, which follows the marker, so it lands
+correctly; the cost is a brief pan. Debouncing would fix the flicker and delay
+the thing this milestone is for, and the paths that matter most (search, paste,
+click) set both coordinates at once and never see it.
+
 ---
 
 ## 6. Zooming needs Ctrl, and the hint becomes an overlay

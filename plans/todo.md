@@ -132,18 +132,6 @@ down.
   kept for the console, not simply hiding it. Worth deciding rather than
   drifting, since this is the failure a person is most likely to meet.
 
-- **The coordinate picker does not go to the coordinates you type.** (User's
-  notes, Stage 23 planning.) `leaflet-map.js:622-630` recentres the pick marker
-  on the first render, and after that only when the point has left the viewport
-  — a rule written to stop the map yanking on every keystroke. It has a hole
-  at the case that matters most: an editor opened with no coordinates sits at
-  the world view, zoom 2, and a marker dropped anywhere on Earth is inside
-  *those* bounds. So filling in latitude and longitude moves a pin the user
-  cannot see, on a map that never zooms in. The fix is to treat the marker's
-  *creation* on an untouched map as an initial render; "untouched" wants a flag
-  set from the map's own `zoomend`/`dragend` rather than a zoom-level test, or
-  a deliberate zoom-out to 2 is mistaken for it.
-
 - **The mouse wheel over a map zooms it instead of scrolling the page.** (User's
   notes, Stage 23 planning.) `scrollWheelZoom` appears nowhere in the codebase,
   so Leaflet's default — enabled — applies to all three maps on desktop, and a

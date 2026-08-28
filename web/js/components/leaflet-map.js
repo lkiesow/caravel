@@ -850,13 +850,31 @@ class LeafletMap extends HTMLElement {
     wrap.addEventListener(
       "wheel",
       (e) => {
-        if (e.ctrlKey || e.metaKey) return; // let Leaflet have it
-        // Not preventDefault: the whole point is that the page scrolls the
-        // way it would anywhere else. Only Leaflet is kept from seeing it.
+        if (e.ctrlKey || e.metaKey) {
+          // The zoom gesture. Leaflet will do the zooming - it is still
+          // listening, with its own tuned debouncing - but suppressing the
+          // *browser's* default is this listener's job, not Leaflet's.
+          //
+          // Ctrl + wheel is bound to page zoom in every browser, and Firefox
+          // duly zoomed the whole site while the map appeared to do nothing.
+          // Leaflet does call preventDefault in its own handler, and relying
+          // on that was the bug: it makes suppressing a browser-level action
+          // depend on a third party's handler being reached and enabled. Doing
+          // it here, in the capture phase on the parent, is the earliest point
+          // available and depends on nothing.
+          e.preventDefault();
+          return;
+        }
+        // A plain wheel is deliberately *not* prevented: the whole point is
+        // that the page scrolls the way it would anywhere else. Only Leaflet
+        // is kept from seeing it.
         e.stopPropagation();
         this.showGestureHint(t("map.ctrlZoomHint"));
       },
-      { capture: true }
+      // passive: false explicitly. A wheel listener is one of the types
+      // browsers may treat as passive by default, and a passive listener's
+      // preventDefault is ignored - silently, apart from a console warning.
+      { capture: true, passive: false }
     );
 
     // The touch half. Dragging is already disabled on a coarse pointer

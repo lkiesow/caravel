@@ -296,6 +296,49 @@ test.describe("the trip map with a mouse", () => {
     expect((await zoomAndHint(page)).hintShown, "the hint is for the gesture that did not work").toBe(false);
   });
 
+  // Reported after Milestone 6 landed: Ctrl + wheel zoomed the whole site in
+  // Firefox and the map did nothing.
+  //
+  // The cause was a dependency, not a missing feature. Ctrl + wheel is bound
+  // to page zoom in every browser, and suppressing that needs preventDefault
+  // on the wheel event. We were not calling it -- we let the event through and
+  // relied on Leaflet's own handler to do it, which makes cancelling a
+  // browser-level action depend on a third party's handler being reached and
+  // enabled.
+  //
+  // So what is asserted here is the *independence*: with Leaflet's wheel
+  // handler switched off, a Ctrl + wheel must still come back cancelled.
+  // Asserting only "the default was prevented" would pass either way, since
+  // Leaflet prevents it too -- which is exactly why the original test missed
+  // this. (A synthetic wheel cannot trigger real browser zoom at all, so the
+  // cancellation is the only part of this a spec can see; the zoom itself was
+  // confirmed by hand.)
+  test("Ctrl + wheel is cancelled by us, not only by Leaflet", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+
+    const results = await page.evaluate(() => {
+      const host = document.querySelector("leaflet-map");
+      const mapEl = host.shadowRoot.getElementById("map");
+      // Take Leaflet out of the picture entirely.
+      host._map.scrollWheelZoom.disable();
+
+      const send = (ctrlKey) =>
+        // dispatchEvent returns false when a listener called preventDefault.
+        !mapEl.dispatchEvent(
+          new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: -120, ctrlKey })
+        );
+
+      return { ctrlCancelled: send(true), plainCancelled: send(false) };
+    });
+
+    expect(results.ctrlCancelled, "Ctrl + wheel must be cancelled, or the browser zooms the page").toBe(true);
+    expect(
+      results.plainCancelled,
+      "a plain wheel must NOT be cancelled, or the page could no longer scroll over the map"
+    ).toBe(false);
+  });
+
   test("the hint goes away on its own", async ({ page }) => {
     await login(page);
     await gotoTripMap(page);

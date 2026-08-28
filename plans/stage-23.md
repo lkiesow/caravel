@@ -591,6 +591,44 @@ clears, and both pre-existing gesture tests stay green unchanged. `make ci`
 green, full suite 167 passed (up from 161). Looked at on both viewports: the
 map dims, the text centres, the legend and controls stay legible.
 
+**Follow-up (same day): Ctrl + wheel zoomed the whole site in Firefox and the
+map did nothing.** Reported on testing the milestone.
+
+The cause was a dependency, not a missing feature. Ctrl + wheel is bound to
+page zoom in every browser, and suppressing it needs `preventDefault` on the
+wheel event. The gate did not call it - it let a Ctrl-held wheel through and
+relied on **Leaflet's** handler to prevent the default, which makes cancelling
+a browser-level action depend on a third party's handler being reached and
+enabled. It now calls `e.preventDefault()` itself, in the capture phase on the
+parent, which is the earliest point available and depends on nothing; Leaflet
+still performs the zoom, with its own tuned debouncing. The listener is also
+registered `passive: false` explicitly, since `wheel` is one of the types a
+browser may make passive by default, and a passive listener's `preventDefault`
+is ignored with nothing but a console warning.
+
+**Ctrl was kept rather than moved to Shift.** Shift + wheel is horizontal
+scroll in Firefox (and back/forward in some configurations), so it has a
+browser default of its own and would need exactly the same `preventDefault` -
+the same fix, at the cost of abandoning the convention the hint text teaches
+and that Google Maps established.
+
+**Why the milestone's own tests missed it, which is the part worth
+remembering.** A synthetic `WheelEvent` cannot trigger real browser zoom, so
+the original test could only ever see the map's zoom - which was working. Nor
+could the environment reproduce it: driven through Playwright, Firefox zoomed
+the map and left the page alone, because `page.mouse.wheel` bypasses the path
+where Firefox decides to zoom its own chrome. So the symptom is not reachable
+from a spec at all.
+
+What *is* reachable is the contract underneath it, and the new test asserts the
+half that actually broke: with Leaflet's wheel handler explicitly disabled, a
+Ctrl + wheel must still come back cancelled, and a plain wheel must still come
+back **un**cancelled so the page can scroll. Asserting merely "the default was
+prevented" would have passed either way, since Leaflet prevents it too - which
+is precisely how this got through. Reverting the one line reproduces the
+failure (`Ctrl + wheel must be cancelled, or the browser zooms the page:
+Expected true, Received false`). `make ci` green, 168 passed.
+
 ---
 
 ## 7. The mobile map grows

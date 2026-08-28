@@ -218,17 +218,23 @@ down.
       deliberate Stage 12 decision. Making either follow the account means a
       column on `users` and an endpoint to write it — worth answering once for
       both, not twice.
-- **Better Google Maps interoperability.** Two halves. *Inbound:* pasting a
-  shortened link such as `https://maps.app.goo.gl/xfB9TzpFos2N4oAW8` into a
-  location should resolve to coordinates, which means following the redirect
-  server-side (the short form carries nothing parseable) and pulling lat/lng out
-  of the expanded URL — so it wants the same proxy-and-limiter treatment
-  `/api/geocode` got in Stage 13 Milestone 5. *Outbound:* the popup's and the
-  location view's "View on Google Maps" links are a `?q=lat,lng` **search**, so
-  they land on a dropped pin rather than on the hotel's own Google entry with its
-  hours and reviews. Linking the actual place needs a place ID, which Caravel
-  cannot get from OSM — so this half is blocked on either storing a user-pasted
-  Google URL per location or accepting the search link as good enough.
+- **Google Maps interoperability: the outbound half.** (Stage 13; the inbound
+  half built in Stage 22 Milestone 6.) Pasting a Maps link into the address
+  search now resolves it to coordinates. What is left is the other direction:
+  the popup's and the location view's "View on Google Maps" links are a
+  `?q=lat,lng` **search**, so they land on a dropped pin rather than on the
+  hotel's own Google entry with its hours and reviews. Linking the actual place
+  needs a place ID, which Caravel cannot get from OSM — so this stays blocked on
+  either storing a user-pasted Google URL per location or accepting the search
+  link as good enough.
+
+- **The map-link resolver has never been run against a real short link.**
+  (Stage 22 Milestone 6.) Every redirect test is against a stub, so what is
+  unproven is Google's own behaviour: that a `maps.app.goo.gl` chain ends on a
+  URL carrying `!3d`/`!4d`, and that a plain GET is not answered with a consent
+  interstitial instead. A full `google.com/maps/...` URL — the common paste —
+  needs no request at all and is verified end to end. One manual check with a
+  genuine short link would close this.
 - **A trip journal with photos.** (Stage 01.) A `journal_entries` table
   (trip_id, date, body markdown) reusing the existing `media_assets` pipeline
   for photos.

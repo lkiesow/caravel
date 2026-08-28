@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"caravel/internal/safefetch"
 )
 
 // The SSRF guard. This is the one part of the feature where being wrong is a
@@ -17,10 +19,10 @@ import (
 // newRelaxedFetcher is the fetcher these tests use to reach an httptest
 // server, which listens on loopback -- the thing the guard exists to refuse.
 // It switches off the address check wholesale, which no production path can
-// do; see addressPolicy for why the exception exists and what it leaves in
-// place.
+// do; see safefetch.AllowPrivateForTests for why the exception exists and what
+// it leaves in place.
 func newRelaxedFetcher() *pageFetcher {
-	return newFetcherWithPolicy(addressPolicy{allowPrivate: true})
+	return newFetcherWithPolicy(safefetch.AllowPrivateForTests())
 }
 
 func TestGuardURLRejectsNonPublicTargets(t *testing.T) {
@@ -53,12 +55,12 @@ func TestGuardURLRejectsNonPublicTargets(t *testing.T) {
 			if err == nil {
 				t.Fatalf("Fetch(%q) succeeded, want a refusal", tc.url)
 			}
-			var blocked errBlockedAddress
+			var blocked safefetch.ErrBlocked
 			if !errors.As(err, &blocked) {
-				t.Fatalf("error = %v (%T), want errBlockedAddress", err, err)
+				t.Fatalf("error = %v (%T), want safefetch.ErrBlocked", err, err)
 			}
-			if !strings.Contains(blocked.reason, tc.want) {
-				t.Errorf("reason = %q, want it to mention %q", blocked.reason, tc.want)
+			if !strings.Contains(blocked.Reason, tc.want) {
+				t.Errorf("reason = %q, want it to mention %q", blocked.Reason, tc.want)
 			}
 		})
 	}
@@ -90,7 +92,7 @@ func TestFetchRefusesRedirectIntoPrivateSpace(t *testing.T) {
 	if err == nil {
 		t.Fatal("the redirect chain was followed into private space")
 	}
-	var blocked errBlockedAddress
+	var blocked safefetch.ErrBlocked
 	if !errors.As(err, &blocked) {
 		t.Fatalf("error = %v, want the guard to have refused", err)
 	}
@@ -103,7 +105,7 @@ func TestGuardedDialRefusesPrivateAddresses(t *testing.T) {
 	// Control is handed a resolved ip:port, which is what makes it the right
 	// hook -- see the note on the Transport.
 	err := newPageFetcher().checkDialAddress("tcp", "127.0.0.1:80", nil)
-	var blocked errBlockedAddress
+	var blocked safefetch.ErrBlocked
 	if !errors.As(err, &blocked) {
 		t.Fatalf("error = %v, want the dial-time guard to refuse", err)
 	}
@@ -329,7 +331,7 @@ func TestAllowlistPolicyPermitsOnlyTheNamedAddress(t *testing.T) {
 	if _, err := f.Fetch(context.Background(), other.URL+"/kex"); err == nil {
 		t.Error("a loopback address that is not on the list was fetched")
 	} else {
-		var blocked errBlockedAddress
+		var blocked safefetch.ErrBlocked
 		if !errors.As(err, &blocked) {
 			t.Errorf("refusal = %v, want a blocked-address error", err)
 		}

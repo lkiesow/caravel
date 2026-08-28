@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -436,5 +437,92 @@ func TestReverseGeocodingCapabilityMatchesTheEndpoint(t *testing.T) {
 				t.Errorf("the endpoint answered %d while the capability said %v", rec.Code, tc.want)
 			}
 		})
+	}
+}
+
+// Resolving a pasted Google Maps link (Stage 22 Milestone 6).
+//
+// The resolver itself is covered in internal/geocode/maplink_test.go, including
+// the host allowlist and the redirect refusals. What is here is the HTTP shape:
+// which status each kind of answer earns, and that the endpoint needs neither a
+// session-less caller nor a configured geocoder to behave.
+
+func TestResolveMapLinkEndpoint(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login("alice")
+
+	// A full Maps URL is resolved without any outbound request at all, which is
+	// what lets this be an end-to-end test of the endpoint with no stub.
+	rec := ts.do(http.MethodGet,
+		"/api/geocode/link?url="+url.QueryEscape("https://www.google.com/maps/place/Blue+Lagoon/@63.8804,-22.4495,17z"),
+		cookie, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+	}
+	var got geocode.Result
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Lat != 63.8804 || got.Lng != -22.4495 {
+		t.Errorf("got %v,%v, want 63.8804,-22.4495", got.Lat, got.Lng)
+	}
+	// The place name rides along so the client can offer it for an empty
+	// address field, the way a search result is offered.
+	if got.DisplayName != "Blue Lagoon" {
+		t.Errorf("display_name = %q, want Blue Lagoon", got.DisplayName)
+	}
+}
+
+// No geocoder configured, and it still works: this endpoint reads a URL, it
+// does not ask Nominatim anything. newTestServer leaves Geocoder nil.
+func TestResolveMapLinkNeedsNoGeocoder(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login("alice")
+	if ts.Geocoder != nil {
+		t.Fatal("this test is meaningless with a geocoder configured")
+	}
+
+	rec := ts.do(http.MethodGet,
+		"/api/geocode/link?url="+url.QueryEscape("https://www.google.com/maps/@64.1466,-21.9426,15z"),
+		cookie, "")
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200 -- link resolution needs no geocoder", rec.Code)
+	}
+}
+
+func TestResolveMapLinkEndpointRefusals(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login("alice")
+
+	cases := []struct {
+		name string
+		raw  string
+		want int
+	}{
+		{"missing", "", http.StatusBadRequest},
+		{"blank", "   ", http.StatusBadRequest},
+		{"not a maps link", "https://example.com/somewhere", http.StatusBadRequest},
+		{"a lookalike host", "https://google.com.evil.example/maps/@1,2,15z", http.StatusBadRequest},
+		{"loopback", "http://127.0.0.1/maps/@1,2,15z", http.StatusBadRequest},
+		{"the metadata endpoint", "http://169.254.169.254/maps/@1,2,15z", http.StatusBadRequest},
+		{"a file URL", "file:///etc/passwd", http.StatusBadRequest},
+		{"absurdly long", "https://www.google.com/maps/@1,2,15z?x=" + strings.Repeat("a", 2100), http.StatusBadRequest},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := ts.do(http.MethodGet, "/api/geocode/link?url="+url.QueryEscape(tc.raw), cookie, "")
+			if rec.Code != tc.want {
+				t.Errorf("status = %d, want %d (body %s)", rec.Code, tc.want, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestResolveMapLinkEndpointNeedsASession(t *testing.T) {
+	ts := newTestServer(t)
+	rec := ts.do(http.MethodGet,
+		"/api/geocode/link?url="+url.QueryEscape("https://www.google.com/maps/@1,2,15z"), nil, "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", rec.Code)
 	}
 }

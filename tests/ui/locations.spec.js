@@ -351,3 +351,134 @@ test.describe("looking up an address for a point", () => {
     await expect(page.locator('[data-action="lookup-address"]')).toBeHidden();
   });
 });
+
+// Pasting a Google Maps link (Stage 22 Milestone 6).
+//
+// The same field and the same button as the address search: what is in your
+// clipboard is somebody else's idea of how to name a place, and asking the user
+// to notice which kind it is would be the app's problem becoming theirs.
+//
+// The endpoint is intercepted for the same reason the reverse-geocoding specs
+// intercept theirs -- and here there is a second reason: a full Maps URL is
+// resolved by the server with no outbound request at all, but letting the suite
+// paste a *short* link would mean reaching maps.app.goo.gl for real. The
+// resolver's own tests own that half (internal/geocode/maplink_test.go).
+test.describe("pasting a Google Maps link", () => {
+  test.use({ viewport: MOBILE });
+
+  const SHORT_LINK = "https://maps.app.goo.gl/xfB9TzpFos2N4oAW8";
+  let tripId;
+
+  test.beforeEach(async ({ page }) => {
+    await login(page);
+    const res = await page.request.post("/api/trips", {
+      data: { title: "UI suite: map links" },
+    });
+    expect(res.status(), "create the spec's own trip").toBe(201);
+    tripId = (await res.json()).id;
+  });
+
+  test.afterEach(async ({ page }) => {
+    if (tripId) await page.request.delete(`/api/trips/${tripId}`);
+    tripId = null;
+  });
+
+  async function stubLink(page, { status = 200, body = null } = {}) {
+    const calls = [];
+    await page.route("**/api/geocode/link*", async (route) => {
+      calls.push(route.request().url());
+      await route.fulfill({
+        status,
+        contentType: "application/json",
+        body: JSON.stringify(
+          body ?? { display_name: "Hallgrímskirkja", lat: 64.1418, lng: -21.9266 },
+        ),
+      });
+    });
+    return calls;
+  }
+
+  test("fills the coordinates from a short link, and names the place", async ({ page }) => {
+    const linkCalls = await stubLink(page);
+    // Nothing may reach the address search: a link is not a search term, and
+    // sending it to Nominatim as one finds nothing.
+    const searchCalls = [];
+    await page.route("**/api/geocode?*", async (route) => {
+      searchCalls.push(route.request().url());
+      await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+    });
+
+    await gotoRoute(page, `/trips/${tripId}/locations/new`);
+    await page.locator('[name="placeQuery"]').fill(SHORT_LINK);
+    await page.locator('[data-action="search-place"]').click();
+
+    await expect(page.locator('.location-form [name="lat"]')).toHaveValue("64.1418");
+    await expect(page.locator('.location-form [name="lng"]')).toHaveValue("-21.9266");
+    // The name the URL carried, offered into an empty address field the way a
+    // search result's is.
+    await expect(page.locator('.location-form [name="address"]')).toHaveValue("Hallgrímskirkja");
+    await expect(page.locator(".location-search__status")).toHaveText("Coordinates taken from the link.");
+    // The field is emptied: the link has been consumed, and leaving it there
+    // invites a second press that does the same thing again.
+    await expect(page.locator('[name="placeQuery"]')).toHaveValue("");
+
+    expect(linkCalls, "the link should have gone to the resolver").toHaveLength(1);
+    expect(linkCalls[0]).toContain(encodeURIComponent(SHORT_LINK));
+    expect(searchCalls, "a link must not be sent to the address search").toHaveLength(0);
+  });
+
+  test("leaves a hand-written address alone", async ({ page }) => {
+    await stubLink(page);
+    await gotoRoute(page, `/trips/${tripId}/locations/new`);
+
+    const address = page.locator('.location-form [name="address"]');
+    await address.fill("Foss Hotel, room 4");
+    await page.locator('[name="placeQuery"]').fill(SHORT_LINK);
+    await page.locator('[data-action="search-place"]').click();
+
+    await expect(page.locator('.location-form [name="lat"]')).toHaveValue("64.1418");
+    // The coordinates are what was asked for; the name is a guess about what to
+    // call the place, and it does not get to overwrite what somebody typed.
+    await expect(address).toHaveValue("Foss Hotel, room 4");
+  });
+
+  test("says which way a link failed", async ({ page }) => {
+    await stubLink(page, { status: 404, body: { error: "not a single place" } });
+    await gotoRoute(page, `/trips/${tripId}/locations/new`);
+
+    await page.locator('[name="placeQuery"]').fill(SHORT_LINK);
+    await page.locator('[data-action="search-place"]').click();
+    // 404 is "that link names no single place" -- a search results page, say --
+    // and it is worth saying, because the user can go back and pick the pin.
+    await expect(page.locator(".location-search__status")).toHaveText(/does not point at a single place/);
+    await expect(page.locator('.location-form [name="lat"]')).toHaveValue("");
+
+    await page.unroute("**/api/geocode/link*");
+    await stubLink(page, { status: 502, body: { error: "unreachable" } });
+    await page.locator('[name="placeQuery"]').fill(SHORT_LINK);
+    await page.locator('[data-action="search-place"]').click();
+    await expect(page.locator(".location-search__status")).toHaveText(/could not be read/);
+  });
+
+  test("still searches for something that is not a link", async ({ page }) => {
+    const linkCalls = await stubLink(page);
+    const searchCalls = [];
+    await page.route("**/api/geocode?*", async (route) => {
+      searchCalls.push(route.request().url());
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([{ display_name: "Reykjavík, Iceland", lat: 64.1466, lng: -21.9426 }]),
+      });
+    });
+
+    await gotoRoute(page, `/trips/${tripId}/locations/new`);
+    await page.locator('[name="placeQuery"]').fill("Reykjavik");
+    await page.locator('[data-action="search-place"]').click();
+
+    // The ordinary path is untouched: a result list to choose from.
+    await expect(page.locator(".location-search__result")).toHaveCount(1);
+    expect(searchCalls).toHaveLength(1);
+    expect(linkCalls, "a search term must not be sent to the link resolver").toHaveLength(0);
+  });
+});

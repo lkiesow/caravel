@@ -553,6 +553,12 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     async function search() {
       const query = input.value.trim();
       results.innerHTML = "";
+      // A pasted Google Maps link is not a search term, and sending it to
+      // Nominatim as one finds nothing. The same field and the same button
+      // handle both: what you have in your clipboard is somebody else's idea
+      // of how to name a place, and asking the user to notice which kind it is
+      // would be the app's problem becoming theirs.
+      if (isMapLink(query)) return resolveMapLink(query);
       if (query.length < 2) {
         setStatus("location.form.searchTooShort");
         return;
@@ -598,6 +604,54 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
         li.appendChild(choose);
         results.appendChild(li);
       }
+    }
+
+    // Recognising the link is deliberately loose: any http(s) URL on a Google
+    // or goo.gl host. The server decides what it will actually follow (see
+    // isMapLinkHost in internal/geocode), and being wrong here costs one 400
+    // and a sentence, whereas being too strict means a link that works in the
+    // browser and not in this field.
+    function isMapLink(value) {
+      let parsed;
+      try {
+        parsed = new URL(value);
+      } catch {
+        return false;
+      }
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+      const host = parsed.hostname.toLowerCase().replace(/\.$/, "");
+      return host === "goo.gl" || host.endsWith(".goo.gl") || /(^|\.)google\.[a-z.]{2,7}$/.test(host);
+    }
+
+    // A link resolves to exactly one place, so it fills the fields rather than
+    // offering a list -- there is nothing to choose between. The name the URL
+    // carries is offered for the address the same way a search result's is:
+    // only into an *empty* field, because it is a guess about what to call the
+    // place rather than an address the user asked for.
+    async function resolveMapLink(link) {
+      setStatus("location.form.resolvingLink");
+      button.disabled = true;
+      let place;
+      try {
+        place = await api.get(`/geocode/link?url=${encodeURIComponent(link)}`);
+      } catch (err) {
+        console.error(err);
+        // 404 means the link was followed and names no single place -- a
+        // search results page. That is worth saying, because the user can go
+        // back to Maps and pick the pin.
+        setStatus(err?.status === 404 ? "location.form.linkNoPlace" : "location.form.linkFailed");
+        return;
+      } finally {
+        button.disabled = false;
+      }
+
+      form.lat.value = place.lat;
+      form.lng.value = place.lng;
+      if (place.display_name && !form.address.value.trim()) form.address.value = place.display_name;
+      syncMapFromFields();
+      syncHint();
+      setStatus("location.form.linkResolved");
+      input.value = "";
     }
 
     button.addEventListener("click", search);

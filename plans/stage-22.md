@@ -624,6 +624,87 @@ fill — or, if stubbing the outbound host is not practical from the suite, asse
 the client-side *recognition* branch and cover the resolution in Go only, and
 say so in the plan's Done paragraph.
 
+**Done.** Both halves as planned: `internal/safefetch` holds the guard, and
+`geocode.ResolveMapLink` plus `GET /api/geocode/link?url=` resolves a link. The
+address-search field recognises a Maps URL and sends it to the resolver instead
+of to Nominatim — no new control.
+
+**6a.** `Policy` with `PublicOnly()`, `Allowing(...)` and
+`AllowPrivateForTests()`, a `Guard` method, an exported `CheckDialAddress`, and
+`Client(Options)` that wires all three checks in. The zero value is the strict
+policy, so a caller who forgets to build one gets the safe behaviour. `assist`
+keeps `pageFetcher`, its caps, its User-Agent and all the HTML extraction, and
+its constructors kept their names — the diff there is small on purpose.
+
+Two things worth stating about the API:
+
+- **`Client` is the only supported way to get one.** A caller holding a `Policy`
+  and its own `http.Client` would have the pre-flight check and neither of the
+  other two, which is the shape of guard that looks present and stops nothing.
+- **A caller's `CheckRedirect` runs in addition to the guard, never instead.**
+  The resolver uses one to keep a chain on its host allowlist;
+  `TestCallerCheckRedirectCannotReplaceTheGuard` asserts it cannot pre-empt the
+  address check by supplying one.
+
+`AllowPrivateForTests` is the one loosening: it was an unexported field, and
+across a package boundary it has to be reachable. The name is the documentation
+and no configuration value can produce it.
+
+**6b.** The resolver tries the URL it was given **before** making any request —
+a full `/maps/@...` or `?q=lat,lng` link is read directly, which is most of what
+people paste and costs nothing. Only a shortener is followed. The body is never
+read: the answer is in the expanded URL, and a Maps page is a megabyte of
+JavaScript.
+
+Extraction order differs from the plan, on a detail the plan had backwards. It
+listed `@lat,lng` first; `@` is the **viewport**, which follows the screen when
+the map is panned, while `!3d…!4d…` in the `data=` blob is the place that was
+actually clicked. The marker wins, and
+`TestResolveMapLinkPrefersTheMarkerOverTheViewport` pins it with a URL whose two
+candidates are 54 degrees apart.
+
+**The test seam is a struct, not a global.** The tests need both policies
+relaxed — an `httptest` server is on loopback *and* is not google.com — and a
+pair of mutable package variables that production code reads would be a worse
+answer than a value the tests construct. `mapLinkResolver` is unexported with
+`ResolveMapLink` as the only door in.
+
+**The host check is structural rather than a TLD list**, since Maps is served
+from per-country domains: the label before the public suffix must be `google`,
+or the host is one of the two shorteners. The test table is mostly lookalikes —
+`google.com.evil.example`, `notgoogle.com`, `www.google.com.attacker.net`,
+`evil-goo.gl` — because that is where this kind of check goes wrong.
+
+**Verified.** `make ci` green (388 keys). Eight new tests in `safefetch` and
+21 in `geocode` (11 of them for the resolver), plus four for the endpoint.
+`internal/assist`'s own guard tests pass **unchanged**, which is the evidence a
+move of security-critical code has to produce.
+
+Two of my own tests were wrong first and are worth recording. A stub that
+redirected *every* path redirected its own destination too, so it looped until
+the cap — the redirect cap earning its keep, but not what the test was about.
+And the out-of-range-coordinates test went through the front door, so a URL with
+no *usable* point fell through to the shortener path and made a **live request
+to google.com** to prove a parsing rule; it now tests `coordinatesFrom`
+directly. The package's tests run in 0.012s, which is what a suite that reaches
+nothing looks like.
+
+Full UI suite green at **152 passed**, four new specs intercepting
+`/api/geocode/link` — a short link filling the fields and naming the place, a
+hand-written address surviving, the 404 and 502 messages reading differently,
+and an ordinary search term still going to the search endpoint with nothing
+sent to the resolver. By hand at 324×756: a full `google.com` URL and a
+`google.de` one both resolve to the marker rather than the viewport, the name
+lands in an empty address field, the map moves, and the German pass reads
+"Koordinaten aus dem Link übernommen."
+
+**Not verified live: a real `maps.app.goo.gl` short link.** Every redirect test
+is against a stub, and the one thing none of them proves is that Google's
+shortener behaves the way this code expects — that the chain ends on a URL
+carrying `!3d`/`!4d`, and that a plain GET is not answered with a consent
+interstitial instead. Worth one manual check with a genuine short link before
+this is relied on.
+
 ---
 
 ## 7. Two writes that lie, and sweep-up

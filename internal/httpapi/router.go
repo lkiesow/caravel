@@ -270,6 +270,11 @@ func (s *Server) buildRouter() chi.Router {
 		// the same third party's budget, and giving the new one its own bucket
 		// would double what one client can ask of them.
 		r.With(auth.RequireAuth, s.rateLimitGeocode).Get("/geocode/reverse", s.handleReverseGeocode)
+		// Also on the geocode limiter, though it talks to Google rather than to
+		// the geocoder: it is the same shape of thing -- an outbound request
+		// made on a user keystroke -- and a separate bucket would just double
+		// what one client can spend.
+		r.With(auth.RequireAuth, s.rateLimitGeocode).Get("/geocode/link", s.handleResolveMapLink)
 
 		// Account administration. requireAdmin sits inside RequireAuth: an
 		// anonymous caller gets 401 and a logged-in non-admin 403, which are

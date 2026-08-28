@@ -108,3 +108,50 @@ func parseLatLng(w http.ResponseWriter, rawLat, rawLng string) (float64, float64
 	}
 	return lat, lng, true
 }
+
+// handleResolveMapLink turns a pasted Google Maps link into coordinates.
+//
+// Unlike the two handlers above this needs no geocoder configured: it reads a
+// URL and, if it has to, follows a redirect. So there is no 501 branch and no
+// capability flag -- it works on every instance.
+//
+// It lives under /geocode all the same, because what it produces is a
+// coordinate and because it should spend the same rate-limit budget: both are
+// this app making an outbound request on a user keystroke. Worth knowing: the
+// *control* that reaches it is inside the address-search panel, which is hidden
+// unless `geocoding` is on, so an instance with no geocoder has the endpoint
+// and no way to press it. That is a UI coupling rather than a rule, and if
+// somebody wants link resolution without address search it is the panel that
+// needs splitting, not this.
+func (s *Server) handleResolveMapLink(w http.ResponseWriter, r *http.Request) {
+	raw := strings.TrimSpace(r.URL.Query().Get("url"))
+	if raw == "" {
+		writeError(w, http.StatusBadRequest, "url is required")
+		return
+	}
+	// A cap before anything is parsed. A URL is a query parameter, and there is
+	// no reason for a real Maps link to be longer than this.
+	if len(raw) > 2048 {
+		writeError(w, http.StatusBadRequest, "that URL is too long")
+		return
+	}
+
+	result, err := geocode.ResolveMapLink(r.Context(), raw)
+	if err != nil {
+		switch {
+		case errors.Is(err, geocode.ErrNotAMapLink):
+			// 400 and not 502: nothing was tried. The caller sent something
+			// this endpoint does not follow, which is a fact about the request.
+			writeError(w, http.StatusBadRequest, "that is not a Google Maps link")
+		case errors.Is(err, geocode.ErrNoCoordinates):
+			// The link was followed and names no single place -- a search
+			// results page, say. Distinct from the above so the client can say
+			// which of the two happened.
+			writeError(w, http.StatusNotFound, "that link does not point at a single place")
+		default:
+			writeError(w, http.StatusBadGateway, "that link could not be resolved")
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}

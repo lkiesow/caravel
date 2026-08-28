@@ -1,6 +1,7 @@
 import { api } from "../api.js";
 import { guard, guardClick, guardForm } from "../busy.js";
 import { getLocale, t, translatePage } from "../i18n.js";
+import { formatBytes } from "../format.js";
 import { icon } from "../icon.js";
 import { hasCapability } from "../session.js";
 
@@ -16,6 +17,12 @@ import { hasCapability } from "../session.js";
 // `onStaged({ kind: "file", file, previewUrl } | { kind: "url", url, previewUrl } | null)`
 // reports the current pick so the caller can upload it once the entity
 // exists.
+// The server's own limit (maxImageUploadBytes in internal/httpapi/media.go).
+// Duplicated deliberately, for the same reason as the file list's copy: a
+// number that has to match on both sides reads better as a named constant
+// pointing at the other one than as an extra round trip to ask for it.
+const MAX_IMAGE_BYTES = 50 * 1024 * 1024;
+
 export function renderImageField(container, { tripId, imageUrl, attachPath, onChanged, onStaged, searchSeed }) {
   const isStaging = !tripId || !attachPath;
   const staged = { kind: null, file: null, url: null, previewUrl: null, provenance: null };
@@ -70,6 +77,18 @@ export function renderImageField(container, { tripId, imageUrl, attachPath, onCh
           const file = e.target.files[0];
           if (!file) return;
           errorEl.hidden = true;
+
+          // Checked here as well as by the server, which answers an oversized
+          // upload with a 413 whose body is about multipart parsing rather
+          // than about this file - see maxImageUploadBytes in
+          // internal/httpapi/media.go. Before the staging branch below, so a
+          // trip being created rejects the pick now rather than after the
+          // trip has already been saved.
+          if (file.size > MAX_IMAGE_BYTES) {
+            showError(t("files.tooLarge", { name: file.name, limit: formatBytes(MAX_IMAGE_BYTES) }));
+            e.target.value = "";
+            return;
+          }
 
           if (isStaging) {
             if (staged.kind === "file" && staged.previewUrl) URL.revokeObjectURL(staged.previewUrl);

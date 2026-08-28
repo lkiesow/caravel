@@ -18,6 +18,14 @@ import (
 
 const MaxDimension = 2000
 
+// MaxPixels caps the *source* dimensions, checked from the header before the
+// image is decoded. MaxDimension cannot do this job: it is applied after
+// decoding, by which point the full-size bitmap has already been allocated, so
+// a few hundred KB of PNG declaring 30000x30000 would ask for gigabytes of
+// RGBA before anything looked at its size. 100 megapixels is past the outer
+// edge of consumer cameras and roughly 400MB of RGBA at peak.
+const MaxPixels = 100_000_000
+
 type Result struct {
 	Data        []byte
 	ContentType string
@@ -62,15 +70,43 @@ func DecodeAndResize(r io.Reader) (Result, error) {
 	return encode(img, format)
 }
 
+// decode reads data as an image, refusing anything whose declared dimensions
+// exceed MaxPixels before it allocates the bitmap.
+//
+// A header we cannot read at all falls through to the WebP path, since that is
+// how an unregistered format has always been handled here. A header we *can*
+// read that is simply too big does not fall through: it is a decision about
+// this image, not a failure to understand it.
 func decode(data []byte) (format string, img image.Image, err error) {
-	format, img, err = decodeStdlib(data)
-	if err == nil {
-		return format, img, nil
+	if cfg, _, cfgErr := image.DecodeConfig(bytes.NewReader(data)); cfgErr == nil {
+		if pixErr := checkPixels(cfg.Width, cfg.Height); pixErr != nil {
+			return "", nil, pixErr
+		}
+		format, img, err = decodeStdlib(data)
+		if err == nil {
+			return format, img, nil
+		}
+	} else {
+		err = cfgErr
 	}
-	if webpImg, webpErr := webp.Decode(bytes.NewReader(data)); webpErr == nil {
-		return "webp", webpImg, nil
+	if cfg, cfgErr := webp.DecodeConfig(bytes.NewReader(data)); cfgErr == nil {
+		if pixErr := checkPixels(cfg.Width, cfg.Height); pixErr != nil {
+			return "", nil, pixErr
+		}
+		if webpImg, webpErr := webp.Decode(bytes.NewReader(data)); webpErr == nil {
+			return "webp", webpImg, nil
+		}
 	}
 	return "", nil, fmt.Errorf("unsupported or corrupt image: %w", err)
+}
+
+func checkPixels(w, h int) error {
+	// Compared separately first so the product cannot overflow int on a 32-bit
+	// build: a header can declare whatever it likes.
+	if w > MaxPixels || h > MaxPixels || int64(w)*int64(h) > MaxPixels {
+		return fmt.Errorf("image is %dx%d, over the maximum of %d pixels", w, h, MaxPixels)
+	}
+	return nil
 }
 
 func decodeStdlib(data []byte) (string, image.Image, error) {

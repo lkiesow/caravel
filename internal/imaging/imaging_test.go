@@ -3,10 +3,12 @@ package imaging
 import (
 	"bytes"
 	"encoding/binary"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/jpeg"
 	"image/png"
+	"strings"
 	"testing"
 )
 
@@ -357,5 +359,99 @@ func TestJPEGOrientationSkipsEarlierSegments(t *testing.T) {
 	data := jpegWithAPP1(t, sourceImage(8, 4), segment)
 	if got := jpegOrientation(data); got != 6 {
 		t.Errorf("jpegOrientation = %d, want 6", got)
+	}
+}
+
+// hugePNGHeader is a valid PNG signature and IHDR chunk declaring w x h, and
+// nothing else. That is all image.DecodeConfig reads, which is the point: the
+// guard has to reject this from the header alone, because a file that really
+// contained 30000x30000 pixels could not be decoded in a test at all -- or in
+// production, which is the bug.
+func hugePNGHeader(w, h uint32) []byte {
+	var ihdr bytes.Buffer
+	ihdr.WriteString("IHDR")
+	_ = binary.Write(&ihdr, binary.BigEndian, w)
+	_ = binary.Write(&ihdr, binary.BigEndian, h)
+	ihdr.Write([]byte{8, 6, 0, 0, 0}) // 8-bit RGBA, no interlace
+
+	var out bytes.Buffer
+	out.Write([]byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a})
+	_ = binary.Write(&out, binary.BigEndian, uint32(ihdr.Len()-4))
+	out.Write(ihdr.Bytes())
+	_ = binary.Write(&out, binary.BigEndian, crc32.ChecksumIEEE(ihdr.Bytes()))
+	return out.Bytes()
+}
+
+// hugeWebPHeader is the same trick for a lossy WebP: a RIFF container and a
+// VP8 keyframe header declaring the largest dimensions the format can express
+// (14 bits each), followed by no picture data.
+func hugeWebPHeader() []byte {
+	const maxVP8Dimension = 1<<14 - 1
+
+	var vp8 bytes.Buffer
+	// Frame tag: keyframe, version 0, show_frame, a nominal partition size.
+	tag := uint32(1<<4) | (7 << 5)
+	vp8.Write([]byte{byte(tag), byte(tag >> 8), byte(tag >> 16)})
+	vp8.Write([]byte{0x9d, 0x01, 0x2a}) // keyframe start code
+	_ = binary.Write(&vp8, binary.LittleEndian, uint16(maxVP8Dimension))
+	_ = binary.Write(&vp8, binary.LittleEndian, uint16(maxVP8Dimension))
+	vp8.Write(make([]byte, 32))
+
+	var out bytes.Buffer
+	out.WriteString("RIFF")
+	_ = binary.Write(&out, binary.LittleEndian, uint32(4+8+vp8.Len()))
+	out.WriteString("WEBP")
+	out.WriteString("VP8 ")
+	_ = binary.Write(&out, binary.LittleEndian, uint32(vp8.Len()))
+	out.Write(vp8.Bytes())
+	return out.Bytes()
+}
+
+// TestDecodeAndResizeRejectsDecodeBomb covers the reason the byte limit on an
+// upload is not a limit on what a decode costs. Both files below are a few
+// dozen bytes; decoding either would ask for gigabytes of RGBA, because
+// MaxDimension is applied to an image that has already been allocated.
+func TestDecodeAndResizeRejectsDecodeBomb(t *testing.T) {
+	cases := map[string][]byte{
+		"png":  hugePNGHeader(30000, 30000),
+		"webp": hugeWebPHeader(),
+	}
+	for name, data := range cases {
+		t.Run(name, func(t *testing.T) {
+			if len(data) > 1024 {
+				t.Fatalf("fixture is %d bytes; it is meant to be tiny, or it proves nothing", len(data))
+			}
+			_, err := DecodeAndResize(bytes.NewReader(data))
+			if err == nil {
+				t.Fatal("DecodeAndResize accepted an image far over the pixel cap")
+			}
+			if !strings.Contains(err.Error(), "pixels") {
+				t.Errorf("error = %q, want one naming the pixel limit rather than a decode failure", err)
+			}
+		})
+	}
+}
+
+// TestCheckPixels pins the boundary, including the case that made the
+// comparison two-stage: dimensions whose product overflows a 32-bit int.
+func TestCheckPixels(t *testing.T) {
+	cases := []struct {
+		name    string
+		w, h    int
+		wantErr bool
+	}{
+		{"an ordinary phone photo", 4032, 3024, false},
+		{"exactly at the cap", 10000, 10000, false},
+		{"one pixel over", 10000, 10001, true},
+		{"a panorama within the cap", 40000, 2000, false},
+		{"dimensions that would overflow int32", 1 << 20, 1 << 20, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := checkPixels(tc.w, tc.h)
+			if (err != nil) != tc.wantErr {
+				t.Errorf("checkPixels(%d, %d) = %v, wantErr %v", tc.w, tc.h, err, tc.wantErr)
+			}
+		})
 	}
 }

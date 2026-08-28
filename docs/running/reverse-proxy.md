@@ -74,10 +74,10 @@ regardless — Caravel simply does not read it today.
 
 ## Allow large enough request bodies
 
-Uploads are capped by Caravel at **50 MB** for documents and **15 MB** for
-images. A proxy with a smaller body limit will reject the upload first, and the
-error the user sees will be the proxy's rather than a useful one. nginx defaults
-to 1 MB, which is the common surprise.
+Uploads are capped by Caravel at **50 MB**, for both documents and images. A
+proxy with a smaller body limit will reject the upload first, and the error the
+user sees will be the proxy's rather than a useful one. nginx defaults to 1 MB,
+which is the common surprise.
 
 ## Headers Caravel sets, and two it does not
 

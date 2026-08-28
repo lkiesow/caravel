@@ -20,8 +20,18 @@ import (
 )
 
 const (
-	maxImageUploadBytes = 15 << 20 // 15MB, per plan Section 3.4
-	imageFetchTimeout   = 15 * time.Second
+	// maxImageUploadBytes bounds transfer and buffering, nothing else. It is
+	// deliberately not a proxy for decode cost: an image is downscaled to
+	// imaging.MaxDimension and re-encoded before storage, so a 50MB source and
+	// a 3MB source occupy the same space on disk, and what a decode actually
+	// costs is pixels rather than bytes -- imaging.MaxPixels guards that.
+	// Matched to maxFileUploadBytes so operators have one body-size number to
+	// configure in front of Caravel.
+	maxImageUploadBytes = 50 << 20 // 50MB
+	// imageFetchTimeout covers the whole download. It has to leave room for
+	// maxImageUploadBytes over an ordinary connection; at 15s the timeout, not
+	// the limit, was what a large image met first.
+	imageFetchTimeout = 60 * time.Second
 )
 
 type mediaAssetResponse struct {

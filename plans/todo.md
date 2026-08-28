@@ -21,6 +21,34 @@ down.
 
 ## Bugs and rough edges
 
+- **The image fetch by URL does not go through `internal/safefetch`.**
+  (Surfaced by the image size-limit fix of 2026-08-28.) `fetchImage` in
+  `internal/httpapi/media.go` validates only the scheme and then hands the URL
+  to `http.DefaultClient`, so "set this location image from a URL" will happily
+  read `http://169.254.169.254/` or an admin panel on localhost and store the
+  result. It is the third feature that fetches a caller-supplied URL, and the
+  only one still unguarded -- `internal/assist/fetch.go` and
+  `internal/geocode/maplink.go` both use `safefetch.PublicOnly()`. Note that
+  `internal/httpapi/media_fetch_test.go` serves from `httptest` on loopback, so
+  whoever does this needs `safefetch.AllowPrivateForTests()` there.
+
+- **An image is buffered twice on its way in.** (Surfaced by the image
+  size-limit fix of 2026-08-28.) `fetchImage` does `io.ReadAll` into a byte
+  slice and then `imaging.DecodeAndResize` does `io.ReadAll` on a reader over
+  that same slice. With the limit now at 50MB that is 100MB of transient buffer
+  per concurrent upload, before the decoded bitmap. `DecodeAndResize` needs the
+  bytes twice (once to decode, once to read the EXIF APP1), so the fix is to
+  pass the slice rather than a reader, not to stream.
+
+- **Upload limits are still compile-time constants.** (`plans/stage-01.md:152`
+  wanted them configurable; the size-limit fix of 2026-08-28 left them so.)
+  `maxImageUploadBytes` and `maxFileUploadBytes` are now both 50MB, hardcoded in
+  `internal/httpapi/`, and duplicated client-side in
+  `web/js/components/file-list.js` and `image-field.js`. An instance that wants
+  a different figure has to rebuild. Worth doing together with an
+  `/auth/me`-style capability so the client reads the number rather than
+  repeating it.
+
 - **Only JPEG orientation is honoured on upload.** (Stage 20 follow-up, the
   EXIF orientation fix.) `internal/imaging` now reads the EXIF Orientation out
   of a JPEG and bakes the rotation into the pixels, which is what phone cameras

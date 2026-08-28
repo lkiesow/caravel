@@ -228,13 +228,6 @@ down.
   either storing a user-pasted Google URL per location or accepting the search
   link as good enough.
 
-- **The map-link resolver has never been run against a real short link.**
-  (Stage 22 Milestone 6.) Every redirect test is against a stub, so what is
-  unproven is Google's own behaviour: that a `maps.app.goo.gl` chain ends on a
-  URL carrying `!3d`/`!4d`, and that a plain GET is not answered with a consent
-  interstitial instead. A full `google.com/maps/...` URL — the common paste —
-  needs no request at all and is verified end to end. One manual check with a
-  genuine short link would close this.
 - **A trip journal with photos.** (Stage 01.) A `journal_entries` table
   (trip_id, date, body markdown) reusing the existing `media_assets` pipeline
   for photos.

@@ -460,6 +460,42 @@ test.describe("pasting a Google Maps link", () => {
     await expect(page.locator(".location-search__status")).toHaveText(/could not be read/);
   });
 
+  // The regression this guards. Four of the five ways the coordinates can
+  // change write the fields directly, firing no input event, so a control that
+  // watches for one is wrong for most of them. Found by testing a real short
+  // link by hand: the fields filled and "Look up address" stayed disabled.
+  test("leaves the address lookup usable however the coordinates arrived", async ({ page }) => {
+    await stubLink(page);
+    await page.route("**/api/geocode?*", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([{ display_name: "Reykjavík, Iceland", lat: 64.1466, lng: -21.9426 }]),
+      });
+    });
+
+    await gotoRoute(page, `/trips/${tripId}/locations/new`);
+    const lookup = page.locator('[data-action="lookup-address"]');
+    await expect(lookup).toBeDisabled();
+
+    // A resolved map link.
+    await page.locator('[name="placeQuery"]').fill(SHORT_LINK);
+    await page.locator('[data-action="search-place"]').click();
+    await expect(page.locator('.location-form [name="lat"]')).toHaveValue("64.1418");
+    await expect(lookup, "a resolved link must enable the lookup").toBeEnabled();
+
+    // A chosen address-search result. This half was broken before the map-link
+    // work existed -- the button shipped watching two of the five writers.
+    await page.locator('.location-form [name="lat"]').fill("");
+    await page.locator('.location-form [name="lng"]').fill("");
+    await expect(lookup).toBeDisabled();
+    await page.locator('[name="placeQuery"]').fill("Reykjavik");
+    await page.locator('[data-action="search-place"]').click();
+    await page.locator(".location-search__result").first().click();
+    await expect(page.locator('.location-form [name="lat"]')).toHaveValue("64.1466");
+    await expect(lookup, "a chosen search result must enable the lookup").toBeEnabled();
+  });
+
   test("still searches for something that is not a link", async ({ page }) => {
     const linkCalls = await stubLink(page);
     const searchCalls = [];

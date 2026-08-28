@@ -485,13 +485,30 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       }
     };
 
+    // Everything that reacts to the coordinates changing, in one place.
+    //
+    // There are five ways they change -- typing, a map click, the locate
+    // button, choosing an address-search result, and resolving a pasted map
+    // link -- and four of those write `form.lat.value` directly, which fires no
+    // `input` event. So a listener is not enough and every writer has to say
+    // so. Making that one call rather than three or four is what stops the next
+    // writer from forgetting one of them, which is exactly what happened when
+    // the reverse-geocoding button arrived: it watched the map events and the
+    // input event, and stayed disabled after a search result filled the fields.
+    const coordinateListeners = [];
+    const onCoordinatesChanged = (fn) => coordinateListeners.push(fn);
+    const coordinatesChanged = () => {
+      syncMapFromFields();
+      syncHint();
+      for (const listener of coordinateListeners) listener();
+    };
+
     // Map -> fields. No loop: setting the attributes above only moves the
     // marker, and location-picked is only ever emitted by a click or a drag.
     const takeCoordinates = ({ lat, lng }) => {
       form.lat.value = lat;
       form.lng.value = lng;
-      syncMapFromFields();
-      syncHint();
+      coordinatesChanged();
     };
     setCoordinates = takeCoordinates;
     picker.addEventListener("location-picked", (e) => takeCoordinates(e.detail));
@@ -502,14 +519,11 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     picker.addEventListener("position-found", (e) => takeCoordinates(e.detail));
 
     for (const name of ["lat", "lng"]) {
-      form[name].addEventListener("input", () => {
-        syncHint();
-        syncMapFromFields();
-      });
+      form[name].addEventListener("input", coordinatesChanged);
     }
     syncHint();
-    bindPlaceSearch(form, syncMapFromFields, syncHint);
-    bindAddressLookup(form);
+    bindPlaceSearch(form, coordinatesChanged);
+    bindAddressLookup(form, onCoordinatesChanged);
     // The card has no button of its own any more - these values are read
     // back by save(). Enter in a coordinate field saves the page, via the
     // same submit-plus-keydown pair the Basic info card uses and for the same
@@ -535,7 +549,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
   // It searches on Enter or on the button, never per keystroke: every query
   // costs an external service a request, and OSM's usage policy is the reason
   // this goes through our own endpoint at all (internal/httpapi/geocode.go).
-  function bindPlaceSearch(form, syncMapFromFields, syncHint) {
+  function bindPlaceSearch(form, coordinatesChanged) {
     if (!hasCapability("geocoding")) return;
 
     const panel = container.querySelector(".location-search");
@@ -596,8 +610,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
           // formatted address, and overwriting something the user typed by
           // hand would lose their wording for the sake of tidiness.
           if (!form.address.value.trim()) form.address.value = place.display_name;
-          syncMapFromFields();
-          syncHint();
+          coordinatesChanged();
           results.innerHTML = "";
           setStatus(null);
         });
@@ -648,8 +661,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       form.lat.value = place.lat;
       form.lng.value = place.lng;
       if (place.display_name && !form.address.value.trim()) form.address.value = place.display_name;
-      syncMapFromFields();
-      syncHint();
+      coordinatesChanged();
       setStatus("location.form.linkResolved");
       input.value = "";
     }
@@ -685,7 +697,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
   //   `geocoding`, because the reverse endpoint is derived from the configured
   //   search URL and the derivation can fail (see geocode.ReverseURL): an
   //   instance can have working address search and no reverse lookup.
-  function bindAddressLookup(form) {
+  function bindAddressLookup(form, onCoordinatesChanged) {
     if (!hasCapability("reverse_geocoding")) return;
 
     const panel = container.querySelector(".location-reverse");
@@ -711,27 +723,18 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     const syncEnabled = () => {
       button.disabled = !(form.lat.value.trim() && form.lng.value.trim());
     };
-    for (const name of ["lat", "lng"]) {
-      form[name].addEventListener("input", () => {
-        syncEnabled();
-        // A stale offer is worse than none: the address belonged to the old
-        // point, and accepting it after moving the pin would file the wrong
-        // one.
-        clearOffer();
-        setStatus(null);
-      });
-    }
+    // One subscription rather than a listener per way the coordinates can
+    // change. The first version of this watched the input event and the two map
+    // events, and so stayed disabled after an address-search result or a
+    // resolved map link filled the fields -- both of which write them directly.
+    onCoordinatesChanged(() => {
+      syncEnabled();
+      // A stale offer is worse than none: the address belonged to the old
+      // point, and accepting it after moving the pin would file the wrong one.
+      clearOffer();
+      setStatus(null);
+    });
     syncEnabled();
-    // The map writes the fields directly rather than through an input event, so
-    // picking a point has to re-check this itself.
-    const picker = container.querySelector(".location-form__map");
-    for (const event of ["location-picked", "position-found"]) {
-      picker.addEventListener(event, () => {
-        syncEnabled();
-        clearOffer();
-        setStatus(null);
-      });
-    }
 
     // Guarded through busy.js rather than a local flag, like every other write
     // in this editor -- this one is a read, but it is a read that costs

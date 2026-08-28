@@ -698,12 +698,35 @@ sent to the resolver. By hand at 324×756: a full `google.com` URL and a
 lands in an empty address field, the map moves, and the German pass reads
 "Koordinaten aus dem Link übernommen."
 
-**Not verified live: a real `maps.app.goo.gl` short link.** Every redirect test
-is against a stub, and the one thing none of them proves is that Google's
-shortener behaves the way this code expects — that the chain ends on a URL
-carrying `!3d`/`!4d`, and that a plain GET is not answered with a consent
-interstitial instead. Worth one manual check with a genuine short link before
-this is relied on.
+**Follow-up: verified live, and it found a bug.** A real short link
+(`maps.app.goo.gl/gMeQfY4RMpQg4DHeA`, the Brandenburg Gate) resolves correctly
+end to end: 200 in ~1.5s, `52.5162746,13.3777041`, name "Brandenburg Gate". So
+Google's shortener does behave as this code expects — a plain GET, no consent
+interstitial, and the chain ends on a URL carrying `!3d`/`!4d`. The backlog note
+recording that as unproven is gone.
+
+What the live run exposed is a **coordination bug that was not in this
+milestone's new code**. The fields filled and the reverse-geocoding button from
+Milestone 5 stayed *disabled*. There are five ways the coordinates can change --
+typing, a map click, the locate control, choosing an address-search result, and
+resolving a link -- and **four of them write `form.lat.value` directly**, which
+fires no `input` event. Milestone 5's button watched the input event and the two
+map events, so it was already wrong for a chosen search result before this
+milestone existed; the link path was simply a third way to reach it.
+
+The fix is one notification path rather than another listener:
+`coordinatesChanged()` runs the map sync, the hint and any subscriber, and every
+writer calls it. `bindPlaceSearch` took two callbacks and now takes that one;
+`bindAddressLookup` subscribes instead of listening to two of the five writers.
+The shape is the point -- the next writer has one call to make, and forgetting
+it is visible rather than silent.
+
+**Verified.** A new spec drives both halves (a resolved link and a chosen search
+result, each enabling the lookup) and was **checked against the unfixed code**:
+it fails with "a resolved link must enable the lookup ... Received: disabled".
+`make ci` green, full UI suite green at **153 passed**. By hand: the real short
+link fills the fields and enables the button, a search result does the same, and
+clearing a field disables it again.
 
 ---
 

@@ -288,14 +288,6 @@ purpose — do not reconstruct it from an older stage plan without asking.
   have the specs share one login the way `auth.setup.js` does, or at minimum
   teach the message to name the 429 as its own cause.
 
-- **A directory URL under the asset tree still gets a listing.** **(soon)**
-  (Noted in Stage 23 Milestone 1.) `serveStatic` sends a *missing* asset path to
-  a real 404, but `s.WebFS.Open("/js/")` succeeds for a directory, so the
-  request never takes that branch and `http.FileServer` renders its index of
-  every module. Harmless on a self-hosted app whose source is public, and it
-  predates the milestone that noticed it; the fix is one `Stat` for `IsDir` in
-  the same place.
-
 - **The contrast gate covers three routes and one exemption.** **(soon)** (Stage
   19 Milestone 6.) `make check-contrast` sweeps `/trips`, `/settings` and
   `/trips/new` in both palettes, holding each element to its own WCAG threshold,

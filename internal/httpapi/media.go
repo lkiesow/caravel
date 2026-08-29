@@ -311,7 +311,7 @@ func fetchImage(ctx context.Context, rawURL string) (imaging.Result, error) {
 		return imaging.Result{}, fmt.Errorf("image exceeds maximum size of %d bytes", maxImageUploadBytes)
 	}
 
-	return imaging.DecodeAndResize(bytes.NewReader(data))
+	return imaging.DecodeAndResizeBytes(data)
 }
 
 // handleServeMedia handles GET /api/media/{mediaId}/file — serves any asset

@@ -228,14 +228,18 @@ read the new message. Then `make test-ui` green.
 
 Two unrelated small fixes, one commit, in the manner of Stage 23 Milestone 8.
 
-**The directory listing** — `internal/httpapi/staticassets.go:118-126`. The
-branch decides on `Open` alone, and a directory opens successfully, so `/js/`
-reaches `http.FileServer` and gets an index of every module. Add a `Stat` in the
-`else` arm: if it is a directory, treat it as if it had not opened —
-`isAssetRequest(path)` → real 404, otherwise the SPA fallback. **Mind the root:**
-`/` is itself a directory and must keep working; it is not an asset request, so
-it takes the fallback to `/` and `http.FileServer` serves `index.html` as it
-does today. Keep `TestStaticShellHasETagAtRoot` passing.
+**The directory listing — which turned out not to exist.** The backlog said
+`s.WebFS.Open("/js/")` succeeds for a directory, so the request never reaches
+the missing-asset branch and `http.FileServer` renders an index of every module.
+Measured against the real `web/` tree with the code untouched, that is false:
+`http.FS` trims the leading slash before delegating, leaving `js/`, which
+`fs.ValidPath` rejects, so `Open` fails and `isAssetRequest` sends it to a real
+404. `/js` without the slash 301s to `/js/` and lands on the same 404. No
+listing is reachable, so **no code change was made**. What landed instead is a
+regression test pinning the behaviour, because it is a side effect of path
+validation rather than anything deliberate and nothing else covered it, plus a
+`staticFS()` with a second module and a nested directory so a listing would be
+recognisable if one ever appeared.
 
 **The double buffer** — `internal/imaging/imaging.go:47` and
 `internal/httpapi/media.go:314`. Add `DecodeAndResizeBytes(data []byte)` holding

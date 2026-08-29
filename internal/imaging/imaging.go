@@ -49,7 +49,15 @@ func DecodeAndResize(r io.Reader) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	return DecodeAndResizeBytes(data)
+}
 
+// DecodeAndResizeBytes is DecodeAndResize for callers that already hold the
+// bytes. Everything below here works on the slice anyway -- the decode and the
+// EXIF read both want it -- so wrapping a slice in a reader only to read it
+// straight back out costs a second copy of the whole image. At a 50MB limit
+// that was 100MB in flight per concurrent upload before the bitmap.
+func DecodeAndResizeBytes(data []byte) (Result, error) {
 	format, img, err := decode(data)
 	if err != nil {
 		return Result{}, err

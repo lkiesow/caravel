@@ -17,6 +17,9 @@ func staticFS() fstest.MapFS {
 		"index.html": &fstest.MapFile{Data: []byte("<!doctype html><title>Caravel</title>")},
 		"js/app.js":  &fstest.MapFile{Data: []byte("export const hello = 1;\n")},
 		"sw.js":      &fstest.MapFile{Data: []byte("// service worker\n")},
+		// A second module and a nested directory, so a directory listing would
+		// actually have something to leak and is recognisable when it happens.
+		"js/components/dialog.js": &fstest.MapFile{Data: []byte("export const dialog = 1;\n")},
 	}
 }
 
@@ -114,6 +117,51 @@ func TestStaticMissingAssetIsNotFound(t *testing.T) {
 		if ct := res.Header().Get("Content-Type"); ct != "" && ct[:9] == "text/html" {
 			t.Errorf("GET %s answered with HTML (%s); the fallback should not reach an asset path", path, ct)
 		}
+	}
+}
+
+// A directory under the asset tree must never be answered with its contents.
+//
+// The Stage 24 backlog carried this as a bug -- "Open succeeds for a directory,
+// so /js/ reaches http.FileServer and gets an index of every module" -- and it
+// is not one: http.FS trims the leading slash, leaving "js/", which
+// fs.ValidPath rejects, so Open fails and the asset branch already 404s. That
+// was verified against the real web/ tree, not just the map below. This test
+// exists to keep it that way, because the protection is a side effect of path
+// validation rather than anything deliberate, and nothing else pins it.
+func TestStaticDirectoryIsNotListed(t *testing.T) {
+	ts := newStaticServer(t, false)
+
+	for _, path := range []string{"/js/", "/js/components/", "/icons/"} {
+		res := getStatic(ts, path, nil)
+		if res.Code != http.StatusNotFound {
+			t.Errorf("GET %s = %d, want 404", path, res.Code)
+		}
+	}
+
+	// Without the trailing slash the path does not match an asset directory,
+	// so it is an ordinary unknown route and takes the SPA fallback. That is
+	// pre-existing behaviour and fine; what matters is that neither shape ever
+	// answers with the contents of the directory.
+	for _, path := range []string{"/js/", "/js", "/js/components/", "/icons/"} {
+		body := getStatic(ts, path, nil).Body.String()
+		if strings.Contains(body, "app.js") || strings.Contains(body, "dialog.js") {
+			t.Errorf("GET %s listed the directory contents:\n%s", path, body)
+		}
+	}
+}
+
+// The root is a directory too, and must keep working: it is not an asset
+// request, so it takes the SPA fallback and resolves to index.html.
+func TestStaticRootStillServesTheShell(t *testing.T) {
+	ts := newStaticServer(t, false)
+
+	res := getStatic(ts, "/", nil)
+	if res.Code != http.StatusOK {
+		t.Fatalf("GET / = %d, want 200", res.Code)
+	}
+	if !strings.Contains(res.Body.String(), "<title>Caravel</title>") {
+		t.Errorf("GET / did not serve the shell:\n%s", res.Body.String())
 	}
 }
 

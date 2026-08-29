@@ -3285,6 +3285,63 @@ button {
   min-width: 0;
 }
 
+/* The username suggestion popup (components/suggest-input.js). Deliberately
+   *not* .menu__dropdown: that rule pins itself to `right: 0; min-width: 9rem`
+   for a shrink-wrapped trigger button and styles `button` children, where these
+   options are list items spanning the field they belong to. What is shared is
+   the chrome - same border, radius and shadow - so the two popups read as one
+   idea. */
+.suggest {
+  position: relative;
+}
+
+.suggest__list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  margin: 0.25rem 0 0;
+  padding: 0.25rem;
+  list-style: none;
+  max-height: 14rem;
+  overflow-y: auto;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 0.375rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Load-bearing: the `display: flex` below would otherwise win over `hidden`.
+   Same reason .menu__dropdown carries it. */
+.suggest__list[hidden] {
+  display: none;
+}
+
+.suggest__option {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.125rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  color: var(--color-text);
+  font-size: 0.875rem;
+}
+
+/* Hover and keyboard-active look the same: there is only ever one of them, and
+   which input the user reached for is not something the row should advertise. */
+.suggest__option:hover,
+.suggest__option--active {
+  background: var(--color-surface);
+}
+
+.suggest__hint {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
 /* The per-row overflow trigger: a bare ⋮, same as a file row's. Not sharing
    .file-actions__trigger's selector because that one turns red on hover, which
    suits a menu whose main item is Delete and misreads on a menu whose main
@@ -3689,6 +3746,11 @@ button {
   .members-add__field,
   .members-add .btn {
     flex-basis: 100%;
+  }
+
+  /* A 34px row is not a thumb target, and this list exists for phones. */
+  .suggest__option {
+    min-height: var(--tap-min);
   }
 
   /* `button` already gets min-height from the block above; without a matching

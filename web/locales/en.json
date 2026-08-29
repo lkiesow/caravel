@@ -129,6 +129,7 @@
   "members.addHeading": "Add someone",
   "members.addHint": "Add a person by their exact username. They need an account on this Caravel already.",
   "members.username": "Username",
+  "members.suggestions": "Suggestions",
   "members.role": "Role",
   "members.add": "Add",
   "members.error.noSuchUser": "No user called “{username}” on this Caravel.",

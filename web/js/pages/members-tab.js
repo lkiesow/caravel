@@ -6,6 +6,7 @@ import { icon } from "../icon.js";
 import { renderMenu } from "../components/menu.js";
 import { confirmDialog } from "../components/dialog.js";
 import { renderLoading } from "../components/loading.js";
+import { bindSuggestInput } from "../components/suggest-input.js";
 import { canManageMembers } from "../trip-role.js";
 
 // Who else is on this trip, and what they may do.
@@ -29,6 +30,7 @@ import { canManageMembers } from "../trip-role.js";
 // enough; nothing on screen right now depends on it.
 export function renderMembersTab(content, trip, { onMembersChanged } = {}) {
   let members = [];
+  let suggest = null;
 
   async function load() {
     renderLoading(content);
@@ -41,6 +43,10 @@ export function renderMembersTab(content, trip, { onMembersChanged } = {}) {
 
   function render() {
     const manage = canManageMembers(trip);
+    // Everything below is about to be replaced, so let go of the previous
+    // form's timer and document listener before its nodes are detached.
+    suggest?.destroy();
+    suggest = null;
 
     content.innerHTML = `
       <div class="editor-card">
@@ -54,8 +60,12 @@ export function renderMembersTab(content, trip, { onMembersChanged } = {}) {
         <h2 data-i18n="members.addHeading"></h2>
         <p class="editor-card__hint" data-i18n="members.addHint"></p>
         <form class="members-add">
-          <label class="members-add__field">
-            <span data-i18n="members.username"></span>
+          <!-- A div with a <label for>, not a wrapping <label>: text inside a
+               label joins the field's accessible name, so an open suggestion
+               list would have renamed the field to "Username Alice @alice Bob
+               @bob". -->
+          <div class="members-add__field suggest">
+            <label for="member-add-field" data-i18n="members.username"></label>
             <!-- name="member", not "username", and no "user" in the id either.
                  Firefox classifies a field as a login username field from its
                  name and id, fills username-only forms from the saved login,
@@ -64,10 +74,11 @@ export function renderMembersTab(content, trip, { onMembersChanged } = {}) {
                  is never the answer to "who do you want to add?". The admin
                  screen keeps name="username" because that form really is
                  creating an account. -->
-            <input type="text" name="member" id="member-add-field" list="member-suggestions"
+            <input type="text" name="member" id="member-add-field"
                    autocomplete="off" autocapitalize="none" spellcheck="false" required />
-            <datalist id="member-suggestions"></datalist>
-          </label>
+            <ul id="member-suggest" class="suggest__list" role="listbox"
+                data-i18n-aria-label="members.suggestions" hidden></ul>
+          </div>
           <label class="members-add__field">
             <span data-i18n="members.role"></span>
             <select name="role">
@@ -206,6 +217,9 @@ export function renderMembersTab(content, trip, { onMembersChanged } = {}) {
 
     guardForm(form, async () => {
       error.hidden = true;
+      // A list left open over the result of the submit would be stale: form.reset()
+      // does not fire `input`, so nothing else would close it on the happy path.
+      suggest?.close();
       const username = form.elements.member.value.trim();
       if (!username) return;
 
@@ -230,57 +244,24 @@ export function renderMembersTab(content, trip, { onMembersChanged } = {}) {
   }
 
   // Suggestions come from GET /users/search, which searches every account on
-  // the instance (see handleSearchUsers for why that scope was chosen).
-  //
-  // A native <datalist> rather than a custom popup: it gets keyboard handling,
-  // screen-reader announcement and mobile behaviour from the browser, none of
-  // which a hand-rolled combobox gets for free — and this is a convenience on
-  // top of a field that already works when typed in full.
+  // the instance (see handleSearchUsers for why that scope was chosen). The
+  // popup itself, and the reason it is not a native <datalist> any more, live
+  // in components/suggest-input.js.
   function bindSuggestions(form) {
-    const input = form.elements.member;
-    const datalist = form.querySelector("#member-suggestions");
-    let timer = null;
-    let lastQuery = null;
-
-    input.addEventListener("input", () => {
-      const query = input.value.trim();
-      // Debounced, because this fires per keystroke and each one is a query.
-      clearTimeout(timer);
-      if (query.length < 2) {
-        datalist.innerHTML = "";
-        lastQuery = null;
-        return;
-      }
-      if (query === lastQuery) return;
-      timer = setTimeout(async () => {
-        lastQuery = query;
-        let found;
-        try {
-          found = await api.get(`/users/search?q=${encodeURIComponent(query)}`);
-        } catch {
-          // A failed lookup leaves the last suggestions in place and stays
-          // silent: the field is fully usable by typing a username out, so an
-          // error banner here would report a problem the user does not have.
-          return;
-        }
-        // Stale response guard — a slower earlier request must not overwrite a
-        // newer one's results.
-        if (input.value.trim() !== query) return;
+    suggest = bindSuggestInput(form.elements.member, form.querySelector("#member-suggest"), {
+      search: async (query) => {
+        const found = await api.get(`/users/search?q=${encodeURIComponent(query)}`);
         // People already on the trip are filtered out client-side: we have the
         // member list right here, and suggesting someone whose only outcome is
         // an "already on this trip" error is a worse hint than no hint.
         const onTrip = new Set(members.map((m) => m.username));
-        datalist.innerHTML = "";
-        for (const u of found) {
-          if (onTrip.has(u.username)) continue;
-          const option = document.createElement("option");
-          // value is what lands in the field; the text is what the browser
-          // shows beside it, so the list reads as people rather than handles.
-          option.value = u.username;
-          option.textContent = u.display_name;
-          datalist.appendChild(option);
-        }
-      }, 200);
+        return found
+          .filter((u) => !onTrip.has(u.username))
+          // The username is what lands in the field, since that is what the API
+          // takes; the display name leads, so the list reads as people rather
+          // than handles.
+          .map((u) => ({ value: u.username, label: u.display_name, hint: `@${u.username}` }));
+      },
     });
   }
 

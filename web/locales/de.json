@@ -129,6 +129,7 @@
   "members.addHeading": "Person hinzufügen",
   "members.addHint": "Füge eine Person über ihren genauen Benutzernamen hinzu. Sie braucht bereits ein Konto in diesem Caravel.",
   "members.username": "Benutzername",
+  "members.suggestions": "Vorschläge",
   "members.role": "Rolle",
   "members.add": "Hinzufügen",
   "members.error.noSuchUser": "Kein Benutzer namens „{username}“ in diesem Caravel.",

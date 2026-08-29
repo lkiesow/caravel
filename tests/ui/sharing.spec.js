@@ -177,5 +177,74 @@ for (const locale of ["en", "de"]) {
       await page.reload();
       await expect(rows).toHaveCount(1);
     });
+
+    // The suggestion popup under the username field. It used to be a native
+    // <datalist>, which Firefox for Android does not render at all, so it was
+    // replaced by components/suggest-input.js — a hand-rolled listbox needs its
+    // own coverage, because nothing about it comes from the browser any more.
+    test(`suggests users to add, by keyboard and by tap (${locale})`, async ({ page }) => {
+      await page.goto(`/trips/${tripId}/members`);
+      const form = page.locator(".members-add");
+      const field = form.locator('[name="member"]');
+      const options = form.locator(".suggest__option");
+      const rows = page.locator(".member-card");
+
+      // Below the two-character floor nothing is asked for and nothing opens.
+      await field.fill("o");
+      await expect(options).toHaveCount(0);
+      await expect(field).toHaveAttribute("aria-expanded", "false");
+
+      // toHaveCount auto-waits, which covers the 200ms debounce.
+      await field.fill("oth");
+      await expect(options).toHaveCount(1);
+      await expect(options.first()).toContainText("@other");
+      await expect(field).toHaveAttribute("aria-expanded", "true");
+
+      // Escape closes without taking the suggestion.
+      await field.press("Escape");
+      await expect(options).toHaveCount(0);
+      await expect(field).toHaveValue("oth");
+
+      // ...and so does a tap anywhere else, which is the only way off the list
+      // on a phone that has no Escape key.
+      await field.fill("oth");
+      await expect(options).toHaveCount(1);
+      await page.locator(".editor-card h2").first().click();
+      await expect(options).toHaveCount(0);
+
+      // Arrow keys move an active option, and aria-activedescendant is what
+      // announces it — focus stays in the text field throughout.
+      await field.fill("oth");
+      await expect(options).toHaveCount(1);
+      await field.press("ArrowDown");
+      const activeId = await field.getAttribute("aria-activedescendant");
+      expect(activeId).toBeTruthy();
+      await expect(page.locator(`#${activeId}`)).toHaveClass(/suggest__option--active/);
+
+      // Enter takes the suggestion and is swallowed: it must not submit the
+      // form, or choosing a name would add them in the same keystroke.
+      await field.press("Enter");
+      await expect(field).toHaveValue("other");
+      await expect(options).toHaveCount(0);
+      await expect(rows).toHaveCount(1);
+
+      // Tapping an option fills the field the same way (this is the path that
+      // was broken on the phone, so it is asserted through a real click).
+      await field.fill("");
+      await field.fill("oth");
+      await expect(options).toHaveCount(1);
+      await options.first().click();
+      await expect(field).toHaveValue("other");
+      await expect(options).toHaveCount(0);
+
+      await form.locator('button[type="submit"]').click();
+      await expect(rows).toHaveCount(2);
+
+      // Someone already on the trip is no longer worth suggesting: their only
+      // outcome would be an "already a member" error.
+      await field.fill("oth");
+      await expect(options).toHaveCount(0);
+      await expect(field).toHaveAttribute("aria-expanded", "false");
+    });
   });
 }

@@ -154,16 +154,19 @@ func main() {
 
 	webFS := httpapi.WebFS(webassets.FS(), cfg.WebDir)
 	server := httpapi.NewServer(httpapi.Options{
-		DB:        dbConn,
-		Store:     store,
-		Auth:      authService,
-		Blob:      blob,
-		WebFS:     webFS,
-		NoCache:   cfg.WebDir != "",
-		Geocoder:  geocoder,
-		Assist:    assistant,
-		Wikimedia: wiki,
-		Searcher:  searcher,
+		DB:      dbConn,
+		Store:   store,
+		Auth:    authService,
+		Blob:    blob,
+		WebFS:   webFS,
+		NoCache: cfg.WebDir != "",
+		// Empty when the operator set CARAVEL_TRUSTED_PROXIES=none, which is
+		// the documented way to trust nothing.
+		TrustedProxies: cfg.TrustedProxies,
+		Geocoder:       geocoder,
+		Assist:         assistant,
+		Wikimedia:      wiki,
+		Searcher:       searcher,
 		Tiles: httpapi.TileSettings{
 			URL:         cfg.TileURL,
 			Attribution: cfg.TileAttribution,

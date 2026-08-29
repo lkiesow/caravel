@@ -4,8 +4,8 @@ Caravel serves plain HTTP and does not terminate TLS. For anything reachable
 beyond your own network, put a reverse proxy in front of it — Caddy, nginx,
 Traefik — and let that handle certificates.
 
-Everything on this page is what the code actually does, which in two places is
-not what the convention would suggest.
+Everything on this page is what the code actually does, including where that
+is not quite what the convention would suggest.
 
 ## Set `X-Forwarded-Proto`
 
@@ -51,26 +51,59 @@ a browser refuse to store a cookie set over plain HTTP.
     Traefik sets the forwarded headers by default. The only thing to check is the
     request body limit if you have a `buffering` middleware in the chain.
 
-## Rate limits stop being per-client
+## Set `X-Forwarded-For`
 
-Caravel keys its rate limiters on the connection's remote address and **does not
-read `X-Forwarded-For`**. Behind a proxy, every request appears to come from the
-proxy, so the three per-address limits become instance-wide:
+Caravel keys its rate limiters, and the address recorded against a session, on
+who the request came from. Behind a proxy that means reading
+`X-Forwarded-For` — without it every request looks like the proxy, and these
+per-address limits become instance-wide:
 
-| Endpoint | Limit | Behind a proxy |
-|---|---|---|
-| Login and register | 10/minute per address | 10/minute for everyone together |
-| Address search (`/api/geocode`) | 20/minute per address | 20/minute for everyone together |
-| The assistant | 6/minute per address (configurable) | 6/minute for everyone together |
+| Endpoint | Limit |
+|---|---|
+| Login and register | 10/minute per address |
+| Address search (`/api/geocode`) | 20/minute per address |
+| Image search | 10/minute per address |
+| The assistant | 6/minute per address (`CARAVEL_ASSIST_RATE_LIMIT`) |
 
-For a household instance this is mostly harmless and arguably a feature — the
-login limiter still stops brute force, just globally. It is worth knowing about
-if a dozen people use the map at once, because address search is the limit they
-will actually meet. `CARAVEL_ASSIST_RATE_LIMIT` is settable; the other two are
-not.
+The header is read **only when the machine Caravel is talking to is a trusted
+proxy**, which by default means the private address space:
 
-Setting `X-Forwarded-For` in the proxy does no harm and is good practice
-regardless — Caravel simply does not read it today.
+```
+127.0.0.0/8  ::1/128  10.0.0.0/8  172.16.0.0/12  192.168.0.0/16
+169.254.0.0/16  fe80::/10  fc00::/7
+```
+
+So the ordinary arrangements — a proxy on the same host, or elsewhere on your
+LAN or a container network — work with no configuration beyond setting the
+header in the proxy. An instance exposed directly to the internet is unaffected
+too: the peer address is public, so it is not trusted and no header is read.
+
+Set `CARAVEL_TRUSTED_PROXIES` when neither of those describes you:
+
+| You want | Set it to |
+|---|---|
+| A proxy at a public address | that address or range, e.g. `203.0.113.7` |
+| Several, or a mix | a comma-separated list: `10.9.0.0/16, 203.0.113.7` |
+| To trust nothing at all | `none` |
+
+Whatever you set **replaces** the defaults rather than adding to them, so
+naming your own proxy also stops loopback and the private ranges being trusted.
+
+!!! warning "Who can forge this"
+
+    Trusting a network means trusting everyone on it. Someone who can already
+    reach Caravel from a private address can send an `X-Forwarded-For` of their
+    choosing and pick which bucket the rate limiters count them in. On a
+    household instance that is nobody who is not already inside. If it is not
+    your situation — a shared container host, a large office LAN — narrow
+    `CARAVEL_TRUSTED_PROXIES` to your proxy alone.
+
+`100.64.0.0/10` is **not** in the defaults, although some frameworks include it.
+That is Tailscale's range, and on a tailnet those addresses are usually the
+people using the app rather than a proxy in front of it.
+
+`X-Real-IP` is not read at all. It carries a single address and no chain, so
+there is no way to tell how many hops it crossed or who last wrote it.
 
 ## Allow large enough request bodies
 

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/netip"
 	"os"
 	"slices"
 	"strconv"
@@ -111,7 +112,47 @@ type Config struct {
 	// is per address and does not see ten browser tabs as related.
 	AssistRateLimit     int // CARAVEL_ASSIST_RATE_LIMIT
 	AssistMaxConcurrent int // CARAVEL_ASSIST_MAX_CONCURRENT
+
+	// TrustedProxies are the networks whose X-Forwarded-For header is
+	// believed when deciding which address a request came from. See
+	// DefaultTrustedProxies for what the default is and why.
+	TrustedProxies []netip.Prefix // CARAVEL_TRUSTED_PROXIES
 }
+
+// DefaultTrustedProxies is the private address space, which is what
+// CARAVEL_TRUSTED_PROXIES takes when it is unset. The same choice Tomcat makes
+// for RemoteIpValve internalProxies and Rails for trusted_proxies.
+//
+// It is safe because the header is read only when the *direct peer* already
+// falls in one of these ranges: an instance exposed straight to the internet
+// sees a public peer address, trusts nothing, and reads no header at all. What
+// it buys is that the ordinary shapes -- a proxy on the same host, or one
+// elsewhere on the LAN or on a container network -- need no configuration.
+//
+// The cost is local and real: whoever can already reach the server from a
+// private address can forge X-Forwarded-For and pick the address the rate
+// limiters key on. An operator who cares narrows this to their proxy, or sets
+// the value to "none".
+//
+// 100.64.0.0/10 is deliberately absent although Rails includes it. That is
+// Tailscale's range, and on a tailnet those addresses are usually end users
+// rather than proxies, so trusting them by default would hand every peer the
+// forgery above.
+var DefaultTrustedProxies = []netip.Prefix{
+	netip.MustParsePrefix("127.0.0.0/8"),
+	netip.MustParsePrefix("::1/128"),
+	netip.MustParsePrefix("10.0.0.0/8"),
+	netip.MustParsePrefix("172.16.0.0/12"),
+	netip.MustParsePrefix("192.168.0.0/16"),
+	netip.MustParsePrefix("169.254.0.0/16"),
+	netip.MustParsePrefix("fe80::/10"),
+	netip.MustParsePrefix("fc00::/7"),
+}
+
+// TrustedProxiesNone is the CARAVEL_TRUSTED_PROXIES sentinel for an empty set.
+// Needed because an unset variable already means the default, so there has to
+// be a way to spell "trust nothing".
+const TrustedProxiesNone = "none"
 
 // SearchProviders are the valid values for CARAVEL_SEARCH_PROVIDER. "stub" is
 // an in-process fake for tests; the rest are real. Empty is also valid and
@@ -193,6 +234,12 @@ func Load() (Config, error) {
 	cfg.AssistRateLimit = pickInt("CARAVEL_ASSIST_RATE_LIMIT")
 	cfg.AssistMaxConcurrent = pickInt("CARAVEL_ASSIST_MAX_CONCURRENT")
 	cfg.TileMaxZoom = pickInt("CARAVEL_TILE_MAX_ZOOM")
+
+	proxies, err := getEnvPrefixList("CARAVEL_TRUSTED_PROXIES", DefaultTrustedProxies)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	cfg.TrustedProxies = proxies
 
 	level, err := parseLogLevel(os.Getenv("CARAVEL_LOG_LEVEL"))
 	if err != nil {
@@ -319,6 +366,41 @@ func getEnvInt(key string) (int, error) {
 		return 0, fmt.Errorf("invalid %s %q: must not be negative", key, raw)
 	}
 	return n, nil
+}
+
+// getEnvPrefixList reads a comma-separated list of CIDR prefixes and bare
+// addresses, returning fallback when unset and an empty list for the sentinel
+// "none". A bare address becomes a single-host prefix. Setting the variable
+// replaces the fallback rather than extending it -- an operator naming their
+// own proxy should get that proxy and not also the defaults.
+func getEnvPrefixList(key string, fallback []netip.Prefix) ([]netip.Prefix, error) {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback, nil
+	}
+	if strings.EqualFold(raw, TrustedProxiesNone) {
+		return nil, nil
+	}
+	var out []netip.Prefix
+	for _, field := range strings.Split(raw, ",") {
+		field = strings.TrimSpace(field)
+		if field == "" {
+			continue
+		}
+		if p, err := netip.ParsePrefix(field); err == nil {
+			out = append(out, p.Masked())
+			continue
+		}
+		addr, err := netip.ParseAddr(field)
+		if err != nil {
+			return nil, fmt.Errorf("invalid %s %q: %q is neither an address nor a CIDR range", key, raw, field)
+		}
+		out = append(out, netip.PrefixFrom(addr, addr.BitLen()))
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("invalid %s %q: no addresses or ranges in it; use %q to trust none", key, raw, TrustedProxiesNone)
+	}
+	return out, nil
 }
 
 // getEnvDuration reads a Go duration ("90s", "2m"), or 0 when unset.

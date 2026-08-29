@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"mime"
 	"net/http"
+	"net/netip"
 	"sync"
 	"time"
 
@@ -46,6 +47,9 @@ type Server struct {
 	Blob    storagefs.Blob
 	WebFS   http.FileSystem // static assets (embedded, or a live directory in dev)
 	NoCache bool            // true when serving from a live directory (dev mode)
+	// TrustedProxies are the networks whose X-Forwarded-For is believed. See
+	// clientIP, and config.DefaultTrustedProxies for what fills this normally.
+	TrustedProxies []netip.Prefix
 	// assetETags maps a URL path to the strong ETag of the file it serves,
 	// hashed once at startup. Nil in dev, where NoCache says not to keep
 	// anything and the files change under the process anyway.
@@ -120,6 +124,11 @@ type Options struct {
 	// AssistMaxConcurrent bounds how many runs may be in flight at once. Zero
 	// takes DefaultAssistMaxConcurrent.
 	AssistMaxConcurrent int
+	// TrustedProxies are the networks whose X-Forwarded-For header is trusted
+	// when attributing a request to a client address. Nil trusts none, which
+	// is what a test wants unless it is testing this; production passes
+	// config.DefaultTrustedProxies unless the operator narrowed it.
+	TrustedProxies []netip.Prefix
 	// Tiles is the map tile layer the browser loads. Zero fields take the
 	// defaults below.
 	Tiles TileSettings
@@ -151,15 +160,16 @@ const DefaultAssistMaxConcurrent = 4
 
 func NewServer(opts Options) *Server {
 	s := &Server{
-		DB:        opts.DB,
-		Store:     opts.Store,
-		Auth:      opts.Auth,
-		Blob:      opts.Blob,
-		WebFS:     http.FS(opts.WebFS),
-		NoCache:   opts.NoCache,
-		Geocoder:  opts.Geocoder,
-		Assist:    opts.Assist,
-		Wikimedia: opts.Wikimedia,
+		DB:             opts.DB,
+		Store:          opts.Store,
+		Auth:           opts.Auth,
+		Blob:           opts.Blob,
+		WebFS:          http.FS(opts.WebFS),
+		NoCache:        opts.NoCache,
+		TrustedProxies: opts.TrustedProxies,
+		Geocoder:       opts.Geocoder,
+		Assist:         opts.Assist,
+		Wikimedia:      opts.Wikimedia,
 		// 20/minute/IP. Higher than login's 10 because a search is a normal,
 		// repeated action rather than a credential attempt, and still far
 		// under what would embarrass us upstream.

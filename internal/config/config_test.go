@@ -2,6 +2,7 @@ package config
 
 import (
 	"log/slog"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -413,4 +414,98 @@ func TestLogLevelAndFormat(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestLoadTrustedProxies covers the default set, replacement rather than
+// extension, the "none" sentinel, and a typo naming its variable.
+func TestLoadTrustedProxies(t *testing.T) {
+	t.Run("unset takes the private ranges", func(t *testing.T) {
+		t.Setenv("CARAVEL_TRUSTED_PROXIES", "")
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if len(cfg.TrustedProxies) != len(DefaultTrustedProxies) {
+			t.Fatalf("TrustedProxies = %v, want the %d defaults", cfg.TrustedProxies, len(DefaultTrustedProxies))
+		}
+		// The property that matters is which addresses it covers, not the
+		// order it lists them in.
+		for _, tc := range []struct {
+			addr string
+			want bool
+		}{
+			{"127.0.0.1", true},
+			{"::1", true},
+			{"10.1.2.3", true},
+			{"172.16.0.1", true},
+			{"172.32.0.1", false},
+			{"192.168.1.1", true},
+			{"169.254.1.1", true},
+			{"fd00::1", true},
+			{"203.0.113.9", false},
+			{"8.8.8.8", false},
+			// Tailscale's CGNAT range, deliberately excluded.
+			{"100.64.1.1", false},
+		} {
+			addr := netip.MustParseAddr(tc.addr)
+			got := false
+			for _, p := range cfg.TrustedProxies {
+				if p.Contains(addr) {
+					got = true
+					break
+				}
+			}
+			if got != tc.want {
+				t.Errorf("default set contains %s = %v, want %v", tc.addr, got, tc.want)
+			}
+		}
+	})
+
+	t.Run("a value replaces the defaults rather than extending them", func(t *testing.T) {
+		t.Setenv("CARAVEL_TRUSTED_PROXIES", "10.9.0.0/16, 203.0.113.7")
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if len(cfg.TrustedProxies) != 2 {
+			t.Fatalf("TrustedProxies = %v, want exactly the two given", cfg.TrustedProxies)
+		}
+		if cfg.TrustedProxies[0].String() != "10.9.0.0/16" {
+			t.Errorf("first = %v", cfg.TrustedProxies[0])
+		}
+		// A bare address becomes a single-host prefix.
+		if cfg.TrustedProxies[1].String() != "203.0.113.7/32" {
+			t.Errorf("second = %v, want a /32", cfg.TrustedProxies[1])
+		}
+		if cfg.TrustedProxies[0].Contains(netip.MustParseAddr("127.0.0.1")) ||
+			cfg.TrustedProxies[1].Contains(netip.MustParseAddr("127.0.0.1")) {
+			t.Error("loopback is still trusted after the defaults were replaced")
+		}
+	})
+
+	t.Run("none empties the set", func(t *testing.T) {
+		t.Setenv("CARAVEL_TRUSTED_PROXIES", "none")
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if len(cfg.TrustedProxies) != 0 {
+			t.Errorf("TrustedProxies = %v, want empty", cfg.TrustedProxies)
+		}
+	})
+
+	t.Run("a bad value names its variable", func(t *testing.T) {
+		for _, value := range []string{"10.0.0.0/8, nonsense", "10.0.0.0/33", ","} {
+			t.Run(value, func(t *testing.T) {
+				t.Setenv("CARAVEL_TRUSTED_PROXIES", value)
+				_, err := Load()
+				if err == nil {
+					t.Fatal("Load accepted a bad value")
+				}
+				if !strings.Contains(err.Error(), "CARAVEL_TRUSTED_PROXIES") {
+					t.Errorf("error does not name the variable: %v", err)
+				}
+			})
+		}
+	})
 }

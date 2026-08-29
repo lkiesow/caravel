@@ -2,7 +2,9 @@ package httpapi
 
 import (
 	"errors"
+	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -154,7 +156,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) startSessionAndRespond(w http.ResponseWriter, r *http.Request, user db.User) {
-	token, session, err := s.Auth.StartSession(r.Context(), user.ID, r.UserAgent(), clientIP(r))
+	ip, _ := s.clientIP(r)
+	token, session, err := s.Auth.StartSession(r.Context(), user.ID, r.UserAgent(), ip)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not start session")
 		return
@@ -245,10 +248,69 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	s.startSessionAndRespond(w, r, user)
 }
 
-func clientIP(r *http.Request) string {
+// clientIP reports the address a request should be attributed to, and whether
+// that answer came from a forwarded header rather than from the connection.
+//
+// The rule is the standard one: believe X-Forwarded-For only when the peer we
+// are actually talking to is a trusted proxy, then walk the chain from the
+// right -- the end the nearest proxy appended -- and take the first entry that
+// is not itself a trusted proxy. Anything further left was written by someone
+// we have no reason to believe. A peer outside the trusted set gets no say at
+// all: its headers are ignored and the connection wins.
+//
+// The second return value is what lets a caller tell "the client really is on
+// this machine" from "a proxy on this machine says the client is". Milestone 2
+// of Stage 24 needs that distinction; a caller that ignores it is unaffected.
+func (s *Server) clientIP(r *http.Request) (addr string, forwarded bool) {
+	peer := peerAddr(r)
+	if !s.trusted(peer) {
+		return peer.String(), false
+	}
+	fwd := r.Header.Get("X-Forwarded-For")
+	if fwd == "" {
+		return peer.String(), false
+	}
+	hops := strings.Split(fwd, ",")
+	for i := len(hops) - 1; i >= 0; i-- {
+		hop, err := netip.ParseAddr(strings.TrimSpace(hops[i]))
+		if err != nil {
+			// A malformed entry is not a reason to believe the ones beyond
+			// it: stop and keep the nearest address we did trust.
+			break
+		}
+		hop = hop.Unmap()
+		if !s.trusted(hop) {
+			return hop.String(), true
+		}
+	}
+	return peer.String(), false
+}
+
+// trusted reports whether an address is one of the configured proxy networks.
+func (s *Server) trusted(addr netip.Addr) bool {
+	for _, p := range s.TrustedProxies {
+		if p.Contains(addr) {
+			return true
+		}
+	}
+	return false
+}
+
+// peerAddr is the address at the other end of the connection. net.SplitHostPort
+// rather than a LastIndex on ":", which truncates a bare IPv6 address.
+func peerAddr(r *http.Request) netip.Addr {
 	host := r.RemoteAddr
-	if i := strings.LastIndex(host, ":"); i != -1 {
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	// A zone ("fe80::1%eth0") parses only via ParseAddrPort or with the zone
+	// kept, so strip it: we compare against prefixes, which carry no zone.
+	if i := strings.IndexByte(host, '%'); i != -1 {
 		host = host[:i]
 	}
-	return host
+	addr, err := netip.ParseAddr(strings.Trim(host, "[]"))
+	if err != nil {
+		return netip.Addr{}
+	}
+	return addr.Unmap()
 }

@@ -95,7 +95,8 @@ func (l *rateLimiter) sweep() {
 
 func (s *Server) rateLimitLogin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.LoginLimiter.Allow(clientIP(r)) {
+		ip, _ := s.clientIP(r)
+		if !s.LoginLimiter.Allow(ip) {
 			writeError(w, http.StatusTooManyRequests, "too many login attempts, try again later")
 			return
 		}
@@ -108,7 +109,8 @@ func (s *Server) rateLimitLogin(next http.Handler) http.Handler {
 // whose usage policy asks for at most one request a second.
 func (s *Server) rateLimitGeocode(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.GeocodeLimiter.Allow(clientIP(r)) {
+		ip, _ := s.clientIP(r)
+		if !s.GeocodeLimiter.Allow(ip) {
 			writeError(w, http.StatusTooManyRequests, "too many address searches, try again in a moment")
 			return
 		}
@@ -120,7 +122,8 @@ func (s *Server) rateLimitGeocode(next http.Handler) http.Handler {
 // metered search API, none of them ours.
 func (s *Server) rateLimitImageSearch(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.ImageSearchLimiter.Allow(clientIP(r)) {
+		ip, _ := s.clientIP(r)
+		if !s.ImageSearchLimiter.Allow(ip) {
 			writeError(w, http.StatusTooManyRequests, "too many image searches, try again in a moment")
 			return
 		}
@@ -135,7 +138,8 @@ func (s *Server) rateLimitImageSearch(next http.Handler) http.Handler {
 // they know.
 func (s *Server) rateLimitAssist(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.AssistLimiter.Allow(clientIP(r)) {
+		ip, _ := s.clientIP(r)
+		if !s.AssistLimiter.Allow(ip) {
 			writeError(w, http.StatusTooManyRequests, "too many assistant requests, try again in a moment")
 			return
 		}

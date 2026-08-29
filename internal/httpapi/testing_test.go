@@ -141,6 +141,34 @@ func (ts *testServer) do(method, path string, cookie *http.Cookie, body string) 
 	return w
 }
 
+// doFrom is do with control over where the request appears to come from: the
+// peer address on the connection, and any headers (X-Forwarded-For, in
+// practice). httptest.NewRequest defaults RemoteAddr to 192.0.2.1:1234, which
+// is what every other test in this package is keyed on.
+func (ts *testServer) doFrom(method, path string, cookie *http.Cookie, body, remoteAddr string, headers map[string]string) *httptest.ResponseRecorder {
+	ts.t.Helper()
+
+	var r *http.Request
+	if body == "" {
+		r = httptest.NewRequest(method, path, nil)
+	} else {
+		r = httptest.NewRequest(method, path, strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/json")
+	}
+	if remoteAddr != "" {
+		r.RemoteAddr = remoteAddr
+	}
+	for k, v := range headers {
+		r.Header.Set(k, v)
+	}
+	if cookie != nil {
+		r.AddCookie(cookie)
+	}
+	w := httptest.NewRecorder()
+	ts.ServeHTTP(w, r)
+	return w
+}
+
 // upload issues a multipart POST with a single "file" part, for the file and
 // media handlers.
 func (ts *testServer) upload(path string, cookie *http.Cookie, filename, contentType string, content []byte) *httptest.ResponseRecorder {

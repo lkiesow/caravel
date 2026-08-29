@@ -17,6 +17,7 @@ change when the defaults do not fit.
 | `CARAVEL_TILE_URL` | OpenStreetMap tiles | Where the browser fetches map tiles from — see [Map tiles](map-tiles.md) |
 | `CARAVEL_TILE_ATTRIBUTION` | OpenStreetMap contributors | The credit shown on the map, as HTML. Whatever provider you use, meeting its attribution terms is this variable |
 | `CARAVEL_TILE_MAX_ZOOM` | `19` | How far the map may zoom in, which is a property of the provider |
+| `CARAVEL_TRUSTED_PROXIES` | the private ranges | Networks whose `X-Forwarded-For` is believed when attributing a request to a client address. A comma-separated list of CIDR ranges and addresses; `none` to trust nothing. Replaces the default rather than extending it — see [Behind a reverse proxy](../running/reverse-proxy.md) |
 | `CARAVEL_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error` — see [Logging](#logging) |
 | `CARAVEL_LOG_FORMAT` | `text` | `text` or `json` |
 

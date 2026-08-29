@@ -1126,6 +1126,26 @@ button {
   font-weight: 600;
 }
 
+/* The tab panel is its own stacking context, so nothing a section paints can
+   rise past the chrome above it - specifically the "More" dropdown, which
+   hangs off the tab row into the panel below.
+
+   The map tab is what made this necessary. <leaflet-map>'s legend and Leaflet's
+   own zoom control both sit at z-index: 1000, the same level as
+   .menu__dropdown, and a shadow root is not a stacking context - so they were
+   competing with the dropdown in the *page* stacking context, where an equal
+   z-index is settled by document order and the map comes later. On a phone,
+   where the dropdown drops over the map instead of hanging beside it, that put
+   the legend and the zoom buttons on top of the menu items.
+
+   z-index: 0 (not `auto`) is what does the work: it makes this element the
+   context those 1000s are relative to, capping the whole panel below the
+   dropdown regardless of what any section paints inside it. */
+.trip-tab-content {
+  position: relative;
+  z-index: 0;
+}
+
 @media (min-width: 768px) {
   .trip-detail {
     display: grid;

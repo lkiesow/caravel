@@ -1376,6 +1376,89 @@ button {
   gap: 0.75rem;
 }
 
+/* The tag editor (components/tag-field.js) and the read-only chip lists that
+   show the same tags on the location page.
+
+   Not a `label`, despite sitting in the run of them: the control it names is a
+   text box that adds *another* chip rather than holding the value, so wrapping
+   the whole thing in a <label> would point the accessible name at the wrong
+   target. The span below is styled to match a sibling field name exactly, and
+   the input carries its own aria-label. */
+.tag-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.tag-field__label {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.tag-field__chips,
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Empty until something is added, and gone entirely then, so an untagged
+   location shows no gap where the chips would be. */
+.tag-field__chips:empty {
+  display: none;
+}
+
+.tag-field__chip,
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-size: 0.8125rem;
+  /* A tag is free text, so one long enough to push the row sideways has to
+     wrap inside its own chip rather than widen the page. */
+  overflow-wrap: anywhere;
+}
+
+/* The x on a chip. Compact on a wide screen, where it sits beside the word it
+   removes; grown to the tap minimum at phone width by the rule near the end of
+   this file, which is where that guideline lives. */
+.tag-field__remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  margin: -0.25rem -0.25rem -0.25rem 0;
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: 50%;
+}
+
+.tag-field__remove:hover {
+  color: var(--color-text);
+  background: var(--color-border);
+}
+
+.tag-field__remove .icon {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+/* The chip row on the location page sits under the category line, so it needs
+   the same rhythm the blocks around it have. */
+.location-view__tags {
+  margin-top: 0.5rem;
+}
+
 /* The "Show on map" checkbox, which lives in the Location card next to the
    coordinates it gates (Stage 09 Milestone 3). Row rather than the stacked
    label-above-input the sibling fields use, and a full-width flex item so it
@@ -2759,6 +2842,28 @@ button {
   .icon-btn {
     min-width: var(--tap-min);
     min-height: var(--tap-min);
+  }
+
+  /* A tag chip's remove button, for exactly the reason .icon-btn above needed
+     saying: the blanket `button` rule gives it min-height but nothing gives an
+     icon-only button its *width*, so it measured 22x44. routes.spec.js sweeps
+     the location editor but could not have caught this -- no seeded location
+     carries a tag, so no chip exists while it runs -- which is why
+     locations.spec.js measures the button directly.
+
+     The chip takes the same minimum so it contains the button rather than
+     being stretched past it, and the button keeps its negative block margins
+     so the chip is 44px tall rather than 44 plus its own padding. Chips are
+     therefore taller on a phone than on a desktop; that is the same trade the
+     checklist labels below make, and the guideline wins. */
+  .tag-field__chip {
+    min-height: var(--tap-min);
+  }
+
+  .tag-field__remove {
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
+    margin-block: -0.5rem;
   }
 
   /* Ticking an item off is the whole point of a checklist on a phone, and it

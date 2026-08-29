@@ -304,6 +304,64 @@ location's editor *suggests* those tags; remove one and assert it is gone after
 save. Manual pass at 324×756 that a location with six tags does not break the
 card.
 
+**Done.** New `web/js/components/tag-field.js` -- chips plus a text box,
+committing on Enter, on comma (so a pasted list splits) and on blur (so a typed
+but uncommitted tag is not silently lost on Save), with Backspace on an empty
+box removing the last chip. Suggestions come from `GET /trips/{id}/tags`
+through the existing `bindSuggestInput`, fetched lazily on first focus and
+filtered to what is not already on this location. The field is wired into
+`location-form.js` (which now takes `tripId`), read back through `readValues()`
+with no dirty flag -- tags hang off this location alone, so there is no
+co-editor's itinerary to protect the way Stage 25's dates needed -- and
+rendered read-only on `location-view-page.js` and inside `location-card.js`.
+
+Three things went wrong and are worth recording, because two were invisible
+until the browser was actually driven:
+
+- **Enter added the tag *and saved the page*.** `location-form.js` treats Enter
+  in any single-line field as Save, via a listener on the form that fires as
+  the event bubbles, so `preventDefault()` alone was not enough. The field now
+  calls `stopPropagation()` when it consumes an Enter, and deliberately does
+  not when the box is empty, so Enter there still means Save.
+- **`onPick` hands over the whole `{ value, label }` item, not the value.** The
+  first chip picked from the keyboard read `[object Object]`. This is
+  `bindSuggestInput`'s first `onPick` caller in the tree -- members-tab.js does
+  not pass one -- so the contract had never been exercised.
+- **The remove button measured 22x44.** The blanket `button` rule at phone
+  width gives every button `min-height: var(--tap-min)` but nothing gives an
+  icon-only button its *width*; `.icon-btn` needed the identical fix for the
+  itinerary reorder buttons. Now 44x44, with the chip taking the same minimum
+  so it contains the button rather than being stretched past it.
+
+That last one deserves a note about coverage, because it was a latent failure
+rather than a caught one. `routes.spec.js` sweeps the location editor for tap
+targets and checks width as well as height, so it *would* have failed -- except
+that no seeded location carries a tag, so no chip and no remove button exist
+while it runs. The full suite was green with a 22px button on the page. So
+`locations.spec.js` measures the button directly rather than trusting the
+sweep, and that assertion was checked to bite by dropping the `min-width` again
+(it fails with "remove-tag button width").
+
+Verified: `make ci` green, `make test-ui` green -- all 180, so nothing the new
+field added to every location editor broke a neighbour. Two new specs cover
+committing by Enter without navigating, comma-splitting, case-insensitive
+rejection of a duplicate, Backspace, the per-tag accessible name, the tap
+target, a typed-but-uncommitted tag surviving Save, a reload proving it reached
+the database, the chips on the card read out of its shadow root, the second
+location being offered the first one's vocabulary, picking with the keyboard,
+and -- separately -- that retitling a location does not clear its tags and an
+untagged one renders no chip row at all.
+
+Also driven by hand at 324x756: no horizontal overflow, the field name matches
+its siblings at 14px, the input is 16px so iOS Safari does not zoom, and a card
+with five tags shows three and `+2` rather than growing past its neighbours.
+
+One deviation from the plan: it named `location.tags.remove` and
+`location.tags.add` as the new keys. They landed as `location.form.tagsRemove`
+and `location.form.tagsAdd`, beside `location.form.tags` and
+`location.form.tagsPlaceholder`, because every other string this form owns is
+under `location.form.`.
+
 ---
 
 ## 3. Dates on the locations list, and on the cards

@@ -122,6 +122,9 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
   const save = saveGuard.wrap(commitSave);
 
   function render() {
+    // Everything below is about to be replaced; let go of the previous form's
+    // suggestion listeners first (members-tab.js does the same).
+    itemForm?.destroy();
     container.innerHTML = `
       <div class="page location-editor">
         <a href="${item ? `/trips/${tripId}/locations/${item.id}` : `/trips/${tripId}`}" data-link class="back-link">${icon("arrow-left")} <span data-i18n="common.back"></span></a>
@@ -236,7 +239,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     translatePage(container);
     setHeading();
 
-    itemForm = renderItemForm(container.querySelector(".item-form-slot"), item, { onSubmit: save });
+    itemForm = renderItemForm(container.querySelector(".item-form-slot"), item, { onSubmit: save, tripId });
 
     imageField = renderImageField(container.querySelector(".image-field-slot"), {
       tripId,

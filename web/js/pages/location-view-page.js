@@ -79,6 +79,7 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
         <span class="category-label"></span>
         ${item.type ? `<span class="meta-sep" aria-hidden="true">·</span><span class="type-label"></span>` : ""}
       </div>
+      ${item.tags?.length ? `<ul class="tag-list location-view__tags"></ul>` : ""}
       ${item.image_url ? `<img class="location-view__image" src="${escapeAttr(item.image_url)}" alt="" />` : ""}
       ${item.image_credit ? `<p class="image-credit"></p>` : ""}
       ${item.notes ? `<div class="location-view__notes"></div>` : ""}
@@ -165,6 +166,19 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
   container.querySelector("h1").textContent = item.title;
   container.querySelector(".category-label").textContent = t(`item.category.${item.category}`);
   if (item.type) container.querySelector(".type-label").textContent = item.type;
+
+  // textContent per chip rather than interpolation: a tag is whatever somebody
+  // typed, the same reason the title above is set this way.
+  if (item.tags?.length) {
+    container.querySelector(".location-view__tags").replaceChildren(
+      ...item.tags.map((tag) => {
+        const li = document.createElement("li");
+        li.className = "tag-chip";
+        li.textContent = tag;
+        return li;
+      })
+    );
+  }
 
   // The credit, where the cover is actually shown at size.
   //

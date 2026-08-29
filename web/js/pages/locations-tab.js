@@ -117,6 +117,7 @@ export async function renderItemsTab(container, trip) {
       card.setAttribute("title", item.title);
       card.setAttribute("category", item.category);
       if (item.type) card.setAttribute("type", item.type);
+      if (item.tags?.length) card.setAttribute("tags", JSON.stringify(item.tags));
       if (item.image_url) card.setAttribute("image-url", item.image_url);
       list.appendChild(card);
     }

@@ -1,6 +1,7 @@
 import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
+import { renderTagField } from "./tag-field.js";
 
 const CATEGORIES = ["site", "stay", "transport"];
 
@@ -25,7 +26,7 @@ let notesFieldSeq = 0;
 // component exposes instead is `readValues()`, `showError()` and the
 // `onSubmit` hook that fires when the user presses Enter in a field, so
 // Enter and the page's Save button do the same thing.
-export function renderItemForm(container, item, { onSubmit }) {
+export function renderItemForm(container, item, { onSubmit, tripId }) {
   const notesId = `notes-${++notesFieldSeq}`;
   container.innerHTML = `
     <form class="item-form" novalidate>
@@ -47,6 +48,7 @@ export function renderItemForm(container, item, { onSubmit }) {
         <input type="text" name="type" data-i18n-placeholder="location.form.typePlaceholder" />
       </label>
       <div data-assist-field="type"></div>
+      <div class="tag-field-slot"></div>
       <div class="notes-field">
         <div class="notes-field__header">
           <label for="${notesId}" data-i18n="location.form.notes"></label>
@@ -70,6 +72,11 @@ export function renderItemForm(container, item, { onSubmit }) {
 
   const form = container.querySelector("form");
   const errorEl = container.querySelector(".item-form__error");
+
+  const tagField = renderTagField(container.querySelector(".tag-field-slot"), {
+    tripId,
+    tags: item?.tags ?? [],
+  });
 
   if (item) {
     form.title.value = item.title;
@@ -204,14 +211,25 @@ export function renderItemForm(container, item, { onSubmit }) {
   }
 
   return {
+    // Lets go of the suggestion list's timer and document listener before
+    // these nodes are detached, the way members-tab.js does before its own
+    // re-render. The editor renders this form once today, so the guard in
+    // render() is defensive rather than load-bearing -- but a component that
+    // binds document listeners and cannot be torn down is the kind of thing
+    // that only becomes a bug once somebody adds a second render.
+    destroy: () => tagField.destroy(),
     // No show_on_map here: it gates whether the item's *coordinates* put it
     // on the map, so the checkbox lives in the Location card next to them
     // (Stage 09 Milestone 3) and the page reads it from there.
+    // Tags are always reported, and the editor always sends them. No dirty
+    // flag, unlike dates: tags hang off this location alone, so there is no
+    // co-editor's itinerary to protect by staying silent (see Stage 25).
     readValues: () => ({
       category: form.category.value,
       type: form.type.value,
       title: form.title.value,
       notes: form.notes.value || null,
+      tags: tagField.readTags(),
     }),
     // Whether the category is a real choice rather than the select's default.
     // Only the assistant asks; readValues() always reports the value, because

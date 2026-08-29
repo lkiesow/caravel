@@ -281,6 +281,126 @@ test.describe("the location editor, end to end", () => {
     const item = await (await page.request.get(`/api/items/${itemId}`)).json();
     expect(item.dates).toEqual([{ start_date: "2026-08-20", end_date: "2026-08-22" }]);
   });
+
+  // Tags, added in Stage 26 Milestone 2. The interesting cases are not "a chip
+  // appears" but the three ways this field could quietly lose what was typed:
+  // Enter reaching the form and saving the page instead of adding the tag, a
+  // typed-but-uncommitted tag vanishing on Save, and the trip vocabulary not
+  // reaching the second location that would use it.
+  test("tags: committing, correcting, suggesting, and surviving a reload", async ({ page }) => {
+    await gotoRoute(page, `/trips/${tripId}/locations/new`);
+    await page.locator('.item-form input[name="title"]').fill("Hallgrimskirkja");
+
+    const input = page.locator(".tag-field__input");
+    const chips = page.locator(".tag-field__chip");
+
+    // Enter commits a tag. It must NOT submit the form -- the form treats Enter
+    // in any single-line field as Save, so this only works because the field
+    // stops the event once it has consumed it. Staying on /new is the assertion.
+    await input.fill("Reykjavik");
+    await input.press("Enter");
+    await expect(chips).toHaveCount(1);
+    await expect(page).toHaveURL(new RegExp(`/trips/${tripId}/locations/new$`));
+
+    // A comma is a separator too, so a pasted list becomes several chips and
+    // the fragment after the last comma stays in the box.
+    await input.fill("church, landmark, ico");
+    await expect(chips).toHaveCount(3);
+    await expect(input).toHaveValue(" ico");
+
+    // Case-insensitive within one location: the server would fold these
+    // together, so a chip that looked accepted here would vanish on save.
+    await input.fill("REYKJAVIK");
+    await input.press("Enter");
+    await expect(chips).toHaveCount(3);
+
+    // Backspace on an empty box removes the last chip.
+    await input.fill("");
+    await input.press("Backspace");
+    await expect(chips).toHaveCount(2);
+
+    // Each remove button names its own tag rather than being one of a row of
+    // identical "Remove" buttons.
+    const removeReykjavik = page.getByRole("button", { name: "Remove tag Reykjavik" });
+    await expect(removeReykjavik).toBeVisible();
+
+    // And it meets the tap-target guideline. routes.spec.js sweeps this route
+    // but cannot catch this one: no seeded location carries a tag, so no chip
+    // -- and no remove button -- exists while it runs. Measured here instead,
+    // because the button is icon-only and the blanket rule in base.css gives
+    // such a button its height but not its width (it measured 22x44).
+    const box = await removeReykjavik.boundingBox();
+    expect(Math.round(box.width), "remove-tag button width").toBeGreaterThanOrEqual(44);
+    expect(Math.round(box.height), "remove-tag button height").toBeGreaterThanOrEqual(44);
+
+    // A tag typed but never committed must still be saved: losing it silently
+    // is the worst outcome this field has available.
+    await input.fill("uncommitted");
+    await page.locator('[data-action="save"]').click();
+    await expect(page).toHaveURL(new RegExp(`/trips/${tripId}/locations/[0-9a-f-]+$`));
+
+    const viewChips = page.locator(".location-view__tags .tag-chip");
+    await expect(viewChips).toHaveText(["Reykjavik", "church", "uncommitted"]);
+
+    // ...and it reached the database, not just the page.
+    await page.reload();
+    await expect(page.locator(".location-view__tags .tag-chip")).toHaveText([
+      "Reykjavik",
+      "church",
+      "uncommitted",
+    ]);
+
+    // The card in the list carries them too. The custom element keeps them in
+    // its shadow root, so this reads through it.
+    await gotoRoute(page, `/trips/${tripId}/locations`);
+    const cardTags = await page.locator("item-card").first().evaluate((el) =>
+      [...el.shadowRoot.querySelectorAll(".tag")].map((t) => t.textContent)
+    );
+    expect(cardTags).toEqual(["Reykjavik", "church", "uncommitted"]);
+
+    // A second location is offered the first one's vocabulary. This is the
+    // whole defence against Museum and museum both existing, since the server
+    // deduplicates within a location but not across the trip.
+    await gotoRoute(page, `/trips/${tripId}/locations/new`);
+    await page.locator('.item-form input[name="title"]').fill("Second");
+    await page.locator(".tag-field__input").pressSequentially("rey");
+    const options = page.locator(".tag-field .suggest__list [role=option]");
+    await expect(options).toHaveText(["Reykjavik"]);
+
+    // Picking with the keyboard commits the suggestion and, again, does not
+    // save the page.
+    await page.locator(".tag-field__input").press("ArrowDown");
+    await page.locator(".tag-field__input").press("Enter");
+    await expect(page.locator(".tag-field__chip")).toHaveText(["Reykjavik"]);
+    await expect(page).toHaveURL(new RegExp(`/trips/${tripId}/locations/new$`));
+  });
+
+  // Omitting the tags must not clear them -- the same absent-versus-empty rule
+  // the API keeps for links and dates, checked from the browser because the
+  // editor is what decides whether to send the key at all.
+  test("tags: a location with none stays clean, and editing another field keeps them", async ({ page }) => {
+    const created = await page.request.post(`/api/trips/${tripId}/items`, {
+      data: { title: "Bare", category: "site", type: "", tags: ["kept"] },
+    });
+    const item = await created.json();
+
+    await gotoRoute(page, `/trips/${tripId}/locations/${item.id}/edit`);
+    await expect(page.locator(".tag-field__chip")).toHaveText(["kept"]);
+
+    await page.locator('.item-form input[name="title"]').fill("Bare, retitled");
+    await page.locator('[data-action="save"]').click();
+    await expect(page.locator("h1")).toHaveText("Bare, retitled");
+    await expect(page.locator(".location-view__tags .tag-chip")).toHaveText(["kept"]);
+
+    // And a location with no tags shows no empty chip row at all.
+    const plain = await (
+      await page.request.post(`/api/trips/${tripId}/items`, {
+        data: { title: "Untagged", category: "site", type: "", tags: [] },
+      })
+    ).json();
+    await gotoRoute(page, `/trips/${tripId}/locations/${plain.id}`);
+    await expect(page.locator(".location-view__tags")).toHaveCount(0);
+  });
 });
 
 // Reverse geocoding: a point becomes an address you accept (Stage 22

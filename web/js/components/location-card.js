@@ -51,11 +51,32 @@ const styles = `
     color: var(--color-text-muted);
     font-size: 0.8rem;
   }
+  .tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-top: 0.25rem;
+  }
+  /* Quiet on purpose: a card is a title with a picture, and the tags are there
+     to be recognised at a glance, not read. Same muted palette as .type. */
+  .tag {
+    font-size: 0.7rem;
+    line-height: 1;
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.75rem;
+    background: var(--color-surface);
+    color: var(--color-text-muted);
+    border: 1px solid var(--color-border);
+    white-space: nowrap;
+    max-width: 10rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 `;
 
 class ItemCard extends HTMLElement {
   static get observedAttributes() {
-    return ["item-id", "title", "type", "category", "image-url"];
+    return ["item-id", "title", "type", "category", "image-url", "tags"];
   }
 
   connectedCallback() {
@@ -92,6 +113,19 @@ class ItemCard extends HTMLElement {
     const category = this.getAttribute("category") || "site";
     const color = CATEGORY_COLORS[category] || "#71717a";
     const imageUrl = this.getAttribute("image-url");
+    // JSON rather than a separator, because a tag may contain anything --
+    // including whatever separator would have been picked.
+    let tags = [];
+    try {
+      tags = JSON.parse(this.getAttribute("tags") || "[]");
+    } catch {
+      tags = [];
+    }
+    // At most three, then a count. A card is a fixed-height row in a list, and
+    // one location with a dozen tags must not make its neighbours look
+    // different; the whole set is on the location page.
+    const shown = tags.slice(0, 3);
+    const overflow = tags.length - shown.length;
 
     this.shadowRoot.innerHTML = `
       <style>${styles}</style>
@@ -101,6 +135,13 @@ class ItemCard extends HTMLElement {
         <div class="text">
           <h2>${escapeHtml(title)}</h2>
           ${type ? `<div class="type">${escapeHtml(type)}</div>` : ""}
+          ${
+            tags.length
+              ? `<div class="tags">${shown.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}${
+                  overflow ? `<span class="tag">+${overflow}</span>` : ""
+                }</div>`
+              : ""
+          }
         </div>
       </div>
     `;

@@ -168,3 +168,62 @@ func TestLoginLimiterSeparatesForwardedClients(t *testing.T) {
 		t.Fatal("second client shares the first client's budget; the proxy address is still the key")
 	}
 }
+
+// TestLoginLimiterExemptsDirectLoopback covers the exemption and the bypass it
+// would open if it were keyed on the resolved address instead of the peer.
+func TestLoginLimiterExemptsDirectLoopback(t *testing.T) {
+	attempt := func(ts *testServer, remoteAddr string, headers map[string]string) int {
+		body, err := json.Marshal(map[string]string{"username": "nobody", "password": "wrong-password"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ts.doFrom(http.MethodPost, "/api/auth/login", nil, string(body), remoteAddr, headers).Code
+	}
+
+	t.Run("a direct loopback connection is not limited", func(t *testing.T) {
+		ts := newTestServerWithOptions(t, func(o *Options) {
+			o.TrustedProxies = config.DefaultTrustedProxies
+		})
+		for i := 0; i < 15; i++ {
+			if code := attempt(ts, "127.0.0.1:5555", nil); code == http.StatusTooManyRequests {
+				t.Fatalf("attempt %d was rate limited; the UI suite would fail here", i+1)
+			}
+		}
+	})
+
+	t.Run("a client behind a local proxy is still limited", func(t *testing.T) {
+		ts := newTestServerWithOptions(t, func(o *Options) {
+			o.TrustedProxies = config.DefaultTrustedProxies
+		})
+		hdr := map[string]string{"X-Forwarded-For": "203.0.113.9"}
+		for i := 0; i < 10; i++ {
+			if code := attempt(ts, "127.0.0.1:5555", hdr); code == http.StatusTooManyRequests {
+				t.Fatalf("proxied client limited after %d attempts, expected 10", i)
+			}
+		}
+		if code := attempt(ts, "127.0.0.1:5555", hdr); code != http.StatusTooManyRequests {
+			t.Fatalf("proxied client attempt 11 = %d, want 429: the exemption leaked through the proxy", code)
+		}
+	})
+
+	// The bypass the peer check exists to close. A caller already on loopback
+	// gains nothing by claiming loopback -- it is exempt either way. The
+	// dangerous case is someone elsewhere on a trusted network, who would take
+	// the exemption with them if it were keyed on the resolved address.
+	t.Run("a LAN peer forging a loopback header is still limited", func(t *testing.T) {
+		ts := newTestServerWithOptions(t, func(o *Options) {
+			o.TrustedProxies = config.DefaultTrustedProxies
+		})
+		hdr := map[string]string{"X-Forwarded-For": "127.0.0.1"}
+		limited := false
+		for i := 0; i < 12; i++ {
+			if attempt(ts, "192.168.1.50:5555", hdr) == http.StatusTooManyRequests {
+				limited = true
+				break
+			}
+		}
+		if !limited {
+			t.Fatal("a forged X-Forwarded-For: 127.0.0.1 from the LAN switched the login limiter off")
+		}
+	})
+}

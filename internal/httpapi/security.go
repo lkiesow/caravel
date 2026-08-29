@@ -93,8 +93,32 @@ func (l *rateLimiter) sweep() {
 	}
 }
 
+// isDirectLoopback reports whether a request came straight from this machine,
+// with no proxy in between. Both halves matter: the peer must be loopback, and
+// the address must not have come out of X-Forwarded-For. Because loopback is a
+// trusted proxy by default, keying on the resolved address alone would let
+// anyone able to reach the server locally send "X-Forwarded-For: 127.0.0.1"
+// and claim the exemption below.
+func (s *Server) isDirectLoopback(r *http.Request) bool {
+	_, forwarded := s.clientIP(r)
+	return !forwarded && peerAddr(r).IsLoopback()
+}
+
 func (s *Server) rateLimitLogin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// A request from this machine itself is not rate limited. It is the UI
+		// suite -- which spends the whole per-minute budget in a login-heavy
+		// subset and failed roughly half of full runs on it -- and the
+		// developer's own browser against `make dev`. A proxy on this host is
+		// not affected: it is trusted by default, so its forwarded client
+		// resolves to the real address and this does not fire.
+		//
+		// Only the login limiter. The others protect somebody else's service
+		// rather than our credentials, and nothing local exhausts them.
+		if s.isDirectLoopback(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
 		ip, _ := s.clientIP(r)
 		if !s.LoginLimiter.Allow(ip) {
 			writeError(w, http.StatusTooManyRequests, "too many login attempts, try again later")

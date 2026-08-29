@@ -82,14 +82,22 @@ check, i18n key parity, `go test`. Don't rely on CI to catch it first.
   today) — `scripts/check_i18n.py` enforces this in `make ci`. Easy to
   forget when you're only looking at English copy.
 - **Database migrations.** The schema was squashed to a single `0001_init` pair
-  per dialect in Stage 18; `0002_media_provenance` followed in Stage 21, so the
-  next schema change is `0003_...`. Check the directory rather than this line —
-  it is the kind of number that goes stale. New changes
+  per dialect in Stage 18; the latest is `0004_dates_from_itinerary` (Stage 25).
+  Check the directory rather than this line — it is the kind of number that goes
+  stale. New changes
   are sequential `000N_name.up/down.sql` files, written for *both* dialects
   (`internal/db/migrations/sqlite/` and `.../postgres/`). After editing
   `internal/db/sqlc/queries/*.sql`, run `sqlc generate` by hand from
   `internal/db/sqlc/` to regenerate the dialect packages — there's no
   automation for that step, and it's easy to forget one dialect.
+
+  **`sqlc generate` adds and rewrites files but never deletes them.** Removing a
+  `queries/*.sql` file leaves its `sqlc/{sqlite,postgres}/gen/*.sql.go` behind,
+  still referring to types `models.go` no longer defines — so delete the
+  generated pair by hand. Stage 25 hit this dropping `item_dates.sql`. Related,
+  and quieter: an unused exported type in `internal/db/domain.go` compiles
+  perfectly well, so a domain struct for a table you just dropped will not fail
+  the build. Grep for the name after a removal rather than trusting `go build`.
 - **A query change can now be tested on both dialects.** `make test-postgres`
   runs the whole Go suite against a Postgres container
   (`docker-compose.postgres.yml`, and `podman compose` works too);

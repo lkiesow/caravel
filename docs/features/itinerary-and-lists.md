@@ -17,6 +17,11 @@ when the plan needs one. Nothing here duplicates a location: an itinerary entry
 points at the same place that is on the map and in the locations list, so
 correcting an address once corrects it everywhere.
 
+That goes for dates too. A stay given the 5th to the 7th of September on its own
+[location page](trips-and-locations.md) appears here on all three days, and
+anything added or moved here shows up there as the days that location is on. The
+two are one fact with two ways in — whichever you reach for, the other agrees.
+
 ![The itinerary on a phone](../assets/screenshots/mobile-itinerary.png){ .screenshot-phone }
 
 On a phone the day cards stack and the tab row collapses to icons — which is the

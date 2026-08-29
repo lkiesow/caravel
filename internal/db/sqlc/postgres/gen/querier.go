@@ -27,7 +27,6 @@ type Querier interface {
 	CreateExpenseShare(ctx context.Context, arg CreateExpenseShareParams) error
 	CreateFile(ctx context.Context, arg CreateFileParams) (File, error)
 	CreateItem(ctx context.Context, arg CreateItemParams) (Item, error)
-	CreateItemDate(ctx context.Context, arg CreateItemDateParams) (ItemDate, error)
 	CreateItemLink(ctx context.Context, arg CreateItemLinkParams) (ItemLink, error)
 	CreateItineraryEntry(ctx context.Context, arg CreateItineraryEntryParams) (ItineraryEntry, error)
 	CreateMediaAsset(ctx context.Context, arg CreateMediaAssetParams) (MediaAsset, error)
@@ -44,7 +43,6 @@ type Querier interface {
 	DeleteExpiredSessions(ctx context.Context, now time.Time) error
 	DeleteFile(ctx context.Context, arg DeleteFileParams) (int64, error)
 	DeleteItem(ctx context.Context, arg DeleteItemParams) (int64, error)
-	DeleteItemDate(ctx context.Context, arg DeleteItemDateParams) (int64, error)
 	DeleteItemLink(ctx context.Context, arg DeleteItemLinkParams) (int64, error)
 	// Scoped by trip_id as well as id, mirroring DeleteItineraryEntry: the
 	// handler has already checked ownership, and this keeps a day from being
@@ -108,7 +106,6 @@ type Querier interface {
 	// expense on a trip is visible to everyone on it. That is deliberate -- hidden
 	// rows in a shared ledger make an incorrect total look correct.
 	ListExpensesByTrip(ctx context.Context, tripID string) ([]Expense, error)
-	ListItemDatesByItem(ctx context.Context, itemID string) ([]ItemDate, error)
 	ListItemFiles(ctx context.Context, arg ListItemFilesParams) ([]File, error)
 	ListItemLinksByItem(ctx context.Context, itemID string) ([]ItemLink, error)
 	// ListItemLocationsByTrip: every coordinate on the trip, keyed by item.

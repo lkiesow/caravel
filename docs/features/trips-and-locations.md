@@ -41,11 +41,18 @@ Beyond the category, a location carries a free-text **type** (`landmark`,
 Notes are Markdown, so a location can hold as much or as little as it needs: an
 address and nothing else, or opening times, a route in from the road, and what to
 do if the car park is full. Alongside the notes a location can carry coordinates,
-links, its own dates, a photo, and files of its own.
+links, dates, a photo, and files of its own.
 
 Coordinates can be typed, searched for by address, or left out — a location with
 no coordinates simply does not appear on the map, which is the right answer for
 "a restaurant somebody recommended, somewhere in the city".
+
+A location's **dates** are the days it sits on in the
+[itinerary](itinerary-and-lists.md), seen from the other side. Giving a hotel the
+5th to the 7th of September puts it on all three of those days, and taking it off
+the 6th in the itinerary leaves the location showing two dates instead of one
+range. There is nothing to keep in step, because there is only one fact: a date
+on a location and a location on a day are the same thing said two ways.
 
 ## On a phone
 

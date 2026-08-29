@@ -199,17 +199,6 @@ type CreateItemLinkParams struct {
 	SortOrder int
 }
 
-type CreateItemDateParams struct {
-	ID        string
-	ItemID    string
-	StartDate *string
-	EndDate   *string
-	Label     *string
-	AllDay    bool
-	StartTime *string
-	EndTime   *string
-}
-
 // Store is the dialect-agnostic data access interface. internal/db provides
 // one implementation per supported database (sqliteStore, postgresStore),
 // each wrapping its own sqlc-generated Queries and converting rows into the
@@ -298,10 +287,6 @@ type Store interface {
 	CreateItemLink(ctx context.Context, p CreateItemLinkParams) (ItemLink, error)
 	ListItemLinksByItem(ctx context.Context, itemID string) ([]ItemLink, error)
 	DeleteItemLink(ctx context.Context, id, itemID string) (bool, error)
-
-	CreateItemDate(ctx context.Context, p CreateItemDateParams) (ItemDate, error)
-	ListItemDatesByItem(ctx context.Context, itemID string) ([]ItemDate, error)
-	DeleteItemDate(ctx context.Context, id, itemID string) (bool, error)
 
 	CreateMediaAsset(ctx context.Context, p CreateMediaAssetParams) (MediaAsset, error)
 	GetMediaAssetByID(ctx context.Context, id string) (MediaAsset, error)

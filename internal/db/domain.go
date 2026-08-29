@@ -424,16 +424,3 @@ type ItemLink struct {
 	Label     *string
 	SortOrder int
 }
-
-// ItemDate.StartDate/EndDate are "YYYY-MM-DD" strings — see the note on
-// Trip.StartDate/EndDate above; the same reasoning applies here.
-type ItemDate struct {
-	ID        string
-	ItemID    string
-	StartDate *string
-	EndDate   *string
-	Label     *string
-	AllDay    bool
-	StartTime *string
-	EndTime   *string
-}

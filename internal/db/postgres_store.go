@@ -280,43 +280,6 @@ func (s *postgresStore) DeleteItemLink(ctx context.Context, id, itemID string) (
 	return n > 0, nil
 }
 
-func (s *postgresStore) CreateItemDate(ctx context.Context, p CreateItemDateParams) (ItemDate, error) {
-	row, err := s.q.CreateItemDate(ctx, postgresgen.CreateItemDateParams{
-		ID:        p.ID,
-		ItemID:    p.ItemID,
-		StartDate: nullDate(p.StartDate),
-		EndDate:   nullDate(p.EndDate),
-		Label:     nullString(p.Label),
-		AllDay:    p.AllDay,
-		StartTime: nullString(p.StartTime),
-		EndTime:   nullString(p.EndTime),
-	})
-	if err != nil {
-		return ItemDate{}, err
-	}
-	return postgresItemDateToDomain(row), nil
-}
-
-func (s *postgresStore) ListItemDatesByItem(ctx context.Context, itemID string) ([]ItemDate, error) {
-	rows, err := s.q.ListItemDatesByItem(ctx, itemID)
-	if err != nil {
-		return nil, err
-	}
-	dates := make([]ItemDate, len(rows))
-	for i, row := range rows {
-		dates[i] = postgresItemDateToDomain(row)
-	}
-	return dates, nil
-}
-
-func (s *postgresStore) DeleteItemDate(ctx context.Context, id, itemID string) (bool, error) {
-	n, err := s.q.DeleteItemDate(ctx, postgresgen.DeleteItemDateParams{ID: id, ItemID: itemID})
-	if err != nil {
-		return false, err
-	}
-	return n > 0, nil
-}
-
 func postgresItemToDomain(i postgresgen.Item) Item {
 	return Item{
 		ID:        i.ID,
@@ -350,19 +313,6 @@ func postgresItemLinkToDomain(l postgresgen.ItemLink) ItemLink {
 		URL:       l.Url,
 		Label:     strPtr(l.Label),
 		SortOrder: int(l.SortOrder),
-	}
-}
-
-func postgresItemDateToDomain(d postgresgen.ItemDate) ItemDate {
-	return ItemDate{
-		ID:        d.ID,
-		ItemID:    d.ItemID,
-		StartDate: datePtr(d.StartDate),
-		EndDate:   datePtr(d.EndDate),
-		Label:     strPtr(d.Label),
-		AllDay:    d.AllDay,
-		StartTime: strPtr(d.StartTime),
-		EndTime:   strPtr(d.EndTime),
 	}
 }
 

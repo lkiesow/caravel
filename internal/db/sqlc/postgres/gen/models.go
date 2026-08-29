@@ -86,17 +86,6 @@ type Item struct {
 	UpdatedAt time.Time      `json:"updated_at"`
 }
 
-type ItemDate struct {
-	ID        string         `json:"id"`
-	ItemID    string         `json:"item_id"`
-	StartDate sql.NullTime   `json:"start_date"`
-	EndDate   sql.NullTime   `json:"end_date"`
-	Label     sql.NullString `json:"label"`
-	AllDay    bool           `json:"all_day"`
-	StartTime sql.NullString `json:"start_time"`
-	EndTime   sql.NullString `json:"end_time"`
-}
-
 type ItemLink struct {
 	ID        string         `json:"id"`
 	ItemID    string         `json:"item_id"`

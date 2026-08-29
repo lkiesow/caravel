@@ -536,43 +536,6 @@ func (s *sqliteStore) DeleteItemLink(ctx context.Context, id, itemID string) (bo
 	return n > 0, nil
 }
 
-func (s *sqliteStore) CreateItemDate(ctx context.Context, p CreateItemDateParams) (ItemDate, error) {
-	row, err := s.q.CreateItemDate(ctx, sqlitegen.CreateItemDateParams{
-		ID:        p.ID,
-		ItemID:    p.ItemID,
-		StartDate: nullString(p.StartDate),
-		EndDate:   nullString(p.EndDate),
-		Label:     nullString(p.Label),
-		AllDay:    boolToInt64(p.AllDay),
-		StartTime: nullString(p.StartTime),
-		EndTime:   nullString(p.EndTime),
-	})
-	if err != nil {
-		return ItemDate{}, err
-	}
-	return sqliteItemDateToDomain(row), nil
-}
-
-func (s *sqliteStore) ListItemDatesByItem(ctx context.Context, itemID string) ([]ItemDate, error) {
-	rows, err := s.q.ListItemDatesByItem(ctx, itemID)
-	if err != nil {
-		return nil, err
-	}
-	dates := make([]ItemDate, len(rows))
-	for i, row := range rows {
-		dates[i] = sqliteItemDateToDomain(row)
-	}
-	return dates, nil
-}
-
-func (s *sqliteStore) DeleteItemDate(ctx context.Context, id, itemID string) (bool, error) {
-	n, err := s.q.DeleteItemDate(ctx, sqlitegen.DeleteItemDateParams{ID: id, ItemID: itemID})
-	if err != nil {
-		return false, err
-	}
-	return n > 0, nil
-}
-
 func (s *sqliteStore) CreateMediaAsset(ctx context.Context, p CreateMediaAssetParams) (MediaAsset, error) {
 	row, err := s.q.CreateMediaAsset(ctx, sqlitegen.CreateMediaAssetParams{
 		ID:          p.ID,
@@ -1232,19 +1195,6 @@ func sqliteItemLinkToDomain(l sqlitegen.ItemLink) ItemLink {
 		URL:       l.Url,
 		Label:     strPtr(l.Label),
 		SortOrder: int(l.SortOrder),
-	}
-}
-
-func sqliteItemDateToDomain(d sqlitegen.ItemDate) ItemDate {
-	return ItemDate{
-		ID:        d.ID,
-		ItemID:    d.ItemID,
-		StartDate: strPtr(d.StartDate),
-		EndDate:   strPtr(d.EndDate),
-		Label:     strPtr(d.Label),
-		AllDay:    d.AllDay != 0,
-		StartTime: strPtr(d.StartTime),
-		EndTime:   strPtr(d.EndTime),
 	}
 }
 

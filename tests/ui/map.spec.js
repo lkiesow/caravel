@@ -1245,9 +1245,14 @@ test.describe("the locate control when it cannot work", () => {
 // radius centred on the hotel is a real filter with an unambiguous answer.
 const AT_THE_HOTEL = { latitude: 64.1466, longitude: -21.9426, accuracy: 20 };
 
+// Since Stage 26 Milestone 4 the distance filter is a group inside the one
+// filter menu rather than a button of its own, so choosing a radius is three
+// clicks: open, drill into Distance, pick. The assertions below are unchanged --
+// the point of that milestone was that the filtering behaviour did not move.
 async function pickRadius(page, value) {
-  const menu = page.locator(".locations-distance-slot .menu");
+  const menu = page.locator(".locations-filter-slot .menu");
   await menu.locator('[data-action="toggle"]').click();
+  await menu.locator('[data-group="distance"]').click();
   await menu.locator(`[data-value="${value}"]`).click();
 }
 
@@ -1337,7 +1342,10 @@ test.describe("distance filter when the position cannot be had", () => {
 
     // The list is untouched and the trigger no longer claims to be filtering.
     await expect(page.locator("item-card")).toHaveCount(before);
-    const trigger = page.locator('.locations-distance-slot [data-action="toggle"]');
+    // One trigger for every filter since Stage 26 Milestone 4, so "not
+    // filtering" is now a claim about the whole menu -- which is right here,
+    // since the category filter is untouched and distance fell back to "any".
+    const trigger = page.locator('.locations-filter-slot [data-action="toggle"]');
     await expect(trigger).not.toHaveClass(/menu__trigger--active/);
     await expect(page.locator(".locations-distance-note")).toBeHidden();
   });
@@ -1352,9 +1360,13 @@ test.describe("distance filter when the position cannot be had", () => {
     const routes = await buildRoutes(page);
     await gotoRoute(page, routes.find((r) => r.label === "trip locations").path);
 
-    await expect(page.locator(".locations-distance-slot .menu")).toHaveCount(0);
+    // The menu is still there -- it holds every filter now -- but distance is
+    // not one of the rows in it. Omitted rather than shown and disabled: a row
+    // that can only ever fail is the thing this test says must not exist.
+    await page.locator('.locations-filter-slot [data-action="toggle"]').click();
+    await expect(page.locator('[data-group="distance"]')).toHaveCount(0);
     // The category filter beside it is unaffected.
-    await expect(page.locator(".locations-filter-slot .menu")).toHaveCount(1);
+    await expect(page.locator('[data-group="category"]')).toHaveCount(1);
   });
 });
 
@@ -1473,8 +1485,11 @@ test.describe("Stage 13's surfaces in German at 324px", () => {
 
     // Open the dropdown so its rows are measured too - "Beliebige Entfernung"
     // is the longest label in it.
-    await page.locator('.locations-distance-slot [data-action="toggle"]').click();
-    await expect(page.locator(".locations-distance-slot .menu__dropdown")).toBeVisible();
+    await page.locator('.locations-filter-slot [data-action="toggle"]').click();
+    await expect(page.locator(".locations-filter-slot .menu__dropdown")).toBeVisible();
+    // Drill into Distance, so the radius rows are on screen when this is
+    // measured -- "Beliebige Entfernung" is still the longest label in here.
+    await page.locator('[data-group="distance"]').click();
 
     await page.evaluate(() => {
       for (const [sel, text] of [

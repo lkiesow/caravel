@@ -510,6 +510,58 @@ specs at 324×756: the toolbar is one row and does not overflow; drilling in and
 back; Escape closing from the second level; the trigger accent-coloured with a
 category chosen and neutral again after picking All.
 
+**Done.** `web/js/components/popup.js` holds the open/close discipline lifted
+out of `menu.js` unchanged, and `menu.js` is its first caller; `menu.spec.js`
+passing **unmodified** -- all 21 of its cases -- is what says the extraction
+changed nothing. `web/js/components/filter-menu.js` is the second shape built
+on it: one funnel trigger, a root panel listing each filter by its current
+value, and a panel swap into a group with a back row that names the group.
+`locations-tab.js` lost a slot and both `renderMenu` calls; the distance group
+is simply absent when `canLocate()` is false, replacing "render the whole menu
+or not".
+
+Three things were got wrong first and are worth recording:
+
+- **The root row read "All", not "All categories".** `groupLabel` looked the
+  active value up in the group's items, and at the neutral value that found the
+  neutral *item*, whose label is the bare "All" that reads fine inside the
+  category panel and says nothing in a list of filters. A group now shows its
+  own `neutralLabel` while neutral and the chosen item's label otherwise.
+- **The back row repeated the option below it.** With one label per group, the
+  distance panel read "Any distance" as its title and "Any distance" as its
+  first option. A group therefore carries a `name` ("Distance", for the back
+  row) *and* a `neutralLabel` ("Any distance", for the root row); collapsing
+  them makes one of the two read badly whichever way round it is done.
+- **The panel could reopen inside a submenu.** Resetting to the root in
+  `onClose` leaves "is it open" and "which panel is showing" as two states that
+  can disagree. It resets in `onOpen` instead, which makes opening at the root
+  an invariant rather than a consequence.
+
+Two strings went stale and were fixed rather than left: the trigger's
+`locations.filter.label` said "Filter by category" when it now covers every
+filter, and `locations.distance.label` had no control left to name and was
+deleted -- `scripts/i18n.py unused` reports no orphans.
+
+The stale comment promised in Milestone 0 is corrected: `locations-tab.js` no
+longer claims a `q` predicate and pagination are a `todo.md` item.
+
+Verified: `make ci` green, `make test-ui` green (185). Four pre-existing specs
+were updated to reach the filter through the drill-down -- `pickRadius` in
+`map.spec.js`, the refused-position and cannot-locate cases, the German 324px
+toolbar measurement, and the settings language spec, which moved its assertion
+one level in because the trigger now reads a fixed "Filter" that is spelled
+identically in both languages and would have proved nothing. Every one of those
+kept its original assertion, which is the evidence that the filtering behaviour
+did not move. Three new specs cover the drill-down and the way back, Escape
+from either level, reopening at the root, an outside click, the chosen value
+appearing on its row with both the row and the trigger accented, and the
+toolbar still being one row at 324px -- measured by every control sharing a top
+edge, not assumed.
+
+Driven by hand at 324px in English and German: the German panel is 217px wide
+inside a 324px screen with no horizontal overflow, and the longest label,
+"Beliebige Entfernung", fits.
+
 ---
 
 ## 5. Sort the locations list

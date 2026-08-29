@@ -810,6 +810,83 @@ textarea {
    list. Colouring the row rather than boxing it: a filled red button inside a
    dropdown reads as the menu's primary action, which is the opposite of what a
    delete should look like before it's been chosen. */
+/* The locations tab's filter menu (components/filter-menu.js): the same popup
+   chrome as .menu__dropdown, with two levels inside it.
+
+   Wider than the 9rem default, because these rows carry a *value* ("Within 25
+   km") rather than a bare option name, and because both levels share the panel
+   - a root row and an option row swapping places must not change the panel's
+   width under the pointer. */
+.menu--filter__panel {
+  min-width: 13rem;
+  display: flex;
+  flex-direction: column;
+  padding: 0.25rem;
+}
+
+/* A root row: the filter's current value on the left, a chevron on the right.
+   Turned a quarter so it points into the submenu rather than down, reusing the
+   sprite icon the trigger already carries rather than adding one. */
+.menu--filter__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  border-radius: 0.25rem;
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.875rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu--filter__row:hover,
+.menu--filter__back:hover {
+  background: var(--color-surface);
+}
+
+/* A group that is narrowing the list says so on its own row, not only through
+   the trigger - with four filters the trigger can no longer say *which* one is
+   active, which is the whole reason the rows carry their values. */
+.menu--filter__row--active {
+  color: var(--color-accent);
+}
+
+.menu--filter__row-chevron {
+  color: var(--color-text-muted);
+  transform: rotate(-90deg);
+  flex-shrink: 0;
+}
+
+/* The back row leads the second level and names the group being left, so a
+   panel of "All / Site / Stay / Transport" still says it is the category. The
+   border under it separates the navigation from the choices. */
+.menu--filter__back {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.25rem;
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 0.25rem 0.25rem 0 0;
+  background: none;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu--filter__back-icon {
+  flex-shrink: 0;
+}
+
 /* Qualified by .menu__dropdown, not bare: `.menu__dropdown button` above sets
    the row color, and a lone class selector loses to it on specificity - the
    red silently didn't apply until this was written the longer way. */

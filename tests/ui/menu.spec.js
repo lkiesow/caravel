@@ -35,9 +35,10 @@ async function openTripLocations(page) {
   return trips.full;
 }
 
-// The tab bar's More menu, not the locations filter's: both are the same
-// component, and the filter is the one whose trigger label tracks the
-// selection, so scoping matters.
+// The tab bar's More menu, not the locations filter's. They were the same
+// component until Stage 26 Milestone 4 split the popup mechanics into popup.js;
+// the filter is now its own two-level shape built on the same base, and both
+// live in the same trip header, so scoping still matters.
 const MORE = ".trip-tabs__more-slot";
 
 for (const locale of ["en", "de"]) {
@@ -562,3 +563,129 @@ for (const locale of ["en", "de"]) {
     });
   });
 }
+
+// The locations tab's filter menu, added in Stage 26 Milestone 4: the same
+// popup mechanics as everything above, in a two-level shape.
+//
+// Milestone 4 deliberately moved the *existing* filters and added none, so the
+// filtering assertions live where they always did (map.spec.js for distance,
+// locations.spec.js for the rest). What is tested here is the container: the
+// drill-down, the way back, and that the toolbar still fits a phone.
+test.describe("locations filter menu", () => {
+  test.use({ viewport: { width: 324, height: 756 } });
+
+  test("drills into a filter and back, and closes every way it should", async ({ page }) => {
+    await openTripLocations(page);
+
+    const menu = page.locator(".locations-filter-slot .menu");
+    const trigger = menu.locator('[data-action="toggle"]');
+    const panel = menu.locator(".menu__dropdown");
+    const rows = menu.locator(".menu--filter__row");
+
+    await expect(panel).toBeHidden();
+    await expect(trigger).toHaveAttribute("aria-expanded", "false");
+
+    // The root lists the filters, each showing its own current value rather
+    // than a bare name -- that is what the two separate trigger buttons used
+    // to give away for free.
+    await trigger.click();
+    await expect(panel).toBeVisible();
+    await expect(trigger).toHaveAttribute("aria-expanded", "true");
+    await expect(rows).toHaveText(["All categories", "Any distance"]);
+
+    // Drilling in replaces the panel rather than opening a second one beside
+    // it: there is no room for a flyout at 324px.
+    await menu.locator('[data-group="category"]').click();
+    await expect(rows).toHaveCount(0);
+    // The back row names the filter ("Category"), not its neutral value ("All
+    // categories") -- otherwise the distance panel would read "Any distance"
+    // above an option also reading "Any distance".
+    await expect(menu.locator(".menu--filter__back")).toHaveText("Category");
+    await expect(menu.locator("[data-value]")).toHaveText(["All", "Site", "Stay", "Transport"]);
+
+    // Back returns to the root without closing the menu.
+    await menu.locator(".menu--filter__back").click();
+    await expect(panel).toBeVisible();
+    await expect(rows).toHaveText(["All categories", "Any distance"]);
+
+    // Escape closes from the root...
+    await page.keyboard.press("Escape");
+    await expect(panel).toBeHidden();
+    await expect(trigger).toHaveAttribute("aria-expanded", "false");
+
+    // ...and from the second level too.
+    await trigger.click();
+    await menu.locator('[data-group="category"]').click();
+    await expect(menu.locator("[data-value]").first()).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(panel).toBeHidden();
+
+    // Reopening starts at the root. A menu that remembered the submenu it was
+    // closed in would be remembering a navigation nobody asked it to keep.
+    await trigger.click();
+    await expect(rows).toHaveText(["All categories", "Any distance"]);
+
+    // An outside click closes it as well.
+    await page.locator("h1").click();
+    await expect(panel).toBeHidden();
+  });
+
+  test("shows the chosen value on its row and marks the trigger", async ({ page }) => {
+    await openTripLocations(page);
+
+    const menu = page.locator(".locations-filter-slot .menu");
+    const trigger = menu.locator('[data-action="toggle"]');
+    const categoryRow = menu.locator('[data-group="category"]');
+
+    await expect(trigger).not.toHaveClass(/menu__trigger--active/);
+
+    await trigger.click();
+    await categoryRow.click();
+    await menu.locator('[data-value="stay"]').click();
+
+    // Choosing closes the menu and applies the filter.
+    await expect(menu.locator(".menu__dropdown")).toBeHidden();
+    const stays = page.locator('item-card[category="stay"]');
+    await expect(page.locator("item-card")).toHaveCount(await stays.count());
+
+    // The trigger is accented, and -- because with several filters it can no
+    // longer say *which* one is narrowing the list -- the row says so too.
+    await expect(trigger).toHaveClass(/menu__trigger--active/);
+    await trigger.click();
+    await expect(categoryRow).toHaveText("Stay");
+    await expect(categoryRow).toHaveClass(/menu--filter__row--active/);
+
+    // Back to All clears both signals.
+    await categoryRow.click();
+    await menu.locator('[data-value="all"]').click();
+    await expect(trigger).not.toHaveClass(/menu__trigger--active/);
+    await trigger.click();
+    await expect(categoryRow).toHaveText("All categories");
+  });
+
+  test("the toolbar is still one row at 324px", async ({ page }) => {
+    await openTripLocations(page);
+
+    // Collapsing two filter buttons into one is what makes room for the sort
+    // menu in the next milestone, so the row has to be measured, not assumed.
+    const toolbar = page.locator(".list-toolbar");
+    const box = await toolbar.boundingBox();
+    const children = await toolbar.evaluate((el) =>
+      [...el.children].map((c) => {
+        const r = c.getBoundingClientRect();
+        return { top: Math.round(r.top), height: Math.round(r.height) };
+      })
+    );
+    // Every control shares a top edge, which is what "one row" means here --
+    // a wrapped toolbar would put one of them on a second line.
+    const tops = new Set(children.map((c) => c.top));
+    expect(tops.size, `toolbar wrapped: ${JSON.stringify(children)}`).toBe(1);
+    expect(box.width).toBeLessThanOrEqual(324);
+
+    const doc = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+    }));
+    expect(doc.scrollWidth, "no horizontal overflow").toBeLessThanOrEqual(doc.clientWidth);
+  });
+});

@@ -1,17 +1,22 @@
 import { createGuard } from "../busy.js";
 import { translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
+import { bindPopup } from "./popup.js";
 
 // A small single-select dropdown menu: a button that shows the currently
 // selected option, and a popup list to change it.
 //
 // This is the generalized version of the popup behavior that previously
-// only existed inline in user-menu.js - `hidden`-attribute visibility,
-// aria-expanded kept in sync with it, and outside-click/Escape listeners
-// added on open and removed again on close (so a closed menu leaves
-// nothing attached to `document`). As of Stage 12 Milestone 1 user-menu.js
-// is a caller rather than a second copy, so this is the only popup
-// implementation in the tree.
+// only existed inline in user-menu.js. As of Stage 12 Milestone 1 user-menu.js
+// is a caller rather than a second copy.
+//
+// The popup mechanics themselves - `hidden`-attribute visibility, aria-expanded
+// kept in sync with it, and outside-click/Escape listeners added on open and
+// removed again on close - moved to popup.js in Stage 26 Milestone 4, so that
+// the locations tab's drill-down filter menu could share them without this file
+// having to grow a second layout. There is still exactly one implementation of
+// opening and closing a popup in the tree; there are now two shapes built on
+// it.
 //
 // By default the trigger label is owned by this component: it re-renders to
 // the selected option's label on every selection, which is why `items`
@@ -142,35 +147,12 @@ export function renderMenu(
     });
   }
 
-  function close() {
-    dropdown.hidden = true;
-    trigger.classList.remove("menu__trigger--open");
-    trigger.setAttribute("aria-expanded", "false");
-    document.removeEventListener("click", onOutsideClick);
-    document.removeEventListener("keydown", onKeydown);
-  }
-
-  function open() {
-    dropdown.hidden = false;
-    trigger.classList.add("menu__trigger--open");
-    trigger.setAttribute("aria-expanded", "true");
-    document.addEventListener("click", onOutsideClick);
-    document.addEventListener("keydown", onKeydown);
-  }
-
-  function onOutsideClick(e) {
-    if (!container.contains(e.target)) close();
-  }
-
-  function onKeydown(e) {
-    if (e.key === "Escape") close();
-  }
-
-  trigger.addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (dropdown.hidden) open();
-    else close();
-  });
+  // The open/close discipline, the outside-click and Escape listeners and the
+  // trigger's aria-expanded now live in popup.js, so the filter menu can be a
+  // different shape of popup rather than a second implementation of one. This
+  // file kept every one of those behaviours; tests/ui/menu.spec.js passing
+  // unchanged is what says so.
+  const { close } = bindPopup(container, trigger, dropdown);
 
   // Most of what these menus do is a write - Delete, Duplicate, Remove, change
   // a role, change visibility - and every one of them used to be re-enterable

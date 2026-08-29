@@ -260,12 +260,13 @@ test.describe("language: switching to German", () => {
     await page.keyboard.press("Escape");
 
     // And the rest of the app follows on the next navigation - the locations
-    // filter's trigger is another t()-built label. Scoped to the *category*
-    // filter's slot: Stage 13 Milestone 7 put a second menu in that toolbar
-    // (filter by distance), so ".locations-toolbar .menu__trigger" now matches
-    // two triggers and this assertion has to name which one it means.
+    // filter is built from t() labels. Since Stage 26 Milestone 4 the trigger
+    // itself reads a fixed "Filter", which is spelled the same in both
+    // languages and would prove nothing, so the assertion moved one level in:
+    // the category row inside the menu is the translated string now.
     await gotoRoute(page, `/trips/${trips.full}/locations`);
-    await expect(page.locator(".locations-filter-slot .menu__trigger")).toContainText("Alle");
+    await page.locator('.locations-filter-slot [data-action="toggle"]').click();
+    await expect(page.locator('[data-group="category"]')).toContainText("Alle Kategorien");
 
     // German survives a reload, from storage rather than from the browser.
     await page.reload();

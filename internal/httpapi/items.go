@@ -46,9 +46,15 @@ type itemResponse struct {
 	// is sometimes absent would mean every caller writing the same guard.
 	// itemToResponse leaves it empty and both handlers fill it in -- the
 	// list from one trip-wide query, the detail from its own read.
-	Tags      []string `json:"tags"`
-	CreatedAt string   `json:"created_at"`
-	UpdatedAt string   `json:"updated_at"`
+	Tags []string `json:"tags"`
+	// Dates is the itinerary days this location is on, collapsed into ranges.
+	// On the list as well as the detail since Stage 26 Milestone 3, so the
+	// cards can show them and the tab can filter and sort on them without a
+	// request per card -- the same reasoning that put lat/lng here in Stage 13.
+	// Always present, never null.
+	Dates     []itemDateRangeResponse `json:"dates"`
+	CreatedAt string                  `json:"created_at"`
+	UpdatedAt string                  `json:"updated_at"`
 }
 
 func (s *Server) itemToResponse(ctx context.Context, i db.Item) itemResponse {
@@ -64,6 +70,7 @@ func (s *Server) itemToResponse(ctx context.Context, i db.Item) itemResponse {
 		ShowOnMap: i.ShowOnMap,
 		SortOrder: i.SortOrder,
 		Tags:      []string{},
+		Dates:     []itemDateRangeResponse{},
 		CreatedAt: i.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt: i.UpdatedAt.UTC().Format(time.RFC3339),
 	}
@@ -86,9 +93,8 @@ type itemLinkResponse struct {
 
 type itemDetailResponse struct {
 	itemResponse
-	Location *itemLocationResponse   `json:"location"`
-	Links    []itemLinkResponse      `json:"links"`
-	Dates    []itemDateRangeResponse `json:"dates"`
+	Location *itemLocationResponse `json:"location"`
+	Links    []itemLinkResponse    `json:"links"`
 }
 
 func (s *Server) handleListItems(w http.ResponseWriter, r *http.Request) {
@@ -129,6 +135,15 @@ func (s *Server) handleListItems(w http.ResponseWriter, r *http.Request) {
 		tags = tagsByItem(rows)
 	}
 
+	// And once more for the dates. Three trip-wide reads to build this list,
+	// none of them per row, and none of them fatal -- see the note above.
+	dates := map[string][]string{}
+	if rows, err := s.Store.ListItemDatesByTrip(r.Context(), trip.ID); err == nil {
+		for _, row := range rows {
+			dates[row.ItemID] = append(dates[row.ItemID], row.Date)
+		}
+	}
+
 	resp := make([]itemResponse, len(items))
 	for i, it := range items {
 		resp[i] = s.itemToResponse(r.Context(), it)
@@ -138,6 +153,9 @@ func (s *Server) handleListItems(w http.ResponseWriter, r *http.Request) {
 		}
 		if t, ok := tags[it.ID]; ok {
 			resp[i].Tags = t
+		}
+		if d, ok := dates[it.ID]; ok {
+			resp[i].Dates = collapseDateRanges(d)
 		}
 	}
 	writeJSON(w, http.StatusOK, resp)
@@ -311,7 +329,7 @@ func (s *Server) handleGetItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) buildItemDetail(r *http.Request, item db.Item) itemDetailResponse {
-	detail := itemDetailResponse{itemResponse: s.itemToResponse(r.Context(), item), Links: []itemLinkResponse{}, Dates: []itemDateRangeResponse{}}
+	detail := itemDetailResponse{itemResponse: s.itemToResponse(r.Context(), item), Links: []itemLinkResponse{}}
 
 	if loc, err := s.Store.GetItemLocationByItemID(r.Context(), item.ID); err == nil {
 		detail.Location = &itemLocationResponse{Lat: loc.Lat, Lng: loc.Lng, Address: loc.Address}

@@ -395,6 +395,45 @@ single query** (assert against a trip with several dated locations). Playwright:
 put a location on 5–7 Sep via the editor, return to the tab, assert the card
 shows the formatted range.
 
+**Done.** `ListItemDatesByTrip` appended to
+`internal/db/sqlc/queries/itinerary_entries.sql` as the trip-wide sibling of
+`ListItineraryDatesByItem`, joined through `items` rather than through
+`itinerary_days` so an entry whose item belongs to another trip is excluded as
+well as filtered. One store method, both adapters, and the dialect split was
+exactly as the plan warned: the generated row is `int64`/`string` on SQLite and
+`int32`/`time.Time` on Postgres, so the Postgres adapter formats the date back
+through the existing `dateLayout` the way the by-item one already did.
+
+`Dates` moved **up** from `itemDetailResponse` into `itemResponse`, so it is on
+the list and the detail from one definition rather than two. The list handler
+now does three trip-wide reads -- coordinates, tags, dates -- none per row and
+none fatal. The card gained a `dates` attribute (JSON, like `tags`) and renders
+the first range through `formatDateRange` with a `+N` for the rest, placed
+directly under the title because "when" is what a planning screen is scanned
+for.
+
+Verified: `make ci` green, `make test-postgres` green -- which is the real
+proof here, since only Postgres exercises the `time.Time` conversion.
+`make test-ui` green, all 181.
+
+Two new Go tests. `TestListItemsCarriesCollapsedDatesInOneQuery` uses a
+counting store to hold the list to one trip-wide query and zero per-location
+ones, and covers a location on two separate stretches -- so the collapse has
+something to do that a single range would not prove -- plus an undated location
+getting `[]` rather than null. It was checked to bite: swapping the bulk load
+for a per-item loop fails it with "trip-wide date query ran 0 times" and
+"per-location date query ran 3 times". `TestItemDetailStillCarriesDates` guards
+the move itself, since a field populated for the list but empty on the page it
+was originally built for would be a quiet regression.
+
+The UI spec asserts the formatted range on the card, the `+1` for the second
+stretch, no date line at all on an undated location, and -- by counting
+requests -- that the list is still a single GET.
+
+No deviations. Note that this milestone does **not** remove the **Dates on the
+locations list** backlog entry: that entry names sorting by date as well, and
+Milestone 5 is what finishes it.
+
 ---
 
 ## 4. One filter menu: a drill-down popup, holding the filters we already have

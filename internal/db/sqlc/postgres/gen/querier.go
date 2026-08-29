@@ -111,6 +111,17 @@ type Querier interface {
 	// expense on a trip is visible to everyone on it. That is deliberate -- hidden
 	// rows in a shared ledger make an incorrect total look correct.
 	ListExpensesByTrip(ctx context.Context, tripID string) ([]Expense, error)
+	// Every dated location on a trip in one query, for the locations list.
+	//
+	// The by-item version above answers one location, which is right for the
+	// location page. Calling it once per card is a query per location, so the list
+	// uses this and buckets the rows by item in Go -- the same shape as
+	// ListItemCoordinates and ListItemTagsByTrip.
+	//
+	// Joined through items rather than through itinerary_days, because the trip is
+	// reachable either way but only this direction also excludes an entry whose
+	// item somehow belongs to another trip.
+	ListItemDatesByTrip(ctx context.Context, tripID string) ([]ListItemDatesByTripRow, error)
 	ListItemFiles(ctx context.Context, arg ListItemFilesParams) ([]File, error)
 	ListItemLinksByItem(ctx context.Context, itemID string) ([]ItemLink, error)
 	// ListItemLocationsByTrip: every coordinate on the trip, keyed by item.

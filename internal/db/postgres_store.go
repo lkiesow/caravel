@@ -1013,6 +1013,24 @@ func (s *postgresStore) ListItineraryDatesByItem(ctx context.Context, itemID str
 	return dates, nil
 }
 
+func (s *postgresStore) ListItemDatesByTrip(ctx context.Context, tripID string) ([]ItemItineraryDate, error) {
+	rows, err := s.q.ListItemDatesByTrip(ctx, tripID)
+	if err != nil {
+		return nil, err
+	}
+	dates := make([]ItemItineraryDate, len(rows))
+	for i, row := range rows {
+		dates[i] = ItemItineraryDate{
+			ItemID:    row.ItemID,
+			EntryID:   row.EntryID,
+			DayID:     row.DayID,
+			Date:      row.Date.Format(dateLayout),
+			SortOrder: int(row.SortOrder),
+		}
+	}
+	return dates, nil
+}
+
 func postgresItineraryDayToDomain(d postgresgen.ItineraryDay) ItineraryDay {
 	return ItineraryDay{
 		ID:     d.ID,

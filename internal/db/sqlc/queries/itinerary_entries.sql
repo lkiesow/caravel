@@ -59,3 +59,21 @@ FROM itinerary_entries e
 INNER JOIN itinerary_days d ON d.id = e.itinerary_day_id
 WHERE e.item_id = sqlc.arg(item_id)
 ORDER BY d.date, e.sort_order;
+
+-- Every dated location on a trip in one query, for the locations list.
+--
+-- The by-item version above answers one location, which is right for the
+-- location page. Calling it once per card is a query per location, so the list
+-- uses this and buckets the rows by item in Go -- the same shape as
+-- ListItemCoordinates and ListItemTagsByTrip.
+--
+-- Joined through items rather than through itinerary_days, because the trip is
+-- reachable either way but only this direction also excludes an entry whose
+-- item somehow belongs to another trip.
+-- name: ListItemDatesByTrip :many
+SELECT e.item_id, e.id AS entry_id, e.itinerary_day_id AS day_id, e.sort_order, d.date
+FROM itinerary_entries e
+INNER JOIN itinerary_days d ON d.id = e.itinerary_day_id
+INNER JOIN items i ON i.id = e.item_id
+WHERE i.trip_id = sqlc.arg(trip_id)
+ORDER BY e.item_id, d.date, e.sort_order;

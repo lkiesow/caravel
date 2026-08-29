@@ -60,6 +60,62 @@ func (q *Queries) DeleteItineraryEntry(ctx context.Context, arg DeleteItineraryE
 	return result.RowsAffected()
 }
 
+const listItemDatesByTrip = `-- name: ListItemDatesByTrip :many
+SELECT e.item_id, e.id AS entry_id, e.itinerary_day_id AS day_id, e.sort_order, d.date
+FROM itinerary_entries e
+INNER JOIN itinerary_days d ON d.id = e.itinerary_day_id
+INNER JOIN items i ON i.id = e.item_id
+WHERE i.trip_id = ?1
+ORDER BY e.item_id, d.date, e.sort_order
+`
+
+type ListItemDatesByTripRow struct {
+	ItemID    string `json:"item_id"`
+	EntryID   string `json:"entry_id"`
+	DayID     string `json:"day_id"`
+	SortOrder int64  `json:"sort_order"`
+	Date      string `json:"date"`
+}
+
+// Every dated location on a trip in one query, for the locations list.
+//
+// The by-item version above answers one location, which is right for the
+// location page. Calling it once per card is a query per location, so the list
+// uses this and buckets the rows by item in Go -- the same shape as
+// ListItemCoordinates and ListItemTagsByTrip.
+//
+// Joined through items rather than through itinerary_days, because the trip is
+// reachable either way but only this direction also excludes an entry whose
+// item somehow belongs to another trip.
+func (q *Queries) ListItemDatesByTrip(ctx context.Context, tripID string) ([]ListItemDatesByTripRow, error) {
+	rows, err := q.db.QueryContext(ctx, listItemDatesByTrip, tripID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListItemDatesByTripRow
+	for rows.Next() {
+		var i ListItemDatesByTripRow
+		if err := rows.Scan(
+			&i.ItemID,
+			&i.EntryID,
+			&i.DayID,
+			&i.SortOrder,
+			&i.Date,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listItineraryDatesByItem = `-- name: ListItineraryDatesByItem :many
 SELECT e.item_id, e.id AS entry_id, e.itinerary_day_id AS day_id, e.sort_order, d.date
 FROM itinerary_entries e

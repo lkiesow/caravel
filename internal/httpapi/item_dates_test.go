@@ -4,8 +4,11 @@ import (
 	"context"
 	"net/http"
 	"reflect"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"caravel/internal/db"
 )
 
 func TestCollapseDateRanges(t *testing.T) {
@@ -376,5 +379,104 @@ func TestItemDatesAbsentVersusEmpty(t *testing.T) {
 	w = ts.do(http.MethodGet, "/api/trips/"+tripID+"/itinerary", cookie, "")
 	if days := decode[[]itineraryDayResponse](t, w); len(days) != 0 {
 		t.Errorf("got %d itinerary days, want the emptied ones gone: %+v", len(days), days)
+	}
+}
+
+// Stage 26 Milestone 3: the locations list carries the dates too, so the tab
+// can show them on the cards and filter and sort on them without asking per
+// card. The rule the backlog entry stated is the one being held to here -- one
+// trip-wide query, bucketed in Go.
+type countingDateStore struct {
+	db.Store
+	byItem atomic.Int64
+	byTrip atomic.Int64
+}
+
+func (s *countingDateStore) ListItineraryDatesByItem(ctx context.Context, itemID string) ([]db.ItemItineraryDate, error) {
+	s.byItem.Add(1)
+	return s.Store.ListItineraryDatesByItem(ctx, itemID)
+}
+
+func (s *countingDateStore) ListItemDatesByTrip(ctx context.Context, tripID string) ([]db.ItemItineraryDate, error) {
+	s.byTrip.Add(1)
+	return s.Store.ListItemDatesByTrip(ctx, tripID)
+}
+
+func TestListItemsCarriesCollapsedDatesInOneQuery(t *testing.T) {
+	var counter *countingDateStore
+	ts := newTestServerWith(t, func(s db.Store) db.Store {
+		counter = &countingDateStore{Store: s}
+		return counter
+	}, nil)
+	cookie := ts.login("owner")
+	tripID := ts.createTrip(cookie, "Iceland")
+
+	hotel := ts.createItem(cookie, tripID, "Hotel Ranga")
+	ts.setDates(cookie, hotel, `[{"start_date":"2026-09-05","end_date":"2026-09-07"}]`)
+
+	// Two separate stretches, so the collapse has something to do that a
+	// single range would not prove: these must come back as two ranges, not
+	// one spanning the gap and not five days.
+	split := ts.createItem(cookie, tripID, "Geysir")
+	ts.setDates(cookie, split, `[{"start_date":"2026-09-05","end_date":"2026-09-06"},{"start_date":"2026-09-09","end_date":"2026-09-09"}]`)
+
+	undated := ts.createItem(cookie, tripID, "Someday")
+
+	counter.byItem.Store(0)
+	counter.byTrip.Store(0)
+
+	w := ts.do(http.MethodGet, "/api/trips/"+tripID+"/items", cookie, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("list: got %d, body %s", w.Code, w.Body.String())
+	}
+	got := decode[[]itemResponse](t, w)
+
+	byID := map[string][]itemDateRangeResponse{}
+	for _, it := range got {
+		if it.Dates == nil {
+			t.Errorf("%s has null dates; the field must always be an array", it.Title)
+		}
+		byID[it.ID] = it.Dates
+	}
+
+	if want := []itemDateRangeResponse{{StartDate: "2026-09-05", EndDate: "2026-09-07"}}; !reflect.DeepEqual(byID[hotel], want) {
+		t.Errorf("hotel dates: got %+v, want %+v", byID[hotel], want)
+	}
+	want := []itemDateRangeResponse{
+		{StartDate: "2026-09-05", EndDate: "2026-09-06"},
+		{StartDate: "2026-09-09", EndDate: "2026-09-09"},
+	}
+	if !reflect.DeepEqual(byID[split], want) {
+		t.Errorf("split dates: got %+v, want %+v", byID[split], want)
+	}
+	if len(byID[undated]) != 0 {
+		t.Errorf("undated location got dates: %+v", byID[undated])
+	}
+
+	if n := counter.byTrip.Load(); n != 1 {
+		t.Errorf("trip-wide date query ran %d times, want exactly 1", n)
+	}
+	if n := counter.byItem.Load(); n != 0 {
+		t.Errorf("per-location date query ran %d times for a 3-location list; the list must not use it", n)
+	}
+}
+
+// The detail endpoint keeps its own per-item read: Dates moved up to
+// itemResponse, and a field that is populated for the list but empty on the
+// page it was built for would be a quiet regression.
+func TestItemDetailStillCarriesDates(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login("owner")
+	tripID := ts.createTrip(cookie, "Iceland")
+	hotel := ts.createItem(cookie, tripID, "Hotel Ranga")
+	ts.setDates(cookie, hotel, `[{"start_date":"2026-09-05","end_date":"2026-09-07"}]`)
+
+	w := ts.do(http.MethodGet, "/api/items/"+hotel, cookie, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("get: got %d", w.Code)
+	}
+	want := []itemDateRangeResponse{{StartDate: "2026-09-05", EndDate: "2026-09-07"}}
+	if got := decode[itemDetailResponse](t, w).Dates; !reflect.DeepEqual(got, want) {
+		t.Errorf("detail dates: got %+v, want %+v", got, want)
 	}
 }

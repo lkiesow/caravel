@@ -832,6 +832,24 @@ func (s *sqliteStore) ListItineraryDatesByItem(ctx context.Context, itemID strin
 	return dates, nil
 }
 
+func (s *sqliteStore) ListItemDatesByTrip(ctx context.Context, tripID string) ([]ItemItineraryDate, error) {
+	rows, err := s.q.ListItemDatesByTrip(ctx, tripID)
+	if err != nil {
+		return nil, err
+	}
+	dates := make([]ItemItineraryDate, len(rows))
+	for i, row := range rows {
+		dates[i] = ItemItineraryDate{
+			ItemID:    row.ItemID,
+			EntryID:   row.EntryID,
+			DayID:     row.DayID,
+			Date:      row.Date,
+			SortOrder: int(row.SortOrder),
+		}
+	}
+	return dates, nil
+}
+
 func sqliteItineraryDayToDomain(d sqlitegen.ItineraryDay) ItineraryDay {
 	return ItineraryDay{
 		ID:     d.ID,

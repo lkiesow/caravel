@@ -354,6 +354,10 @@ type Store interface {
 	// point of the reconcile that writes them, so both agree by construction.
 	// Duplicates for one date are possible and are returned as they are.
 	ListItineraryDatesByItem(ctx context.Context, itemID string) ([]ItemItineraryDate, error)
+	// ListItemDatesByTrip is the trip-wide version, for the locations list.
+	// Bucket the rows by item in Go; calling the by-item query per card is a
+	// query per location.
+	ListItemDatesByTrip(ctx context.Context, tripID string) ([]ItemItineraryDate, error)
 
 	CreateFile(ctx context.Context, p CreateFileParams) (File, error)
 	GetFileByID(ctx context.Context, id string) (File, error)

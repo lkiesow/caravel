@@ -375,6 +375,55 @@ test.describe("the location editor, end to end", () => {
     await expect(page).toHaveURL(new RegExp(`/trips/${tripId}/locations/new$`));
   });
 
+  // Stage 26 Milestone 3: the locations list carries the itinerary dates, so a
+  // card can say when the location is without the tab asking per card.
+  test("dates reach the locations list and show on the card", async ({ page }) => {
+    const mk = async (title, dates) =>
+      (
+        await page.request.post(`/api/trips/${tripId}/items`, {
+          data: { title, category: "site", type: "", dates },
+        })
+      ).json();
+
+    await mk("Three days running", [{ start_date: "2026-09-05", end_date: "2026-09-07" }]);
+    // Two separate stretches: the card shows the first and counts the rest.
+    await mk("Twice", [
+      { start_date: "2026-09-05", end_date: "2026-09-06" },
+      { start_date: "2026-09-20", end_date: "2026-09-20" },
+    ]);
+    await mk("Unscheduled", []);
+
+    // One request for the whole list. If dates were fetched per card this
+    // would be four, which is the regression the Go test also guards.
+    const itemRequests = [];
+    page.on("request", (req) => {
+      const u = new URL(req.url());
+      if (u.pathname.startsWith("/api/") && req.method() === "GET") itemRequests.push(u.pathname);
+    });
+
+    await gotoRoute(page, `/trips/${tripId}/locations`);
+    await expect(page.locator("item-card")).toHaveCount(3);
+
+    const read = async (title) =>
+      page
+        .locator(`item-card[title="${title}"]`)
+        .evaluate((el) => el.shadowRoot.querySelector(".dates")?.textContent ?? null);
+
+    // Formatted, not the ISO strings, and collapsed into one range.
+    expect(await read("Three days running")).toContain("5");
+    expect(await read("Three days running")).toContain("7");
+    // The second stretch is a count, not a second line.
+    expect(await read("Twice")).toContain("+1");
+    // A location with no itinerary days shows no date line at all, rather than
+    // an empty one or a dash.
+    expect(await read("Unscheduled")).toBeNull();
+
+    expect(
+      itemRequests.filter((p) => p.endsWith("/items")),
+      "the list is one request; dates must not be fetched per card"
+    ).toHaveLength(1);
+  });
+
   // Omitting the tags must not clear them -- the same absent-versus-empty rule
   // the API keeps for links and dates, checked from the browser because the
   // editor is what decides whether to send the key at all.

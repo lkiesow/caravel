@@ -1,3 +1,5 @@
+import { formatDateRange } from "../format.js";
+
 const CATEGORY_COLORS = {
   site: "#16a34a",
   stay: "#7c3aed",
@@ -51,6 +53,13 @@ const styles = `
     color: var(--color-text-muted);
     font-size: 0.8rem;
   }
+  /* The itinerary days this location is on. Directly under the title because
+     "when" is the thing being scanned for on a planning screen -- the type and
+     the tags say what it is, which the title usually already did. */
+  .dates {
+    color: var(--color-text-muted);
+    font-size: 0.8rem;
+  }
   .tags {
     display: flex;
     flex-wrap: wrap;
@@ -76,7 +85,7 @@ const styles = `
 
 class ItemCard extends HTMLElement {
   static get observedAttributes() {
-    return ["item-id", "title", "type", "category", "image-url", "tags"];
+    return ["item-id", "title", "type", "category", "image-url", "tags", "dates"];
   }
 
   connectedCallback() {
@@ -127,6 +136,19 @@ class ItemCard extends HTMLElement {
     const shown = tags.slice(0, 3);
     const overflow = tags.length - shown.length;
 
+    // Same JSON-in-an-attribute treatment as the tags, and the same reason for
+    // showing only the first: a location split across three separate stretches
+    // of the trip would otherwise turn one card into a paragraph. The whole set
+    // is on the location page.
+    let dates = [];
+    try {
+      dates = JSON.parse(this.getAttribute("dates") || "[]");
+    } catch {
+      dates = [];
+    }
+    const firstRange = dates.length ? formatDateRange(dates[0].start_date, dates[0].end_date) : null;
+    const moreRanges = dates.length - 1;
+
     this.shadowRoot.innerHTML = `
       <style>${styles}</style>
       <div class="card">
@@ -134,6 +156,11 @@ class ItemCard extends HTMLElement {
         <span class="dot" style="background:${color}"></span>
         <div class="text">
           <h2>${escapeHtml(title)}</h2>
+          ${
+            firstRange
+              ? `<div class="dates">${escapeHtml(firstRange)}${moreRanges > 0 ? ` +${moreRanges}` : ""}</div>`
+              : ""
+          }
           ${type ? `<div class="type">${escapeHtml(type)}</div>` : ""}
           ${
             tags.length

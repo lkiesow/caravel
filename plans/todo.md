@@ -84,12 +84,31 @@ purpose — do not reconstruct it from an older stage plan without asking.
   i18n keys, and entry-row layout work at 324px, where the row is already
   a thumbnail, a title and a menu.
 
-- **Dates on the locations list.** (Stage 25.) A location now knows which
-  itinerary days it is on, but the locations tab shows none of it -- a "5-7 Sep"
-  line on the card, or sorting the list by date, is the obvious next use.
-  Whoever does it must add a trip-wide query and bucket by item in Go, following
-  `ListItemCoordinates` (`internal/httpapi/items.go:120-126`); calling the
-  by-item query per card is a query per location.
+- **Dates on the locations list.** (Stage 25.) **Claimed by Stage 26** --
+  Milestone 3 puts the date line on the card, Milestone 5 adds sorting by date.
+  This entry names both, so it comes out only once the second has landed, not
+  the first. A location now knows which itinerary days it is on, but the
+  locations tab shows none of it -- a "5-7 Sep" line on the card, or sorting the
+  list by date, is the obvious next use. Whoever does it must add a trip-wide
+  query and bucket by item in Go, following `ListItemCoordinates`
+  (`internal/httpapi/items.go:120-126`); calling the by-item query per card is a
+  query per location.
+
+- **Multi-select tag filtering.** (Stage 26.) The tag filter that stage builds
+  is single-select, so it sits inside the `menuitemradio` model every menu in
+  the app shares. Combining tags -- Reykjavik AND for-kids -- is where tags
+  actually start paying off, but it needs `menuitemcheckbox` rows, a trigger
+  label that can say "2 tags" rather than naming one, and a way to clear the
+  set. Worth doing once there is evidence people tag densely enough to want it.
+
+- **Tag management across a trip: rename, merge, delete.** (Stage 26.) Tags are
+  stored as text on `item_tags` with no tags table, so a rename is an `UPDATE`
+  over one column and a merge is the same statement -- there is no schema work
+  here, only UI and a place to put it. Deliberately deferred until tag drift is
+  observed rather than predicted: the editor suggests the trip's existing tags,
+  which is the cheap defence against it. Note the stage stores tags as typed and
+  dedupes case-insensitively only *within* one location, so `Museum` and
+  `museum` can coexist on two different ones.
 
 - **A way into the itinerary from a location.** (Stage 25.) The location page
   shows the days it is on but does not link to them, so the way to see a
@@ -200,6 +219,15 @@ purpose — do not reconstruct it from an older stage plan without asking.
 ---
 
 ## Consistency and cleanup
+
+- **List view state lives only in memory.** (Stage 26.) The locations tab's
+  filters and its sort, and the trips list's sort, are closure variables --
+  reloading the page or following a link out and coming back resets them, and a
+  filtered list cannot be shared or bookmarked. Putting them in the query string
+  would fix all three, but nothing in the app puts view state in the URL today,
+  so doing it for one tab would be its own inconsistency; it wants deciding for
+  the trips list and the locations tab together. Stage 26 deliberately left it
+  alone while rebuilding that toolbar.
 
 - **Identifier sweep: "item" → "location".** Stage 05 fixed the user-visible
   copy, so what's left is entirely below the surface: the whole

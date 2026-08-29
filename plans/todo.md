@@ -265,21 +265,6 @@ else runs this.
   two-finger gesture handling, which is expressed entirely in Leaflet handler
   terms.
 
-- **`mobile-map.png` shows the old, half-height mobile map.** **(soon)** (Stage
-  23 Milestone 7 raised the trip map from 320px to 85vh; the committed capture
-  predates it.) Regenerating was attempted and **deliberately not committed**:
-  every run in this environment loses two or three map tiles to
-  `NS_ERROR_UNKNOWN_HOST` -- the browser's resolver failing under the burst of
-  parallel tile requests, while `getent hosts tile.openstreetmap.org` from the
-  shell succeeds 12 times out of 12 -- so the fresh set had grey rectangles in
-  `map.png`, `location-detail.png`, `assistant.png` and `mobile-map.png`. A
-  stale but clean screenshot beats a current but broken one. Since Stage 23
-  Milestone 8, `shoot()` waits for every tile to be loaded or definitively
-  failed, retries the failed ones once, and prints a WARNING naming the shot
-  when any still will not load -- so the next attempt on a healthier network
-  will be obviously good or obviously bad. Nothing to fix in the app; this is an
-  outstanding regeneration.
-
 - **Going offline during the first load after a deploy loses the code cache.**
   (Stage 23 Milestone 2.) The new worker's `activate` purges the previous
   cache, and the modules that load *during* that first post-deploy navigation

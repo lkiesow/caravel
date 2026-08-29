@@ -529,6 +529,28 @@ the run is clean, commit the changed captures.
 `make check-screenshots` (already in `make ci`) and a visual check that
 `mobile-map.png` shows the tall map.
 
+**Done, and it was not a network problem at all.** Two runs produced the same
+warnings on the same four shots with the same counts (2, 3, 2, 2) -- too
+deterministic for the transient DNS failure this entry and the backlog both
+blamed. Probing the actual requests found every failure on one host:
+`d.tile.openstreetmap.org`, which does not resolve, because OpenStreetMap
+serves `a`, `b` and `c` only.
+
+The cause was `subdomains: "abcd"` in `leaflet-map.js`, whose comment claimed
+it "covers both the 3-subdomain and 4-subdomain conventions". That is not how
+Leaflet uses the list -- it picks one per tile by hashing the coordinates, so
+the fourth entry is not a fallback, it routes a quarter of every map's tiles
+to a host that does not exist. The observed 3-in-12 failure rate is exactly
+that quarter.
+
+So this milestone turned out to sit on a **live user-facing bug**: every map in
+the app has been dropping about 25% of its tiles for the default provider, for
+anyone running a stock install. It was fixed first, in its own commit
+(`subdomains: "abc"`, Leaflet's own default), verified by a probe showing 12
+tiles served, zero failed requests, and only the three hosts that exist. Then
+the screenshots regenerated with no WARNING at all -- the first clean run this
+set has had.
+
 ---
 
 ## Build order

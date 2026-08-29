@@ -352,6 +352,25 @@ type ItineraryEntryDetail struct {
 	ItemImageID  *string
 }
 
+// ItemItineraryDate is one appearance of a location on one day: the entry, the
+// day it sits on, and that day's date. A join projection like
+// ItineraryEntryDetail and ItemCoordinate — nothing writes it.
+//
+// This is what a location's "dates" are made of since Stage 25. There is no
+// item_dates table any more: the ranges the location page shows are these
+// dates with contiguous runs collapsed, and the location editor writes them by
+// adding and removing entries.
+//
+// Date is a "YYYY-MM-DD" string, as ItineraryDay.Date is, so the two compare
+// directly and sort lexically.
+type ItemItineraryDate struct {
+	ItemID    string
+	EntryID   string
+	DayID     string
+	Date      string
+	SortOrder int
+}
+
 // MediaAsset backs both trips.preview_image_id and items.image_id. Kind is
 // "upload" (StoragePath set, resolved via internal/storagefs) or "url"
 // (ExternalURL set, used directly — see Section 3.4 of the plan).

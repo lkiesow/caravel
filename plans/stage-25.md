@@ -136,6 +136,38 @@ because of the `DATE`/`TEXT` split, so a SQLite-only run does not prove it. Tabl
 test for `collapseDateRanges` covering: empty, single day, contiguous run,
 month boundary (31 Jan → 1 Feb), year boundary, gap, duplicates, unsorted input.
 
+**Done.** Landed as planned, with nothing wired up: `ListItineraryDatesByItem`
+appended to `internal/db/sqlc/queries/itinerary_entries.sql`, the
+`ItemItineraryDate` projection in `domain.go`, one method on the `db.Store`
+interface, and implementations in both dialect stores. `collapseDateRanges` and
+`itemDateRangeResponse` live in the new `internal/httpapi/item_dates.go`. The
+old `item_dates` path is untouched and still serves the location page, so this
+commit changes no behaviour at all.
+
+The dialect split the plan predicted is real and is now visible in the generated
+code: `ListItineraryDatesByItemRow.Date` is `string` with `SortOrder int64` in
+`sqlite/gen`, and `time.Time` with `int32` in `postgres/gen`. The Postgres store
+formats the date back with `dateLayout`, the way `postgresItineraryDayToDomain`
+already does for the same column.
+
+Verified: `make ci` green; `make test-postgres` green (the full suite, 127s).
+`TestCollapseDateRanges` is a twelve-case table — empty, single day, contiguous
+run, gap, a day removed from the middle, month boundary, year boundary, leap
+day, duplicates, unsorted input, and range ordering. The month and leap-day
+cases are the ones that fail if the walk ever does string arithmetic instead of
+`AddDate`. `TestListItineraryDatesByItem` drives the real query through the API
+and was additionally run on its own against a live Postgres container to confirm
+it executes rather than skips there: four appearances including a deliberate
+duplicate on the 7th, returned in date order, filtered to one location, with the
+date arriving as a plain `YYYY-MM-DD` on both dialects.
+
+One deviation, small: a test case was named "a missing leap day splits the run"
+while asserting a single range. The assertion was right — 2027 has no 29th, so
+28 February is followed directly by 1 March — and the name was wrong. Renamed
+rather than "fixed".
+
+---
+
 ## 2. The write path: the API speaks ranges
 
 The API switches over completely in one milestone, so it is never half-converted.

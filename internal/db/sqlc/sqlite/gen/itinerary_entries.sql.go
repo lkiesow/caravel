@@ -60,6 +60,60 @@ func (q *Queries) DeleteItineraryEntry(ctx context.Context, arg DeleteItineraryE
 	return result.RowsAffected()
 }
 
+const listItineraryDatesByItem = `-- name: ListItineraryDatesByItem :many
+SELECT e.item_id, e.id AS entry_id, e.itinerary_day_id AS day_id, e.sort_order, d.date
+FROM itinerary_entries e
+INNER JOIN itinerary_days d ON d.id = e.itinerary_day_id
+WHERE e.item_id = ?1
+ORDER BY d.date, e.sort_order
+`
+
+type ListItineraryDatesByItemRow struct {
+	ItemID    string `json:"item_id"`
+	EntryID   string `json:"entry_id"`
+	DayID     string `json:"day_id"`
+	SortOrder int64  `json:"sort_order"`
+	Date      string `json:"date"`
+}
+
+// The days one location appears on, which is what a location date range is
+// made of since Stage 25. There is no separate table of dates on an item any
+// more: the itinerary is the record, and the ranges the location page shows
+// are these dates with contiguous runs collapsed in Go.
+//
+// Nothing stops an item from being on one day twice -- there is no unique
+// constraint on the pair -- so duplicate dates come back as they are and the
+// caller reduces them to a set. The entry id and day id ride along because the
+// reconcile path needs to delete exact rows, not dates.
+func (q *Queries) ListItineraryDatesByItem(ctx context.Context, itemID string) ([]ListItineraryDatesByItemRow, error) {
+	rows, err := q.db.QueryContext(ctx, listItineraryDatesByItem, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListItineraryDatesByItemRow
+	for rows.Next() {
+		var i ListItineraryDatesByItemRow
+		if err := rows.Scan(
+			&i.ItemID,
+			&i.EntryID,
+			&i.DayID,
+			&i.SortOrder,
+			&i.Date,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listItineraryEntriesByDay = `-- name: ListItineraryEntriesByDay :many
 SELECT id, itinerary_day_id, item_id, sort_order, note FROM itinerary_entries
 WHERE itinerary_day_id = ?1

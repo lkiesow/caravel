@@ -43,3 +43,19 @@ UPDATE itinerary_entries
 SET itinerary_day_id = sqlc.arg(to_itinerary_day_id),
     sort_order = sqlc.arg(sort_order)
 WHERE id = sqlc.arg(id) AND itinerary_day_id = sqlc.arg(from_itinerary_day_id);
+
+-- The days one location appears on, which is what a location date range is
+-- made of since Stage 25. There is no separate table of dates on an item any
+-- more: the itinerary is the record, and the ranges the location page shows
+-- are these dates with contiguous runs collapsed in Go.
+--
+-- Nothing stops an item from being on one day twice -- there is no unique
+-- constraint on the pair -- so duplicate dates come back as they are and the
+-- caller reduces them to a set. The entry id and day id ride along because the
+-- reconcile path needs to delete exact rows, not dates.
+-- name: ListItineraryDatesByItem :many
+SELECT e.item_id, e.id AS entry_id, e.itinerary_day_id AS day_id, e.sort_order, d.date
+FROM itinerary_entries e
+INNER JOIN itinerary_days d ON d.id = e.itinerary_day_id
+WHERE e.item_id = sqlc.arg(item_id)
+ORDER BY d.date, e.sort_order;

@@ -129,6 +129,16 @@ type Querier interface {
 	// way, which is why this shipped broken -- see internal/dbtest.
 	// CAST rather than the :: form because both dialects have to parse this file.
 	ListItemsByTrip(ctx context.Context, arg ListItemsByTripParams) ([]Item, error)
+	// The days one location appears on, which is what a location date range is
+	// made of since Stage 25. There is no separate table of dates on an item any
+	// more: the itinerary is the record, and the ranges the location page shows
+	// are these dates with contiguous runs collapsed in Go.
+	//
+	// Nothing stops an item from being on one day twice -- there is no unique
+	// constraint on the pair -- so duplicate dates come back as they are and the
+	// caller reduces them to a set. The entry id and day id ride along because the
+	// reconcile path needs to delete exact rows, not dates.
+	ListItineraryDatesByItem(ctx context.Context, itemID string) ([]ListItineraryDatesByItemRow, error)
 	ListItineraryDaysByTrip(ctx context.Context, tripID string) ([]ItineraryDay, error)
 	// Entries of one day, in their stored order. Used to number a new entry and to
 	// validate a reorder against the set of entries the day actually has.

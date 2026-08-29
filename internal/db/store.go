@@ -353,6 +353,11 @@ type Store interface {
 	// a move safe to run against a client that read the itinerary a moment ago.
 	SetItineraryEntryDay(ctx context.Context, id, fromDayID, toDayID string, sortOrder int) (bool, error)
 	DeleteItineraryEntry(ctx context.Context, id, itineraryDayID string) (bool, error)
+	// ListItineraryDatesByItem returns every day one location appears on,
+	// ordered by date. The read side of a location's dates and the starting
+	// point of the reconcile that writes them, so both agree by construction.
+	// Duplicates for one date are possible and are returned as they are.
+	ListItineraryDatesByItem(ctx context.Context, itemID string) ([]ItemItineraryDate, error)
 
 	CreateFile(ctx context.Context, p CreateFileParams) (File, error)
 	GetFileByID(ctx context.Context, id string) (File, error)

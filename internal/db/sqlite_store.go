@@ -818,6 +818,24 @@ func (s *sqliteStore) DeleteItineraryEntry(ctx context.Context, id, itineraryDay
 	return n > 0, nil
 }
 
+func (s *sqliteStore) ListItineraryDatesByItem(ctx context.Context, itemID string) ([]ItemItineraryDate, error) {
+	rows, err := s.q.ListItineraryDatesByItem(ctx, itemID)
+	if err != nil {
+		return nil, err
+	}
+	dates := make([]ItemItineraryDate, len(rows))
+	for i, row := range rows {
+		dates[i] = ItemItineraryDate{
+			ItemID:    row.ItemID,
+			EntryID:   row.EntryID,
+			DayID:     row.DayID,
+			Date:      row.Date,
+			SortOrder: int(row.SortOrder),
+		}
+	}
+	return dates, nil
+}
+
 func sqliteItineraryDayToDomain(d sqlitegen.ItineraryDay) ItineraryDay {
 	return ItineraryDay{
 		ID:     d.ID,

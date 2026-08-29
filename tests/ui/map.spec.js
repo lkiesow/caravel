@@ -364,6 +364,63 @@ test.describe("the trip map with a mouse", () => {
     expect(await wheelZoom(page, { deltaY: -100, deltaMode: 0 })).toEqual({ zoomed: 0, cancelled: false });
   });
 
+  // A trip with no locations shows "nothing has a location yet" laid over the
+  // map -- and from Caravel v1 until Stage 23 that message was absolutely
+  // positioned across the whole wrapper and hit-testable, so it swallowed
+  // every mouse event the map should have had. An empty map could not be
+  // dragged, clicked or interacted with at all, and nothing pointed at the
+  // message as the cause: it reads as a label, not as a sheet of glass.
+  //
+  // Only reachable on a trip with nothing on the map, which is why no earlier
+  // spec caught it -- they all use the seeded trip, which has locations.
+  test("a map with no locations can still be dragged", async ({ page }) => {
+    await login(page);
+    const res = await page.request.post("/api/trips", { data: { title: "UI suite: empty map spec" } });
+    expect(res.status()).toBe(201);
+    const tripId = (await res.json()).id;
+
+    try {
+      await gotoRoute(page, `/trips/${tripId}/map`);
+      await page.waitForFunction(() => document.querySelector("leaflet-map")?._map);
+
+      const state = await page.evaluate(() => {
+        const sr = document.querySelector("leaflet-map").shadowRoot;
+        const b = sr.getElementById("map").getBoundingClientRect();
+        const el = sr.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2);
+        return {
+          emptyShown: !!sr.querySelector(".empty"),
+          topElementIsTheMap: !!el?.classList?.contains("leaflet-container"),
+        };
+      });
+
+      expect(state.emptyShown, "the empty-map message should still be there").toBe(true);
+      expect(
+        state.topElementIsTheMap,
+        "the message must not be what the mouse hits, or the map takes no input at all"
+      ).toBe(true);
+
+      // And prove it by actually dragging.
+      const box = await page.evaluate(() => {
+        const b = document.querySelector("leaflet-map").shadowRoot.getElementById("map").getBoundingClientRect();
+        return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+      });
+      const centre = () =>
+        page.evaluate(() => {
+          const c = document.querySelector("leaflet-map")._map.getCenter();
+          return `${c.lat.toFixed(4)},${c.lng.toFixed(4)}`;
+        });
+
+      const before = await centre();
+      await page.mouse.move(box.x, box.y);
+      await page.mouse.down();
+      for (let i = 1; i <= 10; i++) await page.mouse.move(box.x - i * 12, box.y - i * 6);
+      await page.mouse.up();
+      await expect.poll(centre, { message: "dragging an empty map should pan it" }).not.toBe(before);
+    } finally {
+      await page.request.delete(`/api/trips/${tripId}`);
+    }
+  });
+
   test("Leaflet is not the one zooming, so it cannot swallow the gesture", async ({ page }) => {
     await login(page);
     await gotoTripMap(page);

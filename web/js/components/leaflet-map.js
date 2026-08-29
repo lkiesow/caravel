@@ -190,9 +190,22 @@ const styles = `
     border-radius: 50%;
     display: inline-block;
   }
+  /* The "nothing has a location yet" message, laid over the map.
+     
+     pointer-events: none is the whole point of this rule existing rather than
+     the positioning living in an inline style, as it did from Caravel v1 until
+     Stage 23: absolutely positioned across the entire wrapper and hit-testable,
+     it swallowed every mouse event the map should have had, so a trip with no
+     locations had a map that could not be dragged, clicked or interacted with
+     at all. Nothing pointed at the message as the cause -- it reads as a label,
+     not as a sheet of glass over the map. */
   .empty {
+    position: absolute;
+    inset: 0;
+    margin: 0;
     padding: 1rem;
     color: var(--color-text-muted, #666);
+    pointer-events: none;
   }
   /* The popup's two destinations - this location in Caravel, and Google Maps.
      Blocks rather than inline, so each is its own row under the title and the
@@ -489,7 +502,7 @@ class LeafletMap extends HTMLElement {
     if (!chromeless && !this._items.length) {
       this.shadowRoot.querySelector(".map-wrap").insertAdjacentHTML(
         "beforeend",
-        `<p class="empty" style="position:absolute;inset:0;margin:0;">${t("map.empty")}</p>`
+        `<p class="empty">${t("map.empty")}</p>`
       );
     }
 

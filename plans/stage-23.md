@@ -671,6 +671,40 @@ so reading `getZoom()` synchronously after dispatching races it and reports no
 change. A first version of these measurements said the zoom had not happened
 when it had.
 
+**Third follow-up: a map with no locations could not be dragged - and this one
+was not new.** Reported as "drag and drop with a mouse doesn't work anymore",
+and narrowed by the reporter to the case that made it findable: it happens only
+on a trip with nothing on the map.
+
+The "nothing has a location yet" message is laid over the map with
+`position: absolute; inset: 0`, in an inline style, and nothing made it
+transparent to the pointer. So it was hit-testable across the whole wrapper and
+swallowed every mouse event the map should have had: an empty map could not be
+dragged, clicked or interacted with at all. `elementFromPoint` at the centre of
+the map returned `P.empty`.
+
+`git log -S` dates the line to **Caravel v1**, so this predates the stage by
+twenty-two of them; the map work is what got somebody to try dragging an empty
+map. The positioning moved out of the inline style into the `.empty` rule,
+where it gained `pointer-events: none` and a comment saying why that line is
+the reason the rule exists.
+
+The general lesson is worth keeping, because this stage has now hit it twice:
+**anything laid over the map needs `pointer-events: none`**, and it does not
+announce itself when it is missing - the message reads as a label, not as a
+sheet of glass. The gesture overlay added in this milestone had it from the
+start; this one never did.
+
+Verified on the reporter's own failing trip: before, `elementFromPoint` at the
+map's centre returned `P.empty` and a drag moved nothing; after, it returns the
+Leaflet container, the drag pans, Ctrl + wheel still zooms, and the message is
+still displayed. A regression test creates a trip with no locations - the
+seeded trips all have some, which is why no earlier spec reached this - and
+asserts both that the message is present and that it is not what the mouse
+hits, then drags to prove it. Reverting the one declaration fails it (`the
+message must not be what the mouse hits, or the map takes no input at all`).
+`make ci` green, 171 passed.
+
 ---
 
 ## 7. The mobile map grows

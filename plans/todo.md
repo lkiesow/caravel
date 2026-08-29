@@ -40,6 +40,16 @@ purpose — do not reconstruct it from an older stage plan without asking.
   `newTestServerWithOptions` path proves the plumbing works from `Options`
   inward, so what is missing is a check that `config` reaches `Options`.
 
+- **Creating an itinerary day can 500 on a race.** (Stage 25 planning.)
+  `EnsureItineraryDay` (`internal/db/store.go:333`) is get-then-insert, so two
+  clients adding the same day at the same time lose one to the `(trip_id, date)`
+  unique constraint, and the handler reports it as a 500. Pre-existing, but
+  Stage 25 makes it reachable from saving a location rather than only from
+  moving an itinerary entry, which is a much more common act. A 409 with
+  "the itinerary changed, please try again" is the honest answer, and the
+  handler already has the `errItineraryEntryVanished` -> 409 shape
+  (`internal/httpapi/itinerary.go:313`) to copy.
+
 - **The zoom hint names Ctrl on every platform.** (Stage 23 Milestone 6.) The
   gate accepts Ctrl *or* Meta, so Cmd + wheel zooms on a Mac, but the string
   `map.ctrlZoomHint` says "Ctrl" everywhere -- Google Maps shows the Mac key
@@ -53,6 +63,27 @@ purpose — do not reconstruct it from an older stage plan without asking.
 ---
 
 ## Planned features
+
+- **A time on an itinerary entry.** (Stage 25.) `item_dates` carried
+  `all_day`, `start_time` and `end_time` from Stage 01 and never grew a UI for
+  any of them; Stage 25 dropped the table without replacing them, so a 09:40
+  ferry can only say so in the entry note. If they come back they belong on
+  `itinerary_entries`, not on the location: a time is a property of being
+  somewhere on a *day*, which is the whole point of that stage. Needs columns on
+  both dialects, a time formatter in `web/js/format.js` (which has none), new
+  i18n keys, and entry-row layout work at 324px, where the row is already
+  a thumbnail, a title and a menu.
+
+- **Dates on the locations list.** (Stage 25.) A location now knows which
+  itinerary days it is on, but the locations tab shows none of it -- a "5-7 Sep"
+  line on the card, or sorting the list by date, is the obvious next use.
+  Whoever does it must add a trip-wide query and bucket by item in Go, following
+  `ListItemCoordinates` (`internal/httpapi/items.go:120-126`); calling the
+  by-item query per card is a query per location.
+
+- **A way into the itinerary from a location.** (Stage 25.) The location page
+  shows the days it is on but does not link to them, so the way to see a
+  location in context is to go back to the trip and pick the tab.
 
 - **AI trip-level suggestions.** **(soon)** (Stage 15 backlog review.) "Suggest
   things to do in Reykjavik" returning several candidate locations to add at

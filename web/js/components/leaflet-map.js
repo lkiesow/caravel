@@ -577,9 +577,16 @@ class LeafletMap extends HTMLElement {
       // alone, and leaves the default provider loading exactly what it did
       // before this was configurable.
       detectRetina: tiles.tile_url.includes("{r}"),
-      // Covers both the 3-subdomain (a,b,c) and 4-subdomain conventions.
+      // a, b, c -- Leaflet's own default, and what OpenStreetMap actually
+      // serves. This said "abcd" on the theory that it covered both the
+      // 3-subdomain and 4-subdomain conventions, which is not how Leaflet uses
+      // the list: it picks one per tile by hashing the coordinates, so a fourth
+      // entry does not add a fallback, it sends a quarter of all tiles to
+      // d.tile.openstreetmap.org -- a host that does not resolve. That is where
+      // the grey patches in every map came from, and why the documentation
+      // screenshots could not be regenerated cleanly.
       // Leaflet ignores this entirely for a URL with no {s}.
-      subdomains: "abcd",
+      subdomains: "abc",
     }).addTo(map);
 
     // Has the person moved this map themselves? syncPickMarker needs to know,

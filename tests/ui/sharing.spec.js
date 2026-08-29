@@ -82,13 +82,13 @@ for (const locale of ["en", "de"]) {
       // A username that does not exist gets its own message rather than a
       // generic failure — the whole reason the API returns an error code.
       const form = page.locator(".members-add");
-      await form.locator('[name="username"]').fill("nobody-at-all");
+      await form.locator('[name="member"]').fill("nobody-at-all");
       await form.locator('button[type="submit"]').click();
       await expect(page.locator(".members-add__error")).toHaveText(copy.noSuchUser);
       await expect(rows).toHaveCount(1);
 
       // Now add the real one, as a viewer.
-      await form.locator('[name="username"]').fill("other");
+      await form.locator('[name="member"]').fill("other");
       await form.locator('[name="role"]').selectOption("viewer");
       await form.locator('button[type="submit"]').click();
       await expect(rows).toHaveCount(2);

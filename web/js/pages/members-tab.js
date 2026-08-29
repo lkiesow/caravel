@@ -56,8 +56,16 @@ export function renderMembersTab(content, trip, { onMembersChanged } = {}) {
         <form class="members-add">
           <label class="members-add__field">
             <span data-i18n="members.username"></span>
-            <input type="text" name="username" list="member-suggestions" autocomplete="off"
-                   autocapitalize="none" spellcheck="false" required />
+            <!-- name="member", not "username", and no "user" in the id either.
+                 Firefox classifies a field as a login username field from its
+                 name and id, fills username-only forms from the saved login,
+                 and ignores autocomplete="off" while doing it — so this field
+                 came up pre-filled with the signed-in user's own handle, which
+                 is never the answer to "who do you want to add?". The admin
+                 screen keeps name="username" because that form really is
+                 creating an account. -->
+            <input type="text" name="member" id="member-add-field" list="member-suggestions"
+                   autocomplete="off" autocapitalize="none" spellcheck="false" required />
             <datalist id="member-suggestions"></datalist>
           </label>
           <label class="members-add__field">
@@ -198,7 +206,7 @@ export function renderMembersTab(content, trip, { onMembersChanged } = {}) {
 
     guardForm(form, async () => {
       error.hidden = true;
-      const username = form.username.value.trim();
+      const username = form.elements.member.value.trim();
       if (!username) return;
 
       try {
@@ -229,7 +237,7 @@ export function renderMembersTab(content, trip, { onMembersChanged } = {}) {
   // which a hand-rolled combobox gets for free — and this is a convenience on
   // top of a field that already works when typed in full.
   function bindSuggestions(form) {
-    const input = form.username;
+    const input = form.elements.member;
     const datalist = form.querySelector("#member-suggestions");
     let timer = null;
     let lastQuery = null;

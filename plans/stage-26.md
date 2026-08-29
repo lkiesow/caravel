@@ -226,6 +226,56 @@ mirroring `TestItemDatesAbsentVersusEmpty`; the list endpoint carries tags in
 one query; normalization and the two limits; a cross-trip tag does not leak
 into `GET /trips/{id}/tags`.
 
+**Done.** Migration `0005_item_tags` on both dialects, byte-identical between
+them; `internal/db/sqlc/queries/item_tags.sql` with the four queries;
+`db.ItemTag`, four `Store` methods and both hand-written adapters. On the wire,
+`tags` is on `itemResponse` -- so the list and the detail both carry it -- and
+`Tags *[]string` on `itemRequest` with the established absent/present meaning,
+written through `writeItemTags` inside the existing transaction. Normalization,
+the two limits and the bucketing helpers live in a new
+`internal/httpapi/item_tags.go`, which also holds `handleListTripTags` behind
+`GET /api/trips/{tripId}/tags`.
+
+Two deviations, both simplifications:
+
+- **No separate `DISTINCT` query for the trip vocabulary.** The plan implied one;
+  the endpoint instead reuses `ListItemTagsByTrip` and deduplicates in Go
+  (`distinctTags`). A trip's tag rows number in the hundreds at worst, and this
+  is one fewer query to keep matched across two dialects and two adapters.
+- **`ListItemTagsByItem` returns `[]string`, not `[]ItemTag`.** sqlc projects a
+  single-column select straight to the scalar, and the item id would have been
+  a column repeated on every row for a caller that already knows it.
+
+The new route was added to both authorization matrices --
+`roles_test.go` (viewer may read) and `ownership_test.go` (a non-member may
+not) -- rather than only tested for its happy path.
+
+Verified: `make ci` green (`check-migrations` reports 5 per dialect, both
+dialects agree, chain intact) and `make test-postgres` green, so every one of
+these queries has run on both engines. Seven new Go tests cover the round trip,
+absent-versus-empty, tags on the list, the trip vocabulary being deduplicated
+and trip-scoped, normalization with its rune-counted length limit and its
+count limit, and the cascade when a location is deleted.
+
+`TestListItemsLoadsTagsInOneQuery` counts calls through a store wrapper, and was
+checked to actually bite: replacing the bulk load with a per-item loop makes it
+fail with "trip-wide tag query ran 0 times, want exactly 1" and "per-location
+tag query ran 5 times". That check was worth doing given Stage 25 Milestone 3
+shipped a spec that passed with the guard it was testing removed.
+
+The `0005` down migration was round-tripped down and up on a real SQLite
+database holding a tagged location, asserting the table goes, the `items` row it
+hung off survives, and the table and its index come back usable and empty. That
+was done with a throwaway test in `internal/db`, deleted afterwards -- there is
+no exported migrator to hang a permanent one on, and inventing one was outside
+this milestone.
+
+Finally a live pass against `make dev`: creating a location with
+`["  Reykjavik ","reykjavik","waterfall"]` stores `["Reykjavik","waterfall"]` --
+trimmed, and deduplicated case-insensitively keeping the first spelling -- the
+list endpoint carries them, `GET /trips/{id}/tags` answers the vocabulary, and
+deleting the location empties it again.
+
 ---
 
 ## 2. Tags in the editor and on the location page

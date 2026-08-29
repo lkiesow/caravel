@@ -180,6 +180,7 @@ func roleRoutes() []route {
 		// Reads — a viewer must be able to do all of these.
 		{http.MethodGet, trip(""), lit(""), db.RoleViewer},
 		{http.MethodGet, trip("/items"), lit(""), db.RoleViewer},
+		{http.MethodGet, trip("/tags"), lit(""), db.RoleViewer},
 		{http.MethodGet, trip("/map"), lit(""), db.RoleViewer},
 		{http.MethodGet, trip("/itinerary"), lit(""), db.RoleViewer},
 		{http.MethodGet, trip("/files"), lit(""), db.RoleViewer},

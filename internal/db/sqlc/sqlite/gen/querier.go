@@ -27,6 +27,7 @@ type Querier interface {
 	CreateFile(ctx context.Context, arg CreateFileParams) (File, error)
 	CreateItem(ctx context.Context, arg CreateItemParams) (Item, error)
 	CreateItemLink(ctx context.Context, arg CreateItemLinkParams) (ItemLink, error)
+	CreateItemTag(ctx context.Context, arg CreateItemTagParams) error
 	CreateItineraryEntry(ctx context.Context, arg CreateItineraryEntryParams) (ItineraryEntry, error)
 	CreateMediaAsset(ctx context.Context, arg CreateMediaAssetParams) (MediaAsset, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
@@ -43,6 +44,10 @@ type Querier interface {
 	DeleteFile(ctx context.Context, arg DeleteFileParams) (int64, error)
 	DeleteItem(ctx context.Context, arg DeleteItemParams) (int64, error)
 	DeleteItemLink(ctx context.Context, arg DeleteItemLinkParams) (int64, error)
+	// The tag set is replaced as a whole rather than patched tag by tag, so a write
+	// deletes and reinserts inside one transaction. Two people editing the same
+	// location then produce one set or the other, never a mixture.
+	DeleteItemTagsByItem(ctx context.Context, itemID string) error
 	// Scoped by trip_id as well as id, mirroring DeleteItineraryEntry: the
 	// handler has already checked ownership, and this keeps a day from being
 	// deleted through the wrong trip even if that check is ever bypassed.
@@ -118,6 +123,12 @@ type Querier interface {
 	// in Go: they are not "far away", they are unmeasurable, and the caller has
 	// to be able to tell those apart.
 	ListItemLocationsByTrip(ctx context.Context, tripID string) ([]ListItemLocationsByTripRow, error)
+	ListItemTagsByItem(ctx context.Context, itemID string) ([]string, error)
+	// Every tag on a trip in one query, carrying the location each one belongs to.
+	// The locations list needs the tags of each of its rows, and asking per
+	// location is a query per row. The same rows, deduplicated, are the distinct
+	// tag list the editor offers as suggestions.
+	ListItemTagsByTrip(ctx context.Context, tripID string) ([]ItemTag, error)
 	// The CAST around the optional category is required, not decoration. Without
 	// it the generated Postgres query reads AND ($2 IS NULL OR category = $2) with
 	// an untyped parameter, and the server refuses it at prepare time: could not

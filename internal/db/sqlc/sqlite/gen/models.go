@@ -101,6 +101,11 @@ type ItemLocation struct {
 	Address sql.NullString  `json:"address"`
 }
 
+type ItemTag struct {
+	ItemID string `json:"item_id"`
+	Tag    string `json:"tag"`
+}
+
 type ItineraryDay struct {
 	ID     string         `json:"id"`
 	TripID string         `json:"trip_id"`

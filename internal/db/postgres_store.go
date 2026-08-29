@@ -280,6 +280,39 @@ func (s *postgresStore) DeleteItemLink(ctx context.Context, id, itemID string) (
 	return n > 0, nil
 }
 
+func (s *postgresStore) CreateItemTag(ctx context.Context, itemID, tag string) error {
+	return s.q.CreateItemTag(ctx, postgresgen.CreateItemTagParams{ItemID: itemID, Tag: tag})
+}
+
+func (s *postgresStore) ListItemTagsByItem(ctx context.Context, itemID string) ([]string, error) {
+	tags, err := s.q.ListItemTagsByItem(ctx, itemID)
+	if err != nil {
+		return nil, err
+	}
+	// Never nil: the tag set is a JSON array on the wire, and a null there
+	// would make "no tags" a different shape from "tags I removed".
+	if tags == nil {
+		tags = []string{}
+	}
+	return tags, nil
+}
+
+func (s *postgresStore) ListItemTagsByTrip(ctx context.Context, tripID string) ([]ItemTag, error) {
+	rows, err := s.q.ListItemTagsByTrip(ctx, tripID)
+	if err != nil {
+		return nil, err
+	}
+	tags := make([]ItemTag, len(rows))
+	for i, row := range rows {
+		tags[i] = ItemTag{ItemID: row.ItemID, Tag: row.Tag}
+	}
+	return tags, nil
+}
+
+func (s *postgresStore) DeleteItemTagsByItem(ctx context.Context, itemID string) error {
+	return s.q.DeleteItemTagsByItem(ctx, itemID)
+}
+
 func postgresItemToDomain(i postgresgen.Item) Item {
 	return Item{
 		ID:        i.ID,

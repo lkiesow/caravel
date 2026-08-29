@@ -288,6 +288,17 @@ type Store interface {
 	ListItemLinksByItem(ctx context.Context, itemID string) ([]ItemLink, error)
 	DeleteItemLink(ctx context.Context, id, itemID string) (bool, error)
 
+	CreateItemTag(ctx context.Context, itemID, tag string) error
+	ListItemTagsByItem(ctx context.Context, itemID string) ([]string, error)
+	// ListItemTagsByTrip returns every tag on the trip with the item it is on,
+	// so the locations list can attach tags in one query rather than one per
+	// row. Deduplicated, it is also the trip vocabulary the editor suggests.
+	ListItemTagsByTrip(ctx context.Context, tripID string) ([]ItemTag, error)
+	// DeleteItemTagsByItem clears a location's tags. The set is replaced as a
+	// whole, so a write is this followed by CreateItemTag per tag, inside one
+	// transaction.
+	DeleteItemTagsByItem(ctx context.Context, itemID string) error
+
 	CreateMediaAsset(ctx context.Context, p CreateMediaAssetParams) (MediaAsset, error)
 	GetMediaAssetByID(ctx context.Context, id string) (MediaAsset, error)
 

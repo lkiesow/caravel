@@ -424,3 +424,15 @@ type ItemLink struct {
 	Label     *string
 	SortOrder int
 }
+
+// ItemTag is one keyword on one location. There is no id and no tags table: a
+// tag is its own name, nothing hangs off it, and the pair is the primary key.
+// See migration 0005 for why that is preferred to a lookup table.
+//
+// The set is replaced as a whole on write, like ItemLink and unlike the
+// itinerary entries behind ItemItineraryDate -- a tag carries nothing worth
+// preserving across a rewrite, so there is no reason to diff.
+type ItemTag struct {
+	ItemID string
+	Tag    string
+}

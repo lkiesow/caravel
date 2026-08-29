@@ -39,8 +39,14 @@ type itemResponse struct {
 	// (Stage 13 Milestone 7). Flat rather than a nested "location" object
 	// because there is no address here - the detail endpoint remains the place
 	// to get a whole location.
-	Lat       *float64 `json:"lat,omitempty"`
-	Lng       *float64 `json:"lng,omitempty"`
+	Lat *float64 `json:"lat,omitempty"`
+	Lng *float64 `json:"lng,omitempty"`
+	// Tags is always present and never null, on the list as well as the
+	// detail: the locations tab filters on it client-side, and a field that
+	// is sometimes absent would mean every caller writing the same guard.
+	// itemToResponse leaves it empty and both handlers fill it in -- the
+	// list from one trip-wide query, the detail from its own read.
+	Tags      []string `json:"tags"`
 	CreatedAt string   `json:"created_at"`
 	UpdatedAt string   `json:"updated_at"`
 }
@@ -57,6 +63,7 @@ func (s *Server) itemToResponse(ctx context.Context, i db.Item) itemResponse {
 		ImageID:   i.ImageID,
 		ShowOnMap: i.ShowOnMap,
 		SortOrder: i.SortOrder,
+		Tags:      []string{},
 		CreatedAt: i.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt: i.UpdatedAt.UTC().Format(time.RFC3339),
 	}
@@ -115,12 +122,22 @@ func (s *Server) handleListItems(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Likewise one query for the trip rather than one per item, and likewise
+	// not fatal: a failure here costs the tag filter, not the list.
+	tags := map[string][]string{}
+	if rows, err := s.Store.ListItemTagsByTrip(r.Context(), trip.ID); err == nil {
+		tags = tagsByItem(rows)
+	}
+
 	resp := make([]itemResponse, len(items))
 	for i, it := range items {
 		resp[i] = s.itemToResponse(r.Context(), it)
 		if c, ok := coordinates[it.ID]; ok {
 			lat, lng := c.Lat, c.Lng
 			resp[i].Lat, resp[i].Lng = &lat, &lng
+		}
+		if t, ok := tags[it.ID]; ok {
+			resp[i].Tags = t
 		}
 	}
 	writeJSON(w, http.StatusOK, resp)
@@ -157,6 +174,7 @@ type itemRequest struct {
 	Location *itemLocationRequest    `json:"location"`
 	Links    *[]itemLinkRequest      `json:"links"`
 	Dates    *[]itemDateRangeRequest `json:"dates"`
+	Tags     *[]string               `json:"tags"`
 }
 
 func (req itemRequest) validate() error {
@@ -177,6 +195,14 @@ func (req itemRequest) validate() error {
 	}
 	if req.Dates != nil {
 		if err := validateItemDateRanges(*req.Dates); err != nil {
+			return err
+		}
+	}
+	// Normalized before validating, so a set that is only over the limit
+	// because it repeats a tag or pads one with spaces is accepted and
+	// cleaned rather than refused.
+	if req.Tags != nil {
+		if err := validateTags(normalizeTags(*req.Tags)); err != nil {
 			return err
 		}
 	}
@@ -225,6 +251,12 @@ func writeItemNested(ctx context.Context, store db.Store, item db.Item, req item
 
 	if req.Dates != nil {
 		if err := reconcileItemDates(ctx, store, item, *req.Dates); err != nil {
+			return err
+		}
+	}
+
+	if req.Tags != nil {
+		if err := writeItemTags(ctx, store, item.ID, normalizeTags(*req.Tags)); err != nil {
 			return err
 		}
 	}
@@ -289,6 +321,11 @@ func (s *Server) buildItemDetail(r *http.Request, item db.Item) itemDetailRespon
 		for _, l := range links {
 			detail.Links = append(detail.Links, itemLinkResponse{ID: l.ID, URL: l.URL, Label: l.Label, SortOrder: l.SortOrder})
 		}
+	}
+
+	// Tolerant in the same way, and for the same reason.
+	if tags, err := s.Store.ListItemTagsByItem(r.Context(), item.ID); err == nil {
+		detail.Tags = tags
 	}
 
 	// The days this location is on in the itinerary, collapsed into ranges.

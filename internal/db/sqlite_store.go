@@ -536,6 +536,39 @@ func (s *sqliteStore) DeleteItemLink(ctx context.Context, id, itemID string) (bo
 	return n > 0, nil
 }
 
+func (s *sqliteStore) CreateItemTag(ctx context.Context, itemID, tag string) error {
+	return s.q.CreateItemTag(ctx, sqlitegen.CreateItemTagParams{ItemID: itemID, Tag: tag})
+}
+
+func (s *sqliteStore) ListItemTagsByItem(ctx context.Context, itemID string) ([]string, error) {
+	tags, err := s.q.ListItemTagsByItem(ctx, itemID)
+	if err != nil {
+		return nil, err
+	}
+	// Never nil: the tag set is a JSON array on the wire, and a null there
+	// would make "no tags" a different shape from "tags I removed".
+	if tags == nil {
+		tags = []string{}
+	}
+	return tags, nil
+}
+
+func (s *sqliteStore) ListItemTagsByTrip(ctx context.Context, tripID string) ([]ItemTag, error) {
+	rows, err := s.q.ListItemTagsByTrip(ctx, tripID)
+	if err != nil {
+		return nil, err
+	}
+	tags := make([]ItemTag, len(rows))
+	for i, row := range rows {
+		tags[i] = ItemTag{ItemID: row.ItemID, Tag: row.Tag}
+	}
+	return tags, nil
+}
+
+func (s *sqliteStore) DeleteItemTagsByItem(ctx context.Context, itemID string) error {
+	return s.q.DeleteItemTagsByItem(ctx, itemID)
+}
+
 func (s *sqliteStore) CreateMediaAsset(ctx context.Context, p CreateMediaAssetParams) (MediaAsset, error) {
 	row, err := s.q.CreateMediaAsset(ctx, sqlitegen.CreateMediaAssetParams{
 		ID:          p.ID,

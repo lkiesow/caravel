@@ -322,6 +322,8 @@ func (s *Server) buildRouter() chi.Router {
 				r.Get("/items", s.handleListItems)
 				r.Post("/items", s.handleCreateItem)
 
+				r.Get("/tags", s.handleListTripTags)
+
 				r.Get("/map", s.handleGetTripMap)
 
 				// Editor, not viewer: a viewer could not save the result, and

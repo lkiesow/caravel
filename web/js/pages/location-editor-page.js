@@ -310,7 +310,9 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
           // location: see isCategoryChosen. Sending "site" unchosen would make
           // every category suggestion claim to overwrite something.
           category: itemForm.isCategoryChosen() ? (values.category ?? "") : "",
-          type: values.type ?? "",
+          // Comma-joined, which is the shape the proposal comes back in --
+          // the assistant's field pipeline is string-shaped end to end.
+          tags: (values.tags ?? []).join(", "),
           notes: values.notes ?? "",
           address: container.querySelector('.location-form [name="address"]').value,
           links: draft.links.map((l) => ({ url: l.url, label: l.label ?? "" })),

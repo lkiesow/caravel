@@ -139,7 +139,7 @@ test.describe("the trip map at phone width", () => {
       const created = await page.request.post(`/api/trips/${tripId}/items`, {
         data: {
           category: "site",
-          type: "viewpoint",
+          tags: ["viewpoint"],
           title: "Somewhere",
           location: { lat: 64.9631, lng: -19.0208, address: null },
         },

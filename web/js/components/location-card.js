@@ -82,10 +82,6 @@ const styles = `
       display: inline;
     }
   }
-  .type {
-    color: var(--color-text-muted);
-    font-size: 0.8rem;
-  }
   /* The itinerary days this location is on. First in the meta row because
      "when" is the thing being scanned for on a planning screen -- the type and
      the tags say what it is, which the title usually already did. */
@@ -99,7 +95,7 @@ const styles = `
     gap: 0.25rem;
   }
   /* Quiet on purpose: a card is a title with a picture, and the tags are there
-     to be recognised at a glance, not read. Same muted palette as .type. */
+     to be recognised at a glance, not read. Same muted palette as the dates. */
   .tag {
     font-size: 0.7rem;
     line-height: 1;
@@ -117,7 +113,7 @@ const styles = `
 
 class ItemCard extends HTMLElement {
   static get observedAttributes() {
-    return ["item-id", "title", "type", "category", "image-url", "tags", "dates"];
+    return ["item-id", "title", "category", "image-url", "tags", "dates"];
   }
 
   connectedCallback() {
@@ -150,7 +146,6 @@ class ItemCard extends HTMLElement {
 
   render() {
     const title = this.getAttribute("title") || "";
-    const type = this.getAttribute("type") || "";
     const category = this.getAttribute("category") || "site";
     const color = CATEGORY_COLORS[category] || "#71717a";
     const imageUrl = this.getAttribute("image-url");
@@ -190,7 +185,6 @@ class ItemCard extends HTMLElement {
       firstRange
         ? `<span class="dates">${escapeHtml(firstRange)}${moreRanges > 0 ? ` +${moreRanges}` : ""}</span>`
         : "",
-      type ? `<span class="type">${escapeHtml(type)}</span>` : "",
       tags.length
         ? `<span class="tags">${shown.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}${
             overflow ? `<span class="tag">+${overflow}</span>` : ""

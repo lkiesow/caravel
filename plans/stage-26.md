@@ -833,6 +833,64 @@ provider (`internal/assist/stub.go`) and assert the proposal lands as chips in
 the tag field. Update `internal/assist/agent_test.go`'s several `fieldNamed(p,
 "type")` assertions (`:68,200,359,504,527`).
 
+**Done.** Migration `0006_type_becomes_a_tag` on both dialects folds every
+non-empty `type` into a tag and drops the column. SQLite's `DROP COLUMN` was
+checked rather than assumed -- the bundled driver reports 3.53.3, well past the
+3.35 it needs -- so no table rebuild, and `idx_items_trip_id_category` survives.
+
+The fold has one non-obvious guard. The primary key on `(item_id, tag)` is
+exact, so a location already tagged `hotel` whose type read `Hotel` would end
+up carrying both -- a state the application itself never produces, since it
+deduplicates a tag set case-insensitively on write. The insert therefore skips
+a type that already exists on the location case-insensitively, keeping the
+spelling somebody chose as a tag. `TestMigration0006FoldsTypeIntoTags` covers
+that, plus trimming, an empty type contributing nothing, and a location keeping
+an unrelated tag it already had. It was kept as a permanent test rather than
+run once by hand: this is the only migration in the tree that moves data, and a
+fold that silently stops folding is invisible.
+
+`Type` is gone from `db.Item`, both param structs, the queries,
+`ItineraryEntryDetail`, both adapters, `itemResponse` and `itemRequest`. The
+grep-by-name that `CLAUDE.md` prescribes found nothing left; the only `Type`
+identifiers remaining in Go are the LLM wire protocol's own.
+
+**The assistant keeps its whole pipeline.** `modelProposal.Type` became
+`Tags`, still a **string** holding a comma-separated list, so `Field{Name,
+Current, Proposed string}`, the agent's diff table, the panel's allowlist and
+the editor's `applyField` are all unchanged in shape -- the editor splits on
+commas into chips and joins them back when reading. `TypeVocabulary` became
+`TagVocabulary` and now reads the tag rows directly instead of loading every
+location to collect one field from each, which is both cheaper and a larger,
+more useful vocabulary for the same purpose.
+
+**The seeder's types became tags** rather than being deleted. That closes the
+coverage gap recorded in Milestone 2: no seeded location carried a tag, so
+`routes.spec.js` swept the location editor without ever seeing a chip or its
+remove button.
+
+Two documentation errors were corrected, one of them pre-existing:
+`docs/features/trips-and-locations.md` claimed the free-text type "is what the
+map uses to pick an icon". It never was -- `markerIcon` keys off the
+**category** and `db.MapItem` does not carry a type at all -- so that sentence
+was wrong before this stage touched it. The locations page now describes the
+filter menu, the sort control and tags instead.
+
+Verified: `make ci`, `make test-postgres` and `make docs` all green, and
+`make test-ui` green at 193. One UI spec failed on the first full run for an
+unrelated reason -- a checklist tick test that passes in isolation and passed on
+the re-run -- and two failed for real reasons worth recording: `menu.spec.js`
+now sees four filter rows rather than three, because the seeded trip has tags
+at last, and a map spec was sending `type: "viewpoint"` in an unquoted JS key
+that the first grep missed, which `DisallowUnknownFields` turned into a 400 and
+a three-minute timeout rather than an obvious failure.
+
+Live against a re-seeded database: the API carries no `type` key at all, the
+seeded types come back as tags (`landmark`, `hotel`, `flight`), the trip
+vocabulary lists them, the editor shows `landmark` as a chip with no Type field
+above it, and the assistant proposes tags that land as chips -- including
+rejecting them, which now has to leave a chip list empty rather than an input
+blank.
+
 ---
 
 ## Build order

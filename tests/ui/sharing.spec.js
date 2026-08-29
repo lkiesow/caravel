@@ -52,7 +52,7 @@ for (const locale of ["en", "de"]) {
       // something to *not* offer controls for. A tab with no content renders no
       // controls either way, which is the trap Milestone 4 walked into.
       const item = await page.request.post(`/api/trips/${tripId}/items`, {
-        data: { title: "Somewhere", category: "site", type: "landmark" },
+        data: { title: "Somewhere", category: "site", tags: ["landmark"] },
       });
       expect(item.status()).toBe(201);
       const list = await page.request.post(`/api/trips/${tripId}/checklists`, { data: { title: "Shared list" } });

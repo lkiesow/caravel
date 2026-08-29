@@ -135,7 +135,6 @@ func (s *postgresStore) CreateItem(ctx context.Context, p CreateItemParams) (Ite
 		ID:        p.ID,
 		TripID:    p.TripID,
 		Category:  p.Category,
-		Type:      p.Type,
 		Title:     p.Title,
 		Notes:     nullString(p.Notes),
 		ShowOnMap: p.ShowOnMap,
@@ -177,7 +176,6 @@ func (s *postgresStore) UpdateItem(ctx context.Context, p UpdateItemParams) (Ite
 		ID:        p.ID,
 		TripID:    p.TripID,
 		Category:  p.Category,
-		Type:      p.Type,
 		Title:     p.Title,
 		Notes:     nullString(p.Notes),
 		ShowOnMap: p.ShowOnMap,
@@ -318,7 +316,6 @@ func postgresItemToDomain(i postgresgen.Item) Item {
 		ID:        i.ID,
 		TripID:    i.TripID,
 		Category:  i.Category,
-		Type:      i.Type,
 		Title:     i.Title,
 		Notes:     strPtr(i.Notes),
 		ImageID:   strPtr(i.ImageID),
@@ -934,7 +931,6 @@ func (s *postgresStore) ListItineraryEntriesByTrip(ctx context.Context, tripID s
 			},
 			ItemTitle:    row.ItemTitle,
 			ItemCategory: row.ItemCategory,
-			ItemType:     row.ItemType,
 			ItemImageID:  strPtr(row.ItemImageID),
 		}
 	}

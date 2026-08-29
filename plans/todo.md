@@ -229,9 +229,16 @@ purpose — do not reconstruct it from an older stage plan without asking.
   (`/api/items/{id}`, the `items` table), so this has a choose-your-depth
   question. Precedent for going all the way down: Stage 11 Milestone 1's
   "documents" → "files" rename included a `0006` table rename and dropped the
-  `/trips/:id/documents` URL outright rather than redirecting it.
+  `/trips/:id/documents` URL outright rather than redirecting it. Stage 26
+  considered folding this in -- it was already inside `renderItemsTab`,
+  `<item-card>` and the `item.category.*` keys -- and declined: a mechanical
+  rename through every diff of that stage would have hidden the real changes.
 
 - **Number and date formatting follows the *browser* locale, not the app's.**
+  **(soon)** -- Stage 26 made this considerably more visible: `formatDateRange`
+  now renders on every location card and inside the locations filter menu, not
+  only on a location page, so a reader whose app is in German and whose browser
+  is in English sees English dates all over the locations tab.
   (Stage 17 Milestone 3; narrowed by the Milestone 6 follow-up, which fixed the
   one case that was not merely cosmetic -- `Intl.ListFormat` now takes
   `getLocale()`, because it rendered "Nur für Other User *and* dich", an English

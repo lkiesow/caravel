@@ -189,7 +189,7 @@ func TestListItineraryDatesByItem(t *testing.T) {
 // back. rangesJSON is the "dates" array on its own.
 func (ts *testServer) setDates(cookie *http.Cookie, itemID, rangesJSON string) []itemDateRangeResponse {
 	ts.t.Helper()
-	body := `{"title":"Hotel Ranga","category":"stay","type":"hotel","dates":` + rangesJSON + `}`
+	body := `{"title":"Hotel Ranga","category":"stay","tags":["hotel"],"dates":` + rangesJSON + `}`
 	w := ts.do(http.MethodPatch, "/api/items/"+itemID, cookie, body)
 	if w.Code != http.StatusOK {
 		ts.t.Fatalf("patch dates: got %d, body %s", w.Code, w.Body.String())
@@ -365,7 +365,7 @@ func TestItemDatesAbsentVersusEmpty(t *testing.T) {
 	ts.setDates(cookie, hotel, `[{"start_date":"2026-09-05","end_date":"2026-09-06"}]`)
 
 	w := ts.do(http.MethodPatch, "/api/items/"+hotel, cookie,
-		`{"title":"Hotel Ranga","category":"stay","type":"hotel"}`)
+		`{"title":"Hotel Ranga","category":"stay","tags":["hotel"]}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("patch without dates: got %d, body %s", w.Code, w.Body.String())
 	}

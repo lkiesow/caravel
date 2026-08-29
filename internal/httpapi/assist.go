@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"slices"
 	"strings"
 
 	"caravel/internal/assist"
@@ -58,12 +57,14 @@ type assistLocationRequest struct {
 	// The location as it currently stands in the editor -- which is not
 	// necessarily what is in the database. The editor holds unsaved changes,
 	// and enriching should see what the user is looking at.
-	Title    string            `json:"title"`
-	Category string            `json:"category"`
-	Type     string            `json:"type"`
-	Notes    string            `json:"notes"`
-	Address  string            `json:"address"`
-	Links    []assistLinkInput `json:"links"`
+	Title    string `json:"title"`
+	Category string `json:"category"`
+	// Tags as the editor holds them, comma-joined -- the same shape the
+	// proposal comes back in. See assist.Location.Tags for why a string.
+	Tags    string            `json:"tags"`
+	Notes   string            `json:"notes"`
+	Address string            `json:"address"`
+	Links   []assistLinkInput `json:"links"`
 
 	// IncludeTripContext sends the trip title and dates. Defaults to true when
 	// absent, which is why it is a pointer: the dates are what make "is it
@@ -203,7 +204,7 @@ func (s *Server) buildAssistRequest(r *http.Request, trip db.Trip, req assistLoc
 		return assist.Request{}, fmt.Errorf("a description is required to search for a new place")
 	}
 
-	for _, f := range []string{req.Title, req.Category, req.Type, req.Notes, req.Address} {
+	for _, f := range []string{req.Title, req.Category, req.Tags, req.Notes, req.Address} {
 		if len(f) > assistMaxFieldBytes {
 			return assist.Request{}, fmt.Errorf("the location metadata is too long")
 		}
@@ -218,7 +219,7 @@ func (s *Server) buildAssistRequest(r *http.Request, trip db.Trip, req assistLoc
 		Current: assist.Location{
 			Title:    strings.TrimSpace(req.Title),
 			Category: strings.TrimSpace(req.Category),
-			Type:     strings.TrimSpace(req.Type),
+			Tags:     strings.TrimSpace(req.Tags),
 			Notes:    req.Notes,
 			Address:  strings.TrimSpace(req.Address),
 		},
@@ -243,30 +244,26 @@ func (s *Server) buildAssistRequest(r *http.Request, trip db.Trip, req assistLoc
 		}
 	}
 
-	out.TypeVocabulary = s.tripTypeVocabulary(r, trip.ID)
+	out.TagVocabulary = s.tripTagVocabulary(r, trip.ID)
 	return out, nil
 }
 
-// tripTypeVocabulary collects the distinct type tags already used on this
-// trip, so the model reuses one instead of inventing a near-duplicate.
+// tripTagVocabulary collects the distinct tags already used on this trip, so
+// the model reuses one instead of inventing a near-duplicate.
 //
 // A failure here is not worth failing the run over: the worst case is a model
 // that invents "Hotel" alongside an existing "hotel", which the user can see
 // and reject in the review.
-func (s *Server) tripTypeVocabulary(r *http.Request, tripID string) []string {
-	items, err := s.Store.ListItemsByTrip(r.Context(), tripID, nil)
+//
+// One query for the trip, the same one the locations list uses -- and it reads
+// the tag rows rather than the items, so it no longer needs to load every
+// location to collect one field from each.
+func (s *Server) tripTagVocabulary(r *http.Request, tripID string) []string {
+	rows, err := s.Store.ListItemTagsByTrip(r.Context(), tripID)
 	if err != nil {
 		return nil
 	}
-	var out []string
-	for _, item := range items {
-		t := strings.TrimSpace(item.Type)
-		if t != "" && !slices.Contains(out, t) {
-			out = append(out, t)
-		}
-	}
-	slices.Sort(out)
-	return out
+	return distinctTags(rows)
 }
 
 // normaliseLocale keeps the locale to something that looks like a language

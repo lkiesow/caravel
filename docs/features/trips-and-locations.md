@@ -27,12 +27,22 @@ A location is anywhere the trip touches, and it is one of three kinds:
 
 ![The locations list](../assets/screenshots/locations.png)
 
-The list can be filtered by category, and by distance from a point — useful when
-the question is "what else is near the hotel?" rather than "what is on the
-trip?".
+Everything that narrows the list lives behind one **Filter** button: category,
+distance from you, tag, and date. Each row shows what that filter is currently
+set to, so the state of all four is readable without opening anything, and
+"Clear filters" appears at the top as soon as one of them is narrowing the list.
+Beside it, **Sort** offers the order things were added, by name, or by date —
+locations with no dates yet sort last, because unscheduled is not the same as
+imminent.
 
-Beyond the category, a location carries a free-text **type** (`landmark`,
-`hotel`, `flight`), which is what the map uses to pick an icon.
+Beyond the category, a location carries **tags**: a free list of keywords whose
+meaning is yours to choose. A kind of place, a city, a region, whose idea it
+was — the app never interprets them, it only stores what you type and offers it
+back. The editor suggests the tags already used elsewhere on the trip, which is
+how spellings stay consistent without a rule imposing one.
+
+Tags replaced a single free-text "type" field, which was the same idea limited
+to one word at a time; existing types became tags when that change landed.
 
 ## A single location
 

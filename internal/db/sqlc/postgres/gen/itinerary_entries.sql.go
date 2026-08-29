@@ -210,7 +210,7 @@ func (q *Queries) ListItineraryEntriesByDay(ctx context.Context, itineraryDayID 
 
 const listItineraryEntriesByTrip = `-- name: ListItineraryEntriesByTrip :many
 SELECT e.id, e.itinerary_day_id, e.item_id, e.sort_order, e.note,
-       i.title AS item_title, i.category AS item_category, i.type AS item_type,
+       i.title AS item_title, i.category AS item_category,
        i.image_id AS item_image_id
 FROM itinerary_entries e
 INNER JOIN itinerary_days d ON d.id = e.itinerary_day_id
@@ -227,7 +227,6 @@ type ListItineraryEntriesByTripRow struct {
 	Note           sql.NullString `json:"note"`
 	ItemTitle      string         `json:"item_title"`
 	ItemCategory   string         `json:"item_category"`
-	ItemType       string         `json:"item_type"`
 	ItemImageID    sql.NullString `json:"item_image_id"`
 }
 
@@ -248,7 +247,6 @@ func (q *Queries) ListItineraryEntriesByTrip(ctx context.Context, tripID string)
 			&i.Note,
 			&i.ItemTitle,
 			&i.ItemCategory,
-			&i.ItemType,
 			&i.ItemImageID,
 		); err != nil {
 			return nil, err

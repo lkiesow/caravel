@@ -91,7 +91,7 @@ test.describe("AI assistant", () => {
     // The run is over, so the spinner and its Cancel have gone again.
     await expect(status).toBeHidden();
 
-    for (const field of ["title", "category", "type", "notes", "address", "coordinates", "links", "cover"]) {
+    for (const field of ["title", "category", "tags", "notes", "address", "coordinates", "links", "cover"]) {
       await expect(
         page.locator(`[data-assist-field="${field}"] .assist-suggestion`),
         `a suggestion under ${field}`
@@ -115,11 +115,14 @@ test.describe("AI assistant", () => {
     await expect(titleSuggestion).toHaveCount(0);
     await expect(page.locator(".assist__count")).toHaveText("7 suggestions");
 
-    // Rejecting takes it away and leaves the field alone.
-    const typeSuggestion = page.locator('[data-assist-field="type"] .assist-suggestion');
-    await typeSuggestion.getByRole("button", { name: "Reject" }).click();
-    await expect(page.locator('input[name="type"]')).toHaveValue("");
-    await expect(typeSuggestion).toHaveCount(0);
+    // Rejecting takes it away and leaves the field alone. Tags are the case
+    // where "the field" is not an input: the proposal is one comma-separated
+    // string and the editor splits it into chips, so rejecting must leave the
+    // chip list empty rather than an input blank.
+    const tagsSuggestion = page.locator('[data-assist-field="tags"] .assist-suggestion');
+    await tagsSuggestion.getByRole("button", { name: "Reject" }).click();
+    await expect(page.locator(".tag-field__chip")).toHaveCount(0);
+    await expect(tagsSuggestion).toHaveCount(0);
     await expect(page.locator(".assist__count")).toHaveText("6 suggestions");
 
     // Coordinates go through the Location card's own handler, so the map
@@ -204,7 +207,7 @@ test.describe("AI assistant", () => {
   // with no record of whose it is cannot be credited afterwards.
   test("shows the credit for an image that came with one", async ({ page }) => {
     const itemRes = await page.request.post(`/api/trips/${tripId}/items`, {
-      data: { title: "Heger Tor", category: "site", type: "landmark" },
+      data: { title: "Heger Tor", category: "site", tags: ["landmark"] },
     });
     const itemId = (await itemRes.json()).id;
 
@@ -249,7 +252,7 @@ test.describe("AI assistant", () => {
     // per-field review exists to protect.
     const handwritten = "My own note, written from memory. Must not vanish.";
     const res = await page.request.post(`/api/trips/${tripId}/items`, {
-      data: { title: "Kex Hostel", category: "site", type: "guesthouse", notes: handwritten },
+      data: { title: "Kex Hostel", category: "site", tags: ["guesthouse"], notes: handwritten },
     });
     expect(res.status()).toBe(201);
     const itemId = (await res.json()).id;

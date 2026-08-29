@@ -86,7 +86,7 @@ func (ts *testServer) itemCount(cookie *http.Cookie, tripID string) int {
 }
 
 func itemJSON(title string) string {
-	return `{"category":"site","type":"museum","title":"` + title + `",` +
+	return `{"category":"site","tags":["museum"],"title":"` + title + `",` +
 		`"location":{"lat":52.5,"lng":13.4,"address":"Berlin"},` +
 		`"links":[{"url":"https://example.com","label":"site"}],` +
 		`"dates":[{"start_date":"2026-05-01","end_date":"2026-05-02"}]}`
@@ -209,11 +209,11 @@ func TestCreateItemMultipartRejectsBadItemPart(t *testing.T) {
 	trip := ts.createTrip(cookie, "Berlin")
 
 	cases := map[string]string{
-		"no title":         `{"category":"site","type":"museum","title":"  "}`,
-		"bad category":     `{"category":"nonsense","type":"museum","title":"X"}`,
-		"unknown field":    `{"category":"site","type":"museum","title":"X","colour":"red"}`,
+		"no title":         `{"category":"site","tags":["museum"],"title":"  "}`,
+		"bad category":     `{"category":"nonsense","tags":["museum"],"title":"X"}`,
+		"unknown field":    `{"category":"site","tags":["museum"],"title":"X","colour":"red"}`,
 		"not json at all":  `nonsense`,
-		"link with no url": `{"category":"site","type":"museum","title":"X","links":[{"label":"a"}]}`,
+		"link with no url": `{"category":"site","tags":["museum"],"title":"X","links":[{"label":"a"}]}`,
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -312,7 +312,7 @@ func TestCreateItemJSONPathStillWorks(t *testing.T) {
 	}
 	// Still strict about unknown fields.
 	bad := ts.do(http.MethodPost, "/api/trips/"+trip+"/items", cookie,
-		`{"category":"site","type":"museum","title":"X","colour":"red"}`)
+		`{"category":"site","tags":["museum"],"title":"X","colour":"red"}`)
 	if bad.Code != http.StatusBadRequest {
 		t.Fatalf("unknown field = %d, want 400", bad.Code)
 	}

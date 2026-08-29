@@ -170,8 +170,6 @@
   "item.category.stay": "Unterkunft",
   "item.category.transport": "Transport",
   "location.form.category": "Kategorie",
-  "location.form.type": "Typ",
-  "location.form.typePlaceholder": "z. B. Berg, Hotel, Flug",
   "location.form.tags": "Schlagwörter",
   "location.form.tagsPlaceholder": "z. B. Reykjavik, Museum, für die Kinder",
   "location.form.tagsAdd": "Schlagwort hinzufügen",

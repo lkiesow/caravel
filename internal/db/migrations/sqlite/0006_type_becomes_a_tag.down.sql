@@ -1,0 +1,11 @@
+-- Puts the column back, empty.
+--
+-- Which of a location tags was once its type is not recoverable: the up
+-- migration folded one into the other and there is nothing marking which. This
+-- is the same shape as the down migration for 0004, and for the same reason --
+-- a down migration that has to guess is worse than one that says it cannot.
+--
+-- The tags themselves are left alone. Removing the one that came from a type
+-- would need the same knowledge this cannot have, and deleting a tag somebody
+-- typed by hand would be worse than leaving one behind.
+ALTER TABLE items ADD COLUMN type TEXT NOT NULL DEFAULT '';

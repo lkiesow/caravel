@@ -162,7 +162,6 @@ type CreateItemParams struct {
 	ID        string
 	TripID    string
 	Category  string
-	Type      string
 	Title     string
 	Notes     *string
 	ShowOnMap bool
@@ -175,7 +174,6 @@ type UpdateItemParams struct {
 	ID        string
 	TripID    string
 	Category  string
-	Type      string
 	Title     string
 	Notes     *string
 	ShowOnMap bool

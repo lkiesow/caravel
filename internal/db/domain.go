@@ -348,7 +348,6 @@ type ItineraryEntryDetail struct {
 	ItineraryEntry
 	ItemTitle    string
 	ItemCategory string
-	ItemType     string
 	ItemImageID  *string
 }
 
@@ -399,7 +398,6 @@ type Item struct {
 	ID        string
 	TripID    string
 	Category  string // "site" | "stay" | "transport" (renamed from "location" in migration 0002)
-	Type      string // free-text tag, e.g. "mountain", "hotel" — not a rigid enum
 	Title     string
 	Notes     *string
 	ImageID   *string

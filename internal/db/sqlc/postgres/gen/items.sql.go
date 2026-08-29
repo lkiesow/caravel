@@ -12,16 +12,15 @@ import (
 )
 
 const createItem = `-- name: CreateItem :one
-INSERT INTO items (id, trip_id, category, type, title, notes, show_on_map, sort_order, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, trip_id, category, type, title, notes, image_id, show_on_map, sort_order, created_at, updated_at
+INSERT INTO items (id, trip_id, category, title, notes, show_on_map, sort_order, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING id, trip_id, category, title, notes, image_id, show_on_map, sort_order, created_at, updated_at
 `
 
 type CreateItemParams struct {
 	ID        string         `json:"id"`
 	TripID    string         `json:"trip_id"`
 	Category  string         `json:"category"`
-	Type      string         `json:"type"`
 	Title     string         `json:"title"`
 	Notes     sql.NullString `json:"notes"`
 	ShowOnMap bool           `json:"show_on_map"`
@@ -35,7 +34,6 @@ func (q *Queries) CreateItem(ctx context.Context, arg CreateItemParams) (Item, e
 		arg.ID,
 		arg.TripID,
 		arg.Category,
-		arg.Type,
 		arg.Title,
 		arg.Notes,
 		arg.ShowOnMap,
@@ -48,7 +46,6 @@ func (q *Queries) CreateItem(ctx context.Context, arg CreateItemParams) (Item, e
 		&i.ID,
 		&i.TripID,
 		&i.Category,
-		&i.Type,
 		&i.Title,
 		&i.Notes,
 		&i.ImageID,
@@ -78,7 +75,7 @@ func (q *Queries) DeleteItem(ctx context.Context, arg DeleteItemParams) (int64, 
 }
 
 const getItemByID = `-- name: GetItemByID :one
-SELECT id, trip_id, category, type, title, notes, image_id, show_on_map, sort_order, created_at, updated_at FROM items WHERE id = $1
+SELECT id, trip_id, category, title, notes, image_id, show_on_map, sort_order, created_at, updated_at FROM items WHERE id = $1
 `
 
 func (q *Queries) GetItemByID(ctx context.Context, id string) (Item, error) {
@@ -88,7 +85,6 @@ func (q *Queries) GetItemByID(ctx context.Context, id string) (Item, error) {
 		&i.ID,
 		&i.TripID,
 		&i.Category,
-		&i.Type,
 		&i.Title,
 		&i.Notes,
 		&i.ImageID,
@@ -147,7 +143,7 @@ func (q *Queries) ListItemLocationsByTrip(ctx context.Context, tripID string) ([
 }
 
 const listItemsByTrip = `-- name: ListItemsByTrip :many
-SELECT id, trip_id, category, type, title, notes, image_id, show_on_map, sort_order, created_at, updated_at FROM items
+SELECT id, trip_id, category, title, notes, image_id, show_on_map, sort_order, created_at, updated_at FROM items
 WHERE trip_id = $1
   AND (CAST($2 AS text) IS NULL OR category = CAST($2 AS text))
 ORDER BY sort_order, created_at
@@ -177,7 +173,6 @@ func (q *Queries) ListItemsByTrip(ctx context.Context, arg ListItemsByTripParams
 			&i.ID,
 			&i.TripID,
 			&i.Category,
-			&i.Type,
 			&i.Title,
 			&i.Notes,
 			&i.ImageID,
@@ -251,7 +246,7 @@ const setItemImage = `-- name: SetItemImage :one
 UPDATE items
 SET image_id = $1, updated_at = $2
 WHERE id = $3 AND trip_id = $4
-RETURNING id, trip_id, category, type, title, notes, image_id, show_on_map, sort_order, created_at, updated_at
+RETURNING id, trip_id, category, title, notes, image_id, show_on_map, sort_order, created_at, updated_at
 `
 
 type SetItemImageParams struct {
@@ -273,7 +268,6 @@ func (q *Queries) SetItemImage(ctx context.Context, arg SetItemImageParams) (Ite
 		&i.ID,
 		&i.TripID,
 		&i.Category,
-		&i.Type,
 		&i.Title,
 		&i.Notes,
 		&i.ImageID,
@@ -288,19 +282,17 @@ func (q *Queries) SetItemImage(ctx context.Context, arg SetItemImageParams) (Ite
 const updateItem = `-- name: UpdateItem :one
 UPDATE items
 SET category = $1,
-    type = $2,
-    title = $3,
-    notes = $4,
-    show_on_map = $5,
-    sort_order = $6,
-    updated_at = $7
-WHERE id = $8 AND trip_id = $9
-RETURNING id, trip_id, category, type, title, notes, image_id, show_on_map, sort_order, created_at, updated_at
+    title = $2,
+    notes = $3,
+    show_on_map = $4,
+    sort_order = $5,
+    updated_at = $6
+WHERE id = $7 AND trip_id = $8
+RETURNING id, trip_id, category, title, notes, image_id, show_on_map, sort_order, created_at, updated_at
 `
 
 type UpdateItemParams struct {
 	Category  string         `json:"category"`
-	Type      string         `json:"type"`
 	Title     string         `json:"title"`
 	Notes     sql.NullString `json:"notes"`
 	ShowOnMap bool           `json:"show_on_map"`
@@ -313,7 +305,6 @@ type UpdateItemParams struct {
 func (q *Queries) UpdateItem(ctx context.Context, arg UpdateItemParams) (Item, error) {
 	row := q.db.QueryRowContext(ctx, updateItem,
 		arg.Category,
-		arg.Type,
 		arg.Title,
 		arg.Notes,
 		arg.ShowOnMap,
@@ -327,7 +318,6 @@ func (q *Queries) UpdateItem(ctx context.Context, arg UpdateItemParams) (Item, e
 		&i.ID,
 		&i.TripID,
 		&i.Category,
-		&i.Type,
 		&i.Title,
 		&i.Notes,
 		&i.ImageID,

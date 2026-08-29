@@ -22,7 +22,7 @@ type taggedItem struct {
 
 func createTagged(ts *testServer, cookie *http.Cookie, tripID, title, tagsJSON string) taggedItem {
 	ts.t.Helper()
-	body := `{"title":"` + title + `","category":"site","type":"","tags":` + tagsJSON + `}`
+	body := `{"title":"` + title + `","category":"site","tags":` + tagsJSON + `}`
 	w := ts.do(http.MethodPost, "/api/trips/"+tripID+"/items", cookie, body)
 	if w.Code != http.StatusCreated {
 		ts.t.Fatalf("create %s: got %d, want 201, body %s", title, w.Code, w.Body.String())
@@ -48,7 +48,7 @@ func TestItemTagsRoundTrip(t *testing.T) {
 
 	// Present replaces the set as a whole, like links.
 	w = ts.do(http.MethodPatch, "/api/items/"+created.ID, cookie,
-		`{"title":"Hallgrimskirkja","category":"site","type":"","tags":["landmark"]}`)
+		`{"title":"Hallgrimskirkja","category":"site","tags":["landmark"]}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("patch: got %d, body %s", w.Code, w.Body.String())
 	}
@@ -67,7 +67,7 @@ func TestItemTagsAbsentVersusEmpty(t *testing.T) {
 	created := createTagged(ts, cookie, tripID, "Geysir", `["geothermal"]`)
 
 	w := ts.do(http.MethodPatch, "/api/items/"+created.ID, cookie,
-		`{"title":"Geysir","category":"site","type":""}`)
+		`{"title":"Geysir","category":"site"}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("patch without tags: got %d, body %s", w.Code, w.Body.String())
 	}
@@ -76,7 +76,7 @@ func TestItemTagsAbsentVersusEmpty(t *testing.T) {
 	}
 
 	w = ts.do(http.MethodPatch, "/api/items/"+created.ID, cookie,
-		`{"title":"Geysir","category":"site","type":"","tags":[]}`)
+		`{"title":"Geysir","category":"site","tags":[]}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("patch with empty tags: got %d, body %s", w.Code, w.Body.String())
 	}
@@ -155,7 +155,7 @@ func TestItemTagsNormalizationAndLimits(t *testing.T) {
 
 	long := `"` + strings.Repeat("a", 41) + `"`
 	w := ts.do(http.MethodPost, "/api/trips/"+tripID+"/items", cookie,
-		`{"title":"Long","category":"site","type":"","tags":[`+long+`]}`)
+		`{"title":"Long","category":"site","tags":[`+long+`]}`)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("41-character tag: got %d, want 400", w.Code)
 	}
@@ -165,7 +165,7 @@ func TestItemTagsNormalizationAndLimits(t *testing.T) {
 		many[i] = `"t` + string(rune('a'+i)) + `"`
 	}
 	w = ts.do(http.MethodPost, "/api/trips/"+tripID+"/items", cookie,
-		`{"title":"Many","category":"site","type":"","tags":[`+strings.Join(many, ",")+`]}`)
+		`{"title":"Many","category":"site","tags":[`+strings.Join(many, ",")+`]}`)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("21 tags: got %d, want 400", w.Code)
 	}
@@ -173,7 +173,7 @@ func TestItemTagsNormalizationAndLimits(t *testing.T) {
 	// 40 characters of multi-byte text is 40 characters, not 13: the limit
 	// counts runes, so this must be accepted.
 	w = ts.do(http.MethodPost, "/api/trips/"+tripID+"/items", cookie,
-		`{"title":"Runes","category":"site","type":"","tags":["`+strings.Repeat("ü", 40)+`"]}`)
+		`{"title":"Runes","category":"site","tags":["`+strings.Repeat("ü", 40)+`"]}`)
 	if w.Code != http.StatusCreated {
 		t.Errorf("40 multi-byte characters: got %d, want 201, body %s", w.Code, w.Body.String())
 	}

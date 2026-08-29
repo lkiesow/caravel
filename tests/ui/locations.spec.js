@@ -11,7 +11,7 @@
 // lat, lng and the address ride along with the rest of the form and come back
 // out on the view page.
 //
-// What is new is everything else the editor writes - title, category, type,
+// What is new is everything else the editor writes - title, category, tags,
 // notes, links and dates - none of which had an assertion before, in either
 // direction: no spec had ever pressed Save on this form and then looked at what
 // came back.
@@ -57,7 +57,7 @@ test.describe("the location editor, end to end", () => {
 
     await page.locator('.item-form input[name="title"]').fill("Hotel Ranga");
     await page.locator('.item-form select[name="category"]').selectOption("stay");
-    await page.locator('.item-form input[name="type"]').fill("hotel");
+    await page.locator(".tag-field__input").fill("hotel");
     await page.locator('.item-form textarea[name="notes"]').fill("Check in **after 15:00**.");
 
     await page.locator('.location-form input[name="lat"]').fill("63.8333");
@@ -100,7 +100,7 @@ test.describe("the location editor, end to end", () => {
 
     await expect(page.locator("h1")).toHaveText("Hotel Ranga");
     await expect(page.locator(".category-label")).toHaveText("Stay");
-    await expect(page.locator(".type-label")).toHaveText("hotel");
+    await expect(page.locator(".location-view__tags .tag-chip")).toHaveText(["hotel"]);
     // Server-rendered markdown, so the emphasis is a real element rather than
     // asterisks printed on the page.
     await expect(page.locator(".location-view__notes strong")).toHaveText("after 15:00");
@@ -127,7 +127,7 @@ test.describe("the location editor, end to end", () => {
       data: {
         title: "Skogafoss",
         category: "site",
-        type: "waterfall",
+        tags: ["waterfall"],
         notes: "Bring a raincoat.",
         links: [{ url: "https://example.com/skogafoss", label: "Info" }],
       },
@@ -147,7 +147,7 @@ test.describe("the location editor, end to end", () => {
     // silently blanked a field would erase it on the next Save.
     await expect(page.locator('.item-form input[name="title"]')).toHaveValue("Skogafoss");
     await expect(page.locator('.item-form select[name="category"]')).toHaveValue("site");
-    await expect(page.locator('.item-form input[name="type"]')).toHaveValue("waterfall");
+    await expect(page.locator(".tag-field__chip")).toHaveText(["waterfall"]);
     await expect(page.locator('.item-form textarea[name="notes"]')).toHaveValue("Bring a raincoat.");
     await expect(page.locator(".link-list li")).toHaveCount(1);
 
@@ -245,7 +245,7 @@ test.describe("the location editor, end to end", () => {
       data: {
         title: "Hotel Ranga",
         category: "stay",
-        type: "hotel",
+        tags: ["hotel"],
         dates: [{ start_date: "2026-08-20", end_date: "2026-08-21" }],
       },
     });
@@ -392,7 +392,7 @@ test.describe("the location editor, end to end", () => {
     const mk = async (title, dates) =>
       (
         await page.request.post(`/api/trips/${tripId}/items`, {
-          data: { title, category: "site", type: "", dates },
+          data: { title, category: "site", dates },
         })
       ).json();
 
@@ -463,10 +463,10 @@ test.describe("the location editor, end to end", () => {
   // dates, which is the common shape for somewhere not yet on the itinerary.
   test("a card with no dates does not lead with a separator", async ({ page }) => {
     await page.request.post(`/api/trips/${tripId}/items`, {
-      data: { title: "Tags only", category: "site", type: "", tags: ["alpha"] },
+      data: { title: "Tags only", category: "site", tags: ["alpha"] },
     });
     await page.request.post(`/api/trips/${tripId}/items`, {
-      data: { title: "Nothing at all", category: "site", type: "", tags: [] },
+      data: { title: "Nothing at all", category: "site", tags: [] },
     });
 
     await page.setViewportSize({ width: 1024, height: 800 });
@@ -498,7 +498,7 @@ test.describe("the location editor, end to end", () => {
   test("sorts by name and by date, and keeps undated locations last", async ({ page }) => {
     const mk = (title, dates) =>
       page.request.post(`/api/trips/${tripId}/items`, {
-        data: { title, category: "site", type: "", dates },
+        data: { title, category: "site", dates },
       });
 
     // Insertion order: neither alphabetical nor chronological.
@@ -565,7 +565,7 @@ test.describe("the location editor, end to end", () => {
   test("sorting composes with a filter and with the search box", async ({ page }) => {
     const mk = (title, category) =>
       page.request.post(`/api/trips/${tripId}/items`, {
-        data: { title, category, type: "", dates: [] },
+        data: { title, category, dates: [] },
       });
     await mk("Zulu inn", "stay");
     await mk("Alpha inn", "stay");
@@ -609,7 +609,7 @@ test.describe("the location editor, end to end", () => {
 
     const mk = (title, tags) =>
       page.request.post(`/api/trips/${tripId}/items`, {
-        data: { title, category: "site", type: "", tags },
+        data: { title, category: "site", tags },
       });
     await mk("Blue lagoon", ["south", "spa"]);
     await mk("Grey lagoon", ["south"]);
@@ -640,7 +640,7 @@ test.describe("the location editor, end to end", () => {
   test("filters by date: not scheduled, scheduled, and a range that overlaps", async ({ page }) => {
     const mk = (title, dates) =>
       page.request.post(`/api/trips/${tripId}/items`, {
-        data: { title, category: "site", type: "", dates },
+        data: { title, category: "site", dates },
       });
     // A stay spanning three days, a single day before it, and two with no
     // itinerary days at all.
@@ -708,10 +708,10 @@ test.describe("the location editor, end to end", () => {
   // group the hook was added for.
   test("clearing resets a date range as well as the other filters", async ({ page }) => {
     await page.request.post(`/api/trips/${tripId}/items`, {
-      data: { title: "Dated", category: "site", type: "", tags: ["x"], dates: [{ start_date: "2026-09-05", end_date: "2026-09-05" }] },
+      data: { title: "Dated", category: "site", tags: ["x"], dates: [{ start_date: "2026-09-05", end_date: "2026-09-05" }] },
     });
     await page.request.post(`/api/trips/${tripId}/items`, {
-      data: { title: "Undated", category: "site", type: "", tags: [], dates: [] },
+      data: { title: "Undated", category: "site", tags: [], dates: [] },
     });
 
     await gotoRoute(page, `/trips/${tripId}/locations`);
@@ -737,7 +737,7 @@ test.describe("the location editor, end to end", () => {
   // editor is what decides whether to send the key at all.
   test("tags: a location with none stays clean, and editing another field keeps them", async ({ page }) => {
     const created = await page.request.post(`/api/trips/${tripId}/items`, {
-      data: { title: "Bare", category: "site", type: "", tags: ["kept"] },
+      data: { title: "Bare", category: "site", tags: ["kept"] },
     });
     const item = await created.json();
 
@@ -752,7 +752,7 @@ test.describe("the location editor, end to end", () => {
     // And a location with no tags shows no empty chip row at all.
     const plain = await (
       await page.request.post(`/api/trips/${tripId}/items`, {
-        data: { title: "Untagged", category: "site", type: "", tags: [] },
+        data: { title: "Untagged", category: "site", tags: [] },
       })
     ).json();
     await gotoRoute(page, `/trips/${tripId}/locations/${plain.id}`);
@@ -1137,7 +1137,7 @@ test.describe("creating a location is atomic", () => {
     await gotoRoute(page, `/trips/${tripId}/locations/new`);
     await page.locator('.item-form input[name="title"]').fill("Hotel Ranga");
     await page.locator('.item-form select[name="category"]').selectOption("stay");
-    await page.locator('.item-form input[name="type"]').fill("hotel");
+    await page.locator(".tag-field__input").fill("hotel");
 
     // Port 1 is not listening, so the server's fetch fails at dial without
     // involving anybody else's host. The browser cannot load the preview
@@ -1182,7 +1182,7 @@ test.describe("creating a location is atomic", () => {
     await gotoRoute(page, `/trips/${tripId}/locations/new`);
     await page.locator('.item-form input[name="title"]').fill("Hotel Ranga");
     await page.locator('.item-form select[name="category"]').selectOption("stay");
-    await page.locator('.item-form input[name="type"]').fill("hotel");
+    await page.locator(".tag-field__input").fill("hotel");
 
     await page.locator('.image-field input[type="file"]').setInputFiles({
       name: "cover.png",

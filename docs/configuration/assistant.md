@@ -1,7 +1,7 @@
 # The assistant
 
-The location editor can look a place up on the web and suggest a category, a
-type, notes, an address, links and coordinates. Every suggestion is accepted or
+The location editor can look a place up on the web and suggest a category,
+tags, notes, an address, links and coordinates. Every suggestion is accepted or
 rejected **per field**, anything that would replace existing text is marked as
 such, and nothing is written until you press Save.
 

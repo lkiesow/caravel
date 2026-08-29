@@ -117,11 +117,10 @@ export async function renderItemsTab(container, trip) {
     if (activeTag !== ANY_TAG && !(item.tags ?? []).includes(activeTag)) return false;
     if (!matchesDate(item)) return false;
     if (!query) return true;
-    // Tags join the search as of Stage 26 Milestone 6: they are words somebody
-    // chose for this location, so a search that ignored them would miss the
-    // most deliberate labels on the page. `type` is still here and goes in
-    // Milestone 7.
-    return `${item.title} ${item.type ?? ""} ${(item.tags ?? []).join(" ")}`.toLowerCase().includes(query);
+    // Tags are searched as well as the title: they are words somebody chose
+    // for this location, so a search that ignored them would miss the most
+    // deliberate labels on the page.
+    return `${item.title} ${(item.tags ?? []).join(" ")}`.toLowerCase().includes(query);
   }
 
   function matchesDate(item) {
@@ -226,7 +225,6 @@ export async function renderItemsTab(container, trip) {
       card.setAttribute("item-id", item.id);
       card.setAttribute("title", item.title);
       card.setAttribute("category", item.category);
-      if (item.type) card.setAttribute("type", item.type);
       if (item.tags?.length) card.setAttribute("tags", JSON.stringify(item.tags));
       if (item.dates?.length) card.setAttribute("dates", JSON.stringify(item.dates));
       if (item.image_url) card.setAttribute("image-url", item.image_url);

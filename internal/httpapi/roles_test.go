@@ -195,13 +195,13 @@ func roleRoutes() []route {
 		{http.MethodPatch, trip(""), lit(`{"title":"edited"}`), db.RoleEditor},
 		{http.MethodPut, trip("/preview-image"), func(f *roleFixture) string { return `{"media_asset_id":"` + f.mediaID + `"}` }, db.RoleEditor},
 		{http.MethodPost, trip("/media/url"), lit(`{"url":"https://example.com/x.png"}`), db.RoleEditor},
-		{http.MethodPost, trip("/items"), lit(`{"title":"new","category":"site","type":"landmark"}`), db.RoleEditor},
+		{http.MethodPost, trip("/items"), lit(`{"title":"new","category":"site","tags":["landmark"]}`), db.RoleEditor},
 		{http.MethodPost, trip("/checklists"), lit(`{"title":"new list"}`), db.RoleEditor},
 		{http.MethodPost, trip("/expenses"), lit(`{"title":"new expense","amount_minor":250,"spent_on":"2026-08-21"}`), db.RoleEditor},
 		{http.MethodPut, trip("/itinerary/days/2026-08-21"), lit(`{"notes":"n"}`), db.RoleEditor},
 		// The dates block rides along on the item PATCH since Stage 25, where it
 		// writes itinerary entries — so this row gates those too.
-		{http.MethodPatch, item(""), lit(`{"title":"edited","category":"site","type":"landmark","dates":[{"start_date":"2026-08-21"}]}`), db.RoleEditor},
+		{http.MethodPatch, item(""), lit(`{"title":"edited","category":"site","tags":["landmark"],"dates":[{"start_date":"2026-08-21"}]}`), db.RoleEditor},
 		{http.MethodPut, item("/location"), lit(`{"lat":1,"lng":2}`), db.RoleEditor},
 		{http.MethodPut, item("/image"), func(f *roleFixture) string { return `{"media_asset_id":"` + f.mediaID + `"}` }, db.RoleEditor},
 		{http.MethodPost, item("/links"), lit(`{"url":"https://example.com","label":"x"}`), db.RoleEditor},

@@ -53,7 +53,7 @@ func TestProposeRunsTheToolLoopThenAsksForTheAnswer(t *testing.T) {
 	a := agentWith(
 		turnCalling(toolWebSearch, `{"query":"Kex Hostel"}`),
 		stubTurn{Content: "done gathering"},
-		stubTurn{Content: answerJSON(t, modelProposal{Category: "stay", Type: "hostel", Notes: "A hostel."})},
+		stubTurn{Content: answerJSON(t, modelProposal{Category: "stay", Tags: "hostel", Notes: "A hostel."})},
 	)
 	a.search = &stubSearcher{}
 
@@ -65,8 +65,8 @@ func TestProposeRunsTheToolLoopThenAsksForTheAnswer(t *testing.T) {
 		t.Fatal("no fields proposed")
 	}
 	names := fieldNames(p)
-	if !names["category"] || !names["type"] || !names["notes"] {
-		t.Errorf("fields = %v, want category, type and notes", names)
+	if !names["category"] || !names["tags"] || !names["notes"] {
+		t.Errorf("fields = %v, want category, tags and notes", names)
 	}
 }
 
@@ -186,7 +186,7 @@ func TestInvalidCategoryIsDroppedNotGuessed(t *testing.T) {
 		t.Run("category "+bad, func(t *testing.T) {
 			a := agentWith(
 				stubTurn{Content: "done"},
-				stubTurn{Content: answerJSON(t, modelProposal{Category: bad, Type: "hostel"})},
+				stubTurn{Content: answerJSON(t, modelProposal{Category: bad, Tags: "hostel"})},
 			)
 			p, err := a.Propose(context.Background(), enrichRequest(), nil)
 			if err != nil {
@@ -197,7 +197,7 @@ func TestInvalidCategoryIsDroppedNotGuessed(t *testing.T) {
 			}
 			// The rest of the answer survives: one bad field is not a reason
 			// to throw away a good run.
-			if _, ok := fieldNamed(p, "type"); !ok {
+			if _, ok := fieldNamed(p, "tags"); !ok {
 				t.Error("the valid fields were dropped along with the invalid one")
 			}
 		})
@@ -341,14 +341,14 @@ func TestLinksAlreadyPresentAreNotProposedAgain(t *testing.T) {
 // is silence rather than a request to clear the field.
 func TestEmptyAndUnchangedFieldsAreNotProposed(t *testing.T) {
 	req := enrichRequest()
-	req.Current.Type = "hostel"
+	req.Current.Tags = "hostel"
 	req.Current.Notes = "Already written by hand."
 
 	a := agentWith(
 		stubTurn{Content: "done"},
 		stubTurn{Content: answerJSON(t, modelProposal{
 			Category: "stay",
-			Type:     "hostel", // identical to what is there
+			Tags:     "hostel", // identical to what is there
 			Notes:    "",       // nothing found
 		})},
 	)
@@ -356,7 +356,7 @@ func TestEmptyAndUnchangedFieldsAreNotProposed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Propose: %v", err)
 	}
-	if _, ok := fieldNamed(p, "type"); ok {
+	if _, ok := fieldNamed(p, "tags"); ok {
 		t.Error("an unchanged value was proposed")
 	}
 	if _, ok := fieldNamed(p, "notes"); ok {
@@ -492,7 +492,7 @@ func TestSpendingTheBudgetStillProducesAProposal(t *testing.T) {
 		// Never reached: the budget check fires before the second turn, and
 		// the run jumps to composing.
 		stubTurn{ToolCalls: []toolCall{callTo(toolWebSearch, `{"query":"never"}`)}},
-		stubTurn{Content: answerJSON(t, modelProposal{Category: "stay", Type: "hostel"})},
+		stubTurn{Content: answerJSON(t, modelProposal{Category: "stay", Tags: "hostel"})},
 	)
 	a := &Agent{provider: &greedyProvider{inner: expensive}, fetcher: newPageFetcher(), search: &stubSearcher{}, limits: DefaultLimits()}
 
@@ -501,7 +501,7 @@ func TestSpendingTheBudgetStillProducesAProposal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Propose: %v", err)
 	}
-	if _, ok := fieldNamed(p, "type"); !ok {
+	if _, ok := fieldNamed(p, "tags"); !ok {
 		t.Error("no proposal came back from a budget-limited run")
 	}
 	// The user should be told the run is cutting its research short rather
@@ -516,7 +516,7 @@ func TestSpendingTheBudgetStillProducesAProposal(t *testing.T) {
 func TestGatheringDeadlineStillProducesAProposal(t *testing.T) {
 	slow := newScriptedProvider(
 		stubTurn{ToolCalls: []toolCall{callTo(toolWebSearch, `{"query":"x"}`)}},
-		stubTurn{Content: answerJSON(t, modelProposal{Category: "stay", Type: "hostel"})},
+		stubTurn{Content: answerJSON(t, modelProposal{Category: "stay", Tags: "hostel"})},
 	)
 	a := &Agent{provider: &expiringProvider{inner: slow}, fetcher: newPageFetcher(), search: &stubSearcher{}, limits: DefaultLimits()}
 
@@ -524,7 +524,7 @@ func TestGatheringDeadlineStillProducesAProposal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Propose: %v", err)
 	}
-	if _, ok := fieldNamed(p, "type"); !ok {
+	if _, ok := fieldNamed(p, "tags"); !ok {
 		t.Error("no proposal came back from a time-limited run")
 	}
 }
@@ -883,7 +883,7 @@ func proposeCall(t *testing.T, p modelProposal) stubTurn {
 func TestAProposeCallAnswersWithoutASecondRequest(t *testing.T) {
 	a := agentWith(
 		turnCalling(toolWebSearch, `{"query":"Kex"}`),
-		proposeCall(t, modelProposal{Category: "stay", Type: "hostel", Notes: "A hostel."}),
+		proposeCall(t, modelProposal{Category: "stay", Tags: "hostel", Notes: "A hostel."}),
 		// Deliberately scripted but unreachable: if the loop still asks for a
 		// composing turn, this answers it and the test below catches the extra
 		// request rather than mysteriously passing.

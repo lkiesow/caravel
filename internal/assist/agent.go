@@ -225,7 +225,7 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 		"geocoder", a.geocoder != nil,
 		"trip_context", req.Trip.Sent(),
 		"locale", req.Locale,
-		"type_vocabulary", len(req.TypeVocabulary),
+		"tag_vocabulary", len(req.TagVocabulary),
 		"limits", a.limits.String())
 
 	var spent usage
@@ -644,7 +644,7 @@ func (a *Agent) buildProposal(ctx context.Context, req Request, raw modelProposa
 	for _, f := range []struct{ name, current, proposed string }{
 		{"title", req.Current.Title, title},
 		{"category", req.Current.Category, category},
-		{"type", req.Current.Type, strings.TrimSpace(raw.Type)},
+		{"tags", req.Current.Tags, strings.TrimSpace(raw.Tags)},
 		{"notes", req.Current.Notes, strings.TrimSpace(raw.Notes)},
 		{"address", req.Current.Address, strings.TrimSpace(raw.Address)},
 	} {

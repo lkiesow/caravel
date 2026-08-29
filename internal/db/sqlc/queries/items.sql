@@ -1,6 +1,6 @@
 -- name: CreateItem :one
-INSERT INTO items (id, trip_id, category, type, title, notes, show_on_map, sort_order, created_at, updated_at)
-VALUES (sqlc.arg(id), sqlc.arg(trip_id), sqlc.arg(category), sqlc.arg(type), sqlc.arg(title), sqlc.arg(notes), sqlc.arg(show_on_map), sqlc.arg(sort_order), sqlc.arg(created_at), sqlc.arg(updated_at))
+INSERT INTO items (id, trip_id, category, title, notes, show_on_map, sort_order, created_at, updated_at)
+VALUES (sqlc.arg(id), sqlc.arg(trip_id), sqlc.arg(category), sqlc.arg(title), sqlc.arg(notes), sqlc.arg(show_on_map), sqlc.arg(sort_order), sqlc.arg(created_at), sqlc.arg(updated_at))
 RETURNING *;
 
 -- name: GetItemByID :one
@@ -21,7 +21,6 @@ ORDER BY sort_order, created_at;
 -- name: UpdateItem :one
 UPDATE items
 SET category = sqlc.arg(category),
-    type = sqlc.arg(type),
     title = sqlc.arg(title),
     notes = sqlc.arg(notes),
     show_on_map = sqlc.arg(show_on_map),

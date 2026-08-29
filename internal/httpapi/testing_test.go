@@ -264,6 +264,6 @@ func (ts *testServer) createItem(cookie *http.Cookie, tripID, title string) stri
 	ts.t.Helper()
 	return ts.mustCreate(
 		http.MethodPost, "/api/trips/"+tripID+"/items", cookie,
-		`{"title":"`+title+`","category":"site","type":"landmark"}`, http.StatusCreated,
+		`{"title":"`+title+`","category":"site","tags":["landmark"]}`, http.StatusCreated,
 	)
 }

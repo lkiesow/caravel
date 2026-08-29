@@ -275,7 +275,12 @@ type linkSpec struct {
 type itemSpec struct {
 	key      string // stable per-trip identity, for the deterministic ID
 	category string
-	itemType string
+	// tags is what itemType was until Stage 26 Milestone 7 folded the type
+	// field into the tag set. Seeded data carries real tags now, which the UI
+	// suite needs: the tag filter, the chips on the card and the remove button
+	// in the editor all had nothing to look at while every seeded location was
+	// untagged.
+	tags     []string
 	title    string
 	notes    string
 	lat, lng *float64 // nil = no coordinates at all
@@ -292,7 +297,6 @@ func (s seedCtx) addItems(scenarioName, tripID string, specs []itemSpec) ([]db.I
 			ID:        itemID,
 			TripID:    tripID,
 			Category:  spec.category,
-			Type:      spec.itemType,
 			Title:     spec.title,
 			Notes:     ptr(spec.notes),
 			ShowOnMap: spec.onMap,
@@ -302,6 +306,11 @@ func (s seedCtx) addItems(scenarioName, tripID string, specs []itemSpec) ([]db.I
 		})
 		if err != nil {
 			return nil, fmt.Errorf("create item %s: %w", spec.key, err)
+		}
+		for _, tag := range spec.tags {
+			if err := s.store.CreateItemTag(s.ctx, itemID, tag); err != nil {
+				return nil, fmt.Errorf("tag item %s: %w", spec.key, err)
+			}
 		}
 		if spec.lat != nil && spec.lng != nil {
 			if _, err := s.store.UpsertItemLocation(s.ctx, db.UpsertItemLocationParams{
@@ -483,13 +492,13 @@ func seedFull(s seedCtx) error {
 		// The Dates card needs nothing here since Stage 25: a location dates
 		// are the itinerary days it is on, and this one is put on a day below.
 		// That is the unification working -- one fact, seeded once.
-		{key: "kirkjufell", category: "site", itemType: "landmark", title: "Kirkjufell",
+		{key: "kirkjufell", category: "site", tags: []string{"landmark"}, title: "Kirkjufell",
 			notes: "Iconic mountain on the Snæfellsnes peninsula.\n\n## Getting there\n\nPark at the waterfall lot.",
 			lat:   ptr(64.9275), lng: ptr(-23.3106), onMap: true,
 			links: []linkSpec{{url: "https://www.openstreetmap.org/?mlat=64.9275&mlon=-23.3106", label: "On the map"}}},
-		{key: "foss-hotel", category: "stay", itemType: "hotel", title: "Foss Hotel Reykjavik",
+		{key: "foss-hotel", category: "stay", tags: []string{"hotel"}, title: "Foss Hotel Reykjavik",
 			notes: "Check-in from 15:00.", lat: ptr(64.1466), lng: ptr(-21.9426), onMap: true},
-		{key: "kef-flight", category: "transport", itemType: "flight", title: "Flight to Keflavik",
+		{key: "kef-flight", category: "transport", tags: []string{"flight"}, title: "Flight to Keflavik",
 			notes: "Seat 14A.", lat: ptr(63.9850), lng: ptr(-22.6056), onMap: true},
 	})
 	if err != nil {
@@ -663,12 +672,12 @@ func seedOnePin(s seedCtx) error {
 		return err
 	}
 	_, err = s.addItems("one-pin", trip.ID, []itemSpec{
-		{key: "only", category: "site", itemType: "museum", title: "The Only Pin",
+		{key: "only", category: "site", tags: []string{"museum"}, title: "The Only Pin",
 			notes: "The single location on this trip's map.",
 			lat:   ptr(52.2799), lng: ptr(8.0472), onMap: true},
 		// Present but deliberately off the map, so "one pin" means one pin even
 		// though the trip has two locations.
-		{key: "hidden", category: "stay", itemType: "hostel", title: "Not On The Map",
+		{key: "hidden", category: "stay", tags: []string{"hostel"}, title: "Not On The Map",
 			notes: "Has coordinates but show_on_map is false.",
 			lat:   ptr(52.2700), lng: ptr(8.0400), onMap: false},
 	})
@@ -697,7 +706,7 @@ func seedYearBoundary(s seedCtx) error {
 		return err
 	}
 	items, err := s.addItems("year-boundary", trip.ID, []itemSpec{
-		{key: "party", category: "site", itemType: "event", title: "Midnight Fireworks",
+		{key: "party", category: "site", tags: []string{"event"}, title: "Midnight Fireworks",
 			notes: "On the bridge.", lat: ptr(52.3676), lng: ptr(4.9041), onMap: true},
 	})
 	if err != nil {
@@ -725,7 +734,7 @@ func seedNoDates(s seedCtx) error {
 		return err
 	}
 	_, err = s.addItems("no-dates", trip.ID, []itemSpec{
-		{key: "idea", category: "site", itemType: "idea", title: "Somewhere, someday",
+		{key: "idea", category: "site", tags: []string{"idea"}, title: "Somewhere, someday",
 			notes: "An idea with no date attached yet."},
 	})
 	return err
@@ -741,7 +750,7 @@ func seedOutOfRangeDays(s seedCtx) error {
 		return err
 	}
 	items, err := s.addItems("out-of-range-days", trip.ID, []itemSpec{
-		{key: "early", category: "transport", itemType: "train", title: "Early Arrival Train",
+		{key: "early", category: "transport", tags: []string{"train"}, title: "Early Arrival Train",
 			notes: "Scheduled before the trip officially starts."},
 	})
 	if err != nil {
@@ -769,10 +778,10 @@ func seedCascade(s seedCtx) error {
 		return err
 	}
 	items, err := s.addItems("cascade", trip.ID, []itemSpec{
-		{key: "a", category: "site", itemType: "landmark", title: "Cascade Location A",
+		{key: "a", category: "site", tags: []string{"landmark"}, title: "Cascade Location A",
 			notes: "Has a location row, a file and an itinerary entry.",
 			lat:   ptr(48.8584), lng: ptr(2.2945), onMap: true},
-		{key: "b", category: "stay", itemType: "hotel", title: "Cascade Location B",
+		{key: "b", category: "stay", tags: []string{"hotel"}, title: "Cascade Location B",
 			notes: "Has an itinerary entry."},
 	})
 	if err != nil {

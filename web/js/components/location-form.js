@@ -43,12 +43,8 @@ export function renderItemForm(container, item, { onSubmit, tripId }) {
         </select>
       </label>
       <div data-assist-field="category"></div>
-      <label>
-        <span data-i18n="location.form.type"></span>
-        <input type="text" name="type" data-i18n-placeholder="location.form.typePlaceholder" />
-      </label>
-      <div data-assist-field="type"></div>
       <div class="tag-field-slot"></div>
+      <div data-assist-field="tags"></div>
       <div class="notes-field">
         <div class="notes-field__header">
           <label for="${notesId}" data-i18n="location.form.notes"></label>
@@ -81,7 +77,6 @@ export function renderItemForm(container, item, { onSubmit, tripId }) {
   if (item) {
     form.title.value = item.title;
     form.category.value = item.category;
-    form.type.value = item.type ?? "";
     form.notes.value = item.notes ?? "";
   }
 
@@ -226,7 +221,6 @@ export function renderItemForm(container, item, { onSubmit, tripId }) {
     // co-editor's itinerary to protect by staying silent (see Stage 25).
     readValues: () => ({
       category: form.category.value,
-      type: form.type.value,
       title: form.title.value,
       notes: form.notes.value || null,
       tags: tagField.readTags(),
@@ -241,6 +235,12 @@ export function renderItemForm(container, item, { onSubmit, tripId }) {
     // coordinates live in the Location card and the page applies those.
     setValues(partial) {
       for (const [name, value] of Object.entries(partial)) {
+        // Tags are not a form field: the assistant proposes them as one
+        // comma-separated string, which splits back into chips.
+        if (name === "tags") {
+          tagField.setTags(String(value ?? "").split(","));
+          continue;
+        }
         const field = form.elements[name];
         if (!field) continue;
         field.value = value ?? "";

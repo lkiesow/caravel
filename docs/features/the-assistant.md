@@ -20,7 +20,7 @@ Nothing is written until you accept it, and nothing is saved until you press
 
 ## What it can propose
 
-The title, the category and type, notes, an address, links, and coordinates.
+The title, the category and tags, notes, an address, links, and coordinates.
 
 Coordinates are the interesting case: **they never come from the model.** It
 proposes an address, and the geocoder resolves that address into a position. A

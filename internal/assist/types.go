@@ -34,13 +34,17 @@ type Request struct {
 	// already written, and so the caller can show a before/after.
 	Current Location
 
-	// TypeVocabulary is the distinct Type values already used on this trip.
-	// Type is free text, so left alone a model will produce "hotel", "Hotel"
-	// and "hostel" for the same three stays and fragment the filter. Sending
-	// what is in use and asking it to reuse one where it fits is cheaper than
+	// TagVocabulary is the distinct tags already in use on this trip. Tags are
+	// free text, so left alone a model will produce "hotel", "Hotel" and
+	// "hostel" for the same three stays and fragment the filter. Sending what
+	// is in use and asking it to reuse one where it fits is cheaper than
 	// normalising afterwards, which would need a synonym table nobody wants
 	// to maintain.
-	TypeVocabulary []string
+	//
+	// This was TypeVocabulary until Stage 26 Milestone 7 retired the type
+	// field into the tag set; the reasoning is unchanged, and the vocabulary
+	// it now carries is larger and more useful for exactly the same purpose.
+	TagVocabulary []string
 
 	// Trip is the surrounding trip's title and dates, or the zero value when
 	// the user has unticked the box that sends them. Dates in particular help
@@ -59,7 +63,13 @@ type Request struct {
 type Location struct {
 	Title    string
 	Category string // "site" | "stay" | "transport" -- validated, never trusted
-	Type     string // free text, steered by Request.TypeVocabulary
+	// Tags is a comma-separated list, not a slice. It stays a string because
+	// the whole proposal pipeline -- Field{Name, Current, Proposed string},
+	// the agent's diff table, the panel's allowlist and the editor's
+	// applyField -- is string-shaped, and making one field polymorphic to
+	// avoid one split and one join would be the more expensive change. The
+	// editor splits it back into chips.
+	Tags     string // free text, steered by Request.TagVocabulary
 	Notes    string // markdown
 	Address  string
 	Links    []Link

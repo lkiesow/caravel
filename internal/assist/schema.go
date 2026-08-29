@@ -20,8 +20,10 @@ type modelProposal struct {
 	// trusted, even though the schema also constrains it -- the json_object
 	// fallback has no schema enforcement at all.
 	Category string `json:"category"`
-	// Type is free text steered by the vocabulary in the prompt.
-	Type string `json:"type"`
+	// Tags is a comma-separated list of free-text keywords, steered by the
+	// vocabulary in the prompt. A string rather than an array so the whole
+	// proposal pipeline stays string-shaped -- see Location.Tags.
+	Tags string `json:"tags"`
 	// Notes is markdown, in the user's locale.
 	Notes string `json:"notes"`
 	// Address is a postal address string for the geocoder to resolve. The
@@ -60,7 +62,7 @@ const proposalSchemaName = "location_proposal"
 var proposalSchema = json.RawMessage(`{
   "type": "object",
   "additionalProperties": false,
-  "required": ["title", "category", "type", "notes", "address", "place_name", "wikipedia_title", "links"],
+  "required": ["title", "category", "tags", "notes", "address", "place_name", "wikipedia_title", "links"],
   "properties": {
     "title": {
       "type": "string",
@@ -71,9 +73,9 @@ var proposalSchema = json.RawMessage(`{
       "enum": ["site", "stay", "transport"],
       "description": "site for somewhere to visit, stay for accommodation, transport for a journey or terminal."
     },
-    "type": {
+    "tags": {
       "type": "string",
-      "description": "A short free-text tag such as museum, hotel, ferry. Reuse one of the values already in use on this trip where it fits."
+      "description": "A few short free-text keywords describing the place, comma-separated, such as: museum, historic, city centre. Reuse the tags already in use on this trip where they fit. Empty if none apply."
     },
     "notes": {
       "type": "string",

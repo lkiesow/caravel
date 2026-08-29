@@ -46,16 +46,16 @@ Rules:
 	fmt.Fprintf(&b, "\nThe category must be exactly one of: %s.\n", strings.Join(validCategories, ", "))
 	b.WriteString("Use `stay` for accommodation, `transport` for a journey, station, airport or terminal, and `site` for anywhere to visit.\n")
 
-	// The vocabulary matters more than it looks. Type is free text, so left to
+	// The vocabulary matters more than it looks. Tags are free text, so left to
 	// itself a model produces "hotel", "Hotel" and "hostel" for the same three
-	// stays, and the trip's type filter fragments into near-duplicates. Asking
+	// stays, and the trip's tag filter fragments into near-duplicates. Asking
 	// it to reuse an existing value is far cheaper than normalising afterwards
 	// with a synonym table nobody wants to maintain.
-	if len(req.TypeVocabulary) > 0 {
-		fmt.Fprintf(&b, "\nThe type is a short free-text tag. These are already in use on this trip: %s.\nReuse one of them exactly if it fits; only invent a new one if none does.\n",
-			strings.Join(req.TypeVocabulary, ", "))
+	if len(req.TagVocabulary) > 0 {
+		fmt.Fprintf(&b, "\nTags are a few short free-text keywords, comma-separated. These are already in use on this trip: %s.\nReuse them exactly where they fit; only invent a new one if none does.\n",
+			strings.Join(req.TagVocabulary, ", "))
 	} else {
-		b.WriteString("\nThe type is a short lowercase free-text tag, such as museum, hotel or ferry.\n")
+		b.WriteString("\nTags are a few short lowercase free-text keywords, comma-separated, such as museum, hotel or ferry.\n")
 	}
 
 	if locale := strings.TrimSpace(req.Locale); locale != "" {
@@ -149,7 +149,7 @@ func describeLocation(loc Location) string {
 	}
 	write("Name", loc.Title)
 	write("Category", loc.Category)
-	write("Type", loc.Type)
+	write("Tags", loc.Tags)
 	write("Address", loc.Address)
 	write("Notes", loc.Notes)
 	for _, l := range loc.Links {

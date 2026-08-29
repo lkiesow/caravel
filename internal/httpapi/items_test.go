@@ -46,7 +46,7 @@ type nestedItem struct {
 const nestedCreateBody = `{
 	"title": "Foss Hotel",
 	"category": "stay",
-	"type": "hotel",
+	"tags": ["hotel"],
 	"location": {"lat": 64.146, "lng": -21.94, "address": "Reykjavik"},
 	"links": [
 		{"url": "https://example.com/booking", "label": "Booking"},
@@ -120,7 +120,7 @@ func TestUpdateItemLeavesOmittedSubResourcesIntact(t *testing.T) {
 	// A PATCH with no nested keys at all — what a caller editing only the
 	// basic fields sends. Nothing hanging off the item may be touched.
 	w := ts.do(http.MethodPatch, "/api/items/"+created.ID, cookie,
-		`{"title":"Foss Hotel Reykjavik","category":"stay","type":"hotel"}`)
+		`{"title":"Foss Hotel Reykjavik","category":"stay","tags":["hotel"]}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("patch item: got %d, want 200, body %s", w.Code, w.Body.String())
 	}
@@ -140,7 +140,7 @@ func TestUpdateItemReplacesSubResourceSets(t *testing.T) {
 	w := ts.do(http.MethodPatch, "/api/items/"+created.ID, cookie, `{
 		"title": "Foss Hotel",
 		"category": "stay",
-		"type": "hotel",
+		"tags": ["hotel"],
 		"location": {"lat": 65.0, "lng": -22.0, "address": null},
 		"links": [{"url": "https://example.com/only"}],
 		"dates": []

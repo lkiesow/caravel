@@ -53,7 +53,7 @@ func newStubProvider() *stubProvider {
 	answer, err := json.Marshal(modelProposal{
 		Title:     "Kex Hostel",
 		Category:  "stay",
-		Type:      "hostel",
+		Tags:      "hostel, harbour, city centre",
 		Notes:     "A former biscuit factory on the harbour side of Reykjavik, now a hostel with dorms and private rooms. The bar is open to non-guests and does food until late.",
 		Address:   "Skulagata 28, 101 Reykjavik, Iceland",
 		PlaceName: "Kex Hostel, Reykjavik",

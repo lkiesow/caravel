@@ -231,7 +231,7 @@ func (s *slowAssistant) Propose(ctx context.Context, _ assist.Request, events fu
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
-	return &assist.Proposal{Fields: []assist.Field{{Name: "type", Proposed: "hostel"}}}, nil
+	return &assist.Proposal{Fields: []assist.Field{{Name: "tags", Proposed: "hostel"}}}, nil
 }
 
 // A failure after the stream has opened cannot be a status code: the 200 is
@@ -363,7 +363,7 @@ func (b *blockingAssistant) Propose(ctx context.Context, _ assist.Request, event
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
-	return &assist.Proposal{Fields: []assist.Field{{Name: "type", Proposed: "hostel"}}}, nil
+	return &assist.Proposal{Fields: []assist.Field{{Name: "tags", Proposed: "hostel"}}}, nil
 }
 
 // Cancellation. The client aborting must actually stop the agent, or a closed
@@ -510,7 +510,7 @@ func TestAssistTripContextFollowsTheFlag(t *testing.T) {
 
 // The vocabulary is what stops the model inventing "Hotel" next to an existing
 // "hotel", and it can only come from the server.
-func TestAssistSendsTheTripsTypeVocabulary(t *testing.T) {
+func TestAssistSendsTheTripsTagVocabulary(t *testing.T) {
 	ts := newTestServer(t)
 	captured := &capturingAssistant{}
 	ts.Assist = captured
@@ -519,17 +519,17 @@ func TestAssistSendsTheTripsTypeVocabulary(t *testing.T) {
 	tripID := ts.createTrip(cookie, "Iceland")
 
 	for _, body := range []string{
-		`{"category":"stay","type":"hotel","title":"A"}`,
-		`{"category":"site","type":"museum","title":"B"}`,
-		`{"category":"stay","type":"hotel","title":"C"}`,
-		`{"category":"site","type":"","title":"D"}`,
+		`{"category":"stay","tags":["hotel"],"title":"A"}`,
+		`{"category":"site","tags":["museum"],"title":"B"}`,
+		`{"category":"stay","tags":["hotel"],"title":"C"}`,
+		`{"category":"site","tags":[],"title":"D"}`,
 	} {
 		ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/items", cookie, body, http.StatusCreated)
 	}
 
 	readSSE(t, bufio.NewReader(postAssist(t, srv, cookie, tripID, enrichBody).Body))
 
-	got := captured.last().TypeVocabulary
+	got := captured.last().TagVocabulary
 	// Distinct, sorted, and no empty entry.
 	want := []string{"hotel", "museum"}
 	if len(got) != len(want) {
@@ -553,7 +553,7 @@ func TestAssistUsesTheMetadataTheClientSends(t *testing.T) {
 	tripID := ts.createTrip(cookie, "Iceland")
 
 	readSSE(t, bufio.NewReader(postAssist(t, srv, cookie, tripID, `{
-		"mode":"enrich","title":"Kex Hostel","category":"stay","type":"hostel",
+		"mode":"enrich","title":"Kex Hostel","category":"stay","tags":"hostel",
 		"notes":"unsaved note","address":"Skulagata 28","locale":"de",
 		"links":[{"url":"https://example.com/","label":"Site"},{"url":"  ","label":"blank"}]
 	}`).Body))
@@ -605,7 +605,7 @@ func (c *capturingAssistant) Propose(_ context.Context, req assist.Request, even
 	c.req = req
 	c.mu.Unlock()
 	events(assist.Event{Key: "assist.progress.thinking"})
-	return &assist.Proposal{Fields: []assist.Field{{Name: "type", Proposed: "hostel"}}}, nil
+	return &assist.Proposal{Fields: []assist.Field{{Name: "tags", Proposed: "hostel"}}}, nil
 }
 
 // The run trace the editor renders is built from step and summary events, so

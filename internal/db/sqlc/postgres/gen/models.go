@@ -76,7 +76,6 @@ type Item struct {
 	ID        string         `json:"id"`
 	TripID    string         `json:"trip_id"`
 	Category  string         `json:"category"`
-	Type      string         `json:"type"`
 	Title     string         `json:"title"`
 	Notes     sql.NullString `json:"notes"`
 	ImageID   sql.NullString `json:"image_id"`

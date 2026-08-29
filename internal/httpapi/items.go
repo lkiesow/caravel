@@ -19,7 +19,6 @@ type itemResponse struct {
 	ID        string  `json:"id"`
 	TripID    string  `json:"trip_id"`
 	Category  string  `json:"category"`
-	Type      string  `json:"type"`
 	Title     string  `json:"title"`
 	Notes     *string `json:"notes"`
 	NotesHTML *string `json:"notes_html"`
@@ -62,7 +61,6 @@ func (s *Server) itemToResponse(ctx context.Context, i db.Item) itemResponse {
 		ID:        i.ID,
 		TripID:    i.TripID,
 		Category:  i.Category,
-		Type:      i.Type,
 		Title:     i.Title,
 		Notes:     i.Notes,
 		NotesHTML: renderNotesHTML(i.Notes),
@@ -163,7 +161,6 @@ func (s *Server) handleListItems(w http.ResponseWriter, r *http.Request) {
 
 type itemRequest struct {
 	Category  string  `json:"category"`
-	Type      string  `json:"type"`
 	Title     string  `json:"title"`
 	Notes     *string `json:"notes"`
 	ShowOnMap *bool   `json:"show_on_map"`
@@ -391,7 +388,6 @@ func (s *Server) handleUpdateItem(w http.ResponseWriter, r *http.Request) {
 			ID:        item.ID,
 			TripID:    item.TripID,
 			Category:  req.Category,
-			Type:      req.Type,
 			Title:     req.Title,
 			Notes:     req.Notes,
 			ShowOnMap: showOnMap,

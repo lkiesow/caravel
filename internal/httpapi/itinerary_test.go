@@ -19,7 +19,7 @@ func (ts *testServer) seedDayWithEntry(cookie *http.Cookie, date string) (tripID
 	}
 	tripID = decode[map[string]any](ts.t, w)["id"].(string)
 
-	w = ts.do(http.MethodPost, "/api/trips/"+tripID+"/items", cookie, `{"title":"Kirkjufell","category":"site","type":"landmark"}`)
+	w = ts.do(http.MethodPost, "/api/trips/"+tripID+"/items", cookie, `{"title":"Kirkjufell","category":"site","tags":["landmark"]}`)
 	if w.Code != http.StatusCreated {
 		ts.t.Fatalf("create item: got %d, body %s", w.Code, w.Body.String())
 	}

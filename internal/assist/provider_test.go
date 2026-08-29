@@ -164,7 +164,7 @@ func TestProviderToolCallRoundTrip(t *testing.T) {
 
 func TestProviderJSONSchemaFormat(t *testing.T) {
 	f := newFakeEndpoint(t, func(w http.ResponseWriter, _ wireRequest) {
-		writeChoice(w, `{"title":"Kex","category":"stay","type":"hostel","notes":"n","address":"a","place_name":"p","links":[]}`, nil, "stop")
+		writeChoice(w, `{"title":"Kex","category":"stay","tags":"hostel","notes":"n","address":"a","place_name":"p","links":[]}`, nil, "stop")
 	})
 	p := newHTTPProvider(f.URL, "", "m")
 
@@ -175,7 +175,7 @@ func TestProviderJSONSchemaFormat(t *testing.T) {
 	}, &out); err != nil {
 		t.Fatalf("completeJSON: %v", err)
 	}
-	if out.Category != "stay" || out.Type != "hostel" {
+	if out.Category != "stay" || out.Tags != "hostel" {
 		t.Errorf("decoded = %+v", out)
 	}
 
@@ -227,7 +227,7 @@ func TestProviderFallsBackToJSONObject(t *testing.T) {
 			})
 			return
 		}
-		writeChoice(w, `{"title":"","category":"site","type":"museum","notes":"","address":"","place_name":"","links":[]}`, nil, "stop")
+		writeChoice(w, `{"title":"","category":"site","tags":"museum","notes":"","address":"","place_name":"","links":[]}`, nil, "stop")
 	})
 	p := newHTTPProvider(f.URL, "", "m")
 
@@ -238,7 +238,7 @@ func TestProviderFallsBackToJSONObject(t *testing.T) {
 	}, &out); err != nil {
 		t.Fatalf("first completeJSON: %v", err)
 	}
-	if out.Type != "museum" {
+	if out.Tags != "museum" {
 		t.Errorf("decoded = %+v", out)
 	}
 	if len(formats) != 2 || formats[0] != formatJSONSchema || formats[1] != formatJSONObject {
@@ -310,7 +310,7 @@ func TestCompleteJSONRetriesOnWrongShape(t *testing.T) {
 			writeChoice(w, `["not", "an", "object"]`, nil, "stop")
 			return
 		}
-		writeChoice(w, `{"title":"","category":"site","type":"museum","notes":"","address":"","place_name":"","links":[]}`, nil, "stop")
+		writeChoice(w, `{"title":"","category":"site","tags":"museum","notes":"","address":"","place_name":"","links":[]}`, nil, "stop")
 	})
 	p := newHTTPProvider(f.URL, "", "m")
 
@@ -322,7 +322,7 @@ func TestCompleteJSONRetriesOnWrongShape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("completeJSON: %v", err)
 	}
-	if out.Type != "museum" {
+	if out.Tags != "museum" {
 		t.Errorf("decoded = %+v", out)
 	}
 	if f.calls != 2 {
@@ -365,7 +365,7 @@ func TestCompleteJSONGivesUpAfterOneRetry(t *testing.T) {
 // formatting habit would be waste.
 func TestCompleteJSONToleratesCodeFences(t *testing.T) {
 	f := newFakeEndpoint(t, func(w http.ResponseWriter, _ wireRequest) {
-		writeChoice(w, "```json\n{\"title\":\"\",\"category\":\"site\",\"type\":\"museum\",\"notes\":\"\",\"address\":\"\",\"place_name\":\"\",\"links\":[]}\n```", nil, "stop")
+		writeChoice(w, "```json\n{\"title\":\"\",\"category\":\"site\",\"tags\":\"museum\",\"notes\":\"\",\"address\":\"\",\"place_name\":\"\",\"links\":[]}\n```", nil, "stop")
 	})
 	p := newHTTPProvider(f.URL, "", "m")
 
@@ -373,7 +373,7 @@ func TestCompleteJSONToleratesCodeFences(t *testing.T) {
 	if _, _, err := completeJSON(context.Background(), p, chatRequest{Format: responseFormat{Kind: formatJSONObject}}, &out); err != nil {
 		t.Fatalf("completeJSON: %v", err)
 	}
-	if out.Type != "museum" {
+	if out.Tags != "museum" {
 		t.Errorf("decoded = %+v", out)
 	}
 	if f.calls != 1 {
@@ -386,7 +386,7 @@ func TestCompleteJSONToleratesCodeFences(t *testing.T) {
 // bug in our own client and is rejected.)
 func TestCompleteJSONIgnoresUnknownFields(t *testing.T) {
 	f := newFakeEndpoint(t, func(w http.ResponseWriter, _ wireRequest) {
-		writeChoice(w, `{"title":"","category":"site","type":"museum","notes":"","address":"","place_name":"","links":[],"confidence":0.9}`, nil, "stop")
+		writeChoice(w, `{"title":"","category":"site","tags":"museum","notes":"","address":"","place_name":"","links":[],"confidence":0.9}`, nil, "stop")
 	})
 	p := newHTTPProvider(f.URL, "", "m")
 

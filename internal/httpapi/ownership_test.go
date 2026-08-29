@@ -146,7 +146,7 @@ func TestItemRoutesRejectAnotherUser(t *testing.T) {
 	o.assertDenied(t, http.MethodPost, item+"/links", `{"url":"https://example.com","label":"x"}`)
 	o.assertDenied(t, http.MethodGet, item+"/files", "")
 	// Creating an item on someone else's trip goes through the trip, not the item.
-	o.assertDenied(t, http.MethodPost, "/api/trips/"+o.tripID+"/items", `{"title":"x","category":"site","type":"y"}`)
+	o.assertDenied(t, http.MethodPost, "/api/trips/"+o.tripID+"/items", `{"title":"x","category":"site","tags":["y"]}`)
 	o.assertDenied(t, http.MethodGet, "/api/trips/"+o.tripID+"/items", "")
 	o.assertDenied(t, http.MethodGet, "/api/trips/"+o.tripID+"/tags", "")
 

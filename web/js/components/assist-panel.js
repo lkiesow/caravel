@@ -71,7 +71,7 @@ const ERROR_KEYS = {
 // The scalar fields the panel knows how to place. A field name the server
 // invents has no slot and is skipped, rather than being rendered somewhere
 // arbitrary.
-const FIELD_NAMES = ["title", "category", "type", "notes", "address"];
+const FIELD_NAMES = ["title", "category", "tags", "notes", "address"];
 
 export function renderAssistPanel(container, { tripId, root, readCurrent, applyField, applyLink, applyCoordinates, applyCover }) {
   if (!hasCapability("assist")) {

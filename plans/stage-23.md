@@ -839,6 +839,26 @@ the login page last, because reaching the login page means clearing the session,
 and the demo login is a stored state rather than a fresh POST - so it cannot be
 undone within the same context.
 
+**Screenshots, attempted and deliberately not committed.** Milestone 7 changed
+`mobile-map.png`'s subject - the mobile trip map went from 320px to 85vh - so
+the stage workflow calls for regenerating the set. Every run in this
+environment loses two or three map tiles to `NS_ERROR_UNKNOWN_HOST`: the
+browser's resolver failing under the burst of parallel tile requests, while
+`getent hosts tile.openstreetmap.org` from the shell succeeds twelve times out
+of twelve and the tiles themselves answer 200 to curl. The fresh set had grey
+rectangles in four shots, so it was reverted - a stale but clean screenshot
+beats a current but broken one, and the regeneration is recorded in the
+backlog instead.
+
+What did land is a fix to the generator, for a failure its own comment names:
+"a screenshot taken mid-load is the one failure this script cannot detect
+itself". `shoot()` now waits until every tile is either loaded or definitively
+failed - "settled", not "loaded", because an aborted request ends up `complete`
+with `naturalWidth` 0 and never gains `leaflet-tile-loaded`, so waiting for all
+of them to load would hang for the full timeout on every run - retries the
+failed ones once after a pause, and prints a WARNING naming the shot when any
+still will not load. It can detect it now.
+
 ---
 
 ## Build order

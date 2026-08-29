@@ -567,10 +567,29 @@ else runs this.
   fix is a seeded expense that names a seeded location, in `cmd/seed` where the
   pairing can be deliberate.
 
-- **The documentation screenshots go stale silently.** (Stage 18 Milestone 11.)
-  `make screenshots` regenerates them and `scripts/check_screenshots.py` keeps
-  the set and the pages in agreement, but nothing notices when the UI moves and
-  the committed captures start showing an older layout. There is no cheap
+- **`mobile-map.png` shows the old, half-height mobile map.** (Stage 23
+  Milestone 7 raised the trip map from 320px to 85vh; the committed capture
+  predates it.) Regenerating was attempted and **deliberately not committed**:
+  every run in this environment loses two or three map tiles to
+  `NS_ERROR_UNKNOWN_HOST` -- the browser's resolver failing under the burst of
+  parallel tile requests, while `getent hosts tile.openstreetmap.org` from the
+  shell succeeds 12 times out of 12 -- so the fresh set had grey rectangles in
+  `map.png`, `location-detail.png`, `assistant.png` and `mobile-map.png`. A
+  stale but clean screenshot beats a current but broken one. `make screenshots`
+  now *says* when this happens (see the entry below), so the next attempt on a
+  healthier network will be obviously good or obviously bad. Nothing to fix in
+  the app; this is a note about an outstanding regeneration.
+
+- **The documentation screenshots go stale silently.** (Stage 18 Milestone 11;
+  half-narrowed in Stage 23 Milestone 8, which fixed the *other* silent failure
+  in the same script -- a capture taken before the map tiles arrived. `shoot()`
+  now waits for every tile to be loaded or definitively failed, retries the
+  failed ones once, and prints a WARNING naming the shot when any still will
+  not load. That was the failure its own comment called "the one failure this
+  script cannot detect itself".) `make screenshots` regenerates them and
+  `scripts/check_screenshots.py` keeps the set and the pages in agreement, but
+  nothing notices when the UI moves and the committed captures start showing an
+  older layout. There is no cheap
   automatic answer -- comparing images would fail on every unrelated pixel -- so
   the realistic options are a reminder in the stage workflow (regenerate
   whenever a milestone changes a screen that appears in the tour) or a periodic

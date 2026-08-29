@@ -390,4 +390,44 @@ test.describe("form fields look the same wherever they are", () => {
     // browser's control font is a failure rather than a shrug.
     expect(trip.input.fontFamily, "inputs use the app's font, not the UA's control font").toBe(bodyFont);
   });
+
+  // Mobile Safari zooms the page whenever a focused form control is under 16px,
+  // and will not zoom back out on blur -- so one 14px field turns the rest of
+  // the app into a horizontally-scrolling mess until the user pinches out.
+  //
+  // Every field in the app used to be 14px: the shared rule says `font: inherit`
+  // and the label it inherits from is 0.875rem. The ones no component rule
+  // reached were worse, at the browser's own 13.3px. Both are fixed in CSS
+  // (Stage 24 Milestone 7), and this is what keeps them fixed -- the failure
+  // mode is invisible on every browser the suite actually runs.
+  //
+  // Checkboxes and radios are exempt: their size is the box, not the text.
+  // Unfocusable fields are exempt because they cannot trigger the zoom -- the
+  // image picker's file input is hidden behind a styled label.
+  test("no focusable form field is under 16px, which would zoom iOS Safari", async ({ page }) => {
+    await login(page);
+    const routes = await buildRoutes(page);
+    await page.setViewportSize({ width: MOBILE.width, height: MOBILE.height });
+
+    const offenders = [];
+    for (const route of routes) {
+      await gotoRoute(page, route.path);
+      const found = await page.evaluate(
+        ({ deepDomSource }) => {
+          eval(deepDomSource);
+          // eslint-disable-next-line no-undef
+          return deepQueryAll("input, select, textarea")
+            .filter((el) => !["checkbox", "radio", "hidden"].includes(el.type))
+            .filter((el) => !el.hidden && el.offsetParent !== null)
+            .filter((el) => parseFloat(getComputedStyle(el).fontSize) < 16)
+            // eslint-disable-next-line no-undef
+            .map((el) => `${describeElement(el)} at ${getComputedStyle(el).fontSize}`);
+        },
+        { deepDomSource: DEEP_DOM_SOURCE },
+      );
+      for (const f of found) offenders.push(`${route.label}: ${f}`);
+    }
+
+    expect(offenders, "form fields under 16px zoom the page on focus in mobile Safari").toEqual([]);
+  });
 });

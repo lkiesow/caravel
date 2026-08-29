@@ -423,6 +423,32 @@ the zoom, not the target size.
 across the auth form, the trip form, the location editor and a dialog, because
 the point of the milestone is that the new proportions look right.
 
+**Done.** Landed, and it took two rules rather than the one the plan expected.
+`font-size: 1rem` on the shared form-field rule fixed the forms that rule
+reaches. Sweeping the running app for *every* focusable field then found two
+more groups: fields under a component rule saying `font: inherit` with a
+0.875rem label (14px), and fields no component rule reaches at all, which were
+rendering at the browser's own 13.3px *in the browser's own control font* --
+the itinerary's day selects, its date input, the image-field URL box, the file
+upload field. So there is now also a low-specificity element-level floor
+(`input:not([type=checkbox]):not([type=radio]), select, textarea`) setting
+`font-family: inherit; font-size: 1rem`, which any component rule can still
+override, plus a `font-size` on `.file-upload__field input[type=text]`, whose
+own `font: inherit` beat the floor on specificity.
+
+Verified with a new sweep in `routes.spec.js` over every route `buildRoutes`
+produces, at 324px, piercing shadow roots: no focusable field under 16px,
+excluding checkboxes and radios (their size is the box) and unfocusable fields
+(the image picker's file input is hidden behind a styled label, so it cannot
+trigger the zoom). Confirmed to fail against the old CSS with 72 offenders,
+each naming its DOM path and size. The pre-existing "one treatment, not three"
+test still passes, so the three forms did not drift apart. Full `make test-ui`
+green at 176 passed, which includes the German overflow and tap-target sweeps
+at 324px -- the assertions that would catch the new proportions breaking a
+layout. Manual pass at 324x756 over the auth form, new trip, the location
+editor and the files tab: labels still read as small print, values are 16px,
+nothing overflows.
+
 ---
 
 ## 8. The contrast gate learns to reach the whole app

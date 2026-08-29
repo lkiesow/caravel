@@ -160,18 +160,6 @@ purpose — do not reconstruct it from an older stage plan without asking.
 
 ## Consistency and cleanup
 
-- **Every text input in the app is 14px, which iOS zooms on focus.** **(soon)**
-  (Noticed while consolidating the three input rules in Stage 23 Milestone 8;
-  the consolidation did not cause it, it made it uniform.) The shared rule uses
-  `font: inherit`, and the label it inherits from is `0.875rem`, so inputs
-  render at 14px everywhere. Mobile Safari zooms the page whenever a focused
-  input is under 16px, which is a jarring thing to happen on a login form. The
-  auth inputs used to be the one exception at 16px and are not any more. The fix
-  is one declaration -- `font-size: 1rem` on the shared input rule -- but it
-  changes the proportions of every form in the app, so it wants looking at
-  rather than applying blind. The tap-target floor already lifts these to 44px
-  at phone width, so this is about the zoom, not about the target size.
-
 - **Identifier sweep: "item" → "location".** Stage 05 fixed the user-visible
   copy, so what's left is entirely below the surface: the whole
   `item.detail.*`/`item.category.*`/`item.deleteConfirm` i18n namespace is still

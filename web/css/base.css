@@ -146,6 +146,24 @@ a:visited {
   color: var(--color-accent);
 }
 
+/* Form controls inherit nothing from body by default: browsers give them their
+   own family and a ~13.3px size. Most of the app's fields are covered by a
+   component rule saying `font: inherit`, but the ones that are not -- a date
+   input, the itinerary's day selects, an upload field -- were rendering in the
+   browser's font at 13.3px, which is both inconsistent and under the 16px
+   below which mobile Safari zooms the page on focus.
+   
+   Deliberately low specificity (one element selector): every component rule
+   that wants a different family or weight still wins. It is the floor, not the
+   opinion. Checkboxes and radios are excluded because their size is the box,
+   not the text. */
+input:not([type="checkbox"]):not([type="radio"]),
+select,
+textarea {
+  font-family: inherit;
+  font-size: 1rem;
+}
+
 ::selection {
   background: var(--color-accent-strong);
   color: white;
@@ -497,7 +515,15 @@ a:visited {
    folded into some other milestone.
    
    Precedent: this file's error-callout rule already collapsed five copies the
-   same way. */
+   same way.
+   
+   The `font-size` after it is not redundant: `font: inherit` takes the label's
+   0.875rem, so every field in the app rendered at 14px -- and mobile Safari
+   zooms the page whenever a focused input is under 16px, which is a jarring
+   thing to happen on a login form. Losing .auth-form's `font-size: 1rem` in
+   the consolidation above is what made that uniform; this puts it back for
+   every form rather than one. The label stays at 0.875rem: it is the field
+   *name* that is small print, not the value you typed. */
 .auth-form label,
 .trip-form label,
 .password-form label,
@@ -526,6 +552,7 @@ a:visited {
   border-radius: var(--radius);
   border: 1px solid var(--color-border);
   font: inherit;
+  font-size: 1rem;
   background: var(--color-bg);
   color: var(--color-text);
 }
@@ -3002,6 +3029,9 @@ button {
   border-radius: var(--radius);
   border: 1px solid var(--color-border);
   font: inherit;
+  /* `font: inherit` would take the surrounding label's 0.875rem; see the
+     shared form-field rule for why 16px is the floor. */
+  font-size: 1rem;
   background: var(--color-bg);
   color: var(--color-text);
 }

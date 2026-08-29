@@ -13,7 +13,7 @@ import { CURRENCIES } from "../format.js";
 // come first and the cover-photo card after them, so a row of buttons
 // inside the fields card would sit mid-page above content that's still
 // part of the same single "create this trip" action.
-export function renderTripForm(container, trip, { onSaved, onCancel, showActions = true }) {
+export function renderTripForm(container, trip, { onSaved, onCancel, showActions = true, createRequest }) {
   container.innerHTML = `
     <form class="trip-form" novalidate>
       <p class="trip-form__error" role="alert" hidden></p>
@@ -112,19 +112,26 @@ export function renderTripForm(container, trip, { onSaved, onCancel, showActions
 
     let saved;
     try {
-      saved = trip ? await api.patch(`/trips/${trip.id}`, body) : await api.post("/trips", body);
+      // createRequest lets the create page send the cover photo in the same
+      // request (see trip-editor-page.js). It is inside the try because with
+      // one atomic request a failed cover *is* a failed create: nothing was
+      // written, so the error belongs on this form and the page stays put.
+      if (trip) {
+        saved = await api.patch(`/trips/${trip.id}`, body);
+      } else if (createRequest) {
+        saved = await createRequest(body);
+      } else {
+        saved = await api.post("/trips", body);
+      }
     } catch (err) {
       errorEl.textContent = err.body?.error || t("common.error");
       errorEl.hidden = false;
       return;
     }
 
-    // Awaited, and outside the try - onSaved is where the create page uploads
-    // the staged cover photo and then navigates, so releasing the guard as
-    // soon as POST /trips answered would re-enable Create halfway through and
-    // let a second press make a second trip. Outside the try because a failure
-    // in there is not a failure to save the trip, and reporting it as one
-    // would be a lie; that path handles its own errors.
+    // Awaited, and outside the try - onSaved navigates, so releasing the guard
+    // as soon as the create answered would re-enable Create halfway through
+    // and let a second press make a second trip.
     await onSaved?.(saved);
   });
 

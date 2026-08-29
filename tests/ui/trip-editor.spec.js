@@ -83,7 +83,7 @@ test.describe("the trip editor, end to end", () => {
     await expect(page.locator(".page__header h1")).toHaveText("UI suite: trip editor spec");
     await expect(page.locator(".trip-summary__subtitle")).toHaveText("Two weeks of nothing");
     await expect(page.locator(".trip-summary__dates")).toContainText("2026");
-    // The staged photo was flushed after the create returned an id.
+    // The staged photo rode along in the create request itself.
     await expect(page.locator(".trip-detail__cover")).toBeVisible();
 
     const created = await (await page.request.get(`/api/trips/${tripId}`)).json();
@@ -150,6 +150,39 @@ test.describe("the trip editor, end to end", () => {
     expect(updated.title).toBe("Renamed in settings");
     expect(updated.subtitle).toBe("after");
     expect(updated.end_date).toBe("2026-05-15");
+  });
+
+  // The point of Stage 24 Milestone 5-6: the cover goes in the same request as
+  // the trip, so a cover the server cannot fetch creates nothing at all.
+  // Before that the trip was created first and the failure arrived afterwards,
+  // in a dialog, having already left a trip behind with no picture.
+  test("a cover URL the server cannot fetch creates no trip", async ({ page }) => {
+    // Keyed on this title rather than on a count: the suite runs fully
+    // parallel, so sibling tests create and delete trips while this one runs.
+    const title = "UI suite: should not exist";
+
+    await gotoRoute(page, "/trips/new");
+    const form = page.locator(".trip-form");
+    await form.locator('input[name="title"]').fill(title);
+
+    // Port 1 on loopback: nothing is listening, so the server's fetch fails.
+    // The browser cannot preview it either, which is the pre-existing
+    // client-side warning; the create is what this test is about.
+    await page.locator('.image-field__url-form input[name="url"]').fill("http://127.0.0.1:1/cover.png");
+    await page.locator(".image-field__url-form button[type=submit]").click();
+
+    await page.locator('[data-action="create"]').click();
+
+    // The error lands on the form, and the page stays put rather than
+    // navigating to a trip that should not exist.
+    await expect(page.locator(".trip-form__error")).toBeVisible();
+    await expect(page).toHaveURL(/\/trips\/new$/);
+
+    const trips = await (await page.request.get("/api/trips")).json();
+    expect(
+      trips.filter((t) => t.title === title),
+      "a failed cover must not leave a trip behind",
+    ).toEqual([]);
   });
 
   test("refuses a trip with no title, and says so", async ({ page }) => {

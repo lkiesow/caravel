@@ -25,33 +25,6 @@ purpose — do not reconstruct it from an older stage plan without asking.
 
 ## Bugs and rough edges
 
-- **An image is buffered twice on its way in.** **(soon)** (Surfaced by the
-  image size-limit fix of 2026-08-28.) `fetchImage` in
-  `internal/httpapi/media.go` does `io.ReadAll` into a byte slice and then
-  `imaging.DecodeAndResize` does `io.ReadAll` on a reader over that same slice.
-  With the limit at 50MB that is 100MB of transient buffer per concurrent
-  upload, before the decoded bitmap. `DecodeAndResize` needs the bytes twice
-  (once to decode, once to read the EXIF APP1), so the fix is to pass the slice
-  rather than a reader, not to stream.
-
-- **A cover photo set by URL on the *new trip* form is only validated at Create
-  time.** **(soon)** (Stage 07; half-fixed in Stage 09 Milestone 4.) The URL is
-  staged locally, the trip is created, and only then does the server fetch it —
-  so a failure dialog arrives after a create that partly succeeded. Softened by
-  Stage 07 Milestone 9's preview-error handler: a URL the browser itself can't
-  load is already flagged in the card before Create is pressed.
-
-  **The fix to evaluate first is the one the location editor already uses**, not
-  the trip-independent validation endpoint this entry used to ask for.
-  `createItemMultipart` (`internal/httpapi/items_create.go:89`) takes the entity
-  JSON, an optional cover as either an `image` file part or an `image_url`
-  value, and any files, in one request — and parses, validates, decodes and
-  *fetches* everything before a single write, so an unfetchable URL fails with
-  nothing created. Trip creation is not multipart today
-  (`internal/httpapi/items.go:277` is where the location path branches on the
-  content type). Doing the same for trips would make the failure atomic rather
-  than merely earlier, which is a better answer than validating twice.
-
 - **The assistant's configured limits never reach the server.** (Found while
   planning Stage 24.) `CARAVEL_ASSIST_RATE_LIMIT` and
   `CARAVEL_ASSIST_MAX_CONCURRENT` are parsed (`internal/config/config.go:193`),
@@ -235,59 +208,6 @@ purpose — do not reconstruct it from an older stage plan without asking.
 
 ## Testing, CI and dev tooling
 
-- **`with_server.sh` leaks its server when a run dies badly.** **(soon)** (Found
-  while verifying Stage 23 Milestone 1.) The script picks a free port in
-  8090-8120 and builds a throwaway binary into a `/tmp/tmp.XXXX` directory, and
-  normally cleans both up. It does not always: 31 abandoned servers were found
-  holding the *entire* range, the oldest two days old, at which point `make
-  test-ui` fails with "no free port in 8090-8120 -- set PORT=... to pick another
-  range". The message is accurate and says nothing about the real cause.
-
-  **The cause is the `exec`, not the trap's signal list.** The script ends with
-  `exec "$@"` (`with_server.sh:172`), which *replaces* the shell -- so from the
-  moment the tests start there is no `trap cleanup EXIT` in the process at all,
-  and adding `INT TERM HUP QUIT` to it would change nothing. The fix is
-  structural: run the command as a child, capture its status, let cleanup run,
-  exit with the captured status; trap the signals as well, with an idempotent
-  cleanup. Nothing defends against `kill -9` of the wrapper, which is why the
-  second half still matters -- have the no-free-port message say that the range
-  is held by processes matching `/tmp/tmp.*/caravel` and how to clear them.
-  Until then, the
-  manual sweep is to kill the PIDs whose `/proc/PID/exe` resolves under
-  `/tmp/tmp.*/caravel` -- matching on the exe path rather than the process name,
-  which the developer's own `make dev` server also has.
-
-- **A fast `GREP` can spend the login budget by itself -- and the full suite
-  now trips it too.** **(soon)** (Stage 19 Milestone 1; the full-run half
-  observed in Stage 23 Milestones 6-7, where `register.spec.js` failed on
-  roughly half of full runs and passed every time in isolation. The entry used
-  to say the full suite was spread out enough not to hit it; that is no longer
-  true.) Login is limited to 10/min/IP, and the limiter now lives in the run's
-  own server rather than being shared with everything else on the machine -- an
-  improvement. But `auth.setup.js` spends two, and a `GREP` that selects a
-  login-heavy subset (the settings specs, say) finishes in twenty seconds and
-  spends the rest, so the run fails on a 429 whose message reads like a broken
-  seed -- it names the seed, not the limiter.
-
-  **The candidate fix is to exempt loopback from the login limiter**, which
-  leaves the control in place for every real attacker while the suite stops
-  tripping it. **Do the trusted-proxy entry first** (see "Caravel does not read
-  `X-Forwarded-For`" under Deployment and operations): today an instance behind
-  a reverse proxy on the same host sees *every* request arrive from 127.0.0.1,
-  so a loopback exemption written now would disable login rate limiting outright
-  in the deployment the documentation recommends. Once `clientIP` resolves the
-  real client through a trusted proxy, a proxied request no longer looks like
-  loopback and the exemption means what it says.
-
-  Even then one case stays ambiguous -- a proxy on localhost that the operator
-  never added to the trusted list -- so decide deliberately whether the
-  exemption is unconditional or gated on the same stub sentinel the LLM and
-  search providers already use. The sentinel is the safer key and, unlike
-  raising the limit under stubs (rejected in Stage 16), it does not weaken
-  anything an operator could accidentally turn on. Fallbacks if neither holds:
-  have the specs share one login the way `auth.setup.js` does, or at minimum
-  teach the message to name the 429 as its own cause.
-
 - **The contrast gate covers three routes and one exemption.** **(soon)** (Stage
   19 Milestone 6.) `make check-contrast` sweeps `/trips`, `/settings` and
   `/trips/new` in both palettes, holding each element to its own WCAG threshold,
@@ -357,42 +277,6 @@ purpose — do not reconstruct it from an older stage plan without asking.
 
 Nothing here is needed to keep developing; all of it is needed before anyone
 else runs this.
-
-- **Caravel does not read `X-Forwarded-For`, so behind a proxy every rate limit
-  is instance-wide.** **(soon)** (Raised in the 2026-08-29 backlog review; the
-  consequence was already documented, but nothing tracked fixing it.)
-  `clientIP` (`internal/httpapi/auth.go:248`) parses the host out of
-  `r.RemoteAddr` and nothing else, and all four limiters key on it
-  (`security.go:98-138`: login, geocode, image search, assist). Behind a reverse
-  proxy -- the deployment shape `docs/running/reverse-proxy.md` documents and
-  recommends -- every request carries the proxy's address, so 10 logins/minute
-  *per client* becomes 10/minute for the whole instance and one person signing
-  in wrong twice can lock everybody out. `StartSession`
-  (`internal/httpapi/auth.go:157`) records the same useless address as the
-  session's IP. That IP is currently write-only -- there is no sessions list,
-  no `/api/sessions` route and no list-by-user store method -- so fixing
-  `clientIP` is the whole job rather than the first half of one.
-
-  The fix is the standard pair: a trusted-proxy configuration
-  (`CARAVEL_TRUSTED_PROXIES`, a list of CIDRs) and a `clientIP` that walks
-  `X-Forwarded-For` from the right and returns the first address that is not a
-  trusted proxy, falling back to `RemoteAddr`. **Default it to the private
-  ranges**, the way Tomcat's `RemoteIpValve` and Rails' `trusted_proxies` do:
-  the header is honoured only when the direct peer is itself private, so an
-  instance exposed straight to the internet ignores it and the common proxy
-  shapes work unconfigured. What must never exist is a wildcard "trust
-  everything" setting -- the peer check is what makes the default defensible.
-  Note `isRequestSecure` (`security.go:17`) already trusts
-  `X-Forwarded-Proto` unconditionally, deliberately and safely, because that one
-  can only ever *add* `Secure` to a cookie -- the reasoning in its comment does
-  not carry over to this header, and the two should not be made consistent with
-  each other.
-
-  Also in scope: the reverse-proxy page's "Rate limits stop being per-client"
-  section (`docs/running/reverse-proxy.md:53-72`) is a truthful description of
-  the bug and has to be rewritten into configuration instructions when this
-  lands, and the same page's per-server snippets should show the header being
-  set alongside `X-Forwarded-Proto` (the nginx one already does).
 
 - **Vector tiles, for map labels in the user's own language.** **(soon)**
   (Surfaced by the tile-source change of 2026-08-25.) `CARAVEL_TILE_URL` now

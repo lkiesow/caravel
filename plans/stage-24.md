@@ -83,6 +83,9 @@ Commit this file as `plans/stage-24.md`. In the same commit, fix four entries in
 
 **Verify:** `make ci`. No behaviour change.
 
+**Done.** Landed as planned. The four corrections went in, plus the new entry
+for the assist-limits plumbing bug. Verified with `make ci`.
+
 ---
 
 ## 1. Trusted proxies, and a client IP that means something
@@ -163,6 +166,18 @@ that two different `X-Forwarded-For` clients behind a trusted proxy get
 `RemoteAddr` and headers on a test request — `testing_test.go`'s `do` (`:126`)
 has none, so add one helper beside it. Then `make ci`.
 
+**Done.** Landed as planned, with the private-range default agreed before
+implementation rather than the empty one this plan first proposed.
+`clientIP` is a method on `*Server` returning `(address, forwarded)`; the
+second value exists for Milestone 2. `peerAddr` uses `net.SplitHostPort` and
+strips an IPv6 zone. `getEnvPrefixList` is the first list-valued config
+helper. Verified with an 11-case table test (including the case the whole
+default rests on: a public peer sending a header is not believed), a handler
+test proving two forwarded clients behind one trusted proxy now get separate
+login budgets, and config tests for the default membership,
+replacement-not-extension, `none`, and typos naming the variable. `make ci`
+and `make docs` green.
+
 ---
 
 ## 2. Loopback is exempt from the login limiter
@@ -195,6 +210,14 @@ proving the bypass above is closed. Then the
 real proof: run the **full** UI suite three times and see `register.spec.js`
 pass each time. It failed on roughly half of full runs before.
 
+**Done.** Landed as planned. One deviation in the *test*, not the code: the
+planned "forged `X-Forwarded-For: 127.0.0.1`" case was written against a
+loopback peer, which proves nothing -- such a caller is exempt anyway, by
+being on loopback. Rewritten against a LAN peer (trusted by default, not
+local), which is the case the peer check actually closes. Verified with those
+three tests plus three consecutive full `make test-ui` runs, 174 passed each,
+with `register.spec.js` green in all three.
+
 ---
 
 ## 3. `with_server.sh` stops leaking its server
@@ -221,6 +244,18 @@ the wrapper (TERM), and confirm with `ss -ltn` and a `/proc/*/exe` sweep that no
 server and no `/tmp/tmp.*` directory survive — the case that leaks today. Then
 `PORT=8090 PORT_LAST`-equivalent exhaustion (or a temporary narrowed range) to
 read the new message. Then `make test-ui` green.
+
+**Done.** Landed, with one thing the plan did not anticipate: dropping the
+`exec` was not enough. Bash does not run a trap while a *foreground* child is
+running, so a TERM arriving mid-run sat unhandled until the tests finished on
+their own -- the leaking case exactly. The command is now backgrounded and
+`wait`ed on, which is interruptible. Verified by counting the processes whose
+`/proc/PID/exe` resolves under `/tmp/tmp.*/caravel`: killing the wrapper with
+TERM went 5 during the run to 4 after (the machine's pre-existing leaks),
+exit 143, where before the change the count stayed at 5. Success exits 0 and
+leaves nothing, a command exiting 7 propagates 7, a Playwright failure still
+reaches `make` as an error, and `register.spec.js` passes through the new
+path. `make ci` green.
 
 ---
 
@@ -288,6 +323,16 @@ unchanged); rejects both `image` and `image_url`; rejects a bad `trip` part; the
 JSON path still works. Plus `make test-postgres`, since this adds a transaction
 over `trips` and `media_assets`.
 
+**Done.** Landed as planned. `createTripTx` is shared with the JSON path (nil
+image), and `stageImage`/`storeImage` are reused unchanged from
+`items_create.go`, which is also how the multipart path picks up the
+provenance the old flow dropped. `maxTripCreateBytes` is 60MB. Verified with
+nine new tests -- the first handler-level coverage `POST /api/trips` has ever
+had -- covering the happy path, an unfetchable URL, an undecodable cover, both
+image and image_url, four malformed trip parts, a missing trip part, a
+coverless create, and the JSON path. `make ci` and `make test-postgres`
+green.
+
 ---
 
 ## 6. Creating a trip becomes one request — the form
@@ -316,6 +361,35 @@ over `trips` and `media_assets`.
 asserting that creating with an unreachable cover URL leaves the user on
 `/trips/new` with an inline error and creates **no** trip (`GET /api/trips` count
 before and after). Plus `make ci`.
+
+**Done.** Landed, with the seam placed differently than described: rather than
+the page owning the request, `renderTripForm` gained a `createRequest` option
+and the page passes `(body) => api.postForm("/trips", buildCreateForm(body))`.
+That keeps the call inside the form's existing try, which is what puts the
+error inline and leaves the page in create mode -- and with one atomic request
+a failed cover genuinely *is* a failed create, so the comment about `onSaved`
+being outside the try no longer applied and was rewritten. `alertDialog` is
+gone from this page; `image.fetchFailed` stays, still used by
+`image-field.js`.
+
+Verified: the existing create-with-cover test passes unchanged, and a new spec
+asserts a cover URL the server cannot fetch leaves the user on `/trips/new`
+with an inline error and no trip by that title. It is keyed on the title
+rather than a trip count, because the suite runs fully parallel and a sibling
+test creates and deletes trips underneath it -- the count version failed for
+that reason. The new test was confirmed to fail against the old three-request
+page. Manual pass at 324x756 against `make dev`: the error lands on the Basic
+info card, the page stays put, the title and the staged cover survive, and
+`GET /api/trips` shows nothing created.
+
+**One regression worth naming.** This page used to show a translated
+`image.fetchFailed` in a dialog and log the Go error to the console; it now
+shows the server's raw error inline (`could not fetch image from url: Get
+"http://...": dial tcp ...: connect: connection refused`). That matches what
+the location editor has done since Stage 23, so the app is now consistent, and
+the 2026-08-29 review deliberately dropped the backlog entry about raw Go
+errors reaching users. Recorded because the consistency was gained by making
+this page worse, not better.
 
 ---
 

@@ -4,7 +4,6 @@ import { navigate } from "../router.js";
 import { renderTripForm } from "../components/trip-form.js";
 import { renderImageField } from "../components/image-field.js";
 import { icon } from "../icon.js";
-import { alertDialog } from "../components/dialog.js";
 
 // Trip creation only ("/trips/new" - editing an existing trip now happens
 // inline in its Settings tab, see settings-tab.js). Two cards, Basic info
@@ -14,15 +13,19 @@ import { alertDialog } from "../components/dialog.js";
 // below both cards rather than inside the form (renderTripForm's
 // showActions: false), since there's only one action here and it belongs at
 // the bottom of everything it commits, not mid-page. The cover-photo picker
-// runs in
-// image-field.js's staging mode (no trip exists yet): a pick is held in
-// memory and previewed locally, then uploaded and attached as part of the
-// same save that creates the trip. On success, this navigates straight to
-// the trip's view page - unambiguous feedback that the save happened,
-// matching how opening any other trip works. If the staged image itself
-// fails to upload/attach (the trip was still created), it lands on the
-// trip's Settings tab instead, since that's the one place a broken image
-// can be retried.
+// runs in image-field.js's staging mode (no trip exists yet): a pick is held
+// in memory and previewed locally, then sent as part of the create.
+//
+// Since Stage 24 that is *one* request: buildCreateForm packs the trip and
+// the staged cover into a multipart body and POST /api/trips validates,
+// fetches and writes it all together (see internal/httpapi/trips_create.go),
+// the same shape the location editor has used since Stage 23. Before that it
+// was three - create, upload, attach - so a cover the server could not fetch
+// left a trip already created with no picture, an alert after the fact, and a
+// landing on the Settings tab to retry. Now a failure creates nothing, the
+// error shows inline on the form, and the page stays where it is with the
+// staged pick intact. On success this navigates straight to the trip's view
+// page, unambiguous feedback that the save happened.
 export async function renderTripEditorPage(container) {
   let stagedImage = null;
 
@@ -51,39 +54,8 @@ export async function renderTripEditorPage(container) {
 
     const form = renderTripForm(container.querySelector(".trip-form-slot"), null, {
       showActions: false,
-      onSaved: async (saved) => {
-        let imageFailed = false;
-        if (stagedImage) {
-          try {
-            let asset;
-            if (stagedImage.kind === "file") {
-              const formData = new FormData();
-              formData.append("file", stagedImage.file);
-              const res = await fetch(`/api/trips/${saved.id}/media`, { method: "POST", body: formData, credentials: "same-origin" });
-              asset = await res.json();
-              if (!res.ok) throw new Error(asset.error || "upload failed");
-            } else {
-              asset = await api.post(`/trips/${saved.id}/media/url`, { url: stagedImage.url });
-            }
-            await api.put(`/trips/${saved.id}/preview-image`, { media_asset_id: asset.id });
-          } catch (err) {
-            // The trip was already created - don't block navigation on a
-            // failed image upload. Land on the trip's Settings tab
-            // instead of the view page, since that's the one place this
-            // can be retried.
-            //
-            // The message is the app's own, not the server's: this used to
-            // alert() the Go error verbatim ("could not fetch image from url:
-            // server returned status 403"), untranslated and in developer
-            // language, while reading as though the whole create had failed.
-            // The detail is still worth having, so it goes to the console.
-            imageFailed = true;
-            console.error("preview image upload failed:", err.body?.error || err.message || err);
-            await alertDialog({ messageKey: "image.fetchFailed" });
-          }
-        }
-        navigate(imageFailed ? `/trips/${saved.id}/settings` : `/trips/${saved.id}`);
-      },
+      createRequest: (body) => api.postForm("/trips", buildCreateForm(body)),
+      onSaved: (saved) => navigate(`/trips/${saved.id}`),
     });
 
     renderImageField(container.querySelector(".image-field-slot"), {
@@ -104,6 +76,27 @@ export async function renderTripEditorPage(container) {
       if (stagedImage?.kind === "file" && stagedImage.previewUrl) URL.revokeObjectURL(stagedImage.previewUrl);
       navigate("/trips");
     });
+  }
+
+  // The trip JSON and the staged cover in one multipart body, matching
+  // buildCreateForm in location-editor-page.js.
+  function buildCreateForm(body) {
+    const form = new FormData();
+    form.append("trip", JSON.stringify(body));
+
+    if (stagedImage?.kind === "file") {
+      form.append("image", stagedImage.file);
+    } else if (stagedImage?.kind === "url") {
+      form.append("image_url", stagedImage.url);
+      // The provenance rides along. The old three-request flow posted only
+      // {url}, so a cover picked with attribution lost it here - and unlike
+      // the image itself, that cannot be recovered afterwards.
+      const provenance = stagedImage.provenance ?? {};
+      if (provenance.source_url) form.append("source_url", provenance.source_url);
+      if (provenance.credit) form.append("credit", provenance.credit);
+      if (provenance.license) form.append("license", provenance.license);
+    }
+    return form;
   }
 
   render();

@@ -294,6 +294,17 @@ test.describe("the location editor, end to end", () => {
     const input = page.locator(".tag-field__input");
     const chips = page.locator(".tag-field__chip");
 
+    // The tag box is a field in this form and has to look like one. It is the
+    // only input here that is not a direct child of its own <label> -- it sits
+    // inside .suggest, the positioning context its popup is anchored to -- so
+    // it does not inherit the stretch the others get for free, and without a
+    // width of its own it sat visibly narrower than its neighbours. Nothing
+    // else catches that: a field that is too small is not an overflow.
+    const widthOf = (sel) => page.locator(sel).evaluate((el) => Math.round(el.getBoundingClientRect().width));
+    expect(await widthOf(".tag-field__input"), "tag box matches the title field").toBe(
+      await widthOf('.item-form input[name="title"]')
+    );
+
     // Enter commits a tag. It must NOT submit the form -- the form treats Enter
     // in any single-line field as Save, so this only works because the field
     // stops the event once it has consumed it. Staying on /new is the assertion.

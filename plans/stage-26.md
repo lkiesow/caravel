@@ -356,6 +356,18 @@ Also driven by hand at 324x756: no horizontal overflow, the field name matches
 its siblings at 14px, the input is 16px so iOS Safari does not zoom, and a card
 with five tags shows three and `+2` rather than growing past its neighbours.
 
+**Follow-up: the tag box was narrower than every other field.** Reported from a
+screenshot, and visible at both widths. Every other input in this form is a
+direct flex child of its own `<label>`, so it stretches to the column for free;
+the tag box cannot be, because it has to sit inside `.suggest`, which is the
+positioning context its suggestion popup is anchored to. `.suggest` stretching
+does not make the input inside it stretch, so the box kept a text input's
+default intrinsic width -- 215px against its neighbours' 258px at 324px. One
+`width: 100%` fixes it, and the spec now asserts the two are equal, checked to
+fail without the rule. Worth an assertion rather than a look: nothing else in
+the suite could catch this, because a field that is too *small* is not an
+overflow.
+
 One deviation from the plan: it named `location.tags.remove` and
 `location.tags.add` as the new keys. They landed as `location.form.tagsRemove`
 and `location.form.tagsAdd`, beside `location.form.tags` and

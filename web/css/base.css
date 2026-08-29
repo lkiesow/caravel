@@ -1547,6 +1547,17 @@ button {
   gap: 0.25rem;
 }
 
+/* Full width, like every other field in this form.
+   The sibling inputs are direct flex children of their own <label>, so they
+   stretch to it for free. This one is a grandchild: it has to sit inside
+   .suggest, which is the positioning context its suggestion popup is anchored
+   to, and .suggest stretching does not make the input inside it stretch too --
+   so without this the box kept a text input's default intrinsic width and sat
+   visibly narrower than the fields above and below it. */
+.tag-field__input {
+  width: 100%;
+}
+
 .tag-field__label {
   font-size: 0.875rem;
   color: var(--color-text-muted);

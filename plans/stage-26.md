@@ -636,6 +636,45 @@ original sequence exactly. Assert the trigger is accent-coloured under a
 non-default sort and neutral again under Added. Manual pass at 324×756 that
 search + filter + sort + New still fit one non-wrapping row.
 
+**Done.** `SORTS = ["added", "title", "date"]` on a plain `renderMenu` with the
+`arrow-down-up` icon already in the sprite, in the toolbar space Milestone 4
+freed. `sorted()` runs inside `applyFilters` after `matches()`, so sorting
+orders what the filters left rather than competing with them. The comparators
+are the trips-page ones: `Intl.Collator(getLocale(), {sensitivity:"base",
+numeric:true})` for titles, and for dates the first range's start with undated
+locations **last** -- unscheduled is not imminent, and on a half-planned trip
+most locations have no days yet, so putting them first would bury the ones that
+do.
+
+One deviation, and one correction to my own reasoning:
+
+- The labels started as "In the order added" / "In Reihenfolge des
+  Hinzufügens" and became **"As added" / "Wie hinzugefügt"**. The German was
+  30 characters in a menu that has to open inside 324px.
+- **The "sorts a copy" comment was overstated, and the test that was supposed
+  to prove it did not.** Removing the spread and sorting in place leaves the
+  spec green, because `applyFilters` already hands `sorted()` a fresh array
+  from `.filter()`. The copy is belt and braces, not the mechanism. Both the
+  code comment and the spec comment now say so rather than claiming a guarantee
+  that is really coming from somewhere else. (`trips-page.js` carries the same
+  overstatement; it was left alone, being outside this stage.)
+
+Verified: `make ci` green, `make test-ui` green (190). Two new specs, on a trip
+seeded so that no two of the three orders agree -- otherwise an assertion here
+proves nothing. They cover the default being the fetched order with the trigger
+neutral, collation (Ä sorting with A, case-insensitively, and "Hut 2" before
+"Hut 10"), dates earliest-first with the undated ones last, returning to the
+default restoring the original order, the trigger accent appearing and going
+again, and sorting composing with both the category filter and the search box.
+
+Driven by hand at 324px in both languages: four controls -- search, filter,
+sort, New -- share a top edge at 44x44 in a 292px toolbar with no horizontal
+overflow, and the German dropdown is 181px wide inside the 324px screen.
+
+`plans/todo.md`: **Dates on the locations list** is removed. Milestone 3 built
+the card line and this milestone built the sort, which is both things that entry
+named.
+
 ---
 
 ## 6. Filter by tag, and by date

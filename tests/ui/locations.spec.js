@@ -478,6 +478,113 @@ test.describe("the location editor, end to end", () => {
     await page.setViewportSize(MOBILE);
   });
 
+  // Stage 26 Milestone 5: sorting. Together with the date line on the card,
+  // this closes the "Dates on the locations list" backlog entry, which named
+  // both.
+  //
+  // The trip is seeded so that no two of the three orders agree, which is the
+  // only way an assertion here proves the sort is doing anything.
+  test("sorts by name and by date, and keeps undated locations last", async ({ page }) => {
+    const mk = (title, dates) =>
+      page.request.post(`/api/trips/${tripId}/items`, {
+        data: { title, category: "site", type: "", dates },
+      });
+
+    // Insertion order: neither alphabetical nor chronological.
+    await mk("Zebra crossing", [{ start_date: "2026-09-05", end_date: "2026-09-05" }]);
+    await mk("Älvsborg", [{ start_date: "2026-09-20", end_date: "2026-09-20" }]);
+    await mk("apple orchard", []);
+    await mk("Hut 10", [{ start_date: "2026-09-01", end_date: "2026-09-01" }]);
+    await mk("Hut 2", []);
+
+    await gotoRoute(page, `/trips/${tripId}/locations`);
+
+    const menu = page.locator(".locations-sort-slot .menu");
+    const titles = () =>
+      page.locator("item-card").evaluateAll((els) => els.map((e) => e.getAttribute("title")));
+    const choose = async (label) => {
+      await menu.locator('[data-action="toggle"]').click();
+      await page.getByRole("menuitemradio", { name: label, exact: true }).click();
+      await expect(menu.locator(".menu__dropdown")).toBeHidden();
+    };
+
+    const added = await titles();
+    expect(added, "the default is the order the API returned").toEqual([
+      "Zebra crossing",
+      "Älvsborg",
+      "apple orchard",
+      "Hut 10",
+      "Hut 2",
+    ]);
+    // The default order is not "sorted", so the trigger stays neutral.
+    await expect(menu.locator('[data-action="toggle"]')).not.toHaveClass(/menu__trigger--active/);
+
+    await choose("By name");
+    expect(await titles(), "collated: Ä with A, case-insensitive, 2 before 10").toEqual([
+      "Älvsborg",
+      "apple orchard",
+      "Hut 2",
+      "Hut 10",
+      "Zebra crossing",
+    ]);
+    // A non-default order tints the trigger, which under 640px is the only
+    // cue left once the label is hidden.
+    await expect(menu.locator('[data-action="toggle"]')).toHaveClass(/menu__trigger--active/);
+
+    await choose("By date");
+    expect(await titles(), "earliest first; the two undated go last, not first").toEqual([
+      "Hut 10",
+      "Zebra crossing",
+      "Älvsborg",
+      "apple orchard",
+      "Hut 2",
+    ]);
+
+    // Back to the default restores the fetched order exactly. Note what this
+    // does and does not show: it proves "as added" is recoverable, not that
+    // sorted() copies -- applyFilters already passes it a fresh array from
+    // .filter(), so this assertion passes even with the spread removed. It was
+    // checked that way rather than assumed.
+    await choose("As added");
+    expect(await titles()).toEqual(added);
+    await expect(menu.locator('[data-action="toggle"]')).not.toHaveClass(/menu__trigger--active/);
+  });
+
+  // Sorting orders what the filters left, rather than replacing them.
+  test("sorting composes with a filter and with the search box", async ({ page }) => {
+    const mk = (title, category) =>
+      page.request.post(`/api/trips/${tripId}/items`, {
+        data: { title, category, type: "", dates: [] },
+      });
+    await mk("Zulu inn", "stay");
+    await mk("Alpha inn", "stay");
+    await mk("Mike museum", "site");
+
+    await gotoRoute(page, `/trips/${tripId}/locations`);
+
+    await page.locator(".locations-filter-slot [data-action=\"toggle\"]").click();
+    await page.locator('[data-group="category"]').click();
+    await page.locator('[data-value="stay"]').click();
+
+    await page.locator('.locations-sort-slot [data-action="toggle"]').click();
+    await page.getByRole("menuitemradio", { name: "By name", exact: true }).click();
+
+    const titles = await page
+      .locator("item-card")
+      .evaluateAll((els) => els.map((e) => e.getAttribute("title")));
+    expect(titles, "the filter still narrows, the sort still orders").toEqual([
+      "Alpha inn",
+      "Zulu inn",
+    ]);
+
+    // And the search box narrows the already-sorted list rather than resetting
+    // the order.
+    await page.locator('input[name="q"]').fill("inn");
+    expect(
+      await page.locator("item-card").evaluateAll((els) => els.map((e) => e.getAttribute("title")))
+    ).toEqual(["Alpha inn", "Zulu inn"]);
+  });
+
   // Omitting the tags must not clear them -- the same absent-versus-empty rule
   // the API keeps for links and dates, checked from the browser because the
   // editor is what decides whether to send the key at all.

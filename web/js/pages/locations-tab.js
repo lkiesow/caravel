@@ -1,8 +1,9 @@
 import { api } from "../api.js";
-import { t, translatePage } from "../i18n.js";
+import { t, translatePage, getLocale } from "../i18n.js";
 import { navigate } from "../router.js";
 import { icon } from "../icon.js";
 import { renderFilterMenu } from "../components/filter-menu.js";
+import { renderMenu } from "../components/menu.js";
 import "../components/location-card.js";
 import { renderLoading } from "../components/loading.js";
 import { canLocate, distanceKm, getCurrentPosition, locateErrorKey } from "../geolocation.js";
@@ -14,6 +15,20 @@ const CATEGORIES = ["site", "stay", "transport"];
 // "walkable / a short drive / same region", not a precise number.
 const DISTANCE_RADII_KM = [1, 2, 5, 10, 25];
 const ANY_DISTANCE = "any";
+
+// The orders the list can be read in. "added" rather than the trips list's
+// "newest": locations have no reorder UI, so items.sort_order is the order they
+// were created in, and calling that "newest" would be a lie about a list that
+// reads oldest-first.
+//
+// A plain renderMenu, not a group in the filter menu beside it. Sorting is not
+// filtering - it changes the order of the answer, not which questions the list
+// is answering - and trips-page.js already established the separate sort
+// trigger with this icon. Consistency between the app two list screens is
+// worth more than one fewer control, and collapsing the filters into one
+// trigger is exactly what made room for this one.
+const SORTS = ["added", "title", "date"];
+const DEFAULT_SORT = "added";
 
 // The toolbar is one non-wrapping row - search (flexible) + filter menu +
 // "New location" - which is what makes it fit 324px, where the previous
@@ -42,6 +57,7 @@ export async function renderItemsTab(container, trip) {
   let query = "";
   let allItems = [];
   let radiusKm = null;
+  let sort = DEFAULT_SORT;
   // Kept between selections so switching 5km -> 10km does not ask the device
   // again. Not fetched on load: asking for someone's position before they
   // have expressed any interest in it is rude, and the permission prompt
@@ -56,6 +72,7 @@ export async function renderItemsTab(container, trip) {
           <input type="search" name="q" autocomplete="off" data-i18n-placeholder="locations.searchPlaceholder" data-i18n-aria-label="locations.searchPlaceholder" />
         </div>
         <div class="locations-filter-slot"></div>
+        <div class="locations-sort-slot"></div>
         ${editable ? `<button class="btn btn-primary btn-collapse" data-action="new-item">${icon("plus")} <span data-i18n="locations.new"></span></button>` : ""}
       </div>
       <p class="locations-distance-status" role="status" hidden></p>
@@ -87,8 +104,48 @@ export async function renderItemsTab(container, trip) {
     return `${item.title} ${item.type ?? ""}`.toLowerCase().includes(query);
   }
 
+  // Sorts a copy rather than in place. allItems is in the order the API
+  // returned, which is exactly what "as added" means, so it must never be
+  // reordered.
+  //
+  // Being precise about what protects that, because it is easy to
+  // misattribute: the caller already hands this a fresh array from .filter(),
+  // so today the spread is belt and braces rather than the thing doing the
+  // work -- removing it does not break anything, and no test catches it. It
+  // stays so that sorted() is safe to call on any array, including allItems
+  // itself if a later caller skips the filter. Same shape as trips-page.js.
+  function sorted(items) {
+    const out = [...items];
+    if (sort === "title") {
+      // Under the active locale, so German umlauts sort where a German reader
+      // expects rather than after z. numeric so "Hut 2" precedes "Hut 10".
+      const collator = new Intl.Collator(getLocale(), { sensitivity: "base", numeric: true });
+      out.sort((a, b) => collator.compare(a.title, b.title));
+    } else if (sort === "date") {
+      // Earliest first, by the first range - the ranges arrive already sorted
+      // from collapseDateRanges, so dates[0] is the earliest without sorting
+      // them again. ISO dates compare as strings.
+      //
+      // A location with no dates goes last rather than first: it is
+      // unscheduled, not imminent. That is the rule the trips list uses for a
+      // trip with no start date, and it matters more here, since on a
+      // half-planned trip most locations have no days yet and they would
+      // otherwise bury the ones that do.
+      const startOf = (item) => item.dates?.[0]?.start_date ?? null;
+      out.sort((a, b) => {
+        const x = startOf(a);
+        const y = startOf(b);
+        if (!x && !y) return 0;
+        if (!x) return 1;
+        if (!y) return -1;
+        return x < y ? -1 : x > y ? 1 : 0;
+      });
+    }
+    return out;
+  }
+
   function applyFilters() {
-    const visible = allItems.filter(matches);
+    const visible = sorted(allItems.filter(matches));
 
     // Only while a radius is active, and only if there is actually something
     // it could not measure - otherwise it is a warning about nothing.
@@ -193,6 +250,21 @@ export async function renderItemsTab(container, trip) {
         },
       },
     ],
+  });
+
+  renderMenu(container.querySelector(".locations-sort-slot"), {
+    iconName: "arrow-down-up",
+    ariaLabel: "locations.sort.label",
+    activeValue: DEFAULT_SORT,
+    // Sorting by anything other than the default tints the trigger, so a
+    // collapsed icon-only button on a phone still says the order is not the
+    // one the list normally has - the same cue the filter funnel carries.
+    neutralValue: DEFAULT_SORT,
+    items: SORTS.map((value) => ({ value, label: t(`locations.sort.${value}`) })),
+    onSelect: (value) => {
+      sort = value;
+      applyFilters();
+    },
   });
 
   container.querySelector('input[name="q"]').addEventListener("input", (e) => {

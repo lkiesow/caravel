@@ -84,16 +84,6 @@ purpose — do not reconstruct it from an older stage plan without asking.
   i18n keys, and entry-row layout work at 324px, where the row is already
   a thumbnail, a title and a menu.
 
-- **Dates on the locations list.** (Stage 25.) **Claimed by Stage 26** --
-  Milestone 3 puts the date line on the card, Milestone 5 adds sorting by date.
-  This entry names both, so it comes out only once the second has landed, not
-  the first. A location now knows which itinerary days it is on, but the
-  locations tab shows none of it -- a "5-7 Sep" line on the card, or sorting the
-  list by date, is the obvious next use. Whoever does it must add a trip-wide
-  query and bucket by item in Go, following `ListItemCoordinates`
-  (`internal/httpapi/items.go:120-126`); calling the by-item query per card is a
-  query per location.
-
 - **Multi-select tag filtering.** (Stage 26.) The tag filter that stage builds
   is single-select, so it sits inside the `menuitemradio` model every menu in
   the app shares. Combining tags -- Reykjavik AND for-kids -- is where tags

@@ -818,10 +818,20 @@ textarea {
    - a root row and an option row swapping places must not change the panel's
    width under the pointer. */
 .menu--filter__panel {
-  min-width: 13rem;
+  /* 12rem, not the 13 this started at: the panel is anchored to the trigger's
+     right edge, and at 324px that leaves roughly 204px to the left screen
+     edge, so 13rem put four pixels of it off-screen. */
+  min-width: 12rem;
   display: flex;
   flex-direction: column;
   padding: 0.25rem;
+  /* The date panel is the tall one -- a back row, three presets, two labelled
+     date fields and an Apply -- and it ran past the bottom of a 324x756 screen
+     with Apply below the fold. Capped and scrolled internally so the last
+     control in the tallest panel is always reachable, rather than depending on
+     the page behind it having enough content to scroll. */
+  max-height: min(22rem, 65vh);
+  overflow-y: auto;
 }
 
 /* A root row: the filter's current value on the left, a chevron on the right.
@@ -918,6 +928,43 @@ textarea {
 
 .menu--filter__back-icon {
   flex-shrink: 0;
+}
+
+/* The date filter's range form, inside the filter menu's second level. The
+   presets above it are ordinary menu rows; this is the part no row can be. */
+.date-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem 0.25rem;
+  margin-top: 0.25rem;
+  border-top: 1px solid var(--color-border);
+}
+
+/* Stacked, each labelled. Side by side they were wider than this panel can be:
+   the dropdown is anchored to the trigger's right edge, which at 324px leaves
+   it about 250px to grow into, and a pair of native date inputs wants more than
+   that -- so it grew off the left of the screen instead. */
+.date-filter__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+/* min-width: 0 so the input shrinks to its label rather than to its own wide
+   intrinsic size, which is what pushed the panel out in the first place. */
+.date-filter input {
+  min-width: 0;
+  width: 100%;
+  padding: 0.375rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.8125rem;
 }
 
 /* Qualified by .menu__dropdown, not bare: `.menu__dropdown button` above sets

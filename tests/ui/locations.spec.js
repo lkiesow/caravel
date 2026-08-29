@@ -585,6 +585,142 @@ test.describe("the location editor, end to end", () => {
     ).toEqual(["Alpha inn", "Zulu inn"]);
   });
 
+  // Stage 26 Milestone 6: filtering by tag and by date.
+  test("filters by tag, and offers the group only once the trip has tags", async ({ page }) => {
+    const menu = page.locator(".locations-filter-slot .menu");
+    const open = async () => menu.locator('[data-action="toggle"]').click();
+
+    // An untagged trip does not get a filter that could only ever say "any":
+    // this is the one group whose options can legitimately be empty.
+    await gotoRoute(page, `/trips/${tripId}/locations`);
+    await open();
+    await expect(menu.locator('[data-group="tags"]')).toHaveCount(0);
+
+    const mk = (title, tags) =>
+      page.request.post(`/api/trips/${tripId}/items`, {
+        data: { title, category: "site", type: "", tags },
+      });
+    await mk("Blue lagoon", ["south", "spa"]);
+    await mk("Grey lagoon", ["south"]);
+    await mk("Far north", ["north"]);
+
+    await gotoRoute(page, `/trips/${tripId}/locations`);
+    await open();
+    await menu.locator('[data-group="tags"]').click();
+
+    // Sorted case-insensitively, with the neutral option first. The options
+    // come from the list already in memory -- the tab holds every location, so
+    // asking the server for a projection of what it is looking at would be a
+    // request for nothing.
+    await expect(menu.locator("[data-value]")).toHaveText(["Any tag", "north", "south", "spa"]);
+
+    await menu.locator('[data-value="south"]').click();
+    await expect(page.locator("item-card")).toHaveCount(2);
+    await open();
+    await expect(menu.locator('[data-group="tags"]')).toHaveText("south");
+    await expect(menu.locator('[data-action="toggle"]')).toHaveClass(/menu__trigger--active/);
+
+    // Back to Any tag restores the list.
+    await menu.locator('[data-group="tags"]').click();
+    await menu.locator('[data-value="any"]').click();
+    await expect(page.locator("item-card")).toHaveCount(3);
+  });
+
+  test("filters by date: not scheduled, scheduled, and a range that overlaps", async ({ page }) => {
+    const mk = (title, dates) =>
+      page.request.post(`/api/trips/${tripId}/items`, {
+        data: { title, category: "site", type: "", dates },
+      });
+    // A stay spanning three days, a single day before it, and two with no
+    // itinerary days at all.
+    await mk("Long stay", [{ start_date: "2026-09-05", end_date: "2026-09-07" }]);
+    await mk("One day", [{ start_date: "2026-09-01", end_date: "2026-09-01" }]);
+    await mk("Someday", []);
+    await mk("Maybe", []);
+
+    await gotoRoute(page, `/trips/${tripId}/locations`);
+    const menu = page.locator(".locations-filter-slot .menu");
+    const open = async () => menu.locator('[data-action="toggle"]').click();
+    const titles = () =>
+      page.locator("item-card").evaluateAll((els) => els.map((e) => e.getAttribute("title")));
+
+    // "Not scheduled" is why this is a preset list and not only a range
+    // picker: while planning, "what have I not placed yet" is the question
+    // asked most, and no range can express it.
+    await open();
+    await menu.locator('[data-group="date"]').click();
+    await menu.locator('[data-value="unscheduled"]').click();
+    expect((await titles()).sort()).toEqual(["Maybe", "Someday"]);
+    await open();
+    await expect(menu.locator('[data-group="date"]')).toHaveText("Not scheduled");
+
+    await menu.locator('[data-group="date"]').click();
+    await menu.locator('[data-value="scheduled"]').click();
+    expect((await titles()).sort()).toEqual(["Long stay", "One day"]);
+
+    // A range that falls *inside* the long stay must find it: overlap, not
+    // containment. A hotel booked the 5th to the 7th is part of what happens
+    // on the 6th.
+    await open();
+    await menu.locator('[data-group="date"]').click();
+    await menu.locator('.date-filter input[name="from"]').fill("2026-09-06");
+    await menu.locator('.date-filter input[name="to"]').fill("2026-09-06");
+    await menu.locator('.date-filter button[type="submit"]').click();
+    expect(await titles()).toEqual(["Long stay"]);
+
+    // The row shows the range itself, formatted -- its state is not one of a
+    // fixed set of options, so it computes its own label.
+    await open();
+    await expect(menu.locator('[data-group="date"]')).toContainText("6");
+
+    // An earlier window finds the other one and not the stay.
+    await menu.locator('[data-group="date"]').click();
+    await menu.locator('.date-filter input[name="from"]').fill("2026-09-01");
+    await menu.locator('.date-filter input[name="to"]').fill("2026-09-02");
+    await menu.locator('.date-filter button[type="submit"]').click();
+    expect(await titles()).toEqual(["One day"]);
+
+    // Apply with both ends empty is not a range, it is the neutral state.
+    await open();
+    await menu.locator('[data-group="date"]').click();
+    await menu.locator('.date-filter input[name="from"]').fill("");
+    await menu.locator('.date-filter input[name="to"]').fill("");
+    await menu.locator('.date-filter button[type="submit"]').click();
+    await expect(page.locator("item-card")).toHaveCount(4);
+    await open();
+    await expect(menu.locator('[data-group="date"]')).toHaveText("Any date");
+    await expect(menu.locator('[data-action="toggle"]')).not.toHaveClass(/menu__trigger--active/);
+  });
+
+  // The date group's neutral state is a range rather than one of its options,
+  // so Clear has to reach it through onClear. Worth its own case: this is the
+  // group the hook was added for.
+  test("clearing resets a date range as well as the other filters", async ({ page }) => {
+    await page.request.post(`/api/trips/${tripId}/items`, {
+      data: { title: "Dated", category: "site", type: "", tags: ["x"], dates: [{ start_date: "2026-09-05", end_date: "2026-09-05" }] },
+    });
+    await page.request.post(`/api/trips/${tripId}/items`, {
+      data: { title: "Undated", category: "site", type: "", tags: [], dates: [] },
+    });
+
+    await gotoRoute(page, `/trips/${tripId}/locations`);
+    const menu = page.locator(".locations-filter-slot .menu");
+    const open = async () => menu.locator('[data-action="toggle"]').click();
+
+    await open();
+    await menu.locator('[data-group="date"]').click();
+    await menu.locator('.date-filter input[name="from"]').fill("2026-09-05");
+    await menu.locator('.date-filter button[type="submit"]').click();
+    await expect(page.locator("item-card")).toHaveCount(1);
+
+    await open();
+    await menu.locator('[data-action="clear"]').click();
+    await expect(page.locator("item-card")).toHaveCount(2);
+    await open();
+    await expect(menu.locator('[data-group="date"]')).toHaveText("Any date");
+    await expect(menu.locator('[data-action="toggle"]')).not.toHaveClass(/menu__trigger--active/);
+  });
+
   // Omitting the tags must not clear them -- the same absent-versus-empty rule
   // the API keeps for links and dates, checked from the browser because the
   // editor is what decides whether to send the key at all.

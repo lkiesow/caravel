@@ -8,6 +8,7 @@ import "../components/location-card.js";
 import { renderLoading } from "../components/loading.js";
 import { canLocate, distanceKm, getCurrentPosition, locateErrorKey } from "../geolocation.js";
 import { canEdit } from "../trip-role.js";
+import { formatDateRange } from "../format.js";
 
 const CATEGORIES = ["site", "stay", "transport"];
 
@@ -29,6 +30,14 @@ const ANY_DISTANCE = "any";
 // trigger is exactly what made room for this one.
 const SORTS = ["added", "title", "date"];
 const DEFAULT_SORT = "added";
+
+const ANY_TAG = "any";
+const ANY_DATE = "any";
+// "Not scheduled" is the reason the date filter is a small preset list and not
+// only a range picker: while a trip is being planned, "what have I not placed
+// yet" is the question asked most, and no range can express it.
+const UNSCHEDULED = "unscheduled";
+const SCHEDULED = "scheduled";
 
 // The toolbar is one non-wrapping row - search (flexible) + filter menu +
 // "New location" - which is what makes it fit 324px, where the previous
@@ -58,6 +67,11 @@ export async function renderItemsTab(container, trip) {
   let allItems = [];
   let radiusKm = null;
   let sort = DEFAULT_SORT;
+  let activeTag = ANY_TAG;
+  // The date filter has more states than a value: three presets plus a range,
+  // so it carries a small object rather than a string. `mode` is what the
+  // predicate switches on; from/to are only meaningful in "range".
+  let dateFilter = { mode: ANY_DATE, from: "", to: "" };
   // Kept between selections so switching 5km -> 10km does not ask the device
   // again. Not fetched on load: asking for someone's position before they
   // have expressed any interest in it is rude, and the permission prompt
@@ -100,8 +114,56 @@ export async function renderItemsTab(container, trip) {
     if (radiusKm && devicePosition && hasCoordinates(item)) {
       if (distanceKm(devicePosition, { lat: item.lat, lng: item.lng }) > radiusKm) return false;
     }
+    if (activeTag !== ANY_TAG && !(item.tags ?? []).includes(activeTag)) return false;
+    if (!matchesDate(item)) return false;
     if (!query) return true;
-    return `${item.title} ${item.type ?? ""}`.toLowerCase().includes(query);
+    // Tags join the search as of Stage 26 Milestone 6: they are words somebody
+    // chose for this location, so a search that ignored them would miss the
+    // most deliberate labels on the page. `type` is still here and goes in
+    // Milestone 7.
+    return `${item.title} ${item.type ?? ""} ${(item.tags ?? []).join(" ")}`.toLowerCase().includes(query);
+  }
+
+  function matchesDate(item) {
+    const dates = item.dates ?? [];
+    switch (dateFilter.mode) {
+      case UNSCHEDULED:
+        return dates.length === 0;
+      case SCHEDULED:
+        return dates.length > 0;
+      case "range": {
+        const { from, to } = dateFilter;
+        if (!from && !to) return true;
+        // Overlap, not containment: a hotel booked the 5th to the 12th is
+        // part of what happens on the 6th, so asking for the 6th has to find
+        // it. An open end means unbounded in that direction, so a range with
+        // only a start reads as "from here on".
+        return dates.some((d) => (!to || d.start_date <= to) && (!from || d.end_date >= from));
+      }
+      default:
+        return true;
+    }
+  }
+
+  // Every tag in use on this trip, for the filter's options. Derived from the
+  // list already in memory rather than from GET /trips/{id}/tags: the tab holds
+  // every location, so asking the server for a projection of what it is already
+  // looking at would be a second request for nothing. (The editor does call
+  // that endpoint, because it holds one location and would otherwise fetch the
+  // whole trip to learn three words.)
+  function tripTags() {
+    const seen = new Map();
+    for (const item of allItems) {
+      for (const tag of item.tags ?? []) {
+        if (!seen.has(tag)) seen.set(tag, tag);
+      }
+    }
+    return [...seen.values()].sort((a, b) => {
+      const x = a.toLowerCase();
+      const y = b.toLowerCase();
+      if (x !== y) return x < y ? -1 : 1;
+      return a < b ? -1 : a > b ? 1 : 0;
+    });
   }
 
   // Sorts a copy rather than in place. allItems is in the order the API
@@ -189,6 +251,49 @@ export async function renderItemsTab(container, trip) {
   // silently never answers (see geolocation.js). A filter that can only ever
   // fail is worse than no filter. That used to be "render the whole menu or
   // not"; now it is one absent row.
+  // Held by name so the tag group can be refilled once the locations arrive:
+  // its options *are* the trip's tags, and the menu is built before the fetch.
+  const tagGroup = {
+    key: "tags",
+    // Absent until the trip actually has tags. A filter offering only "Any
+    // tag" is a row that can do nothing, and this is the one group whose
+    // options can legitimately be empty.
+    available: false,
+    name: t("locations.filter.tags"),
+    neutralLabel: t("locations.filter.anyTag"),
+    neutralValue: ANY_TAG,
+    activeValue: ANY_TAG,
+    items: [],
+    onSelect: (value) => {
+      activeTag = value;
+      applyFilters();
+    },
+  };
+
+  const dateGroup = {
+    key: "date",
+    name: t("locations.filter.date"),
+    neutralLabel: t("locations.filter.anyDate"),
+    neutralValue: ANY_DATE,
+    activeValue: ANY_DATE,
+    isNeutral: () => dateFilter.mode === ANY_DATE,
+    currentLabel: () => {
+      if (dateFilter.mode === UNSCHEDULED) return t("locations.filter.unscheduled");
+      if (dateFilter.mode === SCHEDULED) return t("locations.filter.scheduled");
+      if (dateFilter.mode === "range") {
+        return formatDateRange(dateFilter.from || null, dateFilter.to || null) ?? t("locations.filter.anyDate");
+      }
+      return t("locations.filter.anyDate");
+    },
+    onClear: () => {
+      dateFilter = { mode: ANY_DATE, from: "", to: "" };
+      applyFilters();
+    },
+    // Not a list of options: three presets and a range, which no set of
+    // menuitemradio rows can express. See renderDatePanel.
+    renderPanel: (body, { done }) => renderDatePanel(body, done),
+  };
+
   const filterMenu = renderFilterMenu(container.querySelector(".locations-filter-slot"), {
     ariaLabel: "locations.filter.label",
     title: "locations.filter.title",
@@ -249,8 +354,84 @@ export async function renderItemsTab(container, trip) {
           applyFilters();
         },
       },
+      tagGroup,
+      dateGroup,
     ],
   });
+
+  // The date panel: three presets, then a range. The presets are rendered as
+  // menuitemradio rows so they read like every other option in this menu; the
+  // range is a small form, because two dates and an Apply cannot be a row.
+  function renderDatePanel(body, done) {
+    const presets = [
+      { value: ANY_DATE, label: t("locations.filter.anyDate") },
+      { value: UNSCHEDULED, label: t("locations.filter.unscheduled") },
+      { value: SCHEDULED, label: t("locations.filter.scheduled") },
+    ];
+    for (const preset of presets) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.setAttribute("role", "menuitemradio");
+      btn.setAttribute("aria-checked", String(dateFilter.mode === preset.value));
+      btn.dataset.value = preset.value;
+      btn.insertAdjacentHTML("afterbegin", icon("check", { className: "menu__check" }));
+      const label = document.createElement("span");
+      label.textContent = preset.label;
+      btn.append(label);
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        dateFilter = { mode: preset.value, from: "", to: "" };
+        applyFilters();
+        done();
+      });
+      body.appendChild(btn);
+    }
+
+    const form = document.createElement("form");
+    form.className = "date-filter";
+    // Stacked and labelled rather than two boxes with a dash between them. Two
+    // native date inputs side by side are wider than this panel can be at
+    // 324px - the panel is anchored to the trigger's right edge, so it had
+    // nowhere to grow but off the left of the screen - and once they are
+    // stacked, "which one is the start" needs saying out loud anyway.
+    form.innerHTML = `
+      <label class="date-filter__field">
+        <span data-i18n="locations.filter.from"></span>
+        <input type="date" name="from" />
+      </label>
+      <label class="date-filter__field">
+        <span data-i18n="locations.filter.to"></span>
+        <input type="date" name="to" />
+      </label>
+      <button type="submit" class="btn btn-secondary" data-i18n="locations.filter.apply"></button>
+    `;
+    translatePage(form);
+    if (dateFilter.mode === "range") {
+      form.from.value = dateFilter.from;
+      form.to.value = dateFilter.to;
+    }
+    // The same guard the editor's date card uses: an end before its start is
+    // refused by the browser rather than by a message of ours.
+    form.from.addEventListener("change", () => {
+      form.to.min = form.from.value;
+    });
+    form.to.min = form.from.value;
+
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const from = form.from.value;
+      const to = form.to.value;
+      // Both ends empty is not a range, it is the neutral state - so Apply on
+      // an empty form clears the filter rather than pretending to set one.
+      dateFilter = from || to ? { mode: "range", from, to } : { mode: ANY_DATE, from: "", to: "" };
+      applyFilters();
+      done();
+    });
+    // Enter in either date field submits the form, not the page.
+    form.addEventListener("keydown", (e) => e.stopPropagation());
+    body.appendChild(form);
+  }
 
   renderMenu(container.querySelector(".locations-sort-slot"), {
     iconName: "arrow-down-up",
@@ -282,5 +463,15 @@ export async function renderItemsTab(container, trip) {
 
   renderLoading(list);
   allItems = await api.get(`/trips/${tripId}/items`);
+
+  // The tag options only exist once the locations do.
+  const tags = tripTags();
+  tagGroup.available = tags.length > 0;
+  tagGroup.items = [
+    { value: ANY_TAG, label: t("locations.filter.anyTag") },
+    ...tags.map((tag) => ({ value: tag, label: tag })),
+  ];
+  filterMenu.refresh();
+
   applyFilters();
 }

@@ -591,7 +591,11 @@ test.describe("locations filter menu", () => {
     await trigger.click();
     await expect(panel).toBeVisible();
     await expect(trigger).toHaveAttribute("aria-expanded", "true");
-    await expect(rows).toHaveText(["All categories", "Any distance"]);
+    // Three, not four: the seeded trip has itinerary days but no tags, and the
+    // tag group is absent while there is nothing to filter by. Which groups
+    // appear is data-dependent, so this asserts the rule as much as the list.
+    await expect(rows).toHaveText(["All categories", "Any distance", "Any date"]);
+    await expect(menu.locator('[data-group="tags"]')).toHaveCount(0);
 
     // Drilling in replaces the panel rather than opening a second one beside
     // it: there is no room for a flyout at 324px.
@@ -606,7 +610,7 @@ test.describe("locations filter menu", () => {
     // Back returns to the root without closing the menu.
     await menu.locator(".menu--filter__back").click();
     await expect(panel).toBeVisible();
-    await expect(rows).toHaveText(["All categories", "Any distance"]);
+    await expect(rows).toHaveText(["All categories", "Any distance", "Any date"]);
 
     // Escape closes from the root...
     await page.keyboard.press("Escape");
@@ -623,7 +627,7 @@ test.describe("locations filter menu", () => {
     // Reopening starts at the root. A menu that remembered the submenu it was
     // closed in would be remembering a navigation nobody asked it to keep.
     await trigger.click();
-    await expect(rows).toHaveText(["All categories", "Any distance"]);
+    await expect(rows).toHaveText(["All categories", "Any distance", "Any date"]);
 
     // An outside click closes it as well.
     await page.locator("h1").click();

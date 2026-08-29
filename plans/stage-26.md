@@ -724,6 +724,54 @@ location placed there in Milestone 3 and hides one placed a month later;
 clearing every group restores the full list and the neutral trigger. Manual
 pass at 324×756 that the date panel's two inputs fit side by side.
 
+**Done.** Both groups plug into Milestone 4's container and extend `matches()`;
+nothing else moved. The tag group's options come from `allItems` -- the tab
+already holds every location, so asking the server for a projection of what it
+is looking at would be a request for nothing -- and it is absent entirely until
+the trip has a tag, since it is the one group whose options can legitimately be
+empty. Because the menu is built before the fetch, the group is filled in and
+`filterMenu.refresh()` called once the locations arrive.
+
+The date group is the `renderPanel` one: three presets, then a range form.
+`Not scheduled` is why it is a preset list rather than only a picker -- while
+planning, "what have I not placed yet" is the question asked most, and no range
+can express it. The range matches by **overlap, not containment**: a hotel
+booked the 5th to the 7th is part of what happens on the 6th, so asking for the
+6th has to find it. An empty end is unbounded in that direction, and Apply with
+both ends empty returns to neutral rather than pretending to set a range.
+Search now covers tags as well as the title.
+
+Two layout problems, both found by opening the panel rather than by reading it:
+
+- **The range form did not fit.** Two native date inputs side by side are wider
+  than this panel can be: it is anchored to the trigger's right edge, which at
+  324px leaves it about 204px, so it grew off the left of the screen instead.
+  The fields are stacked and individually labelled now, which the stacking made
+  necessary anyway -- "which one is the start" needs saying once they are not
+  either side of a dash.
+- **The panel ran past the bottom of the screen**, with Apply below the fold and
+  reachable only if the page behind it happened to scroll. It is capped at
+  `min(22rem, 65vh)` and scrolls internally. The panel `min-width` also came
+  down from 13rem to 12rem, which was putting four pixels of it off the left
+  edge at 324px.
+
+Verified: `make ci` green, `make test-ui` green (193). Four new specs cover the
+tag group being absent on an untagged trip and appearing with its options
+sorted case-insensitively, filtering by one, the three date presets, a range
+inside a longer stay finding it, an earlier window not finding it, Apply on an
+empty form clearing rather than filtering, and Clear resetting a date range --
+which is the case `onClear` was added for, since the date group's neutral state
+is not one of its options.
+
+The overlap rule was checked to bite: swapping it for containment fails the
+range case. One Milestone 4 spec needed updating -- the root now has three rows
+on the seeded trip, not two, and it asserts *why* the fourth is missing (that
+trip has itinerary days but no tags) rather than just counting.
+
+By hand at 324px in both languages: the German root panel is 223px and the date
+panel 192px inside the 324px screen, with no horizontal overflow and Apply
+reachable.
+
 ---
 
 ## 7. Retire `type`

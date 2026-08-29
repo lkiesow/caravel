@@ -51,16 +51,34 @@ PORT_LAST=$((PORT_FIRST + 30))
 work="$(mktemp -d)"
 server_pid=""
 
+# Idempotent, because the signal traps and the EXIT trap both reach it: a TERM
+# runs cleanup and then exiting runs it again.
+cleaned=""
+cmd_pid=""
 cleanup() {
-	status=$?
+	[ -n "$cleaned" ] && return 0
+	cleaned=1
+	if [ -n "$cmd_pid" ] && kill -0 "$cmd_pid" 2>/dev/null; then
+		kill "$cmd_pid" 2>/dev/null || true
+		wait "$cmd_pid" 2>/dev/null || true
+	fi
 	if [ -n "$server_pid" ] && kill -0 "$server_pid" 2>/dev/null; then
 		kill "$server_pid" 2>/dev/null || true
 		wait "$server_pid" 2>/dev/null || true
 	fi
 	rm -rf "$work"
-	exit "$status"
 }
+# EXIT alone is not enough, and used to not run at all: this script ended in
+# `exec "$@"`, which replaces the shell, so from the moment the tests started
+# there was no trap left in the process. That is how runs killed mid-flight
+# leaked their server and their temp directory -- 31 of them once, holding the
+# whole port range. The command is now a child (see the end of the file) and
+# these traps outlive it.
 trap cleanup EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
+trap 'cleanup; exit 129' HUP
+trap 'cleanup; exit 131' QUIT
 
 export CARAVEL_DB_DSN="$work/ui.db"
 export CARAVEL_UPLOAD_DIR="$work/uploads"
@@ -153,7 +171,20 @@ for candidate in $(seq "$PORT_FIRST" "$PORT_LAST"); do
 done
 
 if [ -z "$port" ]; then
-	echo "with-server: no free port in ${PORT_FIRST}-${PORT_LAST} — set PORT=… to pick another range" >&2
+	{
+		echo "with-server: no free port in ${PORT_FIRST}-${PORT_LAST} — set PORT=… to pick another range"
+		echo
+		echo "If that is the whole range, it is probably servers abandoned by earlier"
+		echo "runs rather than anything of yours. They are the processes whose"
+		echo "/proc/PID/exe resolves under /tmp/tmp.*/caravel — match on the exe path,"
+		echo "not the process name, which your own \`make dev\` server shares. To list"
+		echo "them, and then to clear them:"
+		echo
+		echo "  for p in /proc/[0-9]*; do case \"\$(readlink -f \$p/exe 2>/dev/null)\" in"
+		echo "    /tmp/tmp.*/caravel) echo \"\${p#/proc/}\";; esac; done"
+		echo
+		echo "  ... | xargs -r kill"
+	} >&2
 	exit 1
 fi
 
@@ -171,4 +202,21 @@ if ! curl -fsS -b "$work/cookies" "http://127.0.0.1:$port/api/auth/me" | grep -q
 fi
 
 export CARAVEL_TEST_URL="http://127.0.0.1:$port"
-exec "$@"
+
+# Deliberately not `exec`: this shell has to survive the command so that the
+# traps above still exist while the tests run, and so cleanup happens when they
+# finish or are killed. Nothing defends against `kill -9` of this process
+# itself, which is what the no-free-port message above is written for.
+# Backgrounded and waited on, rather than run in the foreground: bash does not
+# run a trap while a foreground child is running, so a TERM arriving mid-run
+# would sit unhandled until the tests finished on their own -- which is exactly
+# the case that used to leak. `wait` is interruptible, so the traps fire at
+# once. `|| status=$?` because set -e would otherwise exit before the status
+# could be captured.
+status=0
+"$@" &
+cmd_pid=$!
+wait "$cmd_pid" || status=$?
+cmd_pid=""
+cleanup
+exit "$status"

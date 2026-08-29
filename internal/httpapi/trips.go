@@ -200,6 +200,13 @@ func validateDate(d *string) error {
 func (s *Server) handleCreateTrip(w http.ResponseWriter, r *http.Request) {
 	user, _ := auth.UserFromContext(r.Context())
 
+	// A multipart body carries the cover photo alongside the trip, so the
+	// whole thing is one atomic request. See createTripMultipart.
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		s.createTripMultipart(w, r)
+		return
+	}
+
 	var req tripRequest
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -210,18 +217,8 @@ func (s *Server) handleCreateTrip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	now := time.Now().UTC()
-	trip, err := s.Store.CreateTrip(r.Context(), db.CreateTripParams{
-		ID:        uuid.NewString(),
-		OwnerID:   user.ID,
-		Title:     req.Title,
-		StartDate: req.StartDate,
-		EndDate:   req.EndDate,
-		Subtitle:  req.Subtitle,
-		Currency:  currencyOrDefault(req.Currency, db.DefaultCurrency),
-		CreatedAt: now,
-		UpdatedAt: now,
-	})
+	// Same transaction as the multipart path, with no image.
+	trip, err := s.createTripTx(r.Context(), uuid.NewString(), user.ID, req, nil)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not create trip")
 		return

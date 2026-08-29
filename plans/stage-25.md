@@ -242,6 +242,49 @@ removing a day with notes keeps the day; a bad range is a 400 before any write.
 Update `items_test.go`, `items_create_test.go`, and drop the deleted routes from
 `ownership_test.go:145` and `roles_test.go:205`.
 
+**Done.** The API switched over completely. `itemDateResponse` and
+`itemDateRequest` are gone, replaced by `itemDateRangeResponse` (two non-null
+strings, no id) and `itemDateRangeRequest` (`end_date` optional, absent meaning
+a single day). `buildItemDetail` derives the ranges through
+`ListItineraryDatesByItem` + `collapseDateRanges`; `writeItemNested` takes the
+`db.Item` rather than an id, so `item.TripID` reaches `EnsureItineraryDay`, and
+its dates block is one call to `reconcileItemDates`. `validateItemDateRanges`
+rejects a missing or unparseable start, an end before the start, and anything
+over `maxItemDateSpan` (370 days) both per range and in total -- all before a
+write, so a bad range stays a 400. `POST /items/{id}/dates` and `DELETE
+/items/{id}/dates/{dateId}` and their handlers are deleted, and the ownership
+and role matrices now cover dates through the item PATCH that actually writes
+them.
+
+Verified: `make ci` and `make test-postgres` both green. Four new tests in
+`item_dates_test.go`: the stage's own bug (set 5-7 September, find the location
+on all three days, then remove the 6th in the itinerary and watch the location
+report two ranges); the reconcile invariant; careful day removal; and
+absent-versus-empty.
+
+The invariant test was checked by mutation rather than trusted. Rewriting the
+reconcile as delete-all-then-recreate makes
+`TestReconcileItemDatesKeepsUntouchedDays` fail on the entry ids -- the hotel
+comes back as a new row -- which is the evidence that the test can actually see
+the difference. Worth noting what it did *not* catch on its own: the renumber
+happened to restore the same visible order, so an assertion on order alone
+would have passed a recreate.
+
+Two deviations from the plan:
+
+- **A two-line frontend change landed here rather than in Milestone 3.**
+  `readJSON` refuses unknown fields, so the moment the request type lost
+  `label` the editor's every date save became a 400. Leaving the checkpoint
+  with a broken save was the worse trade, so `draft.dates` stops sending
+  `label`. The label input is still on the form and is now ignored; Milestone 3
+  removes it properly along with its i18n key.
+- **An unrelated rough edge, recorded not fixed.** Confirming the deleted route
+  was gone showed it answering 200 with the SPA shell. A route that never
+  existed does the same, so this is the static fallback catching everything
+  under /api and is pre-existing; it went to `plans/todo.md`.
+
+---
+
 ## 3. The editor and the location page
 
 **`web/js/pages/location-editor-page.js`** — `draft.dates` (line 97) drops

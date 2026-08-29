@@ -94,7 +94,11 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     image: null,
     files: [],
     links: (item?.links ?? []).map((l) => ({ url: l.url, label: l.label ?? null })),
-    dates: (item?.dates ?? []).map((d) => ({ start_date: d.start_date, end_date: d.end_date, label: d.label ?? null })),
+    // No label: since Stage 25 a date is a range of itinerary days, and the
+    // note that annotates one lives on the itinerary entry. The label input is
+    // removed in Milestone 3; until then it is simply not sent, because the API
+    // refuses unknown fields.
+    dates: (item?.dates ?? []).map((d) => ({ start_date: d.start_date, end_date: d.end_date })),
   };
 
   // One guard for the page's one write, rather than one per control. Save is
@@ -870,7 +874,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     const form = container.querySelector(".date-form");
     form.addEventListener("submit", (e) => {
       e.preventDefault();
-      draft.dates.push({ start_date: form.startDate.value, end_date: form.endDate.value || null, label: form.label.value || null });
+      draft.dates.push({ start_date: form.startDate.value, end_date: form.endDate.value || null });
       form.reset();
       renderDatesList();
     });

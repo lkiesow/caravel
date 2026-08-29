@@ -430,9 +430,6 @@ func (s *Server) buildRouter() chi.Router {
 			r.Post("/links", s.handleCreateItemLink)
 			r.Delete("/links/{linkId}", s.handleDeleteItemLink)
 
-			r.Post("/dates", s.handleCreateItemDate)
-			r.Delete("/dates/{dateId}", s.handleDeleteItemDate)
-
 			r.Get("/files", s.handleListItemFiles)
 			r.Post("/files", s.handleUploadItemFile)
 		})

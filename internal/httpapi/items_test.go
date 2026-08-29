@@ -12,8 +12,13 @@ import (
 
 // Coverage for the nested create/update contract added in Stage 09 Milestone 1:
 // one request commits an item plus its location, links and dates, in a single
-// transaction. The three standalone sub-resource endpoints are unchanged and
+// transaction. The standalone location and links endpoints are unchanged and
 // keep their own coverage via ownership_test.go.
+//
+// Since Stage 25 the dates block is not a set of rows on the item but the
+// itinerary days it appears on, so a "date" here is a range with no id, and
+// writing one writes itinerary entries. TestReconcileItemDates below covers
+// what that costs; these tests only need the contract to still hold.
 
 // nestedItem is the part of itemDetailResponse these tests assert on, decoded
 // the way a client sees it (JSON) rather than by reaching into the handler's
@@ -33,10 +38,8 @@ type nestedItem struct {
 		SortOrder int     `json:"sort_order"`
 	} `json:"links"`
 	Dates []struct {
-		ID        string  `json:"id"`
-		StartDate *string `json:"start_date"`
-		EndDate   *string `json:"end_date"`
-		Label     *string `json:"label"`
+		StartDate string `json:"start_date"`
+		EndDate   string `json:"end_date"`
 	} `json:"dates"`
 }
 
@@ -49,7 +52,7 @@ const nestedCreateBody = `{
 		{"url": "https://example.com/booking", "label": "Booking"},
 		{"url": "https://example.com/map"}
 	],
-	"dates": [{"start_date": "2026-08-19", "end_date": "2026-08-21", "label": "Stay"}]
+	"dates": [{"start_date": "2026-08-19", "end_date": "2026-08-21"}]
 }`
 
 // createNested posts nestedCreateBody and returns the decoded response.
@@ -101,7 +104,9 @@ func assertNested(t *testing.T, where string, got nestedItem) {
 	if got.Links[0].ID == "" {
 		t.Errorf("%s: link has no generated id", where)
 	}
-	if len(got.Dates) != 1 || got.Dates[0].StartDate == nil || *got.Dates[0].StartDate != "2026-08-19" {
+	// Three consecutive days on the itinerary, read back as the one inclusive
+	// range that was written.
+	if len(got.Dates) != 1 || got.Dates[0].StartDate != "2026-08-19" || got.Dates[0].EndDate != "2026-08-21" {
 		t.Errorf("%s: dates not saved: %+v", where, got.Dates)
 	}
 }
@@ -168,9 +173,12 @@ func TestCreateItemRejectsInvalidNestedValues(t *testing.T) {
 	tripID := ts.createTrip(cookie, "Iceland")
 
 	cases := map[string]string{
-		"blank link url": `{"title":"X","category":"site","links":[{"url":"  "}]}`,
-		"bad start date": `{"title":"X","category":"site","dates":[{"start_date":"19.08.2026"}]}`,
-		"bad end date":   `{"title":"X","category":"site","dates":[{"start_date":"2026-08-19","end_date":"nope"}]}`,
+		"blank link url":   `{"title":"X","category":"site","links":[{"url":"  "}]}`,
+		"bad start date":   `{"title":"X","category":"site","dates":[{"start_date":"19.08.2026"}]}`,
+		"missing start":    `{"title":"X","category":"site","dates":[{"end_date":"2026-08-19"}]}`,
+		"bad end date":     `{"title":"X","category":"site","dates":[{"start_date":"2026-08-19","end_date":"nope"}]}`,
+		"end before start": `{"title":"X","category":"site","dates":[{"start_date":"2026-08-21","end_date":"2026-08-19"}]}`,
+		"absurd span":      `{"title":"X","category":"site","dates":[{"start_date":"2026-08-19","end_date":"2126-08-19"}]}`,
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {

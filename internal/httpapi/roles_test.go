@@ -198,11 +198,12 @@ func roleRoutes() []route {
 		{http.MethodPost, trip("/checklists"), lit(`{"title":"new list"}`), db.RoleEditor},
 		{http.MethodPost, trip("/expenses"), lit(`{"title":"new expense","amount_minor":250,"spent_on":"2026-08-21"}`), db.RoleEditor},
 		{http.MethodPut, trip("/itinerary/days/2026-08-21"), lit(`{"notes":"n"}`), db.RoleEditor},
-		{http.MethodPatch, item(""), lit(`{"title":"edited","category":"site","type":"landmark"}`), db.RoleEditor},
+		// The dates block rides along on the item PATCH since Stage 25, where it
+		// writes itinerary entries — so this row gates those too.
+		{http.MethodPatch, item(""), lit(`{"title":"edited","category":"site","type":"landmark","dates":[{"start_date":"2026-08-21"}]}`), db.RoleEditor},
 		{http.MethodPut, item("/location"), lit(`{"lat":1,"lng":2}`), db.RoleEditor},
 		{http.MethodPut, item("/image"), func(f *roleFixture) string { return `{"media_asset_id":"` + f.mediaID + `"}` }, db.RoleEditor},
 		{http.MethodPost, item("/links"), lit(`{"url":"https://example.com","label":"x"}`), db.RoleEditor},
-		{http.MethodPost, item("/dates"), lit(`{"start_date":"2026-08-20"}`), db.RoleEditor},
 		{http.MethodPatch, func(f *roleFixture) string { return "/api/files/" + f.fileID }, lit(`{"note":"n"}`), db.RoleEditor},
 		{http.MethodPost, func(f *roleFixture) string { return "/api/checklists/" + f.checklistID + "/items" }, lit(`{"text":"t"}`), db.RoleEditor},
 		{http.MethodPatch, func(f *roleFixture) string { return "/api/expenses/" + f.expenseID },

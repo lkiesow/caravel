@@ -181,3 +181,200 @@ func TestListItineraryDatesByItem(t *testing.T) {
 		t.Errorf("got %d rows on the 7th, want the duplicate preserved", seventh)
 	}
 }
+
+// setDates PATCHes a location's date ranges and returns the ranges it reports
+// back. rangesJSON is the "dates" array on its own.
+func (ts *testServer) setDates(cookie *http.Cookie, itemID, rangesJSON string) []itemDateRangeResponse {
+	ts.t.Helper()
+	body := `{"title":"Hotel Ranga","category":"stay","type":"hotel","dates":` + rangesJSON + `}`
+	w := ts.do(http.MethodPatch, "/api/items/"+itemID, cookie, body)
+	if w.Code != http.StatusOK {
+		ts.t.Fatalf("patch dates: got %d, body %s", w.Code, w.Body.String())
+	}
+	return decode[itemDetailResponse](ts.t, w).Dates
+}
+
+// dayByDate finds one day in the itinerary response.
+func (ts *testServer) dayByDate(cookie *http.Cookie, tripID, date string) itineraryDayResponse {
+	ts.t.Helper()
+	w := ts.do(http.MethodGet, "/api/trips/"+tripID+"/itinerary", cookie, "")
+	if w.Code != http.StatusOK {
+		ts.t.Fatalf("get itinerary: got %d, body %s", w.Code, w.Body.String())
+	}
+	for _, d := range decode[[]itineraryDayResponse](ts.t, w) {
+		if d.Date == date {
+			return d
+		}
+	}
+	ts.t.Fatalf("no day %s in the itinerary", date)
+	return itineraryDayResponse{}
+}
+
+// Setting a location's dates puts it on those itinerary days. This is the
+// behaviour the whole stage exists for: before it, the days stayed empty.
+func TestSettingDatesPutsTheLocationOnThoseDays(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login("owner")
+	tripID := ts.createTrip(cookie, "Iceland")
+	hotel := ts.createItem(cookie, tripID, "Hotel Ranga")
+
+	got := ts.setDates(cookie, hotel, `[{"start_date":"2026-09-05","end_date":"2026-09-07"}]`)
+	want := []itemDateRangeResponse{{StartDate: "2026-09-05", EndDate: "2026-09-07"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("dates: got %+v, want %+v", got, want)
+	}
+
+	// Both endpoints inclusive: the 7th is a day the location is on, not the
+	// day after the last one.
+	for _, date := range []string{"2026-09-05", "2026-09-06", "2026-09-07"} {
+		day := ts.dayByDate(cookie, tripID, date)
+		if len(day.Entries) != 1 || day.Entries[0].ItemID != hotel {
+			t.Errorf("%s: got %d entries %+v, want the hotel", date, len(day.Entries), day.Entries)
+		}
+	}
+
+	// And the other direction: removing the middle day in the itinerary makes
+	// the location report two ranges.
+	sixth := ts.dayByDate(cookie, tripID, "2026-09-06")
+	ts.mustCreateNoID(http.MethodDelete,
+		"/api/itinerary/days/"+*sixth.ID+"/entries/"+sixth.Entries[0].ID, cookie, "", http.StatusNoContent)
+
+	w := ts.do(http.MethodGet, "/api/items/"+hotel, cookie, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("get item: got %d", w.Code)
+	}
+	got = decode[itemDetailResponse](t, w).Dates
+	want = []itemDateRangeResponse{
+		{StartDate: "2026-09-05", EndDate: "2026-09-05"},
+		{StartDate: "2026-09-07", EndDate: "2026-09-07"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("after removing the 6th: got %+v, want %+v", got, want)
+	}
+}
+
+// The invariant the reconcile exists for: a day that stays keeps its position
+// and its note. A delete-all-then-recreate would pass every other test in this
+// file and fail this one.
+func TestReconcileItemDatesKeepsUntouchedDays(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login("owner")
+	tripID := ts.createTrip(cookie, "Iceland")
+	hotel := ts.createItem(cookie, tripID, "Hotel Ranga")
+	museum := ts.createItem(cookie, tripID, "Museum")
+
+	ts.setDates(cookie, hotel, `[{"start_date":"2026-09-05","end_date":"2026-09-07"}]`)
+
+	// Arrange the middle day the way a user would in the itinerary tab: put
+	// something else on it, move the hotel to the bottom, and write a note on
+	// the entry and on the day.
+	sixth := ts.dayByDate(cookie, tripID, "2026-09-06")
+	hotelEntry := sixth.Entries[0].ID
+	museumEntry := ts.mustCreate(http.MethodPost, "/api/itinerary/days/"+*sixth.ID+"/entries", cookie,
+		`{"item_id":"`+museum+`","note":"opens at ten"}`, http.StatusCreated)
+	ts.mustCreateNoID(http.MethodPut, "/api/itinerary/days/"+*sixth.ID+"/entries/order", cookie,
+		`{"entry_ids":["`+museumEntry+`","`+hotelEntry+`"]}`, http.StatusOK)
+	ts.mustCreateNoID(http.MethodPut, "/api/trips/"+tripID+"/itinerary/days/2026-09-06", cookie,
+		`{"notes":"long day"}`, http.StatusOK)
+
+	// Now extend the stay by a day from the location editor. The 6th is in
+	// both the old and the new set, so nothing about it may change.
+	got := ts.setDates(cookie, hotel, `[{"start_date":"2026-09-05","end_date":"2026-09-08"}]`)
+	want := []itemDateRangeResponse{{StartDate: "2026-09-05", EndDate: "2026-09-08"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("dates: got %+v, want %+v", got, want)
+	}
+
+	after := ts.dayByDate(cookie, tripID, "2026-09-06")
+	if after.ID == nil || *after.ID != *sixth.ID {
+		t.Errorf("the day row was replaced: %v -> %v", *sixth.ID, after.ID)
+	}
+	if after.Notes == nil || *after.Notes != "long day" {
+		t.Errorf("day notes = %v, want them untouched", after.Notes)
+	}
+	if len(after.Entries) != 2 {
+		t.Fatalf("got %d entries on the 6th, want 2", len(after.Entries))
+	}
+	// The order the user set, and the same rows: a recreate would put the
+	// hotel back on top with a fresh id.
+	if after.Entries[0].ID != museumEntry || after.Entries[1].ID != hotelEntry {
+		t.Errorf("entries were rewritten: got %+v", after.Entries)
+	}
+	if after.Entries[0].Note == nil || *after.Entries[0].Note != "opens at ten" {
+		t.Errorf("entry note = %v, want it untouched", after.Entries[0].Note)
+	}
+
+	// The new day landed, appended at the end of its own day.
+	eighth := ts.dayByDate(cookie, tripID, "2026-09-08")
+	if len(eighth.Entries) != 1 || eighth.Entries[0].ItemID != hotel {
+		t.Errorf("the 8th: got %+v, want the hotel", eighth.Entries)
+	}
+}
+
+// Removing a date takes the location off that day, but must not take the day
+// itself when somebody has written on it.
+func TestReconcileItemDatesRemovesDaysCarefully(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login("owner")
+	tripID := ts.createTrip(cookie, "Iceland")
+	hotel := ts.createItem(cookie, tripID, "Hotel Ranga")
+
+	ts.setDates(cookie, hotel, `[{"start_date":"2026-09-05","end_date":"2026-09-07"}]`)
+	ts.mustCreateNoID(http.MethodPut, "/api/trips/"+tripID+"/itinerary/days/2026-09-07", cookie,
+		`{"notes":"checkout"}`, http.StatusOK)
+
+	// Shorten the stay: the 6th had nothing but the hotel, the 7th has a note.
+	ts.setDates(cookie, hotel, `[{"start_date":"2026-09-05","end_date":"2026-09-05"}]`)
+
+	w := ts.do(http.MethodGet, "/api/trips/"+tripID+"/itinerary", cookie, "")
+	days := decode[[]itineraryDayResponse](t, w)
+	byDate := map[string]itineraryDayResponse{}
+	for _, d := range days {
+		byDate[d.Date] = d
+	}
+
+	// The trip has no start/end date, so only days with a row show at all.
+	if _, ok := byDate["2026-09-06"]; ok {
+		t.Errorf("the 6th is still in the itinerary; an emptied day with no notes should go")
+	}
+	seventh, ok := byDate["2026-09-07"]
+	if !ok {
+		t.Fatal("the 7th is gone, and it had notes on it")
+	}
+	if seventh.Notes == nil || *seventh.Notes != "checkout" {
+		t.Errorf("the 7th notes = %v, want them kept", seventh.Notes)
+	}
+	if len(seventh.Entries) != 0 {
+		t.Errorf("the 7th still has %d entries, want the hotel removed", len(seventh.Entries))
+	}
+}
+
+// Omitting the dates key leaves the itinerary alone, and an empty list clears
+// it. The same absent-versus-empty contract the other nested blocks have — but
+// here "present" reaches into a shared structure, which is why the editor must
+// only send it when the user touched the dates.
+func TestItemDatesAbsentVersusEmpty(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login("owner")
+	tripID := ts.createTrip(cookie, "Iceland")
+	hotel := ts.createItem(cookie, tripID, "Hotel Ranga")
+
+	ts.setDates(cookie, hotel, `[{"start_date":"2026-09-05","end_date":"2026-09-06"}]`)
+
+	w := ts.do(http.MethodPatch, "/api/items/"+hotel, cookie,
+		`{"title":"Hotel Ranga","category":"stay","type":"hotel"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("patch without dates: got %d, body %s", w.Code, w.Body.String())
+	}
+	if got := decode[itemDetailResponse](t, w).Dates; len(got) != 1 {
+		t.Errorf("omitting dates changed them: %+v", got)
+	}
+
+	if got := ts.setDates(cookie, hotel, `[]`); len(got) != 0 {
+		t.Errorf("an empty list left %+v", got)
+	}
+	w = ts.do(http.MethodGet, "/api/trips/"+tripID+"/itinerary", cookie, "")
+	if days := decode[[]itineraryDayResponse](t, w); len(days) != 0 {
+		t.Errorf("got %d itinerary days, want the emptied ones gone: %+v", len(days), days)
+	}
+}

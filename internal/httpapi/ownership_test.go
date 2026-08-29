@@ -138,11 +138,12 @@ func TestItemRoutesRejectAnotherUser(t *testing.T) {
 	item := "/api/items/" + o.itemID
 
 	o.assertDenied(t, http.MethodGet, item, "")
-	o.assertDenied(t, http.MethodPatch, item, `{"title":"stolen"}`)
+	// Dates have no endpoint of their own since Stage 25 — writing them means
+	// PATCHing the item, so this line covers them too.
+	o.assertDenied(t, http.MethodPatch, item, `{"title":"stolen","category":"site","dates":[{"start_date":"2026-08-20"}]}`)
 	o.assertDenied(t, http.MethodDelete, item, "")
 	o.assertDenied(t, http.MethodPut, item+"/location", `{"lat":1,"lng":2}`)
 	o.assertDenied(t, http.MethodPost, item+"/links", `{"url":"https://example.com","label":"x"}`)
-	o.assertDenied(t, http.MethodPost, item+"/dates", `{"start_date":"2026-08-20"}`)
 	o.assertDenied(t, http.MethodGet, item+"/files", "")
 	// Creating an item on someone else's trip goes through the trip, not the item.
 	o.assertDenied(t, http.MethodPost, "/api/trips/"+o.tripID+"/items", `{"title":"x","category":"site","type":"y"}`)

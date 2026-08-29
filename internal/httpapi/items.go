@@ -77,21 +77,11 @@ type itemLinkResponse struct {
 	SortOrder int     `json:"sort_order"`
 }
 
-type itemDateResponse struct {
-	ID        string  `json:"id"`
-	StartDate *string `json:"start_date"`
-	EndDate   *string `json:"end_date"`
-	Label     *string `json:"label"`
-	AllDay    bool    `json:"all_day"`
-	StartTime *string `json:"start_time"`
-	EndTime   *string `json:"end_time"`
-}
-
 type itemDetailResponse struct {
 	itemResponse
-	Location *itemLocationResponse `json:"location"`
-	Links    []itemLinkResponse    `json:"links"`
-	Dates    []itemDateResponse    `json:"dates"`
+	Location *itemLocationResponse   `json:"location"`
+	Links    []itemLinkResponse      `json:"links"`
+	Dates    []itemDateRangeResponse `json:"dates"`
 }
 
 func (s *Server) handleListItems(w http.ResponseWriter, r *http.Request) {
@@ -148,17 +138,25 @@ type itemRequest struct {
 	// everything hanging off it in a single transaction. Each is a pointer
 	// so "absent" and "present but empty" stay distinguishable: absent
 	// leaves that sub-resource untouched, present replaces it (an empty
-	// list clears it). The standalone /location, /links and /dates
-	// endpoints still exist and still work; these are additive.
+	// list clears it). The standalone /location and /links endpoints still
+	// exist and still work; these are additive.
 	//
-	// Location is an upsert (item_locations.item_id is UNIQUE). Links and
-	// dates are replace-the-set rather than merge, because there is no
-	// per-row update endpoint anywhere — editing a link has always meant
-	// delete plus re-add — so the client edits them as a list and sends the
-	// list it wants. Array order becomes sort_order for links.
-	Location *itemLocationRequest `json:"location"`
-	Links    *[]itemLinkRequest   `json:"links"`
-	Dates    *[]itemDateRequest   `json:"dates"`
+	// Location is an upsert (item_locations.item_id is UNIQUE). Links are
+	// replace-the-set rather than merge, because there is no per-row update
+	// endpoint anywhere — editing a link has always meant delete plus re-add
+	// — so the client edits them as a list and sends the list it wants. Array
+	// order becomes sort_order for links.
+	//
+	// Dates are the exception, and the difference matters. Since Stage 25 they
+	// are not rows of their own but a view of the itinerary days this location
+	// appears on, so "present replaces it" is honoured by reconciling the day
+	// set — see reconcileItemDates — rather than by deleting and recreating.
+	// The consequence for callers is that sending this key asserts the
+	// location complete itinerary membership: a client that did not touch the
+	// dates should omit it, not echo back what it read.
+	Location *itemLocationRequest    `json:"location"`
+	Links    *[]itemLinkRequest      `json:"links"`
+	Dates    *[]itemDateRangeRequest `json:"dates"`
 }
 
 func (req itemRequest) validate() error {
@@ -178,13 +176,8 @@ func (req itemRequest) validate() error {
 		}
 	}
 	if req.Dates != nil {
-		for _, d := range *req.Dates {
-			if err := validateDate(d.StartDate); err != nil {
-				return err
-			}
-			if err := validateDate(d.EndDate); err != nil {
-				return err
-			}
+		if err := validateItemDateRanges(*req.Dates); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -194,11 +187,11 @@ func (req itemRequest) validate() error {
 // an existing item. It takes the Store to use rather than reading s.Store, so
 // the callers can hand it a transaction-bound one and have the whole item
 // commit or not at all.
-func writeItemNested(ctx context.Context, store db.Store, itemID string, req itemRequest) error {
+func writeItemNested(ctx context.Context, store db.Store, item db.Item, req itemRequest) error {
 	if req.Location != nil {
 		if _, err := store.UpsertItemLocation(ctx, db.UpsertItemLocationParams{
 			ID:      uuid.NewString(),
-			ItemID:  itemID,
+			ItemID:  item.ID,
 			Lat:     req.Location.Lat,
 			Lng:     req.Location.Lng,
 			Address: req.Location.Address,
@@ -208,19 +201,19 @@ func writeItemNested(ctx context.Context, store db.Store, itemID string, req ite
 	}
 
 	if req.Links != nil {
-		existing, err := store.ListItemLinksByItem(ctx, itemID)
+		existing, err := store.ListItemLinksByItem(ctx, item.ID)
 		if err != nil {
 			return err
 		}
 		for _, l := range existing {
-			if _, err := store.DeleteItemLink(ctx, l.ID, itemID); err != nil {
+			if _, err := store.DeleteItemLink(ctx, l.ID, item.ID); err != nil {
 				return err
 			}
 		}
 		for i, l := range *req.Links {
 			if _, err := store.CreateItemLink(ctx, db.CreateItemLinkParams{
 				ID:        uuid.NewString(),
-				ItemID:    itemID,
+				ItemID:    item.ID,
 				URL:       l.URL,
 				Label:     l.Label,
 				SortOrder: i,
@@ -231,32 +224,8 @@ func writeItemNested(ctx context.Context, store db.Store, itemID string, req ite
 	}
 
 	if req.Dates != nil {
-		existing, err := store.ListItemDatesByItem(ctx, itemID)
-		if err != nil {
+		if err := reconcileItemDates(ctx, store, item, *req.Dates); err != nil {
 			return err
-		}
-		for _, d := range existing {
-			if _, err := store.DeleteItemDate(ctx, d.ID, itemID); err != nil {
-				return err
-			}
-		}
-		for _, d := range *req.Dates {
-			allDay := true
-			if d.AllDay != nil {
-				allDay = *d.AllDay
-			}
-			if _, err := store.CreateItemDate(ctx, db.CreateItemDateParams{
-				ID:        uuid.NewString(),
-				ItemID:    itemID,
-				StartDate: d.StartDate,
-				EndDate:   d.EndDate,
-				Label:     d.Label,
-				AllDay:    allDay,
-				StartTime: d.StartTime,
-				EndTime:   d.EndTime,
-			}); err != nil {
-				return err
-			}
 		}
 	}
 
@@ -310,7 +279,7 @@ func (s *Server) handleGetItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) buildItemDetail(r *http.Request, item db.Item) itemDetailResponse {
-	detail := itemDetailResponse{itemResponse: s.itemToResponse(r.Context(), item), Links: []itemLinkResponse{}, Dates: []itemDateResponse{}}
+	detail := itemDetailResponse{itemResponse: s.itemToResponse(r.Context(), item), Links: []itemLinkResponse{}, Dates: []itemDateRangeResponse{}}
 
 	if loc, err := s.Store.GetItemLocationByItemID(r.Context(), item.ID); err == nil {
 		detail.Location = &itemLocationResponse{Lat: loc.Lat, Lng: loc.Lng, Address: loc.Address}
@@ -322,13 +291,15 @@ func (s *Server) buildItemDetail(r *http.Request, item db.Item) itemDetailRespon
 		}
 	}
 
-	if dates, err := s.Store.ListItemDatesByItem(r.Context(), item.ID); err == nil {
-		for _, d := range dates {
-			detail.Dates = append(detail.Dates, itemDateResponse{
-				ID: d.ID, StartDate: d.StartDate, EndDate: d.EndDate, Label: d.Label,
-				AllDay: d.AllDay, StartTime: d.StartTime, EndTime: d.EndTime,
-			})
+	// The days this location is on in the itinerary, collapsed into ranges.
+	// Tolerant of a failure the way the two blocks above are: losing the dates
+	// costs a card on the page, not the location.
+	if rows, err := s.Store.ListItineraryDatesByItem(r.Context(), item.ID); err == nil {
+		dates := make([]string, len(rows))
+		for i, row := range rows {
+			dates[i] = row.Date
 		}
+		detail.Dates = collapseDateRanges(dates)
 	}
 
 	return detail
@@ -375,7 +346,7 @@ func (s *Server) handleUpdateItem(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
-		if err := writeItemNested(r.Context(), store, saved.ID, req); err != nil {
+		if err := writeItemNested(r.Context(), store, saved, req); err != nil {
 			return err
 		}
 		updated = saved
@@ -475,78 +446,6 @@ func (s *Server) handleDeleteItemLink(w http.ResponseWriter, r *http.Request) {
 	}
 	if !deleted {
 		writeError(w, http.StatusNotFound, "link not found")
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-type itemDateRequest struct {
-	StartDate *string `json:"start_date"`
-	EndDate   *string `json:"end_date"`
-	Label     *string `json:"label"`
-	AllDay    *bool   `json:"all_day"`
-	StartTime *string `json:"start_time"`
-	EndTime   *string `json:"end_time"`
-}
-
-func (s *Server) handleCreateItemDate(w http.ResponseWriter, r *http.Request) {
-	item, _, ok := s.loadItem(w, r, db.RoleEditor)
-	if !ok {
-		return
-	}
-
-	var req itemDateRequest
-	if err := readJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	if err := validateDate(req.StartDate); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if err := validateDate(req.EndDate); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	allDay := true
-	if req.AllDay != nil {
-		allDay = *req.AllDay
-	}
-
-	date, err := s.Store.CreateItemDate(r.Context(), db.CreateItemDateParams{
-		ID:        uuid.NewString(),
-		ItemID:    item.ID,
-		StartDate: req.StartDate,
-		EndDate:   req.EndDate,
-		Label:     req.Label,
-		AllDay:    allDay,
-		StartTime: req.StartTime,
-		EndTime:   req.EndTime,
-	})
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not create date")
-		return
-	}
-	writeJSON(w, http.StatusCreated, itemDateResponse{
-		ID: date.ID, StartDate: date.StartDate, EndDate: date.EndDate, Label: date.Label,
-		AllDay: date.AllDay, StartTime: date.StartTime, EndTime: date.EndTime,
-	})
-}
-
-func (s *Server) handleDeleteItemDate(w http.ResponseWriter, r *http.Request) {
-	item, _, ok := s.loadItem(w, r, db.RoleEditor)
-	if !ok {
-		return
-	}
-	dateID := chi.URLParam(r, "dateId")
-	deleted, err := s.Store.DeleteItemDate(r.Context(), dateID, item.ID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not delete date")
-		return
-	}
-	if !deleted {
-		writeError(w, http.StatusNotFound, "date not found")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

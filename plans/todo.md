@@ -40,6 +40,16 @@ purpose — do not reconstruct it from an older stage plan without asking.
   `newTestServerWithOptions` path proves the plumbing works from `Options`
   inward, so what is missing is a check that `config` reaches `Options`.
 
+- **An unknown /api path answers 200 with the SPA shell.** (Noticed in Stage 25
+  Milestone 2, while confirming a deleted route was gone.) `POST
+  /api/items/{id}/nonsense` and `GET /api/does-not-exist` both return 200 and
+  the index page rather than a 404, because the static handler is the fallback
+  for everything the router did not match. Pre-existing and unrelated to that
+  milestone -- a route that never existed behaves the same as one just removed
+  -- but it makes a client typo look like a success, and it is why
+  `ownership_test.go` asserts on the body rather than only the status. An
+  /api-scoped NotFound handler that writes the usual JSON error would fix it.
+
 - **Creating an itinerary day can 500 on a race.** (Stage 25 planning.)
   `EnsureItineraryDay` (`internal/db/store.go:333`) is get-then-insert, so two
   clients adding the same day at the same time lose one to the `(trip_id, date)`

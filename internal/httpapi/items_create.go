@@ -327,7 +327,7 @@ func (s *Server) createItemTx(ctx context.Context, trip db.Trip, itemID string, 
 		if err != nil {
 			return err
 		}
-		if err := writeItemNested(ctx, store, created.ID, req); err != nil {
+		if err := writeItemNested(ctx, store, created, req); err != nil {
 			return err
 		}
 

@@ -562,6 +562,34 @@ Driven by hand at 324px in English and German: the German panel is 217px wide
 inside a 324px screen with no horizontal overflow, and the longest label,
 "Beliebige Entfernung", fits.
 
+**Follow-up: Clear filters.** Review of the milestone pointed out what having
+one menu costs -- undoing several filters means opening it once per filter and
+drilling into each, and by the end of this stage there are four of them. The
+root panel now leads with a "Clear filters" row whenever any group is off its
+neutral value, and is without it otherwise: a permanent row would be dead most
+of the time and a disabled one would be inert most of the time, neither of
+which earns the top of a menu this small. At the top rather than the bottom
+because with four filters a row underneath them is below the thumb, and being
+reachable when several filters are on is the entire point of it.
+
+It resets only the groups actually narrowing something. Telling a neutral group
+to go neutral is wasted work, and for distance it would re-enter the path that
+can ask the device for its position -- switching a filter off is not a reason to
+prompt anybody. A `onClear` hook was added for a group whose neutral state is
+not reachable by selecting one of its items, which is what Milestone 6's date
+range will need.
+
+The search box is deliberately untouched. It sits beside the menu rather than
+inside it, it is visible, and it has the native clear affordance a
+`type="search"` input carries; wiping it from in here would be the menu reaching
+outside itself. That is asserted rather than left implied.
+
+Verified: three more specs -- the row appearing only when something is active
+and being the first row when it is, clearing resetting the list, the trigger
+accent and itself, clearing *two* filters at once without the distance status
+line reappearing, and the search box surviving. `make ci` and `make test-ui`
+green (188).
+
 ---
 
 ## 5. Sort the locations list

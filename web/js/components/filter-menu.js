@@ -37,6 +37,10 @@ import { bindPopup } from "./popup.js";
 // sentence twice, and a root row saying only "Distance" throws away the
 // current-value display that is the reason these rows are worth having.
 //
+// `onClear` is optional and only needed by a group whose neutral state is not
+// reachable by selecting one of its items -- the date filter, whose state is a
+// range. Everything else clears by being told to select its neutral value.
+//
 // `items` is the ordinary case: a list of single-select options, rendered as
 // menuitemradio rows exactly as menu.js does. `renderPanel(panel, { close })`
 // is the escape hatch for a group whose options are not a list - the date
@@ -111,6 +115,45 @@ export function renderFilterMenu(container, { ariaLabel, title, groups }) {
 
   function renderRoot() {
     panel.replaceChildren();
+
+    // Only when there is something to clear. A permanent row would be dead
+    // most of the time, and a disabled one would be a control that is usually
+    // inert -- neither earns a place at the top of a menu this small.
+    //
+    // At the top rather than the bottom: with four filters the panel is tall
+    // enough that a row underneath them would be below the thumb, and this is
+    // the one row whose whole purpose is being reachable when several filters
+    // are on at once. It is an action, not a selection, so role="menuitem" and
+    // no checked state -- the same distinction menu.js draws for Delete.
+    if (activeGroups().some((g) => !isNeutral(g))) {
+      const clear = document.createElement("button");
+      clear.type = "button";
+      clear.className = "menu--filter__clear";
+      clear.setAttribute("role", "menuitem");
+      clear.dataset.action = "clear";
+      clear.insertAdjacentHTML("afterbegin", icon("x", { className: "menu--filter__clear-icon" }));
+      const label = document.createElement("span");
+      label.textContent = t("locations.filter.clear");
+      clear.append(label);
+      clear.addEventListener("click", (e) => {
+        e.stopPropagation();
+        popup.close();
+        // Only the groups that are actually narrowing anything. Telling a
+        // neutral group to go neutral is wasted work, and for the distance
+        // filter it would re-enter a path that can ask the device for its
+        // position.
+        const dirty = activeGroups().filter((g) => !isNeutral(g));
+        for (const group of dirty) {
+          group.activeValue = group.neutralValue;
+        }
+        renderRoot();
+        return guard.run(() =>
+          Promise.all(dirty.map((group) => group.onClear?.() ?? group.onSelect?.(group.neutralValue)))
+        );
+      });
+      panel.appendChild(clear);
+    }
+
     for (const group of activeGroups()) {
       const row = document.createElement("button");
       row.type = "button";

@@ -145,6 +145,7 @@
   "locations.filter.all": "All",
   "locations.filter.allCategories": "All categories",
   "locations.filter.title": "Filter",
+  "locations.filter.clear": "Clear filters",
   "locations.filter.category": "Category",
   "locations.filter.distance": "Distance",
   "locations.distance.any": "Any distance",

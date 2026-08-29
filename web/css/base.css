@@ -862,6 +862,39 @@ textarea {
   flex-shrink: 0;
 }
 
+/* "Clear filters", at the head of the root panel and only while something is
+   actually filtering. Reads as an action rather than a value: the accent it
+   carries is the same one the active rows use, which is deliberate -- it is
+   the row that undoes them. The border below separates it from the filters it
+   acts on, mirroring the back row at the second level. */
+.menu--filter__clear {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.25rem;
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 0.25rem 0.25rem 0 0;
+  background: none;
+  color: var(--color-accent);
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu--filter__clear:hover {
+  background: var(--color-surface);
+}
+
+.menu--filter__clear-icon {
+  width: 0.875rem;
+  height: 0.875rem;
+  flex-shrink: 0;
+}
+
 /* The back row leads the second level and names the group being left, so a
    panel of "All / Site / Stay / Transport" still says it is the category. The
    border under it separates the navigation from the choices. */

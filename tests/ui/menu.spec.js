@@ -663,6 +663,60 @@ test.describe("locations filter menu", () => {
     await expect(categoryRow).toHaveText("All categories");
   });
 
+  test("offers a way to clear every filter at once, but only when there is one", async ({ page }) => {
+    await openTripLocations(page);
+
+    const menu = page.locator(".locations-filter-slot .menu");
+    const trigger = menu.locator('[data-action="toggle"]');
+    const clear = menu.locator('[data-action="clear"]');
+    const cards = page.locator("item-card");
+    const all = await cards.count();
+
+    // Nothing filtering, nothing to clear: the row is absent rather than
+    // present and disabled, which would be a control that is inert most of
+    // the time at the top of a small menu.
+    await trigger.click();
+    await expect(clear).toHaveCount(0);
+
+    await menu.locator('[data-group="category"]').click();
+    await menu.locator('[data-value="stay"]').click();
+    await expect(cards).not.toHaveCount(all);
+
+    // Now it is there, at the head of the panel.
+    await trigger.click();
+    await expect(clear).toBeVisible();
+    await expect(menu.locator(".menu__dropdown > button").first()).toHaveAttribute("data-action", "clear");
+
+    // Clearing resets the filter, closes the menu, drops the trigger accent
+    // and takes itself away with the state it undid.
+    await clear.click();
+    await expect(menu.locator(".menu__dropdown")).toBeHidden();
+    await expect(cards).toHaveCount(all);
+    await expect(trigger).not.toHaveClass(/menu__trigger--active/);
+    await trigger.click();
+    await expect(clear).toHaveCount(0);
+    await expect(menu.locator('[data-group="category"]')).toHaveText("All categories");
+  });
+
+  test("clearing leaves the search box alone", async ({ page }) => {
+    await openTripLocations(page);
+
+    const menu = page.locator(".locations-filter-slot .menu");
+    const search = page.locator('input[name="q"]');
+
+    // The search box is a control of its own beside the menu, not one of its
+    // filters, and it is visible with its own native clear affordance. Wiping
+    // it from in here would be the menu reaching outside itself.
+    await search.fill("hotel");
+    await menu.locator('[data-action="toggle"]').click();
+    await menu.locator('[data-group="category"]').click();
+    await menu.locator('[data-value="stay"]').click();
+
+    await menu.locator('[data-action="toggle"]').click();
+    await menu.locator('[data-action="clear"]').click();
+    await expect(search).toHaveValue("hotel");
+  });
+
   test("the toolbar is still one row at 324px", async ({ page }) => {
     await openTripLocations(page);
 

@@ -1280,6 +1280,40 @@ test.describe("distance filter on the locations list", () => {
     await expect(cards).toHaveCount(before);
   });
 
+  test("clearing resets the distance filter without asking for the position again", async ({ page }) => {
+    await login(page);
+    const routes = await buildRoutes(page);
+    await gotoRoute(page, routes.find((r) => r.label === "trip locations").path);
+
+    const cards = page.locator("item-card");
+    const all = await cards.count();
+
+    // Two filters at once, which is the case Clear exists for: undoing them
+    // one at a time means opening the menu once per filter and drilling into
+    // each.
+    const menu = page.locator(".locations-filter-slot .menu");
+    await pickRadius(page, "5");
+    await expect(cards).toHaveCount(1);
+
+    await menu.locator('[data-action="toggle"]').click();
+    await menu.locator('[data-group="category"]').click();
+    await menu.locator('[data-value="stay"]').click();
+
+    await menu.locator('[data-action="toggle"]').click();
+    await menu.locator('[data-action="clear"]').click();
+
+    // Both filters are off in one action, and the list is whole again.
+    await expect(cards).toHaveCount(all);
+    await menu.locator('[data-action="toggle"]').click();
+    await expect(menu.locator('[data-group="distance"]')).toHaveText("Any distance");
+    await expect(menu.locator('[data-group="category"]')).toHaveText("All categories");
+
+    // Clearing must not re-enter the path that asks the device where it is:
+    // a filter being switched off is not a reason to prompt anybody. The
+    // status line stays empty, which is what that path writes to.
+    await expect(page.locator(".locations-distance-status")).toBeHidden();
+  });
+
   test("keeps locations that have no coordinates, and says it did", async ({ page }) => {
     await login(page);
     const res = await page.request.post("/api/trips", { data: { title: "UI suite: distance spec" } });

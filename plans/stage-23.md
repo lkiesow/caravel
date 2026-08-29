@@ -788,6 +788,57 @@ this changes an auth-page font), and a Playwright assertion on the leave-trip
 dialog's icon. Screenshot the auth page before and after by hand to confirm the
 font change is the only difference.
 
+**Done.** Both halves, and one small thing found on the way.
+
+**The input rules.** Six rules became two. The label blocks were byte-identical
+across all three families; the input blocks differed in exactly **one**
+declaration - `.auth-form`'s `font-size: 1rem` against the others'
+`font: inherit` - because the border radius only *looked* like a second
+difference, `--radius` being `0.375rem` already. `font: inherit` won, on the
+grounds that two of three used it and it is what makes an input look like the
+app rather than like the browser.
+
+The consequence is worth stating precisely, because it is more than cosmetic:
+`font: inherit` inherits the *label's* `0.875rem`, so the auth inputs went from
+16px to 14px and from the browser's own control font to the app's - measured
+before and after. Every other form in the app was already 14px, so what changed
+is that auth stopped being the outlier; the login input is now byte-identical
+to the trip form's (font family, size, padding, radius, border, height). At
+phone width the tap-target floor still puts it at 44px, so nothing got harder to
+hit.
+
+A redundant rule went with them: `.trip-form input, .trip-form textarea {
+border-radius: 0.375rem }` set the radius the shared rule was already setting.
+
+Moving declarations *earlier* in the file is safe for the later rules that
+override them - `.item-form textarea`'s sizing, `.item-form
+label.expenses__share-choice`, the members and admin field widths all still win
+- and nothing between the old sites targeted these properties, which was
+checked before merging rather than assumed.
+
+**The icon.** `confirmDialog` takes an optional `iconName`; `danger` still
+implies `trash-2` when nothing is passed, so every existing caller is
+unchanged. Only "Leave trip" passes one, `log-out`, which was already in the
+committed sprite - no regeneration needed. It stays `danger: true`, because
+leaving is irreversible and does destroy your personal files on that trip; it
+simply is not a deletion of the trip.
+
+**Verified with negative controls for both halves.** A new spec compares the
+computed label-and-input styles across the auth, trip and location forms and
+asserts they are equal, plus that inputs use the body font rather than the UA's
+control font; the sharing spec now asserts the leave dialog's confirm button
+carries `#lucide-log-out`. Restoring the auth outlier fails the first
+(`the auth form should match the trip form`), and restoring the bin fails the
+second (`Expected pattern: /#lucide-log-out$/, Received:
+".../lucide-sprite.svg#lucide-trash-2"`). `make ci` green, `make
+check-contrast` green at 110 elements, full suite 172 passed. The login page was
+looked at on both viewports: same layout, no overflow.
+
+One thing the test had to work around: it reads the signed-in forms first and
+the login page last, because reaching the login page means clearing the session,
+and the demo login is a stored state rather than a fresh POST - so it cannot be
+undone within the same context.
+
 ---
 
 ## Build order

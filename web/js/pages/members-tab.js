@@ -180,7 +180,11 @@ export function renderMembersTab(content, trip, { onMembersChanged } = {}) {
       count > 0
         ? t("members.leaveConfirmWithFiles", { title: trip.title, count }, count)
         : t("members.leaveConfirm", { title: trip.title });
-    if (!(await confirmDialog({ message, confirmKey: "members.confirmLeave", danger: true }))) return;
+    // Still danger -- it is irreversible and it does destroy your personal
+    // files here -- but not a bin: leaving takes you off the trip, it does not
+    // delete the trip.
+    if (!(await confirmDialog({ message, confirmKey: "members.confirmLeave", danger: true, iconName: "log-out" })))
+      return;
     await api.delete(`/trips/${trip.id}/members/${m.user_id}`);
     // Access is gone the moment that returns, so staying on the trip would
     // just render a 404. The trips list is the only honest destination.

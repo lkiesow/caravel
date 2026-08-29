@@ -145,7 +145,16 @@ for (const locale of ["en", "de"]) {
         await leave.click();
         const dialog = theirPage.locator("dialog.dialog");
         await expect(dialog).toBeVisible();
-        await dialog.locator(".btn-danger").click();
+
+        // The confirm button is red, because leaving is irreversible and does
+        // destroy your personal files here -- but it is not a bin. confirmDialog
+        // used to pick the icon from `danger` alone, so an action that removes
+        // you from a trip advertised itself as deleting the trip (Stage 23
+        // Milestone 8).
+        const confirm = dialog.locator(".btn-danger");
+        await expect(confirm.locator("use")).toHaveAttribute("href", /#lucide-log-out$/);
+
+        await confirm.click();
 
         // Landed on the trips list, and *this* trip is gone from it. Named by id
         // rather than counted: they still hold the seeded memberships on the

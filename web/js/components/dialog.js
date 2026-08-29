@@ -29,7 +29,14 @@ import { icon } from "../icon.js";
 // something — "Remove Anna from this trip?" — and takes precedence over
 // messageKey exactly as it does in alertDialog. open() has always supported
 // this; confirmDialog simply never passed it through.
-export function confirmDialog({ messageKey, message, confirmKey = "common.delete", danger = true }) {
+// `iconName` overrides the icon on the confirm button. It exists because
+// `danger` was doing two jobs: it picks the red button, which is right for
+// every caller, *and* it picked a bin, which is right only for the delete
+// confirmations this was written for. "Leave trip" showed one too -- an action
+// that takes you off a trip rather than deleting it for everybody. `danger`
+// still implies a bin when nothing is passed, so every existing caller is
+// unchanged and only the ones that mean something else say so.
+export function confirmDialog({ messageKey, message, confirmKey = "common.delete", danger = true, iconName }) {
   return open({
     messageKey,
     message,
@@ -39,7 +46,12 @@ export function confirmDialog({ messageKey, message, confirmKey = "common.delete
       // primary-first order (see .editor-actions): every caller of this is
       // destructive and irreversible, so the safe choice is the default one.
       { labelKey: "common.cancel", value: "cancel", className: "btn-secondary", iconName: "x" },
-      { labelKey: confirmKey, value: "confirm", className: danger ? "btn-danger" : "btn-primary", iconName: danger ? "trash-2" : "check" },
+      {
+        labelKey: confirmKey,
+        value: "confirm",
+        className: danger ? "btn-danger" : "btn-primary",
+        iconName: iconName ?? (danger ? "trash-2" : "check"),
+      },
     ],
   }).then((value) => value === "confirm");
 }

@@ -323,3 +323,71 @@ for (const { scheme, viewport, locale } of COMBINATIONS) {
     });
   }
 }
+
+// Stage 23 Milestone 8. Three near-identical rules used to declare the
+// label-and-input treatment -- .auth-form, .trip-form/.password-form and
+// .item-form -- so the next form added had three plausible rules to copy from
+// and no reason to prefer one. They are one rule now.
+//
+// The label blocks were already byte-identical; the inputs differed in exactly
+// one declaration, .auth-form's `font-size: 1rem` against the others'
+// `font: inherit`, with the border radius only *looking* like a second
+// difference because --radius is 0.375rem. `font: inherit` won, which means the
+// auth pages' inputs changed: they inherit the app's font family and their
+// label's 0.875rem, where before they took the browser's own control font at
+// 16px. Every other form in the app already looked like this, so what changed
+// is that auth stopped being the outlier.
+test.describe("form fields look the same wherever they are", () => {
+  const readField = (page, formSelector) =>
+    page.evaluate((sel) => {
+      const input = document.querySelector(`${sel} input`);
+      const label = document.querySelector(`${sel} label`) ?? input.closest("label");
+      const i = getComputedStyle(input);
+      const l = getComputedStyle(label);
+      return {
+        input: {
+          fontFamily: i.fontFamily,
+          fontSize: i.fontSize,
+          padding: i.padding,
+          borderRadius: i.borderRadius,
+          borderWidth: i.borderWidth,
+        },
+        label: { display: l.display, flexDirection: l.flexDirection, gap: l.gap, fontSize: l.fontSize },
+      };
+    }, formSelector);
+
+  test("the auth, trip and location forms declare one treatment, not three", async ({ page }) => {
+    // The signed-in forms first, and the login page last: reaching it means
+    // clearing the session, which cannot be undone within this context (the
+    // demo login is a stored state, not a fresh POST).
+    await login(page);
+    await gotoRoute(page, "/trips/new");
+    await page.waitForSelector(".trip-form input");
+    const trip = await readField(page, ".trip-form");
+
+    const bodyFont = await page.evaluate(() => getComputedStyle(document.body).fontFamily);
+
+    const res = await page.request.post("/api/trips", { data: { title: "UI suite: form consistency" } });
+    const tripId = (await res.json()).id;
+    let item;
+    try {
+      await gotoRoute(page, `/trips/${tripId}/locations/new`);
+      await page.waitForSelector(".item-form input");
+      item = await readField(page, ".item-form");
+    } finally {
+      await page.request.delete(`/api/trips/${tripId}`);
+    }
+
+    await page.context().clearCookies();
+    await page.goto("/login");
+    await page.waitForSelector(".auth-form input");
+    const auth = await readField(page, ".auth-form");
+
+    expect(auth, "the auth form should match the trip form").toEqual(trip);
+    expect(item, "the location form should match them too").toEqual(trip);
+
+    // And the value that was chosen, spelled out so a silent drift back to the
+    // browser's control font is a failure rather than a shrug.
+    expect(trip.input.fontFamily, "inputs use the app's font, not the UA's control font").toBe(bodyFont);
+  });
+});

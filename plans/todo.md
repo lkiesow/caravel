@@ -311,17 +311,18 @@ down.
 
 ## Consistency and cleanup
 
-- **Three near-identical input rules in `base.css`, with drift.** **(soon)**
-  (Stage 14 Milestone 3 follow-up.) `.auth-form`, `.trip-form`/`.password-form`
-  and `.item-form` each declare their own label-and-input styling, and they do
-  not quite agree: `.auth-form` uses `border-radius: var(--radius)` and
-  `font-size: 1rem` where the other two use `0.375rem` and `font: inherit`. The
-  Members form was joined onto the `.trip-form` group rather than becoming a
-  fourth copy, which is right for one form and not a fix for the pattern — the
-  next form added has three plausible rules to pick from and no reason to prefer
-  one. Consolidating means picking the canonical values, which changes how the
-  auth pages look, slightly. Precedent for how: the same file's error-callout
-  rule already collapsed five copies into one.
+- **Every text input in the app is 14px, which iOS zooms on focus.** (Noticed
+  while consolidating the three input rules in Stage 23 Milestone 8; the
+  consolidation did not cause it, it made it uniform.) The shared rule uses
+  `font: inherit`, and the label it inherits from is `0.875rem`, so inputs
+  render at 14px everywhere. Mobile Safari zooms the page whenever a focused
+  input is under 16px, which is a jarring thing to happen on a login form. The
+  auth inputs used to be the one exception at 16px and are not any more. The fix
+  is one declaration -- `font-size: 1rem` on the shared input rule -- but it
+  changes the proportions of every form in the app, so it wants looking at
+  rather than applying blind. The tap-target floor already lifts these to 44px
+  at phone width, so this is about the zoom, not about the target size.
+
 - **Two busy states that are not the shared guard.** (Stage 20.) Everything
   mutating now goes through `web/js/busy.js`, with two deliberate exceptions.
   `assist-panel.js` keeps its own `running` flag, because it also owns stream
@@ -330,14 +331,6 @@ down.
   sequential batch upload. Both work; neither is the shared idiom, so a reader
   finds three ways of saying "in flight". Folding either in means teaching the
   guard about a set of controls rather than one, and about cancellation.
-- **`confirmDialog` hardcodes a trash icon for every danger confirmation.**
-  **(soon)** (Stage 14 Milestone 3.) `components/dialog.js` picks the icon from
-  `danger` alone (`trash-2` when set, `check` when not), which is right for the
-  delete confirmations it was written for and wrong for "Leave trip" — an action
-  that removes no data and shows a bin anyway. The *label* half was fixed in that
-  milestone (both member confirmations pass their own `confirmKey`), so what is
-  left is one optional `iconName` on `confirmDialog`, plus a decision about
-  whether `danger` should keep implying an icon at all.
 - **Identifier sweep: "item" → "location".** Stage 05 fixed the user-visible
   copy, so what's left is entirely below the surface: the whole
   `item.detail.*`/`item.category.*`/`item.deleteConfirm` i18n namespace is still

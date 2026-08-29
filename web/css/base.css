@@ -481,7 +481,29 @@ a:visited {
   width: 100%;
 }
 
-.auth-form label {
+/* Every stacked form field in the app, in one place.
+   
+   This was three near-identical copies -- .auth-form, .trip-form/.password-form
+   and .item-form -- each declaring the same label-and-input treatment, which
+   meant the next form added had three plausible rules to copy from and no
+   reason to prefer one. The label blocks were byte-identical. The input blocks
+   turned out to differ in exactly one declaration: .auth-form said
+   `font-size: 1rem` where the others said `font: inherit`, and the border
+   radius only *looked* like a difference, since --radius is 0.375rem.
+   
+   `font: inherit` is the one kept, so the auth pages' inputs now use the app's
+   own font family rather than the browser's default for form controls. That is
+   the whole visible effect of this consolidation, and the reason it was not
+   folded into some other milestone.
+   
+   Precedent: this file's error-callout rule already collapsed five copies the
+   same way. */
+.auth-form label,
+.trip-form label,
+.password-form label,
+.item-form label,
+.members-add__field,
+.admin-new-user__field {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
@@ -489,11 +511,21 @@ a:visited {
   color: var(--color-text-muted);
 }
 
-.auth-form input {
+.auth-form input,
+.trip-form input,
+.trip-form textarea,
+.trip-form select,
+.password-form input,
+.item-form input,
+.item-form select,
+.item-form textarea,
+.members-add input,
+.members-add select,
+.admin-new-user input:not([type="checkbox"]) {
   padding: 0.5rem;
   border-radius: var(--radius);
   border: 1px solid var(--color-border);
-  font-size: 1rem;
+  font: inherit;
   background: var(--color-bg);
   color: var(--color-text);
 }
@@ -933,32 +965,6 @@ button {
   gap: 0.75rem;
 }
 
-.trip-form label,
-.password-form label,
-.members-add__field,
-.admin-new-user__field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.875rem;
-  color: var(--color-text-muted);
-}
-
-.trip-form input,
-.trip-form textarea,
-.trip-form select,
-.password-form input,
-.members-add input,
-.members-add select,
-.admin-new-user input:not([type="checkbox"]) {
-  padding: 0.5rem;
-  border-radius: 0.375rem;
-  border: 1px solid var(--color-border);
-  font: inherit;
-  background: var(--color-bg);
-  color: var(--color-text);
-}
-
 .trip-form__dates {
   display: flex;
   flex-wrap: wrap;
@@ -993,11 +999,6 @@ button {
   gap: 0.5rem;
   margin-top: 1rem;
   margin-bottom: 1rem;
-}
-
-.trip-form input,
-.trip-form textarea {
-  border-radius: 0.375rem;
 }
 
 .back-link {
@@ -1328,14 +1329,6 @@ button {
   gap: 0.75rem;
 }
 
-.item-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.875rem;
-  color: var(--color-text-muted);
-}
-
 /* The "Show on map" checkbox, which lives in the Location card next to the
    coordinates it gates (Stage 09 Milestone 3). Row rather than the stacked
    label-above-input the sibling fields use, and a full-width flex item so it
@@ -1507,17 +1500,6 @@ button {
 .location-search__result:hover,
 .location-search__result:focus-visible {
   background: var(--color-bg);
-}
-
-.item-form input,
-.item-form select,
-.item-form textarea {
-  padding: 0.5rem;
-  border-radius: 0.375rem;
-  border: 1px solid var(--color-border);
-  font: inherit;
-  background: var(--color-bg);
-  color: var(--color-text);
 }
 
 /* Same treatment as .itinerary-day__notes: without an explicit width and

@@ -434,6 +434,28 @@ No deviations. Note that this milestone does **not** remove the **Dates on the
 locations list** backlog entry: that entry names sorting by date as well, and
 Milestone 5 is what finishes it.
 
+**Follow-up: the card meta is one row on a wide screen.** Review of the
+milestone pointed out that stacking the date line above the type above the tags
+is right at 324px and wasteful anywhere else -- a card on a desktop is nearly
+full width, so three short lines left most of it empty while making the card
+three times taller than it needed to be. The three parts now live in one
+`.meta` element: `flex-direction: column` by default, and a row with `·`
+separators above 640px, which is the breakpoint the rest of the app uses (the
+query lives inside the card's shadow root, as `leaflet-map.js` already does).
+A wide card went from 107px tall to 68px, and 324px is byte-for-byte unchanged.
+
+The separators are joined between the parts that exist rather than emitted as
+fixed slots, so a location with tags but no dates -- the normal shape for
+somewhere not yet on the itinerary -- does not lead with a stray dot, and a
+location with nothing to say under its title renders no meta row at all. Both
+are asserted, as is the column-versus-row switch at the two widths.
+
+Known and accepted: at the narrowest desktop width a card carrying a long type
+*and* three long tags wraps, and the line then ends with its separator. It
+reads fine and the case is rare; making a separator unable to end a line would
+mean attaching it to the following part, which just moves the oddity to the
+start of the next line.
+
 ---
 
 ## 4. One filter menu: a drill-down popup, holding the filters we already have

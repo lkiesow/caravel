@@ -422,6 +422,60 @@ test.describe("the location editor, end to end", () => {
       itemRequests.filter((p) => p.endsWith("/items")),
       "the list is one request; dates must not be fetched per card"
     ).toHaveLength(1);
+
+    // The meta line under the title stacks on a phone, where there is no room
+    // for anything else, and runs together as one separated row above 640px,
+    // where three short stacked lines left most of a full-width card empty.
+    const layout = async () =>
+      page.locator(`item-card[title="Twice"]`).evaluate((el) => {
+        const meta = el.shadowRoot.querySelector(".meta");
+        return {
+          direction: getComputedStyle(meta).flexDirection,
+          separatorsShown: [...el.shadowRoot.querySelectorAll(".meta__sep")].every(
+            (s) => getComputedStyle(s).display !== "none"
+          ),
+        };
+      });
+
+    expect(await layout(), "stacked at 324px").toMatchObject({ direction: "column" });
+
+    await page.setViewportSize({ width: 1024, height: 800 });
+    expect(await layout(), "one row on a wide screen").toMatchObject({
+      direction: "row",
+      separatorsShown: true,
+    });
+    await page.setViewportSize(MOBILE);
+  });
+
+  // A separator is only ever drawn *between* two parts that exist. The failure
+  // this guards is a card leading with a stray dot because it has tags but no
+  // dates, which is the common shape for somewhere not yet on the itinerary.
+  test("a card with no dates does not lead with a separator", async ({ page }) => {
+    await page.request.post(`/api/trips/${tripId}/items`, {
+      data: { title: "Tags only", category: "site", type: "", tags: ["alpha"] },
+    });
+    await page.request.post(`/api/trips/${tripId}/items`, {
+      data: { title: "Nothing at all", category: "site", type: "", tags: [] },
+    });
+
+    await page.setViewportSize({ width: 1024, height: 800 });
+    await gotoRoute(page, `/trips/${tripId}/locations`);
+
+    const seps = async (title) =>
+      page
+        .locator(`item-card[title="${title}"]`)
+        .evaluate((el) => el.shadowRoot.querySelectorAll(".meta__sep").length);
+
+    expect(await seps("Tags only"), "one part means no separator").toBe(0);
+
+    // And a location with nothing to say under its title renders no meta row
+    // at all, rather than an empty one taking up space.
+    const hasMeta = await page
+      .locator(`item-card[title="Nothing at all"]`)
+      .evaluate((el) => Boolean(el.shadowRoot.querySelector(".meta")));
+    expect(hasMeta, "no meta row when there is nothing to put in it").toBe(false);
+
+    await page.setViewportSize(MOBILE);
   });
 
   // Omitting the tags must not clear them -- the same absent-versus-empty rule

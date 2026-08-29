@@ -49,11 +49,44 @@ const styles = `
     margin: 0;
     font-size: 1rem;
   }
+  /* Everything under the title: when the location is, what it is, and its
+     tags. Stacked by default, because at 324px there is no room to do
+     anything else and each part is short enough to read as its own line.
+
+     Above 640px they run together as one row with separators, which is what
+     the space is for: a card there is nearly full width, so three stacked
+     lines of a few words each left most of it empty while making the card
+     three times taller than it needed to be. The separators are drawn only in
+     that layout, and only between parts that are actually present -- see the
+     render below, which joins the parts it has rather than emitting empty
+     slots. */
+  .meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.125rem;
+  }
+  .meta__sep {
+    display: none;
+    color: var(--color-text-muted);
+    font-size: 0.8rem;
+  }
+  @media (min-width: 641px) {
+    .meta {
+      flex-direction: row;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.375rem;
+    }
+    .meta__sep {
+      display: inline;
+    }
+  }
   .type {
     color: var(--color-text-muted);
     font-size: 0.8rem;
   }
-  /* The itinerary days this location is on. Directly under the title because
+  /* The itinerary days this location is on. First in the meta row because
      "when" is the thing being scanned for on a planning screen -- the type and
      the tags say what it is, which the title usually already did. */
   .dates {
@@ -64,7 +97,6 @@ const styles = `
     display: flex;
     flex-wrap: wrap;
     gap: 0.25rem;
-    margin-top: 0.25rem;
   }
   /* Quiet on purpose: a card is a title with a picture, and the tags are there
      to be recognised at a glance, not read. Same muted palette as .type. */
@@ -149,6 +181,26 @@ class ItemCard extends HTMLElement {
     const firstRange = dates.length ? formatDateRange(dates[0].start_date, dates[0].end_date) : null;
     const moreRanges = dates.length - 1;
 
+    // Joined rather than emitted as fixed slots, so a separator only ever
+    // appears *between* two parts that exist -- a location with no dates must
+    // not lead with a stray dot. aria-hidden on the separator because it is a
+    // visual join: a screen reader already gets these as separate phrases, and
+    // reading "middle dot" between them is noise.
+    const metaParts = [
+      firstRange
+        ? `<span class="dates">${escapeHtml(firstRange)}${moreRanges > 0 ? ` +${moreRanges}` : ""}</span>`
+        : "",
+      type ? `<span class="type">${escapeHtml(type)}</span>` : "",
+      tags.length
+        ? `<span class="tags">${shown.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}${
+            overflow ? `<span class="tag">+${overflow}</span>` : ""
+          }</span>`
+        : "",
+    ].filter(Boolean);
+    const meta = metaParts.length
+      ? `<div class="meta">${metaParts.join('<span class="meta__sep" aria-hidden="true">·</span>')}</div>`
+      : "";
+
     this.shadowRoot.innerHTML = `
       <style>${styles}</style>
       <div class="card">
@@ -156,19 +208,7 @@ class ItemCard extends HTMLElement {
         <span class="dot" style="background:${color}"></span>
         <div class="text">
           <h2>${escapeHtml(title)}</h2>
-          ${
-            firstRange
-              ? `<div class="dates">${escapeHtml(firstRange)}${moreRanges > 0 ? ` +${moreRanges}` : ""}</div>`
-              : ""
-          }
-          ${type ? `<div class="type">${escapeHtml(type)}</div>` : ""}
-          ${
-            tags.length
-              ? `<div class="tags">${shown.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}${
-                  overflow ? `<span class="tag">+${overflow}</span>` : ""
-                }</div>`
-              : ""
-          }
+          ${meta}
         </div>
       </div>
     `;

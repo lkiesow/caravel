@@ -18,6 +18,11 @@ export function formatDateRange(start, end) {
   const short = (d) => new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(parse(d));
   const full = (d) => new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(parse(d));
 
+  // One day, named once. Both bounds are set and equal on a single-day range,
+  // which is what a location that is on exactly one itinerary day produces
+  // (Stage 25); "Sep 5 – Sep 5, 2026" would be a range with nothing in it.
+  if (start && end && start === end) return full(start);
+
   if (start && end) {
     const sameYear = parse(start).getFullYear() === parse(end).getFullYear();
     return sameYear ? `${short(start)} – ${full(end)}` : `${full(start)} – ${full(end)}`;

@@ -87,9 +87,10 @@ test.describe("the location editor, end to end", () => {
     await expect(page.locator(".date-list li.empty")).toBeVisible();
     await page.locator('.date-form input[name="startDate"]').fill("2026-08-20");
     await page.locator('.date-form input[name="endDate"]').fill("2026-08-22");
-    await page.locator('.date-form input[name="label"]').fill("Two nights");
     await page.locator('.date-form button[type="submit"]').click();
     await expect(dates).toHaveCount(1);
+    // Formatted, not the ISO strings that were typed in.
+    await expect(dates.first()).toContainText("Aug 20");
 
     await save.click();
 
@@ -106,14 +107,14 @@ test.describe("the location editor, end to end", () => {
     await expect(page.locator(".location-view__address")).toHaveText("Sudurlandsvegur, 851 Hella");
     await expect(page.locator(".link-list li")).toHaveCount(1);
     await expect(page.locator(".link-list a")).toHaveAttribute("href", "https://example.com/booking");
-    await expect(page.locator(".date-list li")).toContainText("Two nights");
+    await expect(page.locator(".date-list li")).toContainText("Aug 20");
 
     // Everything above could still be a page that never asked the server. This
     // is the line that says it reached the database.
     await page.reload();
     await expect(page.locator("h1")).toHaveText("Hotel Ranga");
     await expect(page.locator(".link-list a")).toHaveAttribute("href", "https://example.com/booking");
-    await expect(page.locator(".date-list li")).toContainText("Two nights");
+    await expect(page.locator(".date-list li")).toContainText("Aug 20");
 
     // And the list the trip shows now has it, under the title the form gave it.
     await gotoRoute(page, `/trips/${tripId}/locations`);
@@ -199,6 +200,86 @@ test.describe("the location editor, end to end", () => {
       (await page.request.get(`/api/items/${itemId}`)).status(),
       "the location should be gone, not merely hidden"
     ).toBe(404);
+  });
+
+  // The reason Stage 25 exists. Dates set on a location used to be stored
+  // beside it and shown on its own page, and the itinerary knew nothing about
+  // them - so a stay of 20-22 August left those three days empty. They are now
+  // the same fact seen from two sides.
+  test("dates set on a location put it on those itinerary days", async ({ page }) => {
+    await gotoRoute(page, `/trips/${tripId}/locations/new`);
+
+    await page.locator('.item-form input[name="title"]').fill("Hotel Ranga");
+    await page.locator('.item-form select[name="category"]').selectOption("stay");
+    await page.locator('.date-form input[name="startDate"]').fill("2026-08-20");
+    await page.locator('.date-form input[name="endDate"]').fill("2026-08-22");
+    await page.locator('.date-form button[type="submit"]').click();
+    await page.locator('[data-action="save"]').click();
+    await expect(page).toHaveURL(new RegExp(`/trips/${tripId}/locations/[0-9a-f-]+$`));
+
+    // Read through the API rather than the tab, so this asserts what was
+    // stored and not merely what one screen chose to draw.
+    const itinerary = await (await page.request.get(`/api/trips/${tripId}/itinerary`)).json();
+    const onIt = itinerary
+      .filter((d) => d.entries.some((e) => e.item_title === "Hotel Ranga"))
+      .map((d) => d.date);
+    // Inclusive of both ends: checking out on the 22nd still means being there
+    // on the 22nd.
+    expect(onIt).toEqual(["2026-08-20", "2026-08-21", "2026-08-22"]);
+
+    // And the itinerary tab really shows it, three days running.
+    await gotoRoute(page, `/trips/${tripId}/itinerary`);
+    await expect(page.locator(".itinerary-day", { hasText: "Hotel Ranga" })).toHaveCount(3);
+  });
+
+  // The hazard the datesDirty flag exists for. Sending the dates asserts the
+  // location complete set of itinerary days, so a save that merely renamed it
+  // would roll the itinerary back to whatever the editor happened to load -
+  // silently undoing a day somebody else added in the meantime.
+  //
+  // Resending an unchanged set is harmless, because the reconcile is a diff and
+  // does nothing when the sets match. The damage needs the itinerary to move
+  // under an open editor, which is what this test arranges.
+  test("renaming a location does not undo an itinerary change made while it was open", async ({ page }) => {
+    const created = await page.request.post(`/api/trips/${tripId}/items`, {
+      data: {
+        title: "Hotel Ranga",
+        category: "stay",
+        type: "hotel",
+        dates: [{ start_date: "2026-08-20", end_date: "2026-08-21" }],
+      },
+    });
+    expect(created.status(), "create the location with dates").toBe(201);
+    const itemId = (await created.json()).id;
+
+    // Open the editor, which reads the two days it currently has.
+    await gotoRoute(page, `/trips/${tripId}/locations/${itemId}/edit`);
+    await expect(page.locator(".date-list li")).toHaveCount(1);
+
+    // Someone else extends the stay by a day, through the itinerary.
+    const day = await page.request.put(`/api/trips/${tripId}/itinerary/days/2026-08-22`, {
+      data: { notes: null },
+    });
+    expect(day.status()).toBe(200);
+    const added = await page.request.post(`/api/itinerary/days/${(await day.json()).id}/entries`, {
+      data: { item_id: itemId, note: "late checkout" },
+    });
+    expect(added.status()).toBe(201);
+
+    // The open editor still believes in two days. Rename, touching nothing else.
+    await page.locator('.item-form input[name="title"]').fill("Hotel Ranga Reykjavik");
+    await page.locator('[data-action="save"]').click();
+    await expect(page.locator("h1")).toHaveText("Hotel Ranga Reykjavik");
+
+    const itinerary = await (await page.request.get(`/api/trips/${tripId}/itinerary`)).json();
+    const third = itinerary.find((d) => d.date === "2026-08-22");
+    expect(third, "the day added while the editor was open must survive").toBeTruthy();
+    expect(third.entries.map((e) => e.item_id)).toEqual([itemId]);
+    expect(third.entries[0].note).toBe("late checkout");
+
+    // And the location now reports all three days, as one range.
+    const item = await (await page.request.get(`/api/items/${itemId}`)).json();
+    expect(item.dates).toEqual([{ start_date: "2026-08-20", end_date: "2026-08-22" }]);
   });
 });
 

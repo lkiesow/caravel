@@ -13,6 +13,7 @@ import { canEdit, isShared } from "../trip-role.js";
 import "../components/leaflet-map.js";
 import { hasCapability } from "../session.js";
 import { renderAssistPanel } from "../components/assist-panel.js";
+import { formatDateRange } from "../format.js";
 
 // Both modes render the same cards, in the same order - Basic info, Cover
 // photo, Location, Links, Dates, Files - matching the read view's
@@ -94,12 +95,21 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     image: null,
     files: [],
     links: (item?.links ?? []).map((l) => ({ url: l.url, label: l.label ?? null })),
-    // No label: since Stage 25 a date is a range of itinerary days, and the
-    // note that annotates one lives on the itinerary entry. The label input is
-    // removed in Milestone 3; until then it is simply not sent, because the API
-    // refuses unknown fields.
+    // A date is a range of itinerary days, inclusive of both ends: a stay from
+    // the 5th to the 7th means the location is on all three of those days. The
+    // note that annotates one belongs to the itinerary entry, which is why
+    // there is no label here.
     dates: (item?.dates ?? []).map((d) => ({ start_date: d.start_date, end_date: d.end_date })),
   };
+
+  // Whether the user touched the Dates card. Only then is `dates` sent.
+  //
+  // This is not an optimisation. Sending the key asserts the location complete
+  // set of itinerary days, so echoing back what the page happened to read would
+  // delete an entry a co-editor added in the meantime -- along with its
+  // position in its day and its note. Absent means "leave it alone", which is
+  // the honest thing for a save that only changed the title.
+  let datesDirty = false;
 
   // One guard for the page's one write, rather than one per control. Save is
   // reachable from three places - the button, Enter in the Basic info card,
@@ -196,7 +206,6 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
           <form class="date-form">
             <input type="date" name="startDate" required data-i18n-aria-label="item.detail.startDate" />
             <input type="date" name="endDate" data-i18n-placeholder="item.detail.endDate" data-i18n-aria-label="item.detail.endDate" />
-            <input type="text" name="label" data-i18n-placeholder="item.detail.dateLabel" />
             <button type="submit" class="btn btn-secondary btn-row">${icon("plus")} <span data-i18n="item.detail.addDate"></span></button>
           </form>
         </div>
@@ -344,8 +353,12 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       ...itemForm.readValues(),
       show_on_map: container.querySelector('.location-form [name="showOnMap"]').checked,
       links: draft.links,
-      dates: draft.dates,
     };
+
+    // Only when the user actually edited the dates - see datesDirty. On create
+    // there is nothing on the itinerary to protect and the card is the only
+    // source of the dates, so an untouched card still sends its (empty) list.
+    if (datesDirty || !item) body.dates = draft.dates;
 
     // Absent means "leave it alone", so only send the key when there is
     // something to say: the typed coordinates, or explicit nulls to clear a
@@ -856,8 +869,11 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     list.innerHTML = draft.dates.length
       ? draft.dates
           .map((d, i) => {
-            const range = d.end_date ? `${escapeHtml(d.start_date || "")} – ${escapeHtml(d.end_date)}` : escapeHtml(d.start_date || "");
-            return `<li>${range}${d.label ? " — " + escapeHtml(d.label) : ""} <button class="icon-remove" data-action="delete-date" data-index="${i}" aria-label="${t("common.remove")}">${icon("x")}</button></li>`;
+            // formatDateRange, not the raw ISO strings this used to print: the
+            // rest of the app shows a date the way the reader writes one, and
+            // it names a single day once rather than as a range onto itself.
+            const range = formatDateRange(d.start_date, d.end_date ?? d.start_date) ?? "";
+            return `<li>${escapeHtml(range)} <button class="icon-remove" data-action="delete-date" data-index="${i}" aria-label="${t("common.remove")}">${icon("x")}</button></li>`;
           })
           .join("")
       : `<li class="empty">${t("item.detail.datesEmpty")}</li>`;
@@ -865,6 +881,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     list.querySelectorAll('[data-action="delete-date"]').forEach((btn) => {
       btn.addEventListener("click", () => {
         draft.dates.splice(Number(btn.getAttribute("data-index")), 1);
+        datesDirty = true;
         renderDatesList();
       });
     });
@@ -872,10 +889,22 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
 
   function bindDateForm() {
     const form = container.querySelector(".date-form");
+
+    // The end of a range can never precede its start, so the picker says so
+    // rather than the server rejecting the save. Native validation, which
+    // needs no message of its own in either locale.
+    form.startDate.addEventListener("change", () => {
+      form.endDate.min = form.startDate.value;
+    });
+
     form.addEventListener("submit", (e) => {
       e.preventDefault();
+      // An empty end means a single day. The server reads it the same way, so
+      // it is sent as null rather than doubled up here.
       draft.dates.push({ start_date: form.startDate.value, end_date: form.endDate.value || null });
+      datesDirty = true;
       form.reset();
+      form.endDate.min = "";
       renderDatesList();
     });
   }

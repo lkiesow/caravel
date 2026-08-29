@@ -6,6 +6,7 @@ import "../components/leaflet-map.js";
 import { renderLoading } from "../components/loading.js";
 import { canEdit, isShared } from "../trip-role.js";
 import { renderFileList } from "../components/file-list.js";
+import { formatDateRange } from "../format.js";
 
 // A URL reduced to its host, for a credit that has a source page but no named
 // author.
@@ -28,7 +29,9 @@ const CATEGORY_COLORS = {
 // location as address text plus an embedded single-marker map (leaflet-map
 // in single-marker mode, driven by lat/lng attributes instead of a
 // trip-id, since there's exactly one point to plot here - see
-// leaflet-map.js), links, dates as ranges, and files with download
+// leaflet-map.js), links, the days it is on in the itinerary as ranges
+// (Stage 25 - these are derived from the itinerary, not stored on the
+// location), and files with download
 // links. Nothing here is directly editable; one Edit button at the very
 // bottom of the page leads to the edit route.
 //
@@ -119,10 +122,7 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
           <h2 data-i18n="item.detail.dates"></h2>
           <ul class="date-list">
             ${item.dates
-              .map((d) => {
-                const range = d.end_date ? `${escapeHtml(d.start_date || "")} – ${escapeHtml(d.end_date)}` : escapeHtml(d.start_date || "");
-                return `<li>${range}${d.label ? " — " + escapeHtml(d.label) : ""}</li>`;
-              })
+              .map((d) => `<li>${escapeHtml(formatDateRange(d.start_date, d.end_date) ?? "")}</li>`)
               .join("")}
           </ul>
         </div>

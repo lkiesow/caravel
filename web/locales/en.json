@@ -200,7 +200,6 @@
   "item.detail.dates": "Dates",
   "item.detail.datesEmpty": "No dates yet.",
   "item.detail.addDate": "Add date",
-  "item.detail.dateLabel": "Label (optional)",
   "item.detail.endDate": "End date (optional)",
   "item.detail.startDate": "Start date",
   "item.detail.close": "Close",

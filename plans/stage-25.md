@@ -313,6 +313,45 @@ second case proves the diff: put a note on the middle day through the itinerary
 tab, re-save the location unchanged, assert the note survived. Manual pass at
 324×756 against `make dev`.
 
+**Done.** The editor's date card lost its label input and its
+`item.detail.dateLabel` key (both locales, 391 keys still in sync); both the
+editor list and the location page now render through `formatDateRange` instead
+of printing raw ISO strings. `datesDirty` gates the `dates` key on save, and on
+create it is always sent, since there is nothing on the itinerary to protect and
+the card is the only source.
+
+Two things beyond the plan, both small:
+
+- **`formatDateRange` learned that a single-day range is one day.** A location
+  on exactly one itinerary day arrives as `start_date === end_date`, which the
+  old function rendered as "Sep 9 – Sep 9, 2026". It now names the day once.
+  Existing callers are unaffected except a one-day trip, which improves too.
+- **The end-date picker carries a `min`.** Setting the start sets
+  `endDate.min`, so a range that ends before it starts is refused by the
+  browser. The server rejects it too, but that message is English-only, and
+  native validation needs no string in either locale.
+
+Verified: `make ci` green (including i18n parity). The whole UI suite green,
+178 tests. Two new specs: dates set on a location put it on those days (asserted
+through `GET /api/trips/{id}/itinerary`, then confirmed the tab draws three day
+cards), and a rename not undoing an itinerary change made while the editor was
+open. Manual pass at 324×756 against `make dev`: the range reads "5 Sept –
+7 Sept 2026", a single day reads "9 Sept 2026", the date form is three controls
+each 44px tall with no horizontal overflow, and an end before the start fails
+`checkValidity()`.
+
+One deviation worth recording, because it changed what is being tested. The
+first version of the datesDirty spec arranged a day, renamed the location, and
+asserted the day survived — and it **passed with the flag removed**. The
+reconcile is a diff, so resending an unchanged set does nothing; the test was
+proving idempotence, not the guard. The real hazard needs the itinerary to move
+under an open editor, so the spec now opens the editor, adds a day to that
+location through the API behind its back, then renames. That version fails
+without the flag. The same mutation check was applied to Milestone 2's Go
+invariant test, where it passed first time.
+
+---
+
 ## 4. Drop the table and catch everything up
 
 Migration `0004_item_dates_from_itinerary.{up,down}.sql` in **both**

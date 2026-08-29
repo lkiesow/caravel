@@ -200,7 +200,6 @@
   "item.detail.dates": "Termine",
   "item.detail.datesEmpty": "Noch keine Termine.",
   "item.detail.addDate": "Termin hinzufügen",
-  "item.detail.dateLabel": "Beschriftung (optional)",
   "item.detail.endDate": "Enddatum (optional)",
   "item.detail.startDate": "Startdatum",
   "item.detail.close": "Schließen",

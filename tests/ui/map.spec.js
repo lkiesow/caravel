@@ -99,61 +99,74 @@ function readMap(page) {
 test.describe("the trip map at phone width", () => {
   test.use({ viewport: MOBILE });
 
-  test("the map leaves most of the screen to the page", async ({ page }) => {
+  // This test used to assert the opposite -- that the map was *capped* at 20rem
+  // and took no more than half the visible screen. That cap was Stage 13's
+  // belt-and-braces beside the fix that actually mattered, dragging:
+  // !isCoarsePointer(), and it left a map too small to read on the one screen
+  // whose entire job is showing a map. Stage 23 Milestone 7 raised it, and what
+  // is asserted now is the reason it is safe to: the page is still scrollable
+  // and the legend is still above the map.
+  test("the map fills the screen it is the subject of", async ({ page }) => {
     await login(page);
     await gotoTripMap(page);
     const { map, legend, innerHeight } = await readMap(page);
 
-    // Capped, rather than a flat 50vh: 50vh of 756 is 378, and with the old
-    // rule the measured map was 424px tall starting at y=383.
-    expect(map.height, "the mobile map should be capped at 20rem").toBeLessThanOrEqual(320);
+    expect(map.height, "the trip map should be 85vh on a phone").toBeCloseTo(innerHeight * 0.85, -1);
 
     // The legend used to render *after* the map and land at y=769 - a dozen
     // pixels past the fold, with nothing hinting it was there.
     expect(legend.bottom, "the legend should sit above the map, not below it").toBeLessThanOrEqual(map.top + 1);
     expect(legend.top, "the legend should be above the fold").toBeLessThan(innerHeight);
 
-    // The symptom itself: how much of what you can actually see is map. A
-    // touch drag has to start somewhere, and before this it could only start
-    // on the map from y=383 down.
-    const visibleMap = Math.min(map.bottom, innerHeight) - Math.max(map.top, 0);
-    expect(
-      visibleMap,
-      `${Math.round(visibleMap)}px of the ${innerHeight}px screen is map - a drag has nowhere else to start`
-    ).toBeLessThanOrEqual(innerHeight / 2);
+    // Deliberately not the whole screen: a strip of page below the map is what
+    // shows there is more underneath it.
+    expect(map.height, "but not the entire screen").toBeLessThan(innerHeight);
+    const scrollable = await page.evaluate(
+      () => document.documentElement.scrollHeight > window.innerHeight
+    );
+    expect(scrollable, "the page must still have somewhere to scroll").toBe(true);
   });
 
-  // The overlay must cover the map and nothing else. On a phone the legend
-  // moves into the flow *above* the map (Stage 13's order: -1), so an overlay
-  // pinned to the wrapper's inset: 0 dims the legend too -- and the shadow
-  // root does not inherit base.css's border-box reset, so its padding stood it
-  // another 32px taller than the map on top of that. Both were real, and both
-  // are only visible at this width.
-  test("the gesture hint covers the map and not the legend", async ({ page }) => {
+  // The other two mounts sit inside a page of other content, and the single
+  // blanket rule that capped the trip map was *inflating* both of them to
+  // 320px. Each keeps its own height now.
+  test("the smaller maps keep their own heights", async ({ page }) => {
     await login(page);
-    await gotoTripMap(page);
 
-    const boxes = await page.evaluate(() => {
-      const host = document.querySelector("leaflet-map");
-      host.showGestureHint("x");
-      clearTimeout(host._hintTimer);
-      const sr = host.shadowRoot;
-      const b = (el) => {
-        const r = el.getBoundingClientRect();
-        return { top: Math.round(r.top), height: Math.round(r.height) };
-      };
-      return {
-        hint: b(sr.querySelector(".gesture-hint")),
-        map: b(sr.getElementById("map")),
-        legend: b(sr.querySelector(".legend")),
-      };
-    });
+    const res = await page.request.post("/api/trips", { data: { title: "UI suite: map heights" } });
+    const tripId = (await res.json()).id;
+    try {
+      const created = await page.request.post(`/api/trips/${tripId}/items`, {
+        data: {
+          category: "site",
+          type: "viewpoint",
+          title: "Somewhere",
+          location: { lat: 64.9631, lng: -19.0208, address: null },
+        },
+      });
+      const itemId = (await created.json()).id;
 
-    expect(boxes.hint.top, "the overlay should start where the map does").toBe(boxes.map.top);
-    expect(boxes.hint.height, "and be exactly as tall").toBe(boxes.map.height);
-    expect(boxes.hint.top, "leaving the legend readable").toBeGreaterThanOrEqual(
-      boxes.legend.top + boxes.legend.height
-    );
+      const heightOf = async (route, selector) => {
+        await gotoRoute(page, route);
+        await page.waitForFunction((s) => document.querySelector(s)?.hasAttribute("data-ready"), selector);
+        return page.evaluate(
+          (s) => Math.round(document.querySelector(s).shadowRoot.getElementById("map").getBoundingClientRect().height),
+          selector
+        );
+      };
+
+      // 16rem and 20rem, i.e. what their own desktop rules already say.
+      expect(
+        await heightOf(`/trips/${tripId}/locations/${itemId}`, "leaflet-map"),
+        "a single-marker map on a location page"
+      ).toBe(256);
+      expect(
+        await heightOf(`/trips/${tripId}/locations/new`, ".location-form__map"),
+        "the coordinate picker inside a form card"
+      ).toBe(320);
+    } finally {
+      await page.request.delete(`/api/trips/${tripId}`);
+    }
   });
 
   test("a one-finger drag is left to the page on a touch device", async ({ page }) => {

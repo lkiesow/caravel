@@ -726,6 +726,44 @@ outside the viewport). Add a measurement assertion for each of the three
 modes' rendered heights at 324×756. Manual pass on the phone viewport for all
 three screens.
 
+**Done.** The mobile block's single `#map` height became three `--map-height`
+declarations, one per mount. Milestone 6 had already introduced that custom
+property (so the gesture overlay could be exactly as tall as the map), which
+left this milestone as three lines of CSS and the tests to prove them.
+
+Measured at 324x756: the trip Map tab is **643px, 85% of the viewport**, up
+from 320; the location view is 256px (16rem) and the editor picker 320px
+(20rem) - and the first of those is a **correction**, since the single blanket
+rule had been *inflating* a 16rem map to 320px on a phone. The gesture overlay
+matches the map's box exactly in all three. Nothing overflows horizontally and
+the page is still scrollable in every case.
+
+**The cap's stated reason was already obsolete, which is what made this safe.**
+The backlog had warned since Stage 21 that the cap was Stage 13's fix for the
+map swallowing the page scroll. It was not: that fix was
+`dragging: !isCoarsePointer()`, landed in the same milestone, and with
+Leaflet's drag handler off a one-finger drag over the map is never consumed at
+any height. The cap was belt and braces beside the real fix. The legend keeps
+`order: -1` because that is where the filters live, not because the page needs
+somewhere to be dragged from.
+
+**Verified where it counts, with real touch.** All three specs in
+`map.gesture.spec.js` stay green at the new height - one finger still scrolls
+the page and leaves the map, two fingers still pan the map and leave the page,
+and the one-finger hint still appears. That project drives CDP touch, and
+`showMap()` scrolling the map into view first is what keeps it honest at 85vh,
+since CDP silently delivers nothing outside the viewport.
+
+The old `the map leaves most of the screen to the page` test asserted the
+opposite of this milestone - a cap of 320px and no more than half the visible
+screen - so it was rewritten rather than deleted, to the reason the new height
+is safe: 85vh, legend above the map, and the page still scrollable. A second
+test pins the two smaller mounts at 256px and 320px so the blanket rule cannot
+come back. `make ci` green, 171 passed.
+
+Looked at on the phone viewport: legend above, map filling the screen, markers
+and the locate control legible, a strip of page still visible below.
+
 ---
 
 ## 8. Sweep-up: three input rules, and a bin on the wrong button

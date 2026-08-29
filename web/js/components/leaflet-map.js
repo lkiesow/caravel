@@ -338,10 +338,36 @@ const styles = `
       height: auto;
       flex: none;
     }
+    /* One rule used to set the height for all three mounts, which is why the
+       trip map was capped at 20rem: raising the number would have put a
+       full-height map inside the editor's form card. Mode by mode instead.
+
+       The cap on the trip map is gone. This entry has carried a warning since
+       Stage 21 that the cap was the Stage 13 fix for the map swallowing the
+       page scroll -- but that reasoning predates dragging: !isCoarsePointer()
+       landing in the same milestone, and with Leaflet's drag handler off a
+       one-finger drag over the map is never consumed at any height. The legend
+       above the map stays because that is where the filters live, not because
+       the page needs somewhere to be dragged from.
+
+       85vh rather than 100vh: enough that the map is the screen, with a strip
+       of page left at the bottom so it is visible that there is more below,
+       and so the scroll position after a page load does not look like a
+       full-bleed map with no context. */
     :host {
-      /* max(...) rather than a separate min-height, so one expression is the
-         whole answer and the overlay can share it. */
-      --map-height: max(min(50vh, 20rem), 16rem);
+      --map-height: 85vh;
+    }
+    /* The other two mounts sit inside a page of other content and keep the
+       heights their own desktop rules give them -- which is also a small
+       correction: the single blanket rule was *inflating* both of them to
+       320px on a phone. [pick] after [lat] on purpose, the same equal-
+       specificity source-order point the desktop rules make: a picker with
+       coordinates set matches both. */
+    :host([lat]) {
+      --map-height: 16rem;
+    }
+    :host([pick]) {
+      --map-height: 20rem;
     }
     .legend {
       position: static;

@@ -93,32 +93,6 @@ down.
   endpoint. Softened a lot by Stage 07 Milestone 9's preview-error handler: a URL
   the browser itself can't load is already flagged in the card before Create is
   pressed.
-- **The map is half the screen on a phone.** **(soon)** (Stage 21; the stated
-  blocker re-examined in Stage 23 planning and found already answered.)
-  `web/js/components/leaflet-map.js:257-269` caps `#map` at
-  `min(50vh, 20rem)` under `@media (max-width: 640px)`, which at 324x756
-  leaves the map smaller than it wants to be for actually reading one.
-  This entry used to say the cap was load-bearing -- the Stage 13 Milestone 1
-  fix for the map swallowing the page scroll, with the legend's `order: -1`
-  leaving a drag-safe strip to start a page drag in. That reasoning is from
-  *before* the same milestone landed `dragging: !isCoarsePointer()`
-  (`leaflet-map.js:454`). With Leaflet's drag handler off on a coarse pointer,
-  a one-finger drag over the map is never consumed by the map at any height,
-  so the page stays draggable everywhere and the strip is not what makes it
-  work. The cap is belt-and-braces, not the fix.
-  What raising it does need is that the blanket rule be made **mode-specific**
-  first: the component mounts three ways -- the trip Map tab
-  (`trip-detail-page.js:131`, plain `:host`), the location view
-  (`location-view-page.js:92`, `:host([lat])`, 16rem) and the editor picker
-  (`location-editor-page.js:164`, `:host([pick])`, 20rem) -- and one `#map`
-  rule covers all of them, so a big number would put a full-height map inside
-  a form card. Note the two smaller modes are currently *inflated* to 320px by
-  that same rule.
-  `tests/ui/map.gesture.spec.js` is what would catch a regression, and it
-  drives real touch through CDP -- mind that CDP silently delivers nothing
-  outside the viewport, so a taller map makes "scroll the target into view
-  first" matter more, not less.
-
 - **A create failure shows the server's raw Go error to the user.** (Noticed
   during Stage 23 Milestone 4's manual pass; pre-existing, and not caused by
   the multipart create.) A cover the server cannot fetch puts `could not fetch
@@ -479,8 +453,11 @@ down.
   fails, which is why it was left alone: fixing it means either a per-run output
   directory (and then CI's artifact upload has to find it) or accepting that
   failure artifacts from concurrent runs are best-effort.
-- **A fast `GREP` can spend the login budget by itself.** (Stage 19 Milestone
-  1.) Login is limited to 10/min/IP, and the limiter now lives in the run's own
+- **A fast `GREP` can spend the login budget by itself -- and the full suite
+  now trips it too.** (Stage 19 Milestone 1; the full-run half observed in
+  Stage 23 Milestones 6-7, where `register.spec.js` failed on roughly half of
+  full runs and passed every time in isolation. The entry used to say the full
+  suite was spread out enough not to hit it; that is no longer true.) Login is limited to 10/min/IP, and the limiter now lives in the run's own
   server rather than being shared with everything else on the machine -- an
   improvement. But `auth.setup.js` spends two, and a `GREP` that selects a
   login-heavy subset (the settings specs, say) finishes in twenty seconds and

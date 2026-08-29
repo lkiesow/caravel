@@ -133,7 +133,27 @@ check-migrations:
 #
 # Not part of `make ci` for the same reason test-ui is not: it needs a browser.
 # CI runs it in the `ui` job.
-CONTRAST_ROUTES = --route /trips --route /settings --route /trips/new
+# {trip} and {item} are filled from the seeded demo data by contrast.js, which
+# is what lets the trip tabs and the location editor be listed here at all --
+# their ids are not knowable when this line is written.
+#
+# Dialogs are not reachable: the script measures a route as it lands and has no
+# way to open one. That is the known gap, not an oversight.
+CONTRAST_ROUTES = \
+	--route /trips \
+	--route /settings \
+	--route /trips/new \
+	--route /trips/{trip}/locations \
+	--route /trips/{trip}/map \
+	--route /trips/{trip}/itinerary \
+	--route /trips/{trip}/expenses \
+	--route /trips/{trip}/checklists \
+	--route /trips/{trip}/files \
+	--route /trips/{trip}/members \
+	--route /trips/{trip}/settings \
+	--route /trips/{trip}/locations/new \
+	--route /trips/{trip}/locations/{item} \
+	--route /trips/{trip}/locations/{item}/edit
 check-contrast:
 	node tests/ui/contrast.js --self-test
 	scripts/with_server.sh node tests/ui/contrast.js $(CONTRAST_ROUTES) --scheme both --strict

@@ -196,25 +196,6 @@ purpose — do not reconstruct it from an older stage plan without asking.
 
 ## Testing, CI and dev tooling
 
-- **The contrast gate covers three routes and one exemption.** **(soon)** (Stage
-  19 Milestone 6.) `make check-contrast` sweeps `/trips`, `/settings` and
-  `/trips/new` in both palettes, holding each element to its own WCAG threshold,
-  with `.app-brand` exempt as a logotype. What it does not reach: every trip
-  tab, the location editor, the map legend and the dialogs -- all of which the
-  script *can* measure, since it pierces shadow roots, but none of which is in
-  the route list.
-
-  **Widening it is not just a line in the Makefile.** `contrast.js:266-280`
-  navigates literal `--route` strings and then asserts the landed pathname
-  equals the requested one, and every route worth adding contains a trip id the
-  script has no way to resolve. So it first needs route *templates* -- fetch
-  `/api/trips` after the in-page login and substitute `{trip}` -- with the
-  landed-path assertion comparing against the substituted route. Dialogs are a
-  separate matter again: there is no `--click` or any other interaction, so
-  measuring inside one needs machinery that does not exist. The reason the gate
-  starts narrow is that each route costs two browser page loads and nobody has
-  read the numbers for the rest yet.
-
 - **The UI suite reaches the real Nominatim.** (Stage 21 Milestone 1.)
   `scripts/with_server.sh` sets `CARAVEL_LLM_URL=stub` and
   `CARAVEL_SEARCH_PROVIDER=stub` but leaves `CARAVEL_GEOCODER_URL` at its

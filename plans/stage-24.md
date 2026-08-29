@@ -479,6 +479,30 @@ with `--strict`. The script's own too-few-elements guard (`:437-440`) confirms i
 actually measured the new routes rather than silently skipping them; note the
 before/after element count in the Done paragraph.
 
+**Done.** Landed as planned. `resolveRoute` fills `{trip}` and `{item}` after
+the in-page login, matching the seeded trip by title (`Demo: Iceland Ring
+Road`, the same "full" scenario `scenarios.js` uses) rather than taking the
+first trip, so it stays stable as the seeder gains scenarios. The landed-path
+assertion compares against the substituted path. `CONTRAST_ROUTES` grew from
+three routes to fourteen: all eight trip tabs, the location editor in both new
+and edit form, and the location view.
+
+**110 elements measured before, 712 after**, in both schemes, all at or above
+their own WCAG threshold -- so the widening surfaced no real failures, which
+was not the expectation going in. It does now reach the map's shadow DOM (the
+Leaflet zoom controls and the gesture hint) and the assistant panel, neither of
+which was covered. `a.app-brand` at 3.59:1 remains the only exemption and the
+worst measurement.
+
+Proved the new coverage is real rather than nominal, since an all-green result
+proves nothing by itself: a temporary `color: #b8b8b8` on
+`.expenses__summary-card p` -- an element that exists only on a route added by
+this milestone -- made the gate fail with four named elements at 1.80:1 on
+`/trips/{trip}/expenses`, and it went green again when the rule was removed.
+The whole run, including build and seed, takes about 41 seconds.
+
+Dialogs remain out of scope and the help text now says so.
+
 ---
 
 ## 9. `mobile-map.png` catches up

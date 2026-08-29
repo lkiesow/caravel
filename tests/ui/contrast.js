@@ -91,7 +91,9 @@ function parseArgs(argv) {
       console.log(
         [
           "usage: node tests/ui/contrast.js [options]",
-          "  --route <path>       route to measure; repeatable (default /trips)",
+          "  --route <path>       route to measure; repeatable (default /trips).",
+          "                       {trip} and {item} are filled from the seeded",
+          "                       demo data, e.g. /trips/{trip}/map",
           "  --scheme <s>         light | dark | both (default light)",
           "  --selector <sel>     add a selector; repeatable. Default: a common set",
           "  --min <ratio>        exit non-zero if any element falls below this flat floor",
@@ -237,6 +239,37 @@ const MEASURE = ({ selectors }) => {
   return results;
 };
 
+// The seeded trip the templated routes point at. Same title tests/ui/helpers
+// /scenarios.js calls the "full" scenario -- the one with locations, days,
+// expenses and files, so a tab actually has content to measure. Matching on the
+// title rather than taking the first trip keeps this stable when the seeder
+// adds scenarios.
+const SCENARIO_TRIP_TITLE = "Demo: Iceland Ring Road";
+
+// Fills {trip} and {item} in a route. Routes worth measuring are trip tabs and
+// the location editor, and their ids are not knowable when the Makefile writes
+// the route list down -- so the list carries holes and they are filled here,
+// after login, from the seed.
+async function resolveRoute(page, route) {
+  if (!route.includes("{")) return route;
+
+  const data = await page.evaluate(async (title) => {
+    const trips = await (await fetch("/api/trips")).json();
+    if (!Array.isArray(trips)) return { error: "could not list trips" };
+    const trip = trips.find((t) => t.title === title);
+    if (!trip) return { error: `no seeded trip titled ${title}` };
+    const items = await (await fetch(`/api/trips/${trip.id}/items`)).json();
+    if (!Array.isArray(items) || !items.length) return { error: `trip ${title} has no locations` };
+    return { trip: trip.id, item: items[0].id };
+  }, SCENARIO_TRIP_TITLE);
+
+  if (data.error) {
+    console.error(`contrast: ${data.error} — run \`make dev-reset FORCE=1\` first`);
+    process.exit(1);
+  }
+  return route.replace("{trip}", data.trip).replace("{item}", data.item);
+}
+
 async function measureScheme(browser, opts, scheme, route) {
   const context = await browser.newContext({ colorScheme: scheme, viewport: { width: 1280, height: 800 } });
   const page = await context.newPage();
@@ -263,7 +296,9 @@ async function measureScheme(browser, opts, scheme, route) {
     process.exit(1);
   }
 
-  await page.goto(opts.url + route);
+  const path = await resolveRoute(page, route);
+
+  await page.goto(opts.url + path);
   await page.waitForFunction(
     () => {
       const app = document.getElementById("app");
@@ -273,9 +308,11 @@ async function measureScheme(browser, opts, scheme, route) {
     { timeout: 15000 }
   );
   const landed = await page.evaluate(() => window.location.pathname);
-  if (landed !== route) {
+  // Compared against the *substituted* path, not the template, or every
+  // templated route would look like a redirect.
+  if (landed !== path) {
     // Same trap the suite guards: unmatched paths silently redirect to /trips.
-    console.error(`contrast: asked for ${route} but landed on ${landed} — that route probably doesn't exist`);
+    console.error(`contrast: asked for ${path} but landed on ${landed} — that route probably doesn't exist`);
     process.exit(1);
   }
   await page.waitForTimeout(400);

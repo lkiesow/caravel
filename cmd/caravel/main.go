@@ -153,28 +153,17 @@ func main() {
 	go sweepExpiredSessionsPeriodically(store)
 
 	webFS := httpapi.WebFS(webassets.FS(), cfg.WebDir)
-	server := httpapi.NewServer(httpapi.Options{
-		DB:      dbConn,
-		Store:   store,
-		Auth:    authService,
-		Blob:    blob,
-		WebFS:   webFS,
-		NoCache: cfg.WebDir != "",
-		// Empty when the operator set CARAVEL_TRUSTED_PROXIES=none, which is
-		// the documented way to trust nothing.
-		TrustedProxies: cfg.TrustedProxies,
-		// Empty is the normal case: the origin is then derived per request.
-		BaseURL:   cfg.BaseURL,
+	server := httpapi.NewServer(serverOptions(cfg, httpapi.Options{
+		DB:        dbConn,
+		Store:     store,
+		Auth:      authService,
+		Blob:      blob,
+		WebFS:     webFS,
 		Geocoder:  geocoder,
 		Assist:    assistant,
 		Wikimedia: wiki,
 		Searcher:  searcher,
-		Tiles: httpapi.TileSettings{
-			URL:         cfg.TileURL,
-			Attribution: cfg.TileAttribution,
-			MaxZoom:     cfg.TileMaxZoom,
-		},
-	})
+	}))
 
 	slog.Info("caravel listening",
 		"version", buildinfo.Version,
@@ -190,6 +179,40 @@ func main() {
 	if err := http.ListenAndServe(":"+cfg.Port, server); err != nil {
 		fatal("server", err)
 	}
+}
+
+// serverOptions fills in everything the HTTP server takes from configuration,
+// on top of the collaborators main has already built.
+//
+// A function rather than a literal inside main so that it can be tested. Every
+// assignment here is a place a configured value can quietly fail to arrive,
+// and two of them did: AssistRateLimit and AssistMaxConcurrent were parsed,
+// range-checked, documented, sampled in .env.sample and reported at startup
+// from Stage 21 until Stage 27, and never passed on -- so the server ran on
+// the defaults while the log confidently named the operator numbers. Nothing
+// caught it because main is not callable from a test and every test built its
+// own Options. This is the seam that makes config-reaches-Options assertable.
+func serverOptions(cfg config.Config, opts httpapi.Options) httpapi.Options {
+	// Serving the web assets live from disk means the browser must keep none
+	// of them: they change under the running process.
+	opts.NoCache = cfg.WebDir != ""
+	// Empty when the operator set CARAVEL_TRUSTED_PROXIES=none, which is the
+	// documented way to trust nothing.
+	opts.TrustedProxies = cfg.TrustedProxies
+	// Empty is the normal case: the origin is then derived per request.
+	opts.BaseURL = cfg.BaseURL
+	// Zero means "left alone" for both, and NewServer turns exactly that into
+	// DefaultAssistRateLimit and DefaultAssistMaxConcurrent -- so the raw
+	// configured value belongs here, not a pre-defaulted one. The startup log
+	// above defaults the same way, which is what makes the two agree.
+	opts.AssistRateLimit = cfg.AssistRateLimit
+	opts.AssistMaxConcurrent = cfg.AssistMaxConcurrent
+	opts.Tiles = httpapi.TileSettings{
+		URL:         cfg.TileURL,
+		Attribution: cfg.TileAttribution,
+		MaxZoom:     cfg.TileMaxZoom,
+	}
+	return opts
 }
 
 // webImageSearch names the backend behind the web half of the image picker,

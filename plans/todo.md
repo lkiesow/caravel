@@ -25,22 +25,6 @@ purpose — do not reconstruct it from an older stage plan without asking.
 
 ## Bugs and rough edges
 
-- **The assistant's configured limits never reach the server.** **(Stage 27
-  Milestone 1.)** (Found while planning Stage 24.)
-  `CARAVEL_ASSIST_RATE_LIMIT` and `CARAVEL_ASSIST_MAX_CONCURRENT` are parsed
-  (`internal/config/config.go:193`),
-  range-checked, documented (`docs/configuration/assistant.md:78`), sampled
-  (`.env.sample:150`) and logged at startup with their effective values
-  (`cmd/caravel/main.go:138-152`) -- but the `httpapi.Options` literal at
-  `cmd/caravel/main.go:155-171` never sets either field, so `NewServer` always
-  falls back to `DefaultAssistRateLimit` (6) and `DefaultAssistMaxConcurrent`
-  (4). Only tests set them. So the two variables do nothing, and the startup log
-  reports a number the running server is not using -- which is worse than no log
-  at all, because it is the line somebody would check. Two lines in main.go,
-  plus a test that a configured limit actually bites: the existing
-  `newTestServerWithOptions` path proves the plumbing works from `Options`
-  inward, so what is missing is a check that `config` reaches `Options`.
-
 - **An unknown /api path answers 200 with the SPA shell.** (Noticed in Stage 25
   Milestone 2, while confirming a deleted route was gone.) `POST
   /api/items/{id}/nonsense` and `GET /api/does-not-exist` both return 200 and

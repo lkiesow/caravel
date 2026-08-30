@@ -93,6 +93,33 @@ reaches `Options` at all.
 Verify by hand too: start with `CARAVEL_ASSIST_MAX_CONCURRENT=1` and confirm a
 second concurrent run is refused with `assist_busy`, which today it is not.
 
+**Done.** `cmd/caravel/main.go` gained `serverOptions(cfg, opts)`, which fills
+in everything the server takes from configuration -- `NoCache`,
+`TrustedProxies`, `BaseURL`, `Tiles`, and the two assist limits -- on top of
+the collaborators `main` has already constructed. The literal in `main` now
+holds only those collaborators and is wrapped in a `serverOptions(...)` call.
+The raw configured value is passed through rather than pre-defaulted, because
+`NewServer` is what turns zero into `DefaultAssistRateLimit` /
+`DefaultAssistMaxConcurrent`; defaulting in both places would agree today and
+diverge the day one changes.
+
+Verified three ways. `cmd/caravel/main_test.go` (new, five tests) asserts
+config reaches `Options` for every field, using values that are neither zero
+nor the defaults so a dropped field cannot pass -- and it was checked against a
+reverted fix, where it fails with `AssistRateLimit = 0, want 11`. End to end:
+`CARAVEL_ASSIST_RATE_LIMIT=1 scripts/with_server.sh ...` logging in as `demo`
+and posting twice to `/assist/location` gives 200 then **429** `too many
+assistant requests`; the same script with the variable unset gives 200 twice,
+which is the control that shows the 429 came from the configured value rather
+than from the default of 6. `make ci` green.
+
+The plan proposed proving this with `CARAVEL_ASSIST_MAX_CONCURRENT=1` and
+`assist_busy` instead. The rate limiter was used because it is deterministic:
+against the stub provider a run finishes far too fast for two sequential
+requests to overlap, so a concurrency proof would have needed real parallelism
+and a slow provider to be anything but flaky. Both settings travel the same
+path from `config` to `Options`, and the unit test covers both.
+
 ## 2. One agent loop, two tasks
 
 **No new behaviour in this diff.** `Agent.Propose`

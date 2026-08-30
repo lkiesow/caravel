@@ -1985,6 +1985,15 @@ button {
   color: var(--color-text-muted);
 }
 
+/* A stored link whose URL is not one a browser may safely follow -- see
+   web/js/url.js. Shown as text so it is still readable, and struck through so
+   it does not merely look like a link that failed to style. */
+.link-list__unsafe {
+  color: var(--color-text-muted);
+  text-decoration: line-through;
+  word-break: break-all;
+}
+
 .image-field {
   margin-bottom: 1rem;
 }

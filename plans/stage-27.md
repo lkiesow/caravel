@@ -390,6 +390,59 @@ Noted in passing: `internal/httpapi/items_create.go` was not `gofmt`-clean
 before this milestone. The stray indentation was inside the literal this
 milestone re-indented, so it is fixed as a side effect rather than deliberately.
 
+## 4a. Follow-up: a link cannot carry a `javascript:` URL
+
+Not a planned milestone. Found while writing a Milestone 4 test that assumed
+the API already refused this, and fixed before Milestone 5 rather than left in
+the backlog, because that milestone adds bulk writing to the same tables.
+
+`itemRequest.validate` required only that a link URL be non-empty, and the
+client rendered it into an `href` through `escapeAttr` -- which is an alias of
+`escapeHtml`, so it escapes five characters and says nothing about schemes.
+A `javascript:` URL was therefore storable and clickable. On a shared trip that
+is stored XSS rather than a way to attack yourself: any editor can plant it,
+and any member who opens that location and clicks it runs script with their own
+session.
+
+Fixed in three places, and it needs all three:
+
+- **`validateLinkURL` in `internal/httpapi/items.go`** -- http and https only,
+  scheme lowercased before comparison, a host required. Applied by
+  `itemRequest.validate` (which serves create, PATCH *and* the batch endpoint)
+  and separately by `handleCreateItemLink`, which writes the same column from
+  its own handler and is exactly how a check applied in one place gets
+  bypassed. Deliberately not `mailto` or `tel`: the field is presented as a web
+  link, the assistant only proposes addresses it has fetched, and every scheme
+  added here is a scheme every current and future render site must be safe for.
+- **`safeHref` in a new `web/js/url.js`**, used at both render sites. The
+  server check protects rows written from now on; the rows this protects are
+  the ones already in somebody's database. A module rather than a per-file
+  helper, breaking the convention the seven copies of `escapeHtml` set: a
+  divergent copy of an entity escaper is a rendering bug, and a divergent copy
+  of this is a hole.
+- **Rendered inertly, not dropped.** A rejected URL becomes
+  `<span class="link-list__unsafe">` -- visible, struck through, not clickable
+  -- so somebody can see what is stored and go and remove it.
+
+Two things checked rather than assumed. Markdown notes were never affected:
+`internal/markdown` sanitises with bluemonday, and `[click](javascript:...)`
+renders as bare text with no anchor at all. And the assistant could never have
+proposed one: a link is fetched by `LinkIsLive` before it is offered, and
+`internal/safefetch` refuses anything that is not public http or https.
+
+Verified: five Go tests in `internal/httpapi/item_links_test.go` covering the
+nested path, PATCH, the batch endpoint and the standalone endpoint against
+eight bad URLs each -- `javascript:`, mixed case, leading whitespace, `data:`,
+`vbscript:`, a scheme with no host, a relative path and empty -- plus the
+http/https cases that must still work. Three Playwright tests in
+`tests/ui/link-safety.spec.js`: the API refusing to store one, and both render
+sites showing a *planted* one as text. The plant is an intercepted item
+response rather than a real row, which is the only way to build a fixture the
+server now refuses -- and is exactly the shape a pre-fix row arrives in. The
+render test was checked against a reverted guard, where it fails. `make ci`
+green; `locations.spec.js`, `assist.spec.js` and the new spec green together,
+34 passed.
+
 ## 5. Reviewing several places at once
 
 **Entry.** In `locations-tab.js`, the New button becomes a `renderMenu` trigger

@@ -7,6 +7,7 @@ import { renderLoading } from "../components/loading.js";
 import { canEdit, isShared } from "../trip-role.js";
 import { renderFileList } from "../components/file-list.js";
 import { formatDateRange } from "../format.js";
+import { safeHref } from "../url.js";
 
 // A URL reduced to its host, for a credit that has a source page but no named
 // author.
@@ -108,7 +109,7 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
         <div class="editor-card">
           <h2 data-i18n="item.detail.links"></h2>
           <ul class="link-list">
-            ${item.links.map((l) => `<li><a href="${escapeAttr(l.url)}" target="_blank" rel="noopener">${escapeHtml(l.label || l.url)}</a></li>`).join("")}
+            ${item.links.map(renderLink).join("")}
           </ul>
         </div>
       `
@@ -212,6 +213,17 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
   container.querySelector('[data-action="edit"]')?.addEventListener("click", () => {
     navigate(`/trips/${tripId}/locations/${itemId}/edit`);
   });
+}
+
+// One stored link. Rendered as an anchor only when its URL is one a browser
+// may safely follow -- see web/js/url.js. Anything else is shown as text, so
+// a link written before the server refused non-http schemes is still visible
+// and no longer clickable.
+function renderLink(l) {
+  const href = safeHref(l.url);
+  const text = escapeHtml(l.label || l.url);
+  if (!href) return `<li><span class="link-list__unsafe">${text}</span></li>`;
+  return `<li><a href="${escapeAttr(href)}" target="_blank" rel="noopener">${text}</a></li>`;
 }
 
 function escapeHtml(s) {

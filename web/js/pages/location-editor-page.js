@@ -14,6 +14,7 @@ import "../components/leaflet-map.js";
 import { hasCapability } from "../session.js";
 import { renderAssistPanel } from "../components/assist-panel.js";
 import { formatDateRange } from "../format.js";
+import { safeHref } from "../url.js";
 
 // Both modes render the same cards, in the same order - Basic info, Cover
 // photo, Location, Links, Dates, Files - matching the read view's
@@ -844,8 +845,17 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     list.innerHTML = draft.links.length
       ? draft.links
           .map(
-            (l, i) =>
-              `<li><a href="${escapeAttr(l.url)}" target="_blank" rel="noopener">${escapeHtml(l.label || l.url)}</a> <button class="icon-remove" data-action="delete-link" data-index="${i}" aria-label="${t("common.remove")}">${icon("x")}</button></li>`
+            (l, i) => {
+              // The same rule the location page applies, and for the same
+              // reason: the draft may hold a link loaded from a row written
+              // before the server checked the scheme.
+              const href = safeHref(l.url);
+              const text = escapeHtml(l.label || l.url);
+              const body = href
+                ? `<a href="${escapeAttr(href)}" target="_blank" rel="noopener">${text}</a>`
+                : `<span class="link-list__unsafe">${text}</span>`;
+              return `<li>${body} <button class="icon-remove" data-action="delete-link" data-index="${i}" aria-label="${t("common.remove")}">${icon("x")}</button></li>`;
+            }
           )
           .join("")
       : `<li class="empty">${t("item.detail.linksEmpty")}</li>`;

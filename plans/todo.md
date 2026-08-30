@@ -25,34 +25,6 @@ purpose — do not reconstruct it from an older stage plan without asking.
 
 ## Bugs and rough edges
 
-- **A location link can carry a `javascript:` URL, and the app renders it as a
-  link.** (Found in Stage 27 Milestone 4, writing a batch-create test that
-  wrongly assumed this was already refused.) `itemRequest.validate`
-  (`internal/httpapi/items.go:203-209`) requires a link URL to be non-empty and
-  checks nothing else, so `{"url":"javascript:alert(1)"}` is stored happily by
-  both the single create and PATCH. The client then renders it into an `href`
-  through `escapeAttr`, which is HTML-entity escaping and says nothing about
-  schemes -- `web/js/pages/location-view-page.js:111` and
-  `web/js/pages/location-editor-page.js:848`. Clicking it runs script in the
-  app origin.
-
-  **This is stored XSS on a shared trip, not merely self-inflicted.** Any
-  editor can plant the link; any member who opens that location and clicks it
-  runs the script with their own session. On a single-user instance it is only
-  a way to attack yourself, which is why it has sat unnoticed.
-
-  Not reachable through the assistant: a proposed link is fetched by
-  `LinkIsLive` before it is offered, and `internal/safefetch` refuses anything
-  that is not public http or https.
-
-  The fix belongs on the server, where every client inherits it: an allowlist
-  of `http` and `https` in `validate`, alongside the existing non-empty check.
-  Worth adding the same guard at the two render sites, because a link stored
-  before the fix stays in the database. A test for each layer, and note that
-  `escapeAttr` being a no-op alias of `escapeHtml` in five files invites
-  exactly this confusion -- the name promises attribute safety and delivers
-  entity escaping.
-
 - **An unknown /api path answers 200 with the SPA shell.** (Noticed in Stage 25
   Milestone 2, while confirming a deleted route was gone.) `POST
   /api/items/{id}/nonsense` and `GET /api/does-not-exist` both return 200 and

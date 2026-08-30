@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -203,8 +204,8 @@ func (req itemRequest) validate() error {
 	// before anything is written, rather than a rolled-back 500.
 	if req.Links != nil {
 		for _, l := range *req.Links {
-			if strings.TrimSpace(l.URL) == "" {
-				return errors.New("every link needs a url")
+			if err := validateLinkURL(l.URL); err != nil {
+				return err
 			}
 		}
 	}
@@ -220,6 +221,49 @@ func (req itemRequest) validate() error {
 		if err := validateTags(normalizeTags(*req.Tags)); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// validateLinkURL accepts only what may safely become an href.
+//
+// This is a security check, not a tidiness one. A link is rendered by the
+// client as <a href="...">, and until Stage 27 the only rule was that the URL
+// was non-empty -- so "javascript:alert(1)" was stored happily and rendered as
+// a working link. On a shared trip that is stored XSS rather than a way to
+// attack yourself: any editor can plant it, and any member who opens that
+// location and clicks runs the script with their own session.
+//
+// http and https only. Deliberately not mailto, tel or anything else that is
+// individually harmless: the field is presented as a web link, the assistant
+// only ever proposes addresses it has fetched, and every scheme added here is
+// a scheme every current and future render site has to be safe for. Widening
+// it later is one line and a test; narrowing it after someone has stored a
+// thousand of them is not.
+//
+// The guard lives here rather than only at the render sites because it is the
+// boundary every client shares -- but note that both render sites check as
+// well, since a link stored before this existed is still in the database.
+func validateLinkURL(raw string) error {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return errors.New("every link needs a url")
+	}
+	u, err := url.Parse(trimmed)
+	if err != nil {
+		return errors.New("a link must be a valid http or https url")
+	}
+	// Lowercased because a scheme is case-insensitive and "JavaScript:" is the
+	// obvious next attempt.
+	switch strings.ToLower(u.Scheme) {
+	case "http", "https":
+	default:
+		return errors.New("a link must be an http or https url")
+	}
+	// A scheme with no host is "https:" followed by whatever the browser makes
+	// of the rest, which is not a link to anywhere.
+	if u.Host == "" {
+		return errors.New("a link must include a host")
 	}
 	return nil
 }
@@ -466,8 +510,14 @@ func (s *Server) handleCreateItemLink(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req itemLinkRequest
-	if err := readJSON(r, &req); err != nil || strings.TrimSpace(req.URL) == "" {
+	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "url is required")
+		return
+	}
+	// The same check the nested-links path applies, for the same reason: this
+	// endpoint writes to the same column and its rows reach the same href.
+	if err := validateLinkURL(req.URL); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 

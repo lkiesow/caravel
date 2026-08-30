@@ -481,6 +481,85 @@ Verification: a new `tests/ui/assist-suggest.spec.js`, skipped unless
 assert three cards, untick one, add, and assert the two remaining locations
 exist on the tab afterwards. Plus a manual pass at 324x756.
 
+**Done.** Landed as planned. `web/js/pages/suggest-page.js` is the new route at
+`/trips/:tripId/suggest`, the New button became a two-row `renderMenu`, and the
+shared parts of an assistant run moved into
+`web/js/components/assist-run.js`.
+
+- **The shared module is `assist-run.js`, not `assist-trace.js`.** It ended up
+  holding the event-key sets, the trace, *and* `renderSources` -- the second
+  screen needed the sources list too, and a second copy of it would have been
+  the same mistake one milestone later. The panel keeps its own slot lookup,
+  because where the box goes is that panel's business; only the box is shared.
+- **Covers are attached after the batch, best effort.** A cover is fetched from
+  a third-party server and stored as a blob, which does not belong inside a
+  JSON transaction (see Milestone 4). So the page creates the locations in one
+  write and then attaches each cover through `POST /trips/{id}/media/url` plus
+  `PUT /items/{id}/image`, the pair the image field already uses. A cover that
+  will not fetch must not undo a location the user has been told about: the
+  failure costs a picture they can add by hand.
+
+Two bugs the tests could not have caught, both found in the 324x756 pass and
+both fixed before committing:
+
+- **`.suggest` was already taken.** The member-username autocomplete owns
+  `.suggest`, `.suggest__list`, `.suggest__option` and `.suggest__hint`. This
+  page reused two of them, so its card list inherited `position: absolute; top:
+  100%` from the autocomplete dropdown and rendered *above* the sources block,
+  out of document order. Every Playwright assertion still passed -- they count
+  elements and read text, neither of which layout affects. The block is now
+  `suggest-page__*`.
+- **`display: flex` beats `[hidden]`.** The status line and the add bar never
+  hid, so "Checking the links... / Cancel" stayed on screen after the run
+  finished. The tree documents this exact trap twice already
+  (`.suggest__list[hidden]` and `.assist__status[hidden]` each carry a note),
+  and it was reproduced anyway; the companion rules are now there, with a
+  comment pointing at the other two.
+
+Two regressions, both caught only by running the *whole* suite, and both worth
+recording because neither is visible from the milestone's own tests.
+
+**The UI suite exceeded the assistant's own rate limit.** `AssistLimiter` is
+six runs a minute per client address, and every Playwright worker is
+127.0.0.1 -- so the suite shares one budget. That was fine while
+`assist.spec.js` was the only spec making runs; this milestone added a second,
+and whichever spec happened to land later started getting 429s. It surfaced as
+a flake: the first full run failed one test, and forcing the overlap
+(`--repeat-each=2 --workers=4` over both assist specs) failed six. The server
+log was what settled it -- the 429s are plainly there, and no amount of reading
+the specs would have shown them. `scripts/with_server.sh` now sets
+`CARAVEL_ASSIST_RATE_LIMIT=200` and `CARAVEL_ASSIST_MAX_CONCURRENT=8`, raised
+rather than serialised: the runs are against the in-process stub, they cost
+nothing, and the limiter is not what these specs are testing --
+`assist_stream_test.go` tests it properly with its own `Options`. The same
+stress that produced six failures now passes 20. Note this is the first thing
+that could have worked at all only because of Milestone 1: before it, those two
+variables did nothing.
+
+**`sharing.spec.js` asserted
+on `[data-action="new-item"]`** to prove a viewer has no way to add a location
+and a promoted editor does. That selector is gone, so both assertions now name
+`.locations-new-slot`. Worth noting that the same spec's *other* test drives the
+member autocomplete, which is the `.suggest` namespace's real owner -- it
+passing is the check that the rename did not break it.
+
+Verified: `tests/ui/assist-suggest.spec.js` (5 tests) -- reaching the page from
+the New menu, three cards from the stub script including the deliberately thin
+one rendering without a cover or links, the count on the button following the
+tick boxes, adding two and finding exactly those two on the tab *and* in the
+API with their tags, coordinates, links and notes; nothing written to the trip
+while the candidates are on screen; the dedup note when a place is already
+there; the empty prompt refused; and the toolbar still not wrapping at 324px.
+`make ci` green, `make docs` green, and the whole UI suite green at 201 passed.
+
+Manually, against a dev server with the stub: the flow end to end in English
+and in German. Three candidates added in one write came back with `sort_order`
+0/1/2 in request order, tags split into lists, coordinates on the two that had
+an address, and the cover attached to the one that proposed one. Re-running the
+same prompt on the same trip then dropped all three as duplicates and said so
+-- "3 Vorschläge wurden übersprungen, weil die Reise sie schon enthält" --
+which is the dedup and the German plural proving themselves on real data.
+
 ## 6. A turn's tool calls run in parallel
 
 `internal/assist/agent.go:424-442`, following the `checkLinks` fan-out at

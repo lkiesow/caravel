@@ -8,6 +8,7 @@ import "../components/location-card.js";
 import { renderLoading } from "../components/loading.js";
 import { canLocate, distanceKm, getCurrentPosition, locateErrorKey } from "../geolocation.js";
 import { canEdit } from "../trip-role.js";
+import { hasCapability } from "../session.js";
 import { formatDateRange } from "../format.js";
 
 const CATEGORIES = ["site", "stay", "transport"];
@@ -87,7 +88,7 @@ export async function renderItemsTab(container, trip) {
         </div>
         <div class="locations-filter-slot"></div>
         <div class="locations-sort-slot"></div>
-        ${editable ? `<button class="btn btn-primary btn-collapse" data-action="new-item">${icon("plus")} <span data-i18n="locations.new"></span></button>` : ""}
+        ${editable ? `<div class="locations-new-slot"></div>` : ""}
       </div>
       <p class="locations-distance-status" role="status" hidden></p>
       <p class="locations-distance-note" hidden></p>
@@ -451,9 +452,37 @@ export async function renderItemsTab(container, trip) {
     applyFilters();
   });
 
-  container.querySelector('[data-action="new-item"]')?.addEventListener("click", () => {
-    navigate(`/trips/${tripId}/locations/new`);
-  });
+  // The New button is a menu rather than a plain button, because there are two
+  // ways to add a location now and the toolbar has no room for a fifth
+  // control: it is a deliberately non-wrapping row that already fits 324px
+  // exactly (see the note at the top of this file). Putting the second way
+  // behind the button people already press to add something costs the primary
+  // action one tap and costs the layout nothing.
+  //
+  // Both rows are `action: true`: neither is a state the menu is now in, so
+  // menuitemradio and aria-checked would both be lies. `label` pins the
+  // trigger to "New location" rather than letting it track a selection there
+  // is none of.
+  //
+  // The suggest row is present only when the instance has an assistant, the
+  // same condition assist-panel.js hides itself entirely under -- a row that
+  // could only ever report "not enabled on this server" is worse than no row.
+  if (editable) {
+    const newItems = [{ value: "blank", label: t("locations.newBlank"), iconName: "plus", action: true }];
+    if (hasCapability("assist")) {
+      newItems.push({ value: "suggest", label: t("locations.newSuggest"), iconName: "sparkles", action: true });
+    }
+    renderMenu(container.querySelector(".locations-new-slot"), {
+      iconName: "plus",
+      label: t("locations.new"),
+      ariaLabel: "locations.new",
+      triggerClass: "btn btn-primary btn-collapse",
+      items: newItems,
+      onSelect: (value) => {
+        navigate(value === "suggest" ? `/trips/${tripId}/suggest` : `/trips/${tripId}/locations/new`);
+      },
+    });
+  }
 
   list.addEventListener("item-open", (e) => {
     navigate(`/trips/${tripId}/locations/${e.detail.itemId}`);

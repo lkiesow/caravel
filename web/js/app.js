@@ -10,6 +10,7 @@ import { renderLocationViewPage } from "./pages/location-view-page.js";
 import { renderSettingsPage } from "./pages/settings-page.js";
 import { renderAdminPage } from "./pages/admin-page.js";
 import { renderNotFoundPage } from "./pages/not-found-page.js";
+import { renderSuggestPage } from "./pages/suggest-page.js";
 import { renderUserMenu } from "./components/user-menu.js";
 import { createRouter, navigate } from "./router.js";
 import { initTheme } from "./theme.js";
@@ -45,6 +46,8 @@ const routes = [
   // the router's match() takes the first pattern that fits, so the literal
   // route would otherwise never be reached (":param" swallows "new"/"edit").
   { pattern: "/trips/new", render: renderTripEditorPage },
+  // Its own route rather than a panel on the locations tab: see suggest-page.js.
+  { pattern: "/trips/:tripId/suggest", render: renderSuggestPage },
   { pattern: "/trips/:tripId/locations/new", render: renderLocationEditorPage },
   { pattern: "/trips/:tripId/locations/:itemId/edit", render: renderLocationEditorPage },
   { pattern: "/trips/:tripId/locations/:itemId", render: renderLocationViewPage },

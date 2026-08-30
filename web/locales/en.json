@@ -408,5 +408,22 @@
   "image.searchNoResults": "No images found. Try a different search term.",
   "image.searchFromWikipedia": "From Wikipedia",
   "image.searchFromWeb": "From the web ({provider})",
-  "image.searchNoLicence": "Check the licence before using these; the search does not report one."
+  "image.searchNoLicence": "Check the licence before using these; the search does not report one.",
+  "locations.newBlank": "Blank location",
+  "locations.newSuggest": "Suggest locations…",
+  "suggest.title": "Suggest locations",
+  "suggest.hint": "Asks the assistant for several places at once. Nothing is added to the trip until you press the button at the bottom.",
+  "suggest.promptLabel": "What are you looking for?",
+  "suggest.promptPlaceholder": "Things to do in Reykjavik",
+  "suggest.run": "Suggest places",
+  "suggest.promptRequired": "Describe what you are looking for.",
+  "suggest.located": "Position found",
+  "suggest.empty": "Nothing was suggested. Try describing what you are looking for differently.",
+  "suggest.dropped": "{count} suggestion was skipped because the trip already has it.",
+  "suggest.dropped_plural": "{count} suggestions were skipped because the trip already has them.",
+  "suggest.selected": "{count} selected",
+  "suggest.selected_plural": "{count} selected",
+  "suggest.add": "Add {count} location",
+  "suggest.add_plural": "Add {count} locations",
+  "suggest.addFailed": "The locations could not be added. Nothing was saved — try again."
 }

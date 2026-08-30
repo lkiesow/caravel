@@ -92,6 +92,16 @@ export CARAVEL_WEB_DIR=web
 export CARAVEL_LLM_URL=stub
 export CARAVEL_LLM_MODEL=stub
 export CARAVEL_SEARCH_PROVIDER=stub
+# The assistant's own limiter is per client address, and every Playwright
+# worker is 127.0.0.1 -- so the whole suite shares one budget. The default of
+# six runs a minute was enough while assist.spec.js was the only spec making
+# them; Stage 27 added a second one, and the suite started refusing its own
+# requests with 429 in whichever spec happened to be later. Raised rather than
+# serialised: these runs are against the in-process stub and cost nothing, and
+# the thing being tested is not the limiter. (assist_stream_test.go tests that
+# properly, with its own Options.)
+export CARAVEL_ASSIST_RATE_LIMIT=200
+export CARAVEL_ASSIST_MAX_CONCURRENT=8
 # The image picker, against an in-process fixture encyclopaedia that serves
 # real PNGs -- including one deliberately dead thumbnail. See
 # internal/wikimedia/stub.go.

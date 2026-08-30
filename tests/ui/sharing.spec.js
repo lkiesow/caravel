@@ -103,7 +103,9 @@ for (const locale of ["en", "de"]) {
         // The content is there; the controls are not. Asserting both halves,
         // because zero controls on an empty page proves nothing.
         await expect(theirPage.locator("item-card")).toHaveCount(1);
-        await expect(theirPage.locator('[data-action="new-item"]')).toHaveCount(0);
+        // The way to add a location. A menu since Stage 27 Milestone 5, where
+        // it used to be [data-action="new-item"]; a viewer gets neither.
+        await expect(theirPage.locator(".locations-new-slot")).toHaveCount(0);
 
         await theirPage.goto(`/trips/${tripId}/checklists`);
         await expect(theirPage.locator(".checklist-card")).toHaveCount(1);
@@ -127,7 +129,7 @@ for (const locale of ["en", "de"]) {
 
         await theirPage.goto(`/trips/${tripId}/locations`);
         await expect(theirPage.locator(".trip-detail__role")).toHaveCount(0);
-        await expect(theirPage.locator('[data-action="new-item"]')).toHaveCount(1);
+        await expect(theirPage.locator(".locations-new-slot .menu__trigger")).toHaveCount(1);
 
         await theirPage.goto(`/trips/${tripId}/checklists`);
         await expect(theirPage.locator(".checklist-new-form")).toHaveCount(1);

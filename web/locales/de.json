@@ -408,5 +408,22 @@
   "image.searchNoResults": "Keine Bilder gefunden. Versuche einen anderen Suchbegriff.",
   "image.searchFromWikipedia": "Aus Wikipedia",
   "image.searchFromWeb": "Aus dem Web ({provider})",
-  "image.searchNoLicence": "Lizenz vor der Verwendung prüfen; die Suche nennt keine."
+  "image.searchNoLicence": "Lizenz vor der Verwendung prüfen; die Suche nennt keine.",
+  "locations.newBlank": "Leerer Ort",
+  "locations.newSuggest": "Orte vorschlagen…",
+  "suggest.title": "Orte vorschlagen",
+  "suggest.hint": "Fragt den Assistenten nach mehreren Orten auf einmal. Es wird nichts zur Reise hinzugefügt, bis du die Schaltfläche unten drückst.",
+  "suggest.promptLabel": "Wonach suchst du?",
+  "suggest.promptPlaceholder": "Sehenswürdigkeiten in Reykjavik",
+  "suggest.run": "Orte vorschlagen",
+  "suggest.promptRequired": "Beschreibe, wonach du suchst.",
+  "suggest.located": "Position gefunden",
+  "suggest.empty": "Es wurde nichts vorgeschlagen. Beschreibe am besten anders, wonach du suchst.",
+  "suggest.dropped": "{count} Vorschlag wurde übersprungen, weil die Reise ihn schon enthält.",
+  "suggest.dropped_plural": "{count} Vorschläge wurden übersprungen, weil die Reise sie schon enthält.",
+  "suggest.selected": "{count} ausgewählt",
+  "suggest.selected_plural": "{count} ausgewählt",
+  "suggest.add": "{count} Ort hinzufügen",
+  "suggest.add_plural": "{count} Orte hinzufügen",
+  "suggest.addFailed": "Die Orte konnten nicht hinzugefügt werden. Es wurde nichts gespeichert — bitte erneut versuchen."
 }

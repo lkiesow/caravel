@@ -25,9 +25,10 @@ purpose — do not reconstruct it from an older stage plan without asking.
 
 ## Bugs and rough edges
 
-- **The assistant's configured limits never reach the server.** (Found while
-  planning Stage 24.) `CARAVEL_ASSIST_RATE_LIMIT` and
-  `CARAVEL_ASSIST_MAX_CONCURRENT` are parsed (`internal/config/config.go:193`),
+- **The assistant's configured limits never reach the server.** **(Stage 27
+  Milestone 1.)** (Found while planning Stage 24.)
+  `CARAVEL_ASSIST_RATE_LIMIT` and `CARAVEL_ASSIST_MAX_CONCURRENT` are parsed
+  (`internal/config/config.go:193`),
   range-checked, documented (`docs/configuration/assistant.md:78`), sampled
   (`.env.sample:150`) and logged at startup with their effective values
   (`cmd/caravel/main.go:138-152`) -- but the `httpapi.Options` literal at
@@ -104,9 +105,10 @@ purpose — do not reconstruct it from an older stage plan without asking.
   shows the days it is on but does not link to them, so the way to see a
   location in context is to go back to the trip and pick the tab.
 
-- **AI trip-level suggestions.** **(soon)** (Stage 15 backlog review.) "Suggest
-  things to do in Reykjavik" returning several candidate locations to add at
-  once, rather than enriching one location at a time. **No longer blocked**:
+- **AI trip-level suggestions.** **(Stage 27, Milestones 3-5.)** (Stage 15
+  backlog review.) "Suggest things to do in Reykjavik" returning several
+  candidate locations to add at once, rather than enriching one location at a
+  time. **No longer blocked**:
   Stage 16 built the single-location version, so the provider, the search
   backends, the tools, the agent loop, the guard rails, the SSE transport and
   the stub are all in place and this reuses every one of them. What is genuinely
@@ -130,9 +132,10 @@ purpose — do not reconstruct it from an older stage plan without asking.
   whether a self-hosted instance can use them at all), *then* pick between
   automatic resolution, a pasted URL per location, and the status quo.
 
-- **Assistant round trips: batching and parallel tool dispatch.** **(soon)**
-  (Stage 21 Milestone 4b, dropped after 4a was measured.) `agent.go` dispatches
-  a turn's tool calls in a plain sequential loop, which reads oddly beside
+- **Assistant round trips: batching and parallel tool dispatch.** **(Stage 27
+  Milestone 6.)** (Stage 21 Milestone 4b, dropped after 4a was measured.)
+  `agent.go` dispatches a turn's tool calls in a plain sequential loop, which
+  reads oddly beside
   `checkLinks` in the same file -- that already fans out with a `WaitGroup`. Two
   halves: prompt the model to request several page reads in one turn rather than
   one at a time, and run a turn's calls concurrently. Results must be appended
@@ -156,6 +159,22 @@ purpose — do not reconstruct it from an older stage plan without asking.
   expectations: 85% of a run is the model, spread over roughly 4.4 sequential
   requests, and switching the instance to `nvidia/nemotron-3.5-lightning` took a
   Tokyo Tower run from 59.1s to 16.4s -- more than any code change is likely to.
+
+  **Two findings from Stage 27 planning that change where this starts.** First,
+  the prefix is *not* stable across runs: `systemPrompt` embeds the trip's tag
+  vocabulary and the user locale (`internal/assist/prompt.go:54-65`), so two
+  runs on different trips share nothing. Moving those into the first user
+  message would make the system block plus the tool definitions a genuinely
+  cacheable prefix, and that is the first move -- before any cache directive.
+  Second, a hit would currently be invisible: `usage`
+  (`internal/assist/provider.go:110-116`) carries only prompt/completion/total
+  tokens and no cached-token field, so neither the budget nor the run trace
+  could tell you whether caching happened. Within a run the message list is
+  already append-only and never rewritten, which is the good news -- and the
+  composing turn, which resends everything, is the single biggest beneficiary.
+  Note also that `chatMessage` is a flat {role, content, ...} shape:
+  OpenAI-style automatic prefix caching needs no wire change, Anthropic-style
+  explicit breakpoints would need content blocks in `provider.go`.
 
 - **SearXNG as a search backend.** (Stage 16 Milestone 8.) Planned for that
   milestone and dropped: nobody had an instance to test against, and a backend

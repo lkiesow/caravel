@@ -101,6 +101,9 @@ test.describe("the location editor, end to end", () => {
     await expect(page.locator("h1")).toHaveText("Hotel Ranga");
     await expect(page.locator(".category-label")).toHaveText("Stay");
     await expect(page.locator(".location-view__tags .tag-chip")).toHaveText(["hotel"]);
+    // Category and tags are one bar, not two stacked rows (Stage 28 Milestone 1):
+    // the chips have to be inside .location-view__meta, not a sibling of it.
+    await expect(page.locator(".location-view__meta .tag-chip")).toHaveText(["hotel"]);
     // Server-rendered markdown, so the emphasis is a real element rather than
     // asterisks printed on the page.
     await expect(page.locator(".location-view__notes strong")).toHaveText("after 15:00");

@@ -78,10 +78,18 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
       <div class="location-view__meta">
         <span class="dot" style="background:${color}"></span>
         <span class="category-label"></span>
+        ${item.tags?.length ? `<ul class="tag-list location-view__tags"></ul>` : ""}
       </div>
-      ${item.tags?.length ? `<ul class="tag-list location-view__tags"></ul>` : ""}
-      ${item.image_url ? `<img class="location-view__image" src="${escapeAttr(item.image_url)}" alt="" />` : ""}
-      ${item.image_credit ? `<p class="image-credit"></p>` : ""}
+      ${
+        item.image_url
+          ? `
+        <figure class="location-view__cover">
+          <img class="location-view__image" src="${escapeAttr(item.image_url)}" alt="" />
+          ${item.image_credit ? `<figcaption class="image-credit"></figcaption>` : ""}
+        </figure>
+      `
+          : ""
+      }
       ${item.notes ? `<div class="location-view__notes"></div>` : ""}
 
       ${

@@ -337,6 +337,46 @@ for (const { scheme, viewport, locale } of COMBINATIONS) {
 // label's 0.875rem, where before they took the browser's own control font at
 // 16px. Every other form in the app already looked like this, so what changed
 // is that auth stopped being the outlier.
+// Every page centres itself the same way, or it is the one that does not.
+//
+// `.page` is the shared frame -- max-width, `margin: 0 auto`, padding -- and
+// every screen in web/js/pages wraps its content in it. The suggest page
+// briefly did not, and the result was the only view in the app flush against
+// the left edge of a wide window, with its content touching the viewport. No
+// existing assertion noticed: it had no overflow, its tap targets were fine
+// and its own tests passed, because none of them was about where the page sat.
+//
+// So this encodes the convention rather than the symptom. A page that wants a
+// different frame can say so here; a page that forgot one cannot.
+test.describe("every route sits in the shared page frame", () => {
+  test.use({ viewport: { width: 1280, height: 900 } });
+
+  test("no route renders its content outside .page", async ({ page }) => {
+    await login(page);
+    const routes = await buildRoutes(page);
+    const failures = [];
+
+    for (const route of routes) {
+      await gotoRoute(page, route.path);
+      const framed = await page.evaluate(() => {
+        const main = document.querySelector("#app");
+        if (!main) return { ok: false, why: "no #app" };
+        const page_ = main.querySelector(":scope > .page, :scope > * > .page, :scope .page");
+        if (!page_) return { ok: false, why: "no .page wrapper" };
+        const box = page_.getBoundingClientRect();
+        // Centred means the space either side matches. A page pinned left has
+        // all of its slack on the right.
+        const left = box.left;
+        const right = document.documentElement.clientWidth - box.right;
+        return { ok: Math.abs(left - right) <= 2, why: `left ${Math.round(left)} vs right ${Math.round(right)}` };
+      });
+      if (!framed.ok) failures.push(`${route.label} (${route.path}): ${framed.why}`);
+    }
+
+    expect(failures, `routes not in a centred .page:\n${failures.join("\n")}`).toEqual([]);
+  });
+});
+
 test.describe("form fields look the same wherever they are", () => {
   const readField = (page, formSelector) =>
     page.evaluate((sel) => {

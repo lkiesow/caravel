@@ -205,6 +205,10 @@ export async function buildRoutes(page) {
     { path: `/trips/${fullTrip}/locations/new`, label: "new location" },
     { path: `/trips/${fullTrip}/locations/${itemId}/edit`, label: "edit location" },
     { path: `/trips/${fullTrip}/locations/${itemId}`, label: "view location" },
+    // Renders the real page only where the server has an assistant, which
+    // with_server.sh arranges; elsewhere it is the not-found page, which is
+    // still a page and still worth sweeping.
+    { path: `/trips/${fullTrip}/suggest`, label: "suggest locations" },
   ];
   for (const tab of TRIP_TABS) {
     routes.push({ path: `/trips/${fullTrip}/${tab}`, label: `trip ${tab}` });

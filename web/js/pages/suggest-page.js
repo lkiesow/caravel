@@ -61,34 +61,43 @@ export async function renderSuggestPage(container, { tripId }) {
   }
 
   container.innerHTML = `
-    <div class="suggest-page">
+    <div class="page suggest-page">
       <a href="/trips/${tripId}/locations" data-link class="back-link">${icon("arrow-left")} <span data-i18n="common.back"></span></a>
-      <h1 data-i18n="suggest.title"></h1>
-      <p class="suggest-page__hint" data-i18n="suggest.hint"></p>
-
-      <div class="suggest-page__ask">
-        <label class="suggest-page__prompt-label" for="suggest-prompt" data-i18n="suggest.promptLabel"></label>
-        <input id="suggest-prompt" class="suggest-page__prompt" type="text" data-i18n-placeholder="suggest.promptPlaceholder" />
-        <button type="button" class="btn btn-primary" data-action="suggest-run">
-          ${icon("sparkles")} <span data-i18n="suggest.run"></span>
-        </button>
+      <div class="page__header">
+        <h1 data-i18n="suggest.title"></h1>
       </div>
-      <label class="suggest-page__context">
-        <input type="checkbox" class="suggest-page__context-toggle" checked />
-        <span data-i18n="assist.tripContext"></span>
-      </label>
 
-      <p class="suggest-page__status" role="status" hidden>
-        <span class="spinner" aria-hidden="true"></span>
-        <span class="suggest-page__progress"></span>
-        <button type="button" class="btn btn-secondary btn-row" data-action="suggest-cancel" data-i18n="common.cancel"></button>
-      </p>
-      <p class="suggest-page__error" role="alert" hidden></p>
+      <div class="editor-card">
+        <h2 data-i18n="suggest.ask"></h2>
+        <p class="editor-card__hint" data-i18n="suggest.hint"></p>
+
+        <div class="suggest-page__ask">
+          <!-- The card heading above already names this field, so a visible
+               label would say the same thing twice. The accessible name is
+               kept, because a heading is not a label. -->
+          <input id="suggest-prompt" class="suggest-page__prompt" type="text"
+                 data-i18n-placeholder="suggest.promptPlaceholder" data-i18n-aria-label="suggest.promptLabel" />
+          <button type="button" class="btn btn-primary" data-action="suggest-run">
+            ${icon("sparkles")} <span data-i18n="suggest.run"></span>
+          </button>
+        </div>
+        <label class="suggest-page__context">
+          <input type="checkbox" class="suggest-page__context-toggle" checked />
+          <span data-i18n="assist.tripContext"></span>
+        </label>
+
+        <p class="suggest-page__status" role="status" hidden>
+          <span class="spinner" aria-hidden="true"></span>
+          <span class="suggest-page__progress"></span>
+          <button type="button" class="btn btn-secondary btn-row" data-action="suggest-cancel" data-i18n="common.cancel"></button>
+        </p>
+        <p class="suggest-page__error" role="alert" hidden></p>
+        <div class="suggest-page__trace-slot"></div>
+      </div>
+
       <p class="suggest-page__note" hidden></p>
-      <div class="suggest-page__trace-slot"></div>
-
       <ul class="suggest-page__list"></ul>
-      <div class="suggest-page__sources-slot"></div>
+      <div class="editor-card suggest-page__sources-slot" hidden></div>
 
       <div class="suggest-page__bar" hidden>
         <span class="suggest-page__count"></span>
@@ -148,6 +157,7 @@ export async function renderSuggestPage(container, { tripId }) {
     cards = [];
     listEl.replaceChildren();
     sourcesSlot.replaceChildren();
+    sourcesSlot.hidden = true;
     noteEl.hidden = true;
     syncBar();
   }
@@ -310,7 +320,9 @@ export async function renderSuggestPage(container, { tripId }) {
       }
 
       for (const candidate of answer.candidates ?? []) renderCard(candidate);
-      renderSources(sourcesSlot, answer.sources);
+      // The card is shown only if there is anything in it: an empty bordered
+      // box under the results reads as something that failed to load.
+      sourcesSlot.hidden = !renderSources(sourcesSlot, answer.sources);
       syncBar();
 
       // Two different notes, and the difference matters to the reader. "It

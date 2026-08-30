@@ -425,5 +425,6 @@
   "suggest.selected_plural": "{count} ausgewählt",
   "suggest.add": "{count} Ort hinzufügen",
   "suggest.add_plural": "{count} Orte hinzufügen",
-  "suggest.addFailed": "Die Orte konnten nicht hinzugefügt werden. Es wurde nichts gespeichert — bitte erneut versuchen."
+  "suggest.addFailed": "Die Orte konnten nicht hinzugefügt werden. Es wurde nichts gespeichert — bitte erneut versuchen.",
+  "suggest.ask": "Wonach gesucht wird"
 }

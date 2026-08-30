@@ -4481,25 +4481,25 @@ button {
   overflow-wrap: anywhere;
 }
 
-/* The trip-level suggestion page (web/js/pages/suggest-page.js). Shares the
-   assistant's own furniture where it can -- .assist-trace, .assist-sources and
-   .spinner are all rendered here unchanged -- so what follows is only the part
-   that is genuinely new: the ask, and the reviewable cards.
+/* The trip-level suggestion page (web/js/pages/suggest-page.js).
+
+   The page itself is the ordinary `.page` + `.page__header` + `.editor-card`
+   arrangement every other screen uses -- centred, padded, grouped -- so almost
+   nothing about the frame is defined here. It briefly was not, and the result
+   was the one view in the app flush against the left edge of a wide window.
+
+   What is left is the ask row and the reviewable cards. The assistant's own
+   furniture -- .assist-trace, .assist-sources, .spinner -- is rendered
+   unchanged.
 
    The block is `suggest-page`, not `suggest`: that namespace is taken by the
    member-username autocomplete above, whose .suggest__list is an absolutely
    positioned dropdown and whose .suggest__hint is muted small print. Sharing
    it silently reparented this page's card list to the top of the document,
    which is the sort of collision a BEM block is supposed to prevent. */
-.suggest-page {
-  max-width: 48rem;
-}
-
-.suggest-page__hint {
-  color: var(--color-text-muted);
-  margin: 0 0 1rem;
-}
-
+/* The input takes the row and the button sits beside it, until the row is too
+   narrow to hold both -- at 324px the button wraps under rather than squeezing
+   the field to nothing. */
 .suggest-page__ask {
   display: flex;
   flex-wrap: wrap;
@@ -4507,14 +4507,6 @@ button {
   gap: 0.5rem;
 }
 
-.suggest-page__prompt-label {
-  flex: 0 0 100%;
-  font-weight: 600;
-}
-
-/* The input takes the row and the button sits beside it, until the row is too
-   narrow to hold both -- at 324px the button wraps under rather than squeezing
-   the field to nothing. */
 .suggest-page__prompt {
   flex: 1 1 14rem;
   min-width: 0;
@@ -4556,17 +4548,26 @@ button {
 }
 
 .suggest-page__note {
-  margin: 1rem 0 0;
+  margin: 0 0 1rem;
   color: var(--color-text-muted);
 }
 
 .suggest-page__list {
   list-style: none;
   padding: 0;
-  margin: 1rem 0 0;
+  margin: 0 0 1rem;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+/* .assist-sources is built to sit *inside* a card, under something else, so it
+   carries a rule off the top. Here it is the only thing in its card and that
+   rule would draw a line under the card's own edge. */
+.suggest-page__sources-slot .assist-sources {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 
 .suggest-card {

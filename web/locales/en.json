@@ -425,5 +425,6 @@
   "suggest.selected_plural": "{count} selected",
   "suggest.add": "Add {count} location",
   "suggest.add_plural": "Add {count} locations",
-  "suggest.addFailed": "The locations could not be added. Nothing was saved — try again."
+  "suggest.addFailed": "The locations could not be added. Nothing was saved — try again.",
+  "suggest.ask": "What to look for"
 }

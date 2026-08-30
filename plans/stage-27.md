@@ -584,6 +584,32 @@ pressing it lands on the editor with nothing in between. `sharing.spec.js`
 green in both languages, the suggest spec green, `make ci` green, and a look at
 the real dev server -- which has no assistant -- showing the plain button and
 an unwrapped toolbar at 324px.
+**Second follow-up: the page did not look like the rest of the app.** Reported
+from a screenshot on a wide window, and correct: the suggest page was the only
+view in Caravel flush against the left edge, its content touching the viewport,
+with none of the card grouping every other screen uses. The cause was that it
+invented its own frame -- a bare `.suggest-page { max-width: 48rem }` with no
+`margin: 0 auto` and no padding -- instead of the `.page` +
+`.page__header` + `.editor-card` arrangement that *every* other page in
+`web/js/pages` wraps itself in. Nothing was broken; it simply did not belong.
+
+It now uses that arrangement: the ask, its status line and the run trace in one
+`editor-card`, the candidates as their own cards below it, and the sources in a
+card of their own that appears only when there are any. The visible field label
+went with it -- the card heading names the field, and a second copy of the same
+words above the input was the duplication the grouping exposed -- so the input
+keeps the label as its accessible name instead.
+
+**A test now encodes the convention, not the symptom.** None of the existing
+assertions could have caught this: the page had no overflow, its tap targets
+were fine, and its own spec passed, because none of them was about where the
+page *sat*. `routes.spec.js` gained "every route sits in the shared page
+frame", which sweeps every route and requires the content to be inside a
+`.page` whose left and right margins match. Checked against the reverted
+markup, where it fails with `suggest locations (...): no .page wrapper`. The
+suggest route was also missing from `buildRoutes` entirely, so the whole
+overflow-and-tap-target sweep had never visited it; it is in the list now.
+
 ## 6. A turn's tool calls run in parallel
 
 `internal/assist/agent.go:424-442`, following the `checkLinks` fan-out at

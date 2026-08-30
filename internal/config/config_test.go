@@ -509,3 +509,59 @@ func TestLoadTrustedProxies(t *testing.T) {
 		}
 	})
 }
+
+// A mistyped base URL is checked at startup because it fails invisibly
+// otherwise: the app works, and only the social card is broken, which nobody
+// sees until they paste a link somewhere public.
+func TestLoadBaseURL(t *testing.T) {
+	cases := []struct {
+		name    string
+		raw     string
+		wantErr string // substring; empty means it must load
+		want    string
+	}{
+		{name: "unset means derive it per request", raw: "", want: ""},
+		{name: "an origin comes through verbatim", raw: "https://caravel.example", want: "https://caravel.example"},
+		{
+			// The tags concatenate this with paths that already start with a
+			// slash, so a trailing one would produce a double slash.
+			name: "a trailing slash is trimmed",
+			raw:  "https://caravel.example/",
+			want: "https://caravel.example",
+		},
+		{name: "a port is part of the origin", raw: "http://caravel.example:8080", want: "http://caravel.example:8080"},
+		{name: "surrounding whitespace is tolerated", raw: "  https://caravel.example  ", want: "https://caravel.example"},
+		{
+			// The most likely typo, and the one that produces a URL a scraper
+			// cannot fetch while looking entirely reasonable in a compose file.
+			name:    "a bare hostname is refused",
+			raw:     "caravel.example",
+			wantErr: "needs an absolute http or https URL",
+		},
+		{name: "a non-web scheme is refused", raw: "ftp://caravel.example", wantErr: "needs an absolute http or https URL"},
+		{name: "a path is refused rather than silently kept", raw: "https://caravel.example/app", wantErr: "scheme and host only"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("CARAVEL_BASE_URL", tc.raw)
+
+			cfg, err := Load()
+			if tc.wantErr != "" {
+				if err == nil {
+					t.Fatalf("Load() succeeded, want error containing %q", tc.wantErr)
+				}
+				if !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("Load() error = %v, want it to contain %q", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load() = %v, want success", err)
+			}
+			if cfg.BaseURL != tc.want {
+				t.Errorf("BaseURL = %q, want %q", cfg.BaseURL, tc.want)
+			}
+		})
+	}
+}

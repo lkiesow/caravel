@@ -61,12 +61,13 @@ func buildAssetETags(fsys fs.FS) assetETagMap {
 		tags["/"+p] = `"` + hex.EncodeToString(sum.Sum(nil))[:16] + `"`
 		return nil
 	})
-	// The shell is reached as "/" far more often than as "/index.html" - it is
-	// what every deep link falls back to - and the file server resolves the
-	// directory to the same bytes, so it needs the same validator.
-	if tag, ok := tags["/index.html"]; ok {
-		tags["/"] = tag
-	}
+	// No alias for "/" here any more. The shell used to be served straight
+	// off the FS under both names and so needed the same validator under
+	// both; since the origin is substituted into it, handleShell computes its
+	// own tag from the substituted bytes and never consults this map. The
+	// /index.html entry stays because assetTreeFingerprint hashes the whole
+	// map, and the shell changing is still a reason to rebuild the worker
+	// cache.
 	return tags
 }
 
@@ -125,6 +126,16 @@ func (s *Server) serveStatic(fileServer http.Handler, w http.ResponseWriter, r *
 		r.URL.Path = "/"
 	} else {
 		f.Close()
+	}
+
+	// The shell is not a plain file either: the origin is substituted into it,
+	// the same way the build fingerprint is substituted into sw.js. This is
+	// reached for every deep link, since the fallback above rewrites the path
+	// to "/" -- the explicit routes only catch "/" and "/index.html" asked for
+	// by name.
+	if r.URL.Path == "/" || r.URL.Path == "/index.html" {
+		s.handleShell(w, r)
+		return
 	}
 
 	if tag, ok := s.assetETags[r.URL.Path]; ok {
@@ -224,4 +235,78 @@ func (s *Server) handleServiceWorker(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-cache")
 	}
 	http.ServeContent(w, r, "sw.js", time.Time{}, strings.NewReader(out))
+}
+
+// shellOriginPlaceholder is what web/index.html carries on disk wherever it
+// needs the absolute origin, and what handleShell substitutes on the way out.
+const shellOriginPlaceholder = "__CARAVEL_ORIGIN__"
+
+// requestOrigin reports the absolute origin -- scheme and host, no trailing
+// slash -- that this request reached the instance under.
+//
+// It exists because the Open Graph tags in the shell need an absolute image
+// URL and a self-hosted server does not know its own public address. A
+// relative og:image is not a workable substitute: Facebook, LinkedIn and
+// Discord drop the image rather than resolving it against the page.
+//
+// CARAVEL_BASE_URL wins when set. Otherwise the Host header decides, with the
+// scheme from isRequestSecure, which already handles both real TLS and the
+// X-Forwarded-Proto a terminating proxy sends. Trusting Host here is a
+// deliberately narrow decision: the only thing it can affect is which
+// hostname a scraper is pointed at for a static PNG, and a request carrying a
+// forged Host is one whose response goes back to whoever forged it.
+func (s *Server) requestOrigin(r *http.Request) string {
+	if s.BaseURL != "" {
+		return s.BaseURL
+	}
+	if r.Host == "" {
+		// No host to build one from. Substituting nothing leaves the tags
+		// holding root-relative paths, which is what they were before this
+		// existed: degraded, but not malformed.
+		return ""
+	}
+	scheme := "http"
+	if isRequestSecure(r) {
+		scheme = "https"
+	}
+	return scheme + "://" + r.Host
+}
+
+// handleShell serves web/index.html with the request origin substituted in.
+//
+// The ETag cannot be the file's content hash any more, which is why this does
+// not go through serveStatic's map. The bytes now differ per origin, so a
+// cache in front of two hostnames -- or one instance reached over both http
+// and https -- could otherwise hand one host a card pointing at the other.
+// The tag is computed from the substituted output, and Vary names the headers
+// that decided it.
+func (s *Server) handleShell(w http.ResponseWriter, r *http.Request) {
+	f, err := s.WebFS.Open("/index.html")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	defer f.Close()
+	body, err := io.ReadAll(f)
+	if err != nil {
+		http.Error(w, "could not read application shell", http.StatusInternalServerError)
+		return
+	}
+	out := strings.ReplaceAll(string(body), shellOriginPlaceholder, s.requestOrigin(r))
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if s.BaseURL == "" {
+		// Only worth saying when the request actually decided the answer. With
+		// a pinned base URL every response is identical and naming these
+		// headers would fragment caches for nothing.
+		w.Header().Set("Vary", "Host, X-Forwarded-Proto")
+	}
+	if s.NoCache {
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	} else {
+		sum := sha256.Sum256([]byte(out))
+		w.Header().Set("ETag", `"`+hex.EncodeToString(sum[:])[:16]+`"`)
+		w.Header().Set("Cache-Control", "no-cache")
+	}
+	http.ServeContent(w, r, "index.html", time.Time{}, strings.NewReader(out))
 }

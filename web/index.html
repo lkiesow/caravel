@@ -18,15 +18,35 @@
   <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
   <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16.png" />
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
-  <!-- Social preview. A link to an instance previewed as nothing at all before
-       this; the card is a committed PNG because scrapers reject SVG. The URL is
-       relative on purpose - an instance has no idea what hostname it is
-       reached under, and every scraper resolves it against the page. -->
+  <!-- Social preview. The card is a committed PNG because scrapers reject SVG,
+       and nothing here is per-trip: trips are not public, so one static card
+       for the instance is the whole feature.
+
+       The origin placeholder below is substituted per request by handleShell
+       (see internal/httpapi/staticassets.go), because these URLs have to be
+       absolute. Do not write the token itself in this comment: the
+       substitution is a plain string replace and would rewrite it here too.
+
+       The relative URLs this block used to carry were the reason a link
+       previewed as nothing: Facebook, LinkedIn and Discord drop an image they
+       cannot resolve on their own rather than resolving it against the page.
+       The width and height matter for a different reason - without them
+       Slack and X lay the card out as a small side thumbnail, ignoring the
+       summary_large_image below. -->
   <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Caravel" />
   <meta property="og:title" content="Caravel" />
   <meta property="og:description" content="Self-hosted trip planning that keeps the map, the plan and the group in sync." />
-  <meta property="og:image" content="/brand/og-card.png" />
+  <meta property="og:url" content="__CARAVEL_ORIGIN__/" />
+  <meta property="og:image" content="__CARAVEL_ORIGIN__/brand/og-card.png" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Caravel - every trip, one place." />
   <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Caravel" />
+  <meta name="twitter:description" content="Self-hosted trip planning that keeps the map, the plan and the group in sync." />
+  <meta name="twitter:image" content="__CARAVEL_ORIGIN__/brand/og-card.png" />
   <!-- Preloaded rather than left to the CSS: the wordmark is in the first
        paint, and discovering the face only after base.css parses is a visible
        swap on every load. -->

@@ -163,10 +163,12 @@ func main() {
 		// Empty when the operator set CARAVEL_TRUSTED_PROXIES=none, which is
 		// the documented way to trust nothing.
 		TrustedProxies: cfg.TrustedProxies,
-		Geocoder:       geocoder,
-		Assist:         assistant,
-		Wikimedia:      wiki,
-		Searcher:       searcher,
+		// Empty is the normal case: the origin is then derived per request.
+		BaseURL:   cfg.BaseURL,
+		Geocoder:  geocoder,
+		Assist:    assistant,
+		Wikimedia: wiki,
+		Searcher:  searcher,
 		Tiles: httpapi.TileSettings{
 			URL:         cfg.TileURL,
 			Attribution: cfg.TileAttribution,

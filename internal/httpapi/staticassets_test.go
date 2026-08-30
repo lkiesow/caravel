@@ -14,9 +14,14 @@ import (
 // of the asset directories, and one at the root.
 func staticFS() fstest.MapFS {
 	return fstest.MapFS{
-		"index.html": &fstest.MapFile{Data: []byte("<!doctype html><title>Caravel</title>")},
-		"js/app.js":  &fstest.MapFile{Data: []byte("export const hello = 1;\n")},
-		"sw.js":      &fstest.MapFile{Data: []byte("// service worker\n")},
+		// The placeholder is what handleShell substitutes; the fixture carries
+		// it in the same shape web/index.html does, twice, because the real
+		// shell uses it for both og:url and og:image.
+		"index.html": &fstest.MapFile{Data: []byte(`<!doctype html><title>Caravel</title>` +
+			`<meta property="og:url" content="__CARAVEL_ORIGIN__/" />` +
+			`<meta property="og:image" content="__CARAVEL_ORIGIN__/brand/og-card.png" />`)},
+		"js/app.js": &fstest.MapFile{Data: []byte("export const hello = 1;\n")},
+		"sw.js":     &fstest.MapFile{Data: []byte("// service worker\n")},
 		// A second module and a nested directory, so a directory listing would
 		// actually have something to leak and is recognisable when it happens.
 		"js/components/dialog.js": &fstest.MapFile{Data: []byte("export const dialog = 1;\n")},
@@ -175,7 +180,10 @@ func TestStaticRouteStillFallsBackToShell(t *testing.T) {
 		if res.Code != http.StatusOK {
 			t.Errorf("GET %s = %d, want 200", path, res.Code)
 		}
-		if got := res.Body.String(); got != string(staticFS()["index.html"].Data) {
+		// Compared by a marker rather than byte-for-byte: the shell is no
+		// longer served verbatim, since handleShell substitutes the origin
+		// into it. TestShellDeepLinkGetsOrigin covers that substitution.
+		if got := res.Body.String(); !strings.Contains(got, "<title>Caravel</title>") {
 			t.Errorf("GET %s did not serve the shell, got %q", path, got)
 		}
 	}
@@ -314,5 +322,112 @@ func TestRealServiceWorkerCarriesThePlaceholder(t *testing.T) {
 	}
 	if !strings.Contains(string(body), swVersionPlaceholder) {
 		t.Fatalf("web/sw.js does not contain %s; the substitution would be a no-op", swVersionPlaceholder)
+	}
+}
+
+// getShell asks for the shell under a given Host, which is what decides the
+// origin when no base URL is pinned. httptest.NewRequest fills Host from the
+// target, so it has to be overridden rather than set as a header.
+func getShell(ts *testServer, path, host string, headers map[string]string) *httptest.ResponseRecorder {
+	r := httptest.NewRequest(http.MethodGet, path, nil)
+	if host != "" {
+		r.Host = host
+	}
+	for k, v := range headers {
+		r.Header.Set(k, v)
+	}
+	w := httptest.NewRecorder()
+	ts.ServeHTTP(w, r)
+	return w
+}
+
+// The social tags need an absolute URL or the strict scrapers drop the image,
+// and the instance only learns its own address from the request.
+func TestShellOriginFromRequest(t *testing.T) {
+	ts := newStaticServer(t, false)
+
+	for _, tc := range []struct {
+		name    string
+		host    string
+		headers map[string]string
+		want    string
+	}{
+		{name: "plain http", host: "caravel.example", want: "http://caravel.example"},
+		{
+			name:    "TLS terminated by a proxy",
+			host:    "caravel.example",
+			headers: map[string]string{"X-Forwarded-Proto": "https"},
+			want:    "https://caravel.example",
+		},
+		{name: "a port is part of the origin", host: "caravel.example:8080", want: "http://caravel.example:8080"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := getShell(ts, "/", tc.host, tc.headers).Body.String()
+			for _, want := range []string{
+				`content="` + tc.want + `/"`,
+				`content="` + tc.want + `/brand/og-card.png"`,
+			} {
+				if !strings.Contains(body, want) {
+					t.Errorf("shell missing %s\ngot: %s", want, body)
+				}
+			}
+			if strings.Contains(body, shellOriginPlaceholder) {
+				t.Errorf("placeholder survived into the response: %s", body)
+			}
+		})
+	}
+}
+
+// A pinned base URL is for the deployment where something in front rewrites
+// Host, so it has to beat whatever the request says.
+func TestShellOriginBaseURLWins(t *testing.T) {
+	ts := newTestServerWith(t, nil, func(o *Options) {
+		o.WebFS = staticFS()
+		o.BaseURL = "https://caravel.example"
+	})
+
+	body := getShell(ts, "/", "internal.lan:8080", map[string]string{"X-Forwarded-Proto": "http"}).Body.String()
+	if !strings.Contains(body, `content="https://caravel.example/brand/og-card.png"`) {
+		t.Errorf("base URL did not win over the request Host\ngot: %s", body)
+	}
+	// Nothing about the response depends on the request, so it must not claim
+	// otherwise -- that would fragment every cache in front of it for nothing.
+	if v := getShell(ts, "/", "internal.lan:8080", nil).Header().Get("Vary"); v != "" {
+		t.Errorf("Vary = %q with a pinned base URL, want none", v)
+	}
+}
+
+// The whole point of computing the ETag from the substituted bytes: a shared
+// cache fronting two hostnames must not be able to hand one host the other
+// host card.
+func TestShellETagVariesByOrigin(t *testing.T) {
+	ts := newStaticServer(t, false)
+
+	a := getShell(ts, "/", "one.example", nil)
+	b := getShell(ts, "/", "two.example", nil)
+	if a.Header().Get("ETag") == "" {
+		t.Fatal("shell carried no ETag")
+	}
+	if a.Header().Get("ETag") == b.Header().Get("ETag") {
+		t.Errorf("same ETag %q for two origins", a.Header().Get("ETag"))
+	}
+	if v := a.Header().Get("Vary"); !strings.Contains(v, "Host") {
+		t.Errorf("Vary = %q, want it to name Host", v)
+	}
+	// A repeat request under the same origin still has to revalidate cheaply.
+	again := getShell(ts, "/", "one.example", map[string]string{"If-None-Match": a.Header().Get("ETag")})
+	if again.Code != http.StatusNotModified {
+		t.Errorf("revalidation = %d, want 304", again.Code)
+	}
+}
+
+// A deep link falls through to the shell, and that copy needs the tags
+// substituted too -- it is a perfectly ordinary URL for someone to share.
+func TestShellDeepLinkGetsOrigin(t *testing.T) {
+	ts := newStaticServer(t, false)
+
+	body := getShell(ts, "/trips/abc", "caravel.example", nil).Body.String()
+	if !strings.Contains(body, `content="http://caravel.example/brand/og-card.png"`) {
+		t.Errorf("deep-link shell was not substituted\ngot: %s", body)
 	}
 }

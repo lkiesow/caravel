@@ -50,6 +50,10 @@ type Server struct {
 	// TrustedProxies are the networks whose X-Forwarded-For is believed. See
 	// clientIP, and config.DefaultTrustedProxies for what fills this normally.
 	TrustedProxies []netip.Prefix
+	// BaseURL pins the public origin for the shell social tags, scheme and
+	// host with no trailing slash. Empty derives it per request. See
+	// requestOrigin.
+	BaseURL string
 	// assetETags maps a URL path to the strong ETag of the file it serves,
 	// hashed once at startup. Nil in dev, where NoCache says not to keep
 	// anything and the files change under the process anyway.
@@ -132,6 +136,9 @@ type Options struct {
 	// Tiles is the map tile layer the browser loads. Zero fields take the
 	// defaults below.
 	Tiles TileSettings
+	// BaseURL pins the public origin used by the shell social tags. Empty --
+	// the usual case, and what a test wants -- derives it from each request.
+	BaseURL string
 }
 
 // DefaultAssistRateLimit is far tighter than the other limiters because the
@@ -167,6 +174,7 @@ func NewServer(opts Options) *Server {
 		WebFS:          http.FS(opts.WebFS),
 		NoCache:        opts.NoCache,
 		TrustedProxies: opts.TrustedProxies,
+		BaseURL:        opts.BaseURL,
 		Geocoder:       opts.Geocoder,
 		Assist:         opts.Assist,
 		Wikimedia:      opts.Wikimedia,

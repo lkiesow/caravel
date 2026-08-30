@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/netip"
+	"net/url"
 	"os"
 	"slices"
 	"strconv"
@@ -117,6 +118,17 @@ type Config struct {
 	// believed when deciding which address a request came from. See
 	// DefaultTrustedProxies for what the default is and why.
 	TrustedProxies []netip.Prefix // CARAVEL_TRUSTED_PROXIES
+
+	// BaseURL pins the origin the instance is reached under, scheme and host,
+	// with no trailing slash. It exists for exactly one job: the social
+	// preview tags in the page shell need an absolute URL, and a server has no
+	// reliable way to know its own public address.
+	//
+	// Empty -- the normal case -- means derive it per request from the scheme
+	// and the Host header, which is right behind an ordinary reverse proxy.
+	// Set it when something in front rewrites Host, or when the instance is
+	// reached under a different name than it is addressed by.
+	BaseURL string // CARAVEL_BASE_URL
 }
 
 // DefaultTrustedProxies is the private address space, which is what
@@ -180,6 +192,9 @@ func Load() (Config, error) {
 		DBDSN:     getEnv("CARAVEL_DB_DSN", "data/caravel.db"),
 		UploadDir: getEnv("CARAVEL_UPLOAD_DIR", "uploads"),
 		WebDir:    os.Getenv("CARAVEL_WEB_DIR"),
+		// Trailing slash trimmed here rather than at every use: the tags
+		// concatenate it with paths that start with one.
+		BaseURL: strings.TrimRight(strings.TrimSpace(os.Getenv("CARAVEL_BASE_URL")), "/"),
 		// Nominatim is the same project the map tiles come from. It is called
 		// from the server rather than the browser: OSM's usage policy wants an
 		// identifying User-Agent and no more than one request a second, which
@@ -283,6 +298,23 @@ func Load() (Config, error) {
 	// CARAVEL_SEARCH_URL as an override.
 	if cfg.SearchProvider == "ddgs" && cfg.SearchURL == "" {
 		return Config{}, fmt.Errorf("CARAVEL_SEARCH_PROVIDER %q needs CARAVEL_SEARCH_URL: it is a service you run yourself", cfg.SearchProvider)
+	}
+
+	// Checked at startup because the failure is otherwise invisible: a
+	// mistyped base URL does not break the app, it quietly produces a social
+	// card nobody can fetch, which is only ever noticed by whoever pastes a
+	// link somewhere public.
+	if cfg.BaseURL != "" {
+		u, err := url.Parse(cfg.BaseURL)
+		if err != nil {
+			return Config{}, fmt.Errorf("invalid CARAVEL_BASE_URL %q: %w", cfg.BaseURL, err)
+		}
+		if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return Config{}, fmt.Errorf("invalid CARAVEL_BASE_URL %q: needs an absolute http or https URL, like https://caravel.example", cfg.BaseURL)
+		}
+		if u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+			return Config{}, fmt.Errorf("invalid CARAVEL_BASE_URL %q: scheme and host only, with no path", cfg.BaseURL)
+		}
 	}
 
 	// A tile URL without its placeholders is not a slow map, it is a blank

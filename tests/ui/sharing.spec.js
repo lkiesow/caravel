@@ -16,6 +16,12 @@ import { login, openAs, OTHER_AUTH_STATE_FILE } from "./helpers/scenarios.js";
 
 const MOBILE = { width: 324, height: 756 };
 
+// The control that adds a location, whichever shape it is in: a plain button
+// where the instance has no assistant, a menu trigger where it has one. Both
+// are the thing a person presses; the menu's own rows are not, which is why
+// this names the trigger rather than counting buttons in the slot.
+const NEW_LOCATION_CONTROL = '.locations-new-slot [data-action="new-item"], .locations-new-slot .menu__trigger';
+
 // Hard-coded per locale rather than read from the locale files, for the reason
 // menu.spec.js gives: a wrong *translation* should fail, not be mirrored.
 const COPY = {
@@ -103,9 +109,10 @@ for (const locale of ["en", "de"]) {
         // The content is there; the controls are not. Asserting both halves,
         // because zero controls on an empty page proves nothing.
         await expect(theirPage.locator("item-card")).toHaveCount(1);
-        // The way to add a location. A menu since Stage 27 Milestone 5, where
-        // it used to be [data-action="new-item"]; a viewer gets neither.
-        await expect(theirPage.locator(".locations-new-slot")).toHaveCount(0);
+        // The way to add a location -- a plain button or a menu trigger
+        // depending on whether the instance has an assistant, which is not
+        // this spec's business. A viewer gets neither.
+        await expect(theirPage.locator(NEW_LOCATION_CONTROL)).toHaveCount(0);
 
         await theirPage.goto(`/trips/${tripId}/checklists`);
         await expect(theirPage.locator(".checklist-card")).toHaveCount(1);
@@ -129,7 +136,7 @@ for (const locale of ["en", "de"]) {
 
         await theirPage.goto(`/trips/${tripId}/locations`);
         await expect(theirPage.locator(".trip-detail__role")).toHaveCount(0);
-        await expect(theirPage.locator(".locations-new-slot .menu__trigger")).toHaveCount(1);
+        await expect(theirPage.locator(NEW_LOCATION_CONTROL)).toHaveCount(1);
 
         await theirPage.goto(`/trips/${tripId}/checklists`);
         await expect(theirPage.locator(".checklist-new-form")).toHaveCount(1);

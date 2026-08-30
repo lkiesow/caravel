@@ -452,36 +452,47 @@ export async function renderItemsTab(container, trip) {
     applyFilters();
   });
 
-  // The New button is a menu rather than a plain button, because there are two
-  // ways to add a location now and the toolbar has no room for a fifth
-  // control: it is a deliberately non-wrapping row that already fits 324px
-  // exactly (see the note at the top of this file). Putting the second way
-  // behind the button people already press to add something costs the primary
-  // action one tap and costs the layout nothing.
+  // Adding a location: one button, or a menu when there are two ways to do it.
   //
-  // Both rows are `action: true`: neither is a state the menu is now in, so
-  // menuitemradio and aria-checked would both be lies. `label` pins the
-  // trigger to "New location" rather than letting it track a selection there
-  // is none of.
+  // The assistant's "Suggest locations" flow needs a way in, and the toolbar
+  // has no room for a fifth control -- it is a deliberately non-wrapping row
+  // that already fits 324px exactly (see the note at the top of this file).
+  // So the second way lives behind the button people already press to add
+  // something, which costs the primary action one tap and the layout nothing.
   //
-  // The suggest row is present only when the instance has an assistant, the
-  // same condition assist-panel.js hides itself entirely under -- a row that
-  // could only ever report "not enabled on this server" is worse than no row.
+  // But only when there *is* a second way. On an instance with no assistant --
+  // which is the default, since the assistant needs a model endpoint somebody
+  // pays for -- a menu offering one option is a tap in front of the thing you
+  // asked for, and it is what this page had before Stage 27 anyway. So that
+  // case renders the plain button it always rendered.
   if (editable) {
-    const newItems = [{ value: "blank", label: t("locations.newBlank"), iconName: "plus", action: true }];
+    const newSlot = container.querySelector(".locations-new-slot");
+    const goToNew = () => navigate(`/trips/${tripId}/locations/new`);
+
     if (hasCapability("assist")) {
-      newItems.push({ value: "suggest", label: t("locations.newSuggest"), iconName: "sparkles", action: true });
+      // Both rows are `action: true`: neither is a state the menu is now in,
+      // so menuitemradio and aria-checked would both be lies. `label` pins the
+      // trigger to "New location" rather than letting it track a selection
+      // there is none of.
+      renderMenu(newSlot, {
+        iconName: "plus",
+        label: t("locations.new"),
+        ariaLabel: "locations.new",
+        triggerClass: "btn btn-primary btn-collapse",
+        items: [
+          { value: "blank", label: t("locations.newBlank"), iconName: "plus", action: true },
+          { value: "suggest", label: t("locations.newSuggest"), iconName: "sparkles", action: true },
+        ],
+        onSelect: (value) => {
+          if (value === "suggest") navigate(`/trips/${tripId}/suggest`);
+          else goToNew();
+        },
+      });
+    } else {
+      newSlot.innerHTML = `<button class="btn btn-primary btn-collapse" data-action="new-item">${icon("plus")} <span data-i18n="locations.new"></span></button>`;
+      translatePage(newSlot);
+      newSlot.querySelector('[data-action="new-item"]').addEventListener("click", goToNew);
     }
-    renderMenu(container.querySelector(".locations-new-slot"), {
-      iconName: "plus",
-      label: t("locations.new"),
-      ariaLabel: "locations.new",
-      triggerClass: "btn btn-primary btn-collapse",
-      items: newItems,
-      onSelect: (value) => {
-        navigate(value === "suggest" ? `/trips/${tripId}/suggest` : `/trips/${tripId}/locations/new`);
-      },
-    });
   }
 
   list.addEventListener("item-open", (e) => {

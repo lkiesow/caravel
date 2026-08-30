@@ -560,6 +560,30 @@ same prompt on the same trip then dropped all three as duplicates and said so
 -- "3 Vorschläge wurden übersprungen, weil die Reise sie schon enthält" --
 which is the dedup and the German plural proving themselves on real data.
 
+
+**Follow-up.** The New button became a menu unconditionally, so an instance
+with no assistant -- which is the *default*, since the assistant needs a model
+endpoint somebody pays for -- got a menu with a single row where a plain button
+used to be: a tap in front of the thing you asked for. The menu now appears
+only when there is genuinely a second way in; otherwise the page renders
+exactly the button it rendered before this stage.
+
+Two notes on the fix. The gate is `hasCapability("assist")`, which is
+`s.Assist != nil` and therefore `CARAVEL_LLM_URL` alone -- a configured search
+backend is *not* part of it, deliberately: `newToolset` omits `web_search`
+entirely when there is none, so the agent still runs, worse but working. And
+`sharing.spec.js` had to stop caring which shape the control is: it asserts
+that a viewer has no way to add a location and a promoted editor does, which
+is true of both shapes, so it now names the trigger in either
+(`NEW_LOCATION_CONTROL`) rather than counting buttons in the slot -- an open
+menu contributes three.
+
+Verified: a new test in `assist-suggest.spec.js` fakes the capability off and
+asserts there is no menu trigger, that the plain button is there, and that
+pressing it lands on the editor with nothing in between. `sharing.spec.js`
+green in both languages, the suggest spec green, `make ci` green, and a look at
+the real dev server -- which has no assistant -- showing the plain button and
+an unwrapped toolbar at 324px.
 ## 6. A turn's tool calls run in parallel
 
 `internal/assist/agent.go:424-442`, following the `checkLinks` fan-out at

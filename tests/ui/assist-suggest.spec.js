@@ -138,6 +138,33 @@ test.describe("suggesting several locations", () => {
     await expect(page.locator(".suggest-card")).toHaveCount(0);
   });
 
+  // With no assistant there is only one way to add a location, so the button
+  // is a plain button that goes straight there -- not a menu with a single
+  // row, which is a tap in front of the thing you asked for. The default
+  // instance has no assistant, so this is the shape most people see.
+  test("is a plain button, not a one-row menu, where there is no assistant", async ({ page }) => {
+    await page.route("**/api/auth/me", async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      // The nested object is spread on its own: a shallow spread of the
+      // payload would carry the original capabilities through untouched.
+      await route.fulfill({
+        response,
+        json: { ...body, capabilities: { ...body.capabilities, assist: false } },
+      });
+    });
+
+    await gotoRoute(page, `/trips/${tripId}/locations`);
+
+    await expect(page.locator(".locations-new-slot .menu__trigger")).toHaveCount(0);
+    const button = page.locator('.locations-new-slot [data-action="new-item"]');
+    await expect(button).toHaveCount(1);
+
+    // And it opens the editor directly, with no menu in between.
+    await button.click();
+    await expect(page).toHaveURL(new RegExp(`/trips/${tripId}/locations/new$`));
+  });
+
   // The toolbar is a deliberately non-wrapping row that fits 324px exactly,
   // and this milestone put a menu where a button was. A regression here is
   // invisible in every other assertion.

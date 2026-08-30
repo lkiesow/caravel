@@ -192,6 +192,70 @@ var (
 	ErrBudgetExhausted = errors.New("assist: the run reached its token budget and was stopped")
 )
 
+// task is one shape of run: the three prompts, the answer tool, and the
+// response format the composing turn asks for.
+//
+// It exists because the loop below is the expensive part -- deadlines, the
+// token budget, the turn and tool-call ceilings, cancellation, the event
+// stream and the accounting behind the summary -- and none of that depends on
+// what is being asked for. Enriching one location and suggesting several are
+// the same run with a different question at the front and a different shape at
+// the end. Forking the loop for the second would leave two copies of the guard
+// rails, which is the kind of duplication that stays correct for exactly one
+// stage.
+type task struct {
+	// mode names the run in the log and in the trace. Not read by the loop.
+	mode Mode
+	// The three prompts, already rendered: the loop never sees a Request, so a
+	// task built from any request type works.
+	system string
+	user   string
+	final  string
+	// answer is the propose tool as this task shapes it, and format is the
+	// same schema again for the composing turn, which is the path taken when
+	// the model never calls propose at all.
+	answer answerTool
+	format responseFormat
+	// logFields are appended to the "run started" record. What is worth
+	// knowing about a run depends on what it was asked to do, and only the
+	// task constructor knows it.
+	logFields []any
+}
+
+// locationTask is the run behind Propose: enrich one location, or build one
+// from a description.
+func locationTask(req Request) task {
+	return task{
+		mode:   req.Mode,
+		system: systemPrompt(req),
+		user:   userPrompt(req),
+		final:  finalPrompt(req),
+		answer: answerTool{
+			Description: "Report the finished result and end the search. Call this once, as soon as you have what you need. " +
+				"Only include URLs you actually retrieved with fetch_page or saw in a search result. " +
+				"Give an address and a searchable place name, never coordinates. " +
+				"Leave a field as an empty string rather than guessing.",
+			Schema: proposalSchema,
+		},
+		format: proposalFormat(),
+		logFields: []any{
+			"trip_context", req.Trip.Sent(),
+			"locale", req.Locale,
+			"tag_vocabulary", len(req.TagVocabulary),
+		},
+	}
+}
+
+// builder turns the model's answer into what the caller receives.
+//
+// It runs *inside* the run rather than after it, and that placement is the
+// point: it emits events of its own -- checkLinks does -- which have to be
+// counted in the summary the run defers, and the fields it wants in the final
+// log record belong on the same line as the run totals. The extra log fields
+// it returns are appended there; what a proposal contains and what a list of
+// suggestions contains are different facts, and only the builder knows them.
+type builder[A any, R any] func(ctx context.Context, raw A, sources []Source, emit func(Event), log *slog.Logger) (R, []any, error)
+
 // runCounter labels each run so the records of two concurrent ones can be told
 // apart in a log that interleaves them. A counter rather than a timestamp or a
 // random value: it is short, it sorts, and it says how many runs this process
@@ -199,11 +263,35 @@ var (
 var runCounter atomic.Uint64
 
 func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*Proposal, error) {
-	if events == nil {
-		events = func(Event) {}
-	}
 	if !req.Mode.Valid() {
 		return nil, fmt.Errorf("assist: unknown mode %q", req.Mode)
+	}
+	return runTask(ctx, a, locationTask(req), events,
+		func(ctx context.Context, raw modelProposal, sources []Source, emit func(Event), log *slog.Logger) (*Proposal, []any, error) {
+			p, err := a.buildProposal(ctx, req, raw, sources, emit, log)
+			if err != nil {
+				return nil, nil, err
+			}
+			return p, []any{
+				"fields", len(p.Fields),
+				"links", len(p.Links),
+				"sources", len(p.Sources),
+				"coordinates", p.Lat != nil,
+				"cover", coverFrom(p.Cover),
+			}, nil
+		})
+}
+
+// runTask is the agent loop: gather with tools until something stops it, then
+// answer. Every rail it enforces is described where it is enforced; the two
+// that shape the whole function are the deferred summary, which closes a run
+// however it ends, and the pair of contexts, which lets a run that ran out of
+// time still say what it found.
+func runTask[A any, R any](ctx context.Context, a *Agent, tk task, events func(Event), build builder[A, R]) (R, error) {
+	var zero R
+
+	if events == nil {
+		events = func(Event) {}
 	}
 
 	// a.logger is set by New; tests that build an Agent literal leave it nil,
@@ -218,15 +306,13 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 	if a.search != nil {
 		searchName = a.search.Name()
 	}
-	log.Debug("assist: run started",
-		"mode", string(req.Mode),
+	log.Debug("assist: run started", append([]any{
+		"mode", string(tk.mode),
 		"model", a.opts.LLMModel,
 		"search", searchName,
 		"geocoder", a.geocoder != nil,
-		"trip_context", req.Trip.Sent(),
-		"locale", req.Locale,
-		"tag_vocabulary", len(req.TagVocabulary),
-		"limits", a.limits.String())
+		"limits", a.limits.String(),
+	}, tk.logFields...)...)
 
 	var spent usage
 	toolCalls := 0
@@ -277,11 +363,11 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 	}
 
 	tools := newToolset(a.search, a.fetcher, a.geocoder, emit, log)
-	defs := tools.definitions()
+	defs := tools.definitions(tk.answer)
 
 	messages := []chatMessage{
-		{Role: roleSystem, Content: systemPrompt(req)},
-		{Role: roleUser, Content: userPrompt(req)},
+		{Role: roleSystem, Content: tk.system},
+		{Role: roleUser, Content: tk.user},
 	}
 
 	events(Event{Key: "assist.progress.thinking"})
@@ -308,7 +394,7 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 	// makes the composing request below unnecessary. Nil means the run ended
 	// some other way -- no tool calls, a ceiling, a deadline -- and the
 	// two-phase path still answers it.
-	var proposed *modelProposal
+	var proposed *A
 
 	// turnsUsed (declared above, with the summary that reports it) counts turns
 	// the provider actually answered, which is not the same as the loop
@@ -322,7 +408,7 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 		// nothing to compose with -- every remaining call would fail too.
 		if err := userCtx.Err(); err != nil {
 			log.Debug("assist: run abandoned", "reason", "cancelled", "turns", turnsUsed, "ms", time.Since(started).Milliseconds())
-			return nil, wrapRunError(err)
+			return zero, wrapRunError(err)
 		}
 		if runCtx.Err() != nil {
 			stop = "deadline"
@@ -351,7 +437,7 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 			// Not logged here: the HTTP layer records the provider error at
 			// error level, and doing it twice would put the same failure in
 			// the log under two different messages.
-			return nil, wrapRunError(err)
+			return zero, wrapRunError(err)
 		}
 		spent = addUsage(spent, resp.Usage)
 		turnsUsed++
@@ -388,7 +474,7 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 		// ceilings. That path is rare and costs exactly what the old flow cost
 		// every single time.
 		if call, ok := findCall(resp.ToolCalls, toolPropose); ok {
-			var raw modelProposal
+			var raw A
 			if err := decodeJSONAnswer(call.Function.Arguments, &raw); err == nil {
 				log.Debug("assist: proposed by tool call",
 					"turn", turnsUsed,
@@ -444,7 +530,7 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 
 	if err := userCtx.Err(); err != nil {
 		log.Debug("assist: run abandoned", "reason", "cancelled", "turns", turnsUsed, "ms", time.Since(started).Milliseconds())
-		return nil, wrapRunError(err)
+		return zero, wrapRunError(err)
 	}
 
 	// The turn and tool-call ceilings break out silently above; say so here,
@@ -467,28 +553,24 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 		"spent_tokens", spent.TotalTokens,
 		"ms", time.Since(started).Milliseconds())
 
-	raw, err := a.answer(userCtx, req, messages, proposed, &spent, emit, log)
+	raw, err := composeAnswer(userCtx, a, tk, messages, proposed, &spent, emit, log)
 	if err != nil {
-		return nil, err
+		return zero, err
 	}
 
-	p, err := a.buildProposal(userCtx, req, *raw, tools.Sources(), emit, log)
+	result, extra, err := build(userCtx, *raw, tools.Sources(), emit, log)
 	if err != nil {
-		return nil, err
+		return zero, err
 	}
 
-	log.Debug("assist: run finished",
+	log.Debug("assist: run finished", append([]any{
 		"ms", time.Since(started).Milliseconds(),
 		"turns", turnsUsed,
 		"tool_calls", toolCalls,
 		"spent_tokens", spent.TotalTokens,
 		"answered_by", map[bool]string{true: "propose", false: "composing"}[proposed != nil],
-		"fields", len(p.Fields),
-		"links", len(p.Links),
-		"sources", len(p.Sources),
-		"coordinates", p.Lat != nil,
-		"cover", coverFrom(p.Cover))
-	return p, nil
+	}, extra...)...)
+	return result, nil
 }
 
 // wikipediaArticle recognises an article URL and pulls the language edition
@@ -545,7 +627,7 @@ func findCall(calls []toolCall, name string) (toolCall, bool) {
 	return toolCall{}, false
 }
 
-// answer produces the structured result.
+// composeAnswer produces the structured result.
 //
 // When the model ended the run with a propose call there is nothing to do: the
 // arguments were already decoded and this is a pass-through. Otherwise the
@@ -555,14 +637,14 @@ func findCall(calls []toolCall, name string) (toolCall, bool) {
 // Keeping the second path rather than replacing it matters: a model that never
 // calls propose, or a server that mishandles a tool schema, still gets an
 // answer by the route that has worked since Stage 16.
-func (a *Agent) answer(userCtx context.Context, req Request, messages []chatMessage, proposed *modelProposal, spent *usage, emit func(Event), log *slog.Logger) (*modelProposal, error) {
+func composeAnswer[A any](userCtx context.Context, a *Agent, tk task, messages []chatMessage, proposed *A, spent *usage, emit func(Event), log *slog.Logger) (*A, error) {
 	if proposed != nil {
 		return proposed, nil
 	}
 
 	emit(Event{Key: "assist.progress.composing"})
 
-	messages = append(messages, chatMessage{Role: roleUser, Content: finalPrompt(req)})
+	messages = append(messages, chatMessage{Role: roleUser, Content: tk.final})
 
 	// Detached from the gathering deadline, still bound by the user cancelling
 	// and by a timeout of its own. This is the turn that turns a run into an
@@ -570,9 +652,9 @@ func (a *Agent) answer(userCtx context.Context, req Request, messages []chatMess
 	finalCtx, cancelFinal := context.WithTimeout(userCtx, a.limits.AnswerTimeout)
 	defer cancelFinal()
 
-	var raw modelProposal
+	var raw A
 	composeStarted := time.Now()
-	used, attempts, err := completeJSON(finalCtx, a.provider, chatRequest{Messages: messages, Format: proposalFormat()}, &raw)
+	used, attempts, err := completeJSON(finalCtx, a.provider, chatRequest{Messages: messages, Format: tk.format}, &raw)
 	*spent = addUsage(*spent, used)
 	// Logged either way. The composing turn resends the whole conversation, so
 	// it is the slowest single request of a run by a wide margin and the one

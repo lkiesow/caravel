@@ -38,7 +38,7 @@ func TestToolDefinitionsFollowWhatIsConfigured(t *testing.T) {
 	// Four when everything is configured: the three that do work, plus propose,
 	// which ends the run and is always offered.
 	full := newToolset(&stubSearcher{}, newPageFetcher(), geocode.New("http://example.invalid/search"), nil, nil)
-	if got := names(full.definitions()); len(got) != 4 {
+	if got := names(full.definitions(locationTask(Request{}).answer)); len(got) != 4 {
 		t.Errorf("definitions = %v, want all four", got)
 	}
 
@@ -48,20 +48,20 @@ func TestToolDefinitionsFollowWhatIsConfigured(t *testing.T) {
 		full,
 		newToolset(nil, newPageFetcher(), nil, nil, nil),
 	} {
-		if !slices.Contains(names(ts.definitions()), toolPropose) {
-			t.Errorf("propose was not offered: %v", names(ts.definitions()))
+		if !slices.Contains(names(ts.definitions(locationTask(Request{}).answer)), toolPropose) {
+			t.Errorf("propose was not offered: %v", names(ts.definitions(locationTask(Request{}).answer)))
 		}
 	}
 
 	noSearch := newToolset(nil, newPageFetcher(), geocode.New("http://example.invalid/search"), nil, nil)
-	for _, n := range names(noSearch.definitions()) {
+	for _, n := range names(noSearch.definitions(locationTask(Request{}).answer)) {
 		if n == toolWebSearch {
 			t.Error("web search was offered with no search backend configured")
 		}
 	}
 
 	noGeo := newToolset(&stubSearcher{}, newPageFetcher(), nil, nil, nil)
-	for _, n := range names(noGeo.definitions()) {
+	for _, n := range names(noGeo.definitions(locationTask(Request{}).answer)) {
 		if n == toolGeocode {
 			t.Error("geocoding was offered with no geocoder configured")
 		}
@@ -69,7 +69,7 @@ func TestToolDefinitionsFollowWhatIsConfigured(t *testing.T) {
 
 	// fetch_page needs no configuration, so it is always there -- and the
 	// agent is still useful with it alone.
-	if got := names(noGeo.definitions()); len(got) == 0 {
+	if got := names(noGeo.definitions(locationTask(Request{}).answer)); len(got) == 0 {
 		t.Error("no tools at all were offered")
 	}
 }
@@ -78,7 +78,7 @@ func TestToolDefinitionSchemasAreValidJSON(t *testing.T) {
 	// Hand-written literals, so a stray comma reaches a real provider as an
 	// opaque 400 unless something local catches it first.
 	ts := newToolset(&stubSearcher{}, newPageFetcher(), geocode.New("http://example.invalid/search"), nil, nil)
-	for _, d := range ts.definitions() {
+	for _, d := range ts.definitions(locationTask(Request{}).answer) {
 		var parsed map[string]any
 		if err := json.Unmarshal(d.Parameters, &parsed); err != nil {
 			t.Errorf("%s parameters are not valid JSON: %v", d.Name, err)

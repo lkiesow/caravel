@@ -143,6 +143,48 @@ Parameterise the loop by a `task` value carrying what actually differs:
 `TestValidCategoriesMatchTheSchema`, are the proof that nothing moved; add none.
 `make ci` green with the suite unchanged is the milestone.
 
+**Done.** The loop is now `runTask[A, R](ctx, a, task, events, build)` -- a
+package-level generic function rather than a method, because a method cannot
+take type parameters. `A` is the shape the model answers in, `R` is what the
+caller receives. `Propose` is a wrapper: it validates the mode, builds
+`locationTask(req)`, and passes a `build` closure that calls `buildProposal`.
+`answer` became `composeAnswer[A]` and takes the task's `final` prompt and
+`format` instead of reaching for `finalPrompt(req)` and `proposalFormat()`.
+
+Three decisions worth recording:
+
+- **The answer tool keeps the name `propose` for every task.** Only its
+  description and schema come from the task (the new `answerTool` type in
+  `tools.go`). Its role in the loop -- report the finished result and stop --
+  is genuinely the same act, so `findCall(..., toolPropose)`, the exclusion
+  from `lookup`, and `describeCall`'s mapping to the composing trace keys all
+  stay correct with no per-task branching.
+- **`build` runs inside the run, not after it.** It emits events of its own
+  (`checkLinks` does), and those have to be counted in the summary the run
+  defers; a builder called after `runTask` returned would emit them after the
+  summary the client already received. It also returns extra log fields, which
+  are appended to the "run finished" record -- what a proposal contains and
+  what a list of candidates contains are different facts.
+- **The loop never sees a `Request`.** The prompts arrive rendered and the
+  handful of request-shaped values the "run started" line wants arrive as
+  `task.logFields`, so Milestone 3 can build a task from a differently-shaped
+  request without touching the loop.
+
+Deviation from the plan: the plan said add no tests and change none.
+`definitions()` gained an `answerTool` parameter, so its ten call sites in
+`tools_test.go` are now `definitions(locationTask(Request{}).answer)` -- purely
+mechanical, and `agent_test.go`, the ~40 tests that actually describe the
+loop's behaviour, is untouched.
+
+Verified: `make ci` green with `internal/assist`'s suite otherwise unchanged,
+and `scripts/with_server.sh npx playwright test tests/ui/assist.spec.js` green
+-- 6 passed, including the test that asserts exactly eight suggestions across
+title, category, tags, notes, address, coordinates, links and cover plus two
+sources, which is a full end-to-end reading of the loop's output.
+
+Noted in passing, not fixed: `internal/assist/types.go` is not `gofmt`-clean at
+`HEAD` and was not before this stage either. `make ci` does not gate formatting.
+
 ## 3. Suggest, server side
 
 **Types** (`internal/assist/types.go`). `ModeSuggest Mode = "suggest"`, and

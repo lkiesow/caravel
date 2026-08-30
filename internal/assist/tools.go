@@ -86,13 +86,25 @@ func newToolset(search Searcher, fetch *pageFetcher, geocoder *geocode.Client, e
 	return &toolset{search: search, fetch: fetch, geocoder: geocoder, events: events, log: log, seen: map[string]bool{}}
 }
 
+// answerTool is the propose tool as one task shapes it.
+//
+// The name is the same for every task and so is its role in the loop -- report
+// the finished result and stop -- because that is genuinely the same act. What
+// differs is the shape of the result, so a task supplies the description the
+// model reads and the schema it must fill in, and nothing else about the loop
+// or the trace has to know which task is running.
+type answerTool struct {
+	Description string
+	Schema      json.RawMessage
+}
+
 // definitions describes the available tools for the model.
 //
 // Only the tools that can actually work are offered. Describing web search to
 // a model with no search backend configured produces a run that calls it,
 // receives an error, and wastes a turn discovering what the config already
 // knew.
-func (t *toolset) definitions() []toolDef {
+func (t *toolset) definitions(answer answerTool) []toolDef {
 	defs := make([]toolDef, 0, 4)
 
 	if t.search != nil {
@@ -124,12 +136,9 @@ func (t *toolset) definitions() []toolDef {
 	})
 
 	defs = append(defs, toolDef{
-		Name: toolPropose,
-		Description: "Report the finished result and end the search. Call this once, as soon as you have what you need. " +
-			"Only include URLs you actually retrieved with fetch_page or saw in a search result. " +
-			"Give an address and a searchable place name, never coordinates. " +
-			"Leave a field as an empty string rather than guessing.",
-		Parameters: proposalSchema,
+		Name:        toolPropose,
+		Description: answer.Description,
+		Parameters:  answer.Schema,
 	})
 
 	if t.geocoder != nil {

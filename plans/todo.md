@@ -85,19 +85,20 @@ purpose — do not reconstruct it from an older stage plan without asking.
   dedupes case-insensitively only *within* one location, so `Museum` and
   `museum` can coexist on two different ones.
 
+- **Whether a suggestion run needs a longer deadline than an enrichment one.**
+  (Stage 27 Milestone 3.) `RunDuration` is 90s for both, and a trip-level run
+  researches up to six places rather than one -- a search and a page read each,
+  plus a serialised geocoder lookup per candidate. It was left alone
+  deliberately: against the stub a run takes about four seconds, which measures
+  the loop and not the model, so there was nothing to decide it with. What this
+  needs is a handful of real runs against a real endpoint and the wall times
+  they report, not a guess. If it does need its own value, note that `Limits`
+  is one struct shared by both tasks today, so a per-task deadline is a small
+  change to `withDefaults` and a new environment variable.
+
 - **A way into the itinerary from a location.** (Stage 25.) The location page
   shows the days it is on but does not link to them, so the way to see a
   location in context is to go back to the trip and pick the tab.
-
-- **AI trip-level suggestions.** **(Stage 27, Milestones 3-5.)** (Stage 15
-  backlog review.) "Suggest things to do in Reykjavik" returning several
-  candidate locations to add at once, rather than enriching one location at a
-  time. **No longer blocked**:
-  Stage 16 built the single-location version, so the provider, the search
-  backends, the tools, the agent loop, the guard rails, the SSE transport and
-  the stub are all in place and this reuses every one of them. What is genuinely
-  new is a multi-result review UI, a way to add N locations in one transaction,
-  and dedup against what the trip already has.
 
 - **Google Maps interoperability: the outbound half.** **(soon)** (Stage 13; the
   inbound half built in Stage 22 Milestone 6.) Pasting a Maps link into the
@@ -115,24 +116,6 @@ purpose — do not reconstruct it from an older stage plan without asking.
   entry without an ID at all. Survey the options (cost, key requirement, terms,
   whether a self-hosted instance can use them at all), *then* pick between
   automatic resolution, a pasted URL per location, and the status quo.
-
-- **Assistant round trips: batching and parallel tool dispatch.** **(Stage 27
-  Milestone 6.)** (Stage 21 Milestone 4b, dropped after 4a was measured.)
-  `agent.go` dispatches a turn's tool calls in a plain sequential loop, which
-  reads oddly beside
-  `checkLinks` in the same file -- that already fans out with a `WaitGroup`. Two
-  halves: prompt the model to request several page reads in one turn rather than
-  one at a time, and run a turn's calls concurrently. Results must be appended
-  in call order, because a `tool` message has to follow its `tool_calls` and most
-  servers reject a mismatch, so they go into a slice indexed by call; and the
-  tool-call ceiling has to be decided before the fan-out rather than inside it.
-
-  **Take this on as tidiness, not as a speed fix.** All tool calls together are
-  ~12% of a run at ~1.1s each, and only a turn issuing two or more benefits at
-  all. 4a measured: with a standard deviation of ~2.9s on an ~8.9s mean,
-  detecting a 10% change needs roughly 180 runs per arm, and this targets the
-  same order of effect. Expect a possible second of dividend and a loop that
-  reads like the rest of the file; do not expect a measurable run to get faster.
 
 - **Prompt caching for the assistant.** (Stage 21 Milestone 4; the two companion
   levers -- a reasoning-effort knob and mechanical conversation compaction --
@@ -262,6 +245,20 @@ purpose — do not reconstruct it from an older stage plan without asking.
   own separators.
 
 ---
+
+- **`escapeAttr` promises attribute safety and delivers entity escaping.**
+  (Stage 27 Milestone 4a.) Five files define `escapeAttr` and in most of them
+  it is a bare alias of `escapeHtml`, which escapes `&<>"'` and says nothing
+  whatever about what the value *means* in the attribute it lands in. Quoting a
+  `javascript:` URL into an `href` produces a perfectly well-formed dangerous
+  link, which is exactly the bug that milestone fixed -- and the name is part
+  of why it went unnoticed for so long. The fix landed a `safeHref` in
+  `web/js/url.js` for the two link render sites; what is left is the name.
+  Renaming it to `escapeHtmlAttr`, or collapsing the duplicates into one shared
+  helper, would stop the next person reading `escapeAttr(url)` as "this is
+  safe". Note the duplication is deliberate elsewhere in this codebase and
+  fine for entity escaping; it is the *promise in the name* that is the
+  problem here.
 
 ## Testing, CI and dev tooling
 

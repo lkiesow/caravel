@@ -581,6 +581,54 @@ entry and all real:
 change would need roughly 180 runs per arm. Expect a loop that reads like the
 rest of the file, and possibly a second of dividend; do not report a speedup.
 
+**Done.** The dispatch loop fans out with a `WaitGroup`, results land in a
+slice indexed by call, and the `tool` messages are appended in call order
+afterwards. The ceiling is computed once, before anything runs, as `allowed`.
+The prompt gained one line asking for everything needed in a single turn, in
+`researchRules` so both tasks get it.
+
+One thing the plan did not anticipate, and it is the part that could have gone
+wrong silently: **the event stream had to be made safe first.** `dispatch`
+announces each call twice -- a progress event when it starts and a step event
+when it ends -- so the moment those calls run together, two goroutines are
+inside the caller's `events` handler at once. That handler is the SSE writer:
+concurrent writes would interleave two events into one unparseable frame, and
+`steps++` in `emit` was a plain data race besides. `emit` now holds a mutex for
+the duration of the caller's handler. `toolset` needed nothing: `record` and
+`Sources` were already guarded.
+
+The visible consequence, which is correct rather than merely acceptable: with
+two reads in flight the progress line names whichever started last, and the
+trace lists steps in completion order. The trace is a chronological account of
+what happened, so completion order is what it should say.
+
+Verified: three new tests in `internal/assist/dispatch_test.go`, plus
+`go test -race` over `internal/assist` *and* `internal/httpapi` -- the second
+because that is where the SSE writer the mutex protects actually lives. Both
+clean. `make ci` green, and the two assistant specs green together at 11
+passed.
+
+- **Concurrency is asserted by peak requests in flight**, not by elapsed time.
+  The fixture counts how many requests are inside the handler at once and
+  remembers the high-water mark; sequential dispatch can only ever reach one.
+  Checked against the old code: it fails there with `peak requests in flight =
+  1, want 3`. Worth recording that the *first* version of this test asserted
+  only that all three requests eventually arrived, and **passed against the
+  sequential implementation** -- ten seconds slower, and green. Arrival was
+  never the property; simultaneity is.
+- **Ordering** is asserted with three pages whose sleeps make them finish in
+  reverse, so an implementation appending results as they arrive would produce
+  exactly the wrong answer. Each `tool` message is matched to its call id and
+  its page's marker.
+- **The ceiling** with `MaxToolCalls = 1` and a turn of three calls: all three
+  are answered, the first with a real result and the other two with the
+  out-of-budget message, and the fixture server is asked exactly once -- so the
+  ceiling stopped the fan-out rather than being noticed inside it.
+
+No speed claim is made and none was measured. Against the stub a run is
+dominated by everything except the model, so the number this could move is not
+one this repository can see.
+
 ---
 
 ## Build order

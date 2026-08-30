@@ -381,7 +381,17 @@ func runTask[A any, R any](ctx context.Context, a *Agent, tk task, events func(E
 	// Every event that is a step is counted here rather than at each emission
 	// site, so the total in the summary cannot drift from the list the client
 	// actually received.
+	//
+	// Locked, because a turn's tool calls run concurrently and each one
+	// announces itself: without this, `steps` is a data race and -- worse --
+	// two goroutines write to the SSE ResponseWriter at once, which interleaves
+	// two events into one unparseable frame. The lock is held for the duration
+	// of the caller's own handler, which is what makes that safe: the handler
+	// is the thing doing the writing.
+	var emitMu sync.Mutex
 	emit := func(e Event) {
+		emitMu.Lock()
+		defer emitMu.Unlock()
 		if e.Kind == EventStep {
 			steps++
 		}
@@ -567,25 +577,54 @@ func runTask[A any, R any](ctx context.Context, a *Agent, tk task, events func(E
 		// reject the request.
 		messages = append(messages, chatMessage{Role: roleAssistant, Content: resp.Content, ToolCalls: resp.ToolCalls})
 
-		for _, call := range resp.ToolCalls {
-			if toolCalls >= a.limits.MaxToolCalls {
+		// How many of this turn's calls the ceiling allows, decided *before*
+		// any of them runs rather than inside the loop that runs them. Deciding
+		// it per call would make the answer depend on which goroutine got there
+		// first, which is a run that cannot be reproduced even against a fixed
+		// script.
+		allowed := len(resp.ToolCalls)
+		if remaining := a.limits.MaxToolCalls - toolCalls; remaining < allowed {
+			allowed = max(remaining, 0)
+		}
+
+		// The calls run together, following checkLinks further down this file:
+		// a turn that asks to read three pages should read them at once, the
+		// way a person would open three tabs rather than waiting for each.
+		//
+		// Take this as tidiness rather than as a speed fix. Stage 21 measured
+		// all tool calls together at about 12% of a run, and only a turn
+		// issuing two or more benefits at all -- against a standard deviation
+		// of ~2.9s on an ~8.9s mean, an effect this size is not something a
+		// handful of runs can see.
+		//
+		// Results go into a slice indexed by call and are appended in call
+		// order below, never in completion order: a `tool` message has to
+		// follow the `tool_calls` it answers, in the order they were issued,
+		// and most servers reject a conversation where it does not.
+		results := make([]string, allowed)
+		var wg sync.WaitGroup
+		for i := range allowed {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				results[i] = tools.dispatch(runCtx, resp.ToolCalls[i])
+			}(i)
+		}
+		wg.Wait()
+
+		for i, call := range resp.ToolCalls {
+			body := ""
+			if i < allowed {
+				body = results[i]
+			} else {
 				// Answered rather than dropped: a tool call with no result
 				// leaves the conversation malformed. Telling the model it is
 				// out of budget lets it write the answer with what it has.
-				messages = append(messages, chatMessage{
-					Role:       roleTool,
-					ToolCallID: call.ID,
-					Content:    "No more tool calls are available for this run. Answer with what you already know.",
-				})
-				continue
+				body = "No more tool calls are available for this run. Answer with what you already know."
 			}
-			messages = append(messages, chatMessage{
-				Role:       roleTool,
-				ToolCallID: call.ID,
-				Content:    tools.dispatch(runCtx, call),
-			})
-			toolCalls++
+			messages = append(messages, chatMessage{Role: roleTool, ToolCallID: call.ID, Content: body})
 		}
+		toolCalls += allowed
 	}
 
 	if err := userCtx.Err(); err != nil {

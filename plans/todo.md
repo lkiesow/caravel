@@ -133,10 +133,15 @@ purpose — do not reconstruct it from an older stage plan without asking.
   runs on different trips share nothing. Moving those into the first user
   message would make the system block plus the tool definitions a genuinely
   cacheable prefix, and that is the first move -- before any cache directive.
-  Second, a hit would currently be invisible: `usage`
-  (`internal/assist/provider.go:110-116`) carries only prompt/completion/total
-  tokens and no cached-token field, so neither the budget nor the run trace
-  could tell you whether caching happened. Within a run the message list is
+  Second, a hit is currently invisible *to Caravel*, though not on the wire:
+  `usage` (`internal/assist/provider.go:110-116`) decodes only
+  prompt/completion/total, so neither the budget nor the run trace could tell
+  you whether caching happened. A real OpenRouter response observed on
+  2026-08-30 carries `usage.prompt_tokens_details.cached_tokens` and
+  `cache_write_tokens` alongside a `cost` breakdown, so making a hit visible is
+  a few struct fields rather than a protocol problem -- and it is the cheapest
+  first step, since it turns the whole question into something measurable
+  before any behaviour changes. Within a run the message list is
   already append-only and never rewritten, which is the good news -- and the
   composing turn, which resends everything, is the single biggest beneficiary.
   Note also that `chatMessage` is a flat {role, content, ...} shape:

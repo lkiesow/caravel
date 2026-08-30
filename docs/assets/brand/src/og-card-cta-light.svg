@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-label="Caravel">
+  
+  <defs><linearGradient id="og" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FAF7F2"></stop><stop offset="1" stop-color="#E7EBF5"></stop></linearGradient></defs>
+  <rect width="1200" height="630" fill="url(#og)"></rect>
+  <g transform="translate(820 -50) scale(7.4)" opacity=".55"><path d="M43.2 4C31.4 14.8 21.4 31 14.6 50.4L39 40.6C42.2 28.6 43.6 15.4 43.2 4Z" fill="#C9D2E4"></path>
+  <path d="M27.4 46.6 60.8 37.9 41.2 60.8 27.4 46.6Z" fill="#C9D2E4" opacity=".72"></path></g>
+  <g transform="translate(96 92) scale(1.7)"><path d="M43.2 4C31.4 14.8 21.4 31 14.6 50.4L39 40.6C42.2 28.6 43.6 15.4 43.2 4Z" fill="#23304F"></path>
+  <path d="M27.4 46.6 60.8 37.9 41.2 60.8 27.4 46.6Z" fill="#23304F" opacity=".72"></path></g>
+  <text x="96" y="330" font-family="Montserrat, sans-serif" font-weight="700" font-size="86" letter-spacing="1" fill="#1B2440">Every trip,</text>
+  <text x="96" y="424" font-family="Montserrat, sans-serif" font-weight="700" font-size="86" letter-spacing="1" fill="#1B2440">one place.</text>
+  <text x="98" y="486" font-family="Montserrat, sans-serif" font-weight="500" font-size="26" fill="#5A6172">Self-hosted trip planning — maps, itineraries, files, crew.</text>
+  <rect x="96" y="524" width="300" height="60" rx="12" fill="#2563EB"></rect>
+  <text x="246" y="562" text-anchor="middle" font-family="Montserrat, sans-serif" font-weight="600" font-size="22" fill="#FFFFFF">Deploy Caravel</text>
+  <text x="430" y="562" font-family="Montserrat, sans-serif" font-weight="600" font-size="22" fill="#2563EB">github.com/lkiesow/caravel</text>
+</svg>

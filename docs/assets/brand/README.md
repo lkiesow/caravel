@@ -21,11 +21,23 @@ geometry so every raster size and `web/icons/favicon.svg` come from one source.
 
 | Location | Holds | Used by |
 | --- | --- | --- |
-| `web/brand/` | `mark.svg` (inherits CSS `color`), the two horizontal lockups | the app, inline and by `<img>` |
+| `web/brand/` | `mark.svg` (inherits CSS `color`), the two horizontal lockups, `og-card.png` | the app, inline and by `<img>`; the card by scrapers |
 | `web/icons/` | favicons, apple-touch, PWA and maskable icons | the browser and the installed app; **generated**, do not hand-edit |
 | `docs/assets/brand/` | lockups, banner, OG cards, the navy/cream marks | the documentation site and the README |
 
-Social cards must be PNG: scrapers reject SVG.
+Social cards must be PNG: scrapers reject SVG, and the URL must be absolute --
+Facebook, LinkedIn and Discord drop an image they cannot resolve on their own.
+The app substitutes its own origin into the shell for that; see
+`internal/httpapi/staticassets.go`.
+
+There are two OG cards, and the difference is the audience:
+
+| Card | Says | For |
+| --- | --- | --- |
+| `og-card.png` | mark, headline, tagline | **an instance** -- what `web/index.html` serves. Someone sharing a link to their own trip planner should not be unfurling an advert to go install one |
+| `og-card-cta.png` | the above plus a "Deploy Caravel" button and the project URL | **the project** -- the README and the documentation site, where the reader has not got one yet |
+
+Both have a `-light` pair.
 
 ## Type
 
@@ -62,3 +74,28 @@ the alternate blue tile from the original set — unused, kept as the option it
 was drawn to be.
 
 `web/icons/` is *not* in this list: it comes out of `scripts/gen_icons.py`.
+
+## Re-rendering a PNG from its SVG
+
+There is no generator for these -- unlike `web/icons/`, the `src/` SVGs are the
+hand-maintained originals. Edit one, then render it at its own dimensions:
+
+```
+python3 -c "import cairosvg; cairosvg.svg2png(
+    url='docs/assets/brand/src/og-card.svg',
+    write_to='docs/assets/brand/og-card.png',
+    output_width=1200, output_height=630)"
+```
+
+Needs `cairosvg`, and Montserrat installed system-wide for the `<text>` to come
+out in the right face (`julietaula-montserrat-fonts` on Fedora) -- cairosvg
+resolves it through fontconfig, and silently substitutes the platform sans if it
+is missing, so check the render rather than trusting the exit code.
+
+Not quantised with `pngquant`, deliberately: the grounds are diagonal gradients
+and 256 colours bands them visibly. These files are well under any scraper size
+limit as they are.
+
+The app serves its own copy of the instance card at `web/brand/og-card.png` --
+copy it across after re-rendering. No cache version to bump: `assetTreeFingerprint`
+notices the file changed and re-keys the service worker on its own.

@@ -4,12 +4,9 @@
   <rect width="1200" height="630" fill="url(#og)"></rect>
   <g transform="translate(820 -50) scale(7.4)" opacity=".5"><path d="M43.2 4C31.4 14.8 21.4 31 14.6 50.4L39 40.6C42.2 28.6 43.6 15.4 43.2 4Z" fill="#243357"></path>
   <path d="M27.4 46.6 60.8 37.9 41.2 60.8 27.4 46.6Z" fill="#243357" opacity=".72"></path></g>
-  <g transform="translate(96 92) scale(1.7)"><path d="M43.2 4C31.4 14.8 21.4 31 14.6 50.4L39 40.6C42.2 28.6 43.6 15.4 43.2 4Z" fill="#5470A8"></path>
+  <g transform="translate(96 116) scale(1.7)"><path d="M43.2 4C31.4 14.8 21.4 31 14.6 50.4L39 40.6C42.2 28.6 43.6 15.4 43.2 4Z" fill="#5470A8"></path>
   <path d="M27.4 46.6 60.8 37.9 41.2 60.8 27.4 46.6Z" fill="#5470A8" opacity=".72"></path></g>
-  <text x="96" y="330" font-family="Montserrat, sans-serif" font-weight="700" font-size="86" letter-spacing="1" fill="#F7F6F3">Every trip,</text>
-  <text x="96" y="424" font-family="Montserrat, sans-serif" font-weight="700" font-size="86" letter-spacing="1" fill="#F7F6F3">one place.</text>
-  <text x="98" y="486" font-family="Montserrat, sans-serif" font-weight="500" font-size="26" fill="#A6A6B2">Self-hosted trip planning — maps, itineraries, files, crew.</text>
-  <rect x="96" y="524" width="300" height="60" rx="12" fill="#2563EB"></rect>
-  <text x="246" y="562" text-anchor="middle" font-family="Montserrat, sans-serif" font-weight="600" font-size="22" fill="#FFFFFF">Deploy Caravel</text>
-  <text x="430" y="562" font-family="Montserrat, sans-serif" font-weight="600" font-size="22" fill="#7FA6FF">github.com/caravel</text>
+  <text x="96" y="354" font-family="Montserrat, sans-serif" font-weight="700" font-size="86" letter-spacing="1" fill="#F7F6F3">Every trip,</text>
+  <text x="96" y="448" font-family="Montserrat, sans-serif" font-weight="700" font-size="86" letter-spacing="1" fill="#F7F6F3">one place.</text>
+  <text x="96" y="510" font-family="Montserrat, sans-serif" font-weight="500" font-size="26" fill="#A6A6B2">Self-hosted trip planning — maps, itineraries, files, crew.</text>
 </svg>

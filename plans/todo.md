@@ -377,3 +377,11 @@ else runs this.
 - **OpenID Connect / external auth providers.** `auth_identities` already
   supports a `provider` column beyond `'local'` for exactly this; no provider
   integration exists yet.
+- **The documentation site has no social preview.** (Surfaced fixing the app's,
+  Aug 2026.) `zensical.toml` sets `site_description` and `site_url` but nothing
+  emits `og:image`, so a link to the project site previews as bare text the way
+  a link to an instance used to. Easier than the app's was: `site_url` is a
+  fixed absolute URL, so the tags can be written literally into
+  `overrides/home.html` with no substitution. Use `og-card-cta.png` --
+  `docs/assets/brand/README.md` explains why that is the right one of the two
+  there and the plain card is the right one in the app.

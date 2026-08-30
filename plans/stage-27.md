@@ -337,6 +337,59 @@ the checklist duplicate handler (`internal/httpapi/checklists.go:218-223`).
 Run `make test-postgres`: this changes how `internal/db` is used, and a loop
 inside one transaction is exactly where the two dialects diverge.
 
+**Done.** `createItemTx` split as planned into a wrapper that opens the
+transaction and `createItemInStore(ctx, store, ...)` holding the body -- a
+function rather than a method, since it reaches for nothing on the server the
+store and its arguments do not carry. `POST /api/trips/{tripId}/items/batch`
+lives in a new `internal/httpapi/items_batch.go`: validate every element, then
+one `WithTx` creating each through `createItemInStore`, then the detail
+response for each in request order.
+
+Three things came out of building it that the plan did not anticipate:
+
+- **`created_at` is not lexically sortable within a second.**
+  `ListItemsByTrip` orders by `sort_order, created_at`, every location the
+  single-item path creates has `sort_order` 0, so within a trip the real order
+  is `created_at` -- stored with `RFC3339Nano`, which drops trailing zeros.
+  `.1Z` therefore sorts *after* `.12Z` as text, which a throwaway program
+  confirmed. Several rows written by one transaction in the same millisecond is
+  precisely the case that would expose it, so the batch assigns `sort_order`
+  explicitly from the trip's current maximum and appends. An explicit
+  `sort_order` in the body still wins. The wider issue is pre-existing and goes
+  to `todo.md` rather than being fixed here.
+- **The cap is its own constant, not `assist.maxSuggestions`.** Deviation from
+  the plan. That constant is a property of how many places are worth
+  researching in one run; this one is a property of how much work one
+  transaction should do. Tying them would let a change to the assistant's
+  answer size silently move a general endpoint's limits.
+  `maxItemsPerBatch = 20` sits comfortably above any suggest run.
+- **A `javascript:` URL is accepted on a link and rendered as one.** Found
+  writing a test that assumed otherwise; pre-existing, reachable from the
+  single create and PATCH as much as from here, and stored XSS on a shared
+  trip. Not reachable through the assistant, whose links are fetched before
+  they are offered. Written up in `todo.md` under Bugs rather than folded into
+  this diff, and the test now asserts the validation that does exist.
+
+Cover photos and attachments are deliberately out: those are multipart, and a
+batch of multipart bodies is a different endpoint with a different size limit
+and a blob-cleanup problem on rollback. A candidate's proposed cover is a URL,
+which Milestone 5's client applies through the endpoint that already fetches
+one.
+
+Verified: seven tests in `internal/httpapi/items_batch_test.go` -- every
+location created with its nested location, links and tags and its generated
+id; request order preserved in the list read back afterwards; a batch appending
+after what was already there; nothing written when any one element is invalid
+(three cases); empty and oversized lists refused; an unknown field refused, so
+`readJSON` strictness survives being a level deeper; and a viewer getting 403
+where a stranger gets 404. `items_create_test.go` is untouched and green, which
+is the proof the single-item path did not move. `make ci` green, and
+**`make test-postgres` green** -- `internal/httpapi` at 224s, exit 0.
+
+Noted in passing: `internal/httpapi/items_create.go` was not `gofmt`-clean
+before this milestone. The stray indentation was inside the literal this
+milestone re-indented, so it is fixed as a side effect rather than deliberately.
+
 ## 5. Reviewing several places at once
 
 **Entry.** In `locations-tab.js`, the New button becomes a `renderMenu` trigger

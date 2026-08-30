@@ -329,6 +329,8 @@ func (s *Server) buildRouter() chi.Router {
 
 				r.Get("/items", s.handleListItems)
 				r.Post("/items", s.handleCreateItem)
+				// Several locations in one transaction -- see items_batch.go.
+				r.Post("/items/batch", s.handleCreateItemsBatch)
 
 				r.Get("/tags", s.handleListTripTags)
 

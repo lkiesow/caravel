@@ -299,6 +299,26 @@ func (s *Server) stageOneFile(ctx context.Context, tripID, itemID string,
 func (s *Server) createItemTx(ctx context.Context, trip db.Trip, itemID string, req itemRequest,
 	image *pendingImage, files []pendingFile) (db.Item, error) {
 
+	var item db.Item
+	err := s.Store.WithTx(ctx, func(store db.Store) error {
+		created, err := createItemInStore(ctx, store, trip, itemID, req, image, files)
+		item = created
+		return err
+	})
+	return item, err
+}
+
+// createItemInStore is the body of that write, taking the store to use rather
+// than opening a transaction of its own.
+//
+// Split out because db.Store.WithTx does not nest (see item_dates.go) and the
+// batch endpoint writes several locations inside one transaction. A function
+// rather than a method: it reaches for nothing on the server that the store
+// and the arguments do not already carry, and saying so keeps it obvious that
+// the only writes it makes are through the store it was handed.
+func createItemInStore(ctx context.Context, store db.Store, trip db.Trip, itemID string, req itemRequest,
+	image *pendingImage, files []pendingFile) (db.Item, error) {
+
 	showOnMap := true
 	if req.ShowOnMap != nil {
 		showOnMap = *req.ShowOnMap
@@ -310,77 +330,72 @@ func (s *Server) createItemTx(ctx context.Context, trip db.Trip, itemID string, 
 	uploader, hasUploader := auth.UserFromContext(ctx)
 	now := time.Now().UTC()
 
-	var item db.Item
-	err := s.Store.WithTx(ctx, func(store db.Store) error {
-		created, err := store.CreateItem(ctx, db.CreateItemParams{
-			ID:        itemID,
-			TripID:    trip.ID,
-			Category:  req.Category,
-				Title:     req.Title,
-			Notes:     req.Notes,
-			ShowOnMap: showOnMap,
-			SortOrder: sortOrder,
-			CreatedAt: now,
-			UpdatedAt: now,
+	created, err := store.CreateItem(ctx, db.CreateItemParams{
+		ID:        itemID,
+		TripID:    trip.ID,
+		Category:  req.Category,
+		Title:     req.Title,
+		Notes:     req.Notes,
+		ShowOnMap: showOnMap,
+		SortOrder: sortOrder,
+		CreatedAt: now,
+		UpdatedAt: now,
+	})
+	if err != nil {
+		return db.Item{}, err
+	}
+	if err := writeItemNested(ctx, store, created, req); err != nil {
+		return db.Item{}, err
+	}
+
+	if image != nil {
+		asset, err := store.CreateMediaAsset(ctx, db.CreateMediaAssetParams{
+			ID:          image.assetID,
+			TripID:      trip.ID,
+			Kind:        image.kind,
+			StoragePath: &image.key,
+			ExternalURL: image.externalURL,
+			ContentType: &image.contentType,
+			Width:       &image.width,
+			Height:      &image.height,
+			SourceURL:   image.sourceURL,
+			Credit:      image.credit,
+			License:     image.license,
+			CreatedAt:   now,
 		})
 		if err != nil {
-			return err
+			return db.Item{}, err
 		}
-		if err := writeItemNested(ctx, store, created, req); err != nil {
-			return err
+		updated, err := store.SetItemImage(ctx, created.ID, trip.ID, &asset.ID, now)
+		if err != nil {
+			return db.Item{}, err
 		}
+		created = updated
+	}
 
-		if image != nil {
-			asset, err := store.CreateMediaAsset(ctx, db.CreateMediaAssetParams{
-				ID:          image.assetID,
-				TripID:      trip.ID,
-				Kind:        image.kind,
-				StoragePath: &image.key,
-				ExternalURL: image.externalURL,
-				ContentType: &image.contentType,
-				Width:       &image.width,
-				Height:      &image.height,
-				SourceURL:   image.sourceURL,
-				Credit:      image.credit,
-				License:     image.license,
-				CreatedAt:   now,
-			})
-			if err != nil {
-				return err
-			}
-			updated, err := store.SetItemImage(ctx, created.ID, trip.ID, &asset.ID, now)
-			if err != nil {
-				return err
-			}
-			created = updated
+	for _, f := range files {
+		var ownerID *string
+		if hasUploader {
+			ownerID = &uploader.ID
 		}
-
-		for _, f := range files {
-			var ownerID *string
-			if hasUploader {
-				ownerID = &uploader.ID
-			}
-			if _, err := store.CreateFile(ctx, db.CreateFileParams{
-				ID:          f.id,
-				TripID:      trip.ID,
-				ItemID:      &created.ID,
-				Filename:    f.filename,
-				StoragePath: f.key,
-				ContentType: &f.contentType,
-				Visibility:  f.visibility,
-				OwnerUserID: ownerID,
-				SizeBytes:   f.size,
-				UploadedAt:  now,
-				Note:        f.note,
-			}); err != nil {
-				return err
-			}
+		if _, err := store.CreateFile(ctx, db.CreateFileParams{
+			ID:          f.id,
+			TripID:      trip.ID,
+			ItemID:      &created.ID,
+			Filename:    f.filename,
+			StoragePath: f.key,
+			ContentType: &f.contentType,
+			Visibility:  f.visibility,
+			OwnerUserID: ownerID,
+			SizeBytes:   f.size,
+			UploadedAt:  now,
+			Note:        f.note,
+		}); err != nil {
+			return db.Item{}, err
 		}
+	}
 
-		item = created
-		return nil
-	})
-	return item, err
+	return created, nil
 }
 
 // at returns the nth value of a positional multipart field, or "" when the

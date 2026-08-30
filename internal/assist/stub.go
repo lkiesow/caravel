@@ -34,6 +34,13 @@ type stubProvider struct {
 	mu    sync.Mutex
 	turns []stubTurn
 	n     int
+	// byMode holds one script per kind of run. The default stub has two --
+	// enriching one place and suggesting several -- and the agent selects
+	// between them at the start of a run, because the two answers have
+	// different shapes and one script cannot serve both. Nil for a provider
+	// built by newScriptedProvider, which plays its one script whatever it is
+	// asked.
+	byMode map[Mode][]stubTurn
 }
 
 // newStubProvider returns the default script: search, read two pages, answer
@@ -68,7 +75,7 @@ func newStubProvider() *stubProvider {
 		panic("assist: encoding the stub answer: " + err.Error())
 	}
 
-	return newScriptedProvider(
+	location := []stubTurn{
 		turnCalling(toolWebSearch, `{"query":"Kex Hostel Reykjavik"}`),
 		// Two page reads rather than one, so the sources list has more than a
 		// single entry in it. A list of one renders the same whether it is
@@ -80,7 +87,57 @@ func newStubProvider() *stubProvider {
 		// exercises the path people actually get rather than the fallback.
 		// The two-phase route is covered by agent_test.go instead.
 		turnCalling(toolPropose, string(answer)),
-	)
+	}
+
+	suggestions, err := json.Marshal(modelSuggestions{Suggestions: []modelProposal{
+		{
+			Title:     "Hallgrimskirkja",
+			Category:  "site",
+			Tags:      "church, landmark, city centre",
+			Notes:     "The tall concrete church above the old town. The tower is worth the lift fare for the view over the coloured roofs.",
+			Address:   "Hallgrimstorg 1, 101 Reykjavik, Iceland",
+			PlaceName: "Hallgrimskirkja, Reykjavik",
+			Links:     []modelLink{{URL: fixture.base + "/reykjavik", Label: "About Reykjavik"}},
+		},
+		{
+			Title:     "Kex Hostel",
+			Category:  "stay",
+			Tags:      "hostel, harbour",
+			Notes:     "A former biscuit factory on the harbour side, now a hostel. The bar does food until late.",
+			Address:   "Skulagata 28, 101 Reykjavik, Iceland",
+			PlaceName: "Kex Hostel, Reykjavik",
+			Links:     []modelLink{{URL: fixture.base + "/kex", Label: "Official site"}},
+		},
+		{
+			// Deliberately thin: no address, no link, nothing to geocode. A
+			// script where every candidate is complete would never show the
+			// review screen what a sparse one looks like, and sparse ones are
+			// the common case.
+			Title:    "Braud and Co",
+			Category: "site",
+			Tags:     "bakery",
+			Notes:    "A small bakery known for cinnamon buns. Sells out by the middle of the morning.",
+		},
+	}})
+	if err != nil {
+		panic("assist: encoding the stub suggestions: " + err.Error())
+	}
+
+	suggest := []stubTurn{
+		turnCalling(toolWebSearch, `{"query":"things to do in Reykjavik"}`),
+		turnCalling(toolFetchPage, fetchArgs(fixture.base+"/reykjavik")),
+		turnCalling(toolFetchPage, fetchArgs(fixture.base+"/kex")),
+		turnCalling(toolPropose, string(suggestions)),
+	}
+
+	return &stubProvider{
+		turns: location,
+		byMode: map[Mode][]stubTurn{
+			ModeEnrich:  location,
+			ModePrompt:  location,
+			ModeSuggest: suggest,
+		},
+	}
 }
 
 // newScriptedProvider builds a stub that plays the given turns in order. Used
@@ -161,10 +218,18 @@ func (s *stubProvider) Complete(ctx context.Context, req chatRequest) (*chatResp
 	}, nil
 }
 
-// reset rewinds the script, so one stub can serve several runs. Called by the
-// agent at the start of a run when the provider is a stub.
-func (s *stubProvider) reset() {
+// begin selects the script for this kind of run and rewinds it, so one stub
+// can serve several runs. Called by the agent at the start of a run when the
+// provider is a stub.
+//
+// A provider built by newScriptedProvider has no per-mode scripts and keeps
+// the one it was given whatever mode it is asked for: those are tests that
+// chose their turns deliberately.
+func (s *stubProvider) begin(mode Mode) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if script, ok := s.byMode[mode]; ok {
+		s.turns = script
+	}
 	s.n = 0
 }

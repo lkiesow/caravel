@@ -284,6 +284,15 @@ purpose — do not reconstruct it from an older stage plan without asking.
   the right move for a client-side assertion and no move at all for the two
   older specs, which still call out.
 
+  **Stage 27 Milestone 3 made this materially worse and is the reason to fix
+  it.** A trip-level suggestion run geocodes *every* candidate it proposes --
+  up to six lookups for one run, against the same volunteer-run service, and
+  serialised precisely because of that service's one-request-per-second policy.
+  One assist spec asking for three coordinates was arguable; a suggest spec is
+  six on its own, and the serialisation means they also make the run slower to
+  no purpose in a test. The stub geocoder is now the cheapest of the three
+  fixes.
+
 - **The suite waits on injected plumbing, not on the app's own state.** Stage 09
   Milestone 5 gave every route a `common.loading` line, which fixes the
   user-facing half of the old "empty shell" problem but not the suite's: a

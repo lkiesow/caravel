@@ -134,7 +134,7 @@ func TestStubReplaysAfterReset(t *testing.T) {
 			t.Fatalf("first pass: %v", err)
 		}
 	}
-	s.reset()
+	s.begin(ModeEnrich)
 	resp, err := s.Complete(ctx, chatRequest{})
 	if err != nil {
 		t.Fatalf("after reset: %v", err)

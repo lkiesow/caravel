@@ -222,7 +222,10 @@ func TestAssistEventsArriveBeforeTheRunFinishes(t *testing.T) {
 
 // slowAssistant emits a progress event at once and then takes its time, which
 // is the shape of a real run.
-type slowAssistant struct{ delay time.Duration }
+type slowAssistant struct {
+	noSuggestions
+	delay time.Duration
+}
 
 func (s *slowAssistant) Propose(ctx context.Context, _ assist.Request, events func(assist.Event)) (*assist.Proposal, error) {
 	events(assist.Event{Key: "assist.progress.thinking"})
@@ -282,7 +285,10 @@ func TestAssistErrorDoesNotLeakProviderDetail(t *testing.T) {
 	}
 }
 
-type failingAssistant struct{ err error }
+type failingAssistant struct {
+	noSuggestions
+	err error
+}
 
 func (f *failingAssistant) Propose(context.Context, assist.Request, func(assist.Event)) (*assist.Proposal, error) {
 	return nil, f.err
@@ -348,6 +354,7 @@ func TestAssistRefusesWhenAllSlotsAreBusy(t *testing.T) {
 }
 
 type blockingAssistant struct {
+	noSuggestions
 	release chan struct{}
 	started chan struct{}
 	once    sync.Once
@@ -409,7 +416,10 @@ func TestAssistCancellationStopsTheRun(t *testing.T) {
 }
 
 // watchingAssistant reports how its context ended.
-type watchingAssistant struct{ stopped chan error }
+type watchingAssistant struct {
+	noSuggestions
+	stopped chan error
+}
 
 func (a *watchingAssistant) Propose(ctx context.Context, _ assist.Request, events func(assist.Event)) (*assist.Proposal, error) {
 	events(assist.Event{Key: "assist.progress.thinking"})
@@ -590,6 +600,7 @@ func TestAssistRejectsAnImplausibleLocale(t *testing.T) {
 }
 
 type capturingAssistant struct {
+	noSuggestions
 	mu  sync.Mutex
 	req assist.Request
 }

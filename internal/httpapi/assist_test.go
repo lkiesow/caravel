@@ -16,7 +16,17 @@ import (
 // Milestone 6), so what matters here is only that it is non-nil -- but it
 // implements the interface properly so Milestone 6 can grow canned responses
 // here rather than replacing it.
-type fakeAssistant struct{}
+// noSuggestions is the half of assist.Assistant a fake about the single-
+// location endpoint has no opinion on. Embedded rather than written out six
+// times, and it returns an error rather than an empty answer so that a test
+// reaching it by accident says so instead of passing quietly.
+type noSuggestions struct{}
+
+func (noSuggestions) Suggest(context.Context, assist.SuggestRequest, func(assist.Event)) (*assist.Suggestions, error) {
+	return nil, errors.New("this fake does not suggest")
+}
+
+type fakeAssistant struct{ noSuggestions }
 
 var errFakeAssistant = errors.New("fakeAssistant.Propose was called")
 

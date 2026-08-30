@@ -1,6 +1,7 @@
-// Package assist proposes metadata for a location by asking an LLM, which may
-// call a small set of read-only tools (web search, page fetch, OpenStreetMap)
-// while it works.
+// Package assist proposes travel metadata by asking an LLM, which may call a
+// small set of read-only tools (web search, page fetch, OpenStreetMap) while
+// it works. Two questions: fill in one location (Propose), and suggest several
+// places for a trip (Suggest).
 //
 // # Off by default
 //
@@ -16,8 +17,8 @@
 //
 // # What this package promises the rest of the app
 //
-// Propose returns a *proposal*, never a mutation. Nothing here writes to the
-// database, and no tool the model can reach has a side effect. The caller
+// Both entry points return a *proposal*, never a mutation. Nothing here writes
+// to the database, and no tool the model can reach has a side effect. The caller
 // shows the proposal to a person who accepts or rejects it field by field, and
 // only then does the ordinary item-update path run. That is what bounds the
 // blast radius of the obvious risk: the agent reads web pages, and a page can
@@ -81,6 +82,11 @@ type Assistant interface {
 	// boundary rather than leaving it spending tokens for a client that has
 	// gone away.
 	Propose(ctx context.Context, req Request, events func(Event)) (*Proposal, error)
+
+	// Suggest runs the agent to completion and returns several candidate
+	// places for a trip. The same rails, the same events and the same ctx
+	// contract as Propose.
+	Suggest(ctx context.Context, req SuggestRequest, events func(Event)) (*Suggestions, error)
 }
 
 // Options are New's dependencies, mapped from config.Config by the caller.

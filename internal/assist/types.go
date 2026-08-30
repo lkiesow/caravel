@@ -14,11 +14,19 @@ const (
 	// ModePrompt builds a location from a free-text description, with no
 	// existing metadata to work from.
 	ModePrompt Mode = "prompt"
+	// ModeSuggest offers several places for a trip at once. It names the run
+	// in the log and in the trace and is never read from a request body: the
+	// endpoint decides it, which is why Valid below does not accept it.
+	ModeSuggest Mode = "suggest"
 )
 
-// Valid reports whether m is a mode the agent understands. Used to reject a
-// request body rather than defaulting, because the two modes are genuinely
-// different asks and guessing wrong wastes a paid run.
+// Valid reports whether m is a mode a *location* request may ask for. Used to
+// reject a request body rather than defaulting, because the two modes are
+// genuinely different asks and guessing wrong wastes a paid run.
+//
+// ModeSuggest is deliberately absent. It belongs to a different endpoint with
+// a differently-shaped answer, and accepting it here would let a client ask
+// /assist/location for something it cannot return.
 func (m Mode) Valid() bool { return m == ModeEnrich || m == ModePrompt }
 
 // Request is one enrichment run.
@@ -69,10 +77,10 @@ type Location struct {
 	// applyField -- is string-shaped, and making one field polymorphic to
 	// avoid one split and one join would be the more expensive change. The
 	// editor splits it back into chips.
-	Tags     string // free text, steered by Request.TagVocabulary
-	Notes    string // markdown
-	Address  string
-	Links    []Link
+	Tags    string // free text, steered by Request.TagVocabulary
+	Notes   string // markdown
+	Address string
+	Links   []Link
 }
 
 // TripContext is the optional surrounding-trip information. Zero value means
@@ -91,6 +99,82 @@ func (t TripContext) Sent() bool { return t.Title != "" || t.Start != "" || t.En
 type Link struct {
 	URL   string
 	Label string
+}
+
+// SuggestRequest is one trip-level run: several places at once, rather than
+// one place in depth.
+//
+// Deliberately not a Mode on Request. The two runs differ in what they are
+// given (a location to work on, versus a trip to fill), in what they return
+// (one proposal with before/after pairs, versus a list of candidates with
+// nothing to diff against) and in what the caller does with the answer. One
+// struct carrying both would be half-empty whichever run was asked for.
+type SuggestRequest struct {
+	// Prompt is what the user asked for: "things to do in Reykjavik", "a
+	// morning with kids near the harbour". Required -- unlike an enrichment
+	// run there is nothing else to work from.
+	Prompt string
+
+	// Existing is what the trip already has, so the run can be told not to
+	// offer it again and the answer can be checked against it afterwards.
+	// Deliberately not the full Location: a name and a position is everything
+	// the dedup needs, and sending each place notes and links would spend the
+	// budget describing what the user is not asking about.
+	Existing []ExistingPlace
+
+	// TagVocabulary, Trip and Locale mean exactly what they mean on Request,
+	// and are steered by the same reasoning -- see the comments there.
+	TagVocabulary []string
+	Trip          TripContext
+	Locale        string
+}
+
+// ExistingPlace is one location already on the trip, as a suggest run needs to
+// know it: enough to avoid offering it twice, and nothing more.
+type ExistingPlace struct {
+	Title string
+	// Lat and Lng are nil for a location with no position. Present ones catch
+	// the duplicate a name comparison cannot: the same church under a second
+	// spelling, or in the other language.
+	Lat *float64
+	Lng *float64
+}
+
+// Suggestions is what a trip-level run produces.
+type Suggestions struct {
+	// Candidates, in the order the model offered them, after the cap and the
+	// dedup. May be empty, which is a legitimate answer.
+	Candidates []Candidate
+
+	// Dropped counts candidates removed as duplicates of something already on
+	// the trip or of an earlier candidate in the same answer. Reported rather
+	// than silently discarded: "it found four and two were places you already
+	// have" is a different story from "it only found two", and they want
+	// different responses from the user.
+	Dropped int
+
+	// Sources the run consulted, for the whole answer rather than per
+	// candidate. The agent reads a city guide once and it informs several of
+	// them, so attributing pages to individual places would be a provenance
+	// trail that is not true.
+	Sources []Source
+}
+
+// Candidate is one proposed place.
+//
+// A Location rather than a list of Fields, which is what a Proposal carries:
+// there is nothing to diff against, so a before/after pair would have an empty
+// before every time.
+type Candidate struct {
+	Place Location
+	// Links that survived the liveness check, exactly as on a Proposal.
+	Links []Link
+	// Coordinates resolved by internal/geocode from the proposed address, and
+	// never values the model produced. Nil when nothing resolved.
+	Lat *float64
+	Lng *float64
+	// Cover is a proposed cover photograph, or nil when none was found.
+	Cover *Cover
 }
 
 // Proposal is what a run produces. Every field is a suggestion; the caller

@@ -1199,7 +1199,7 @@ func TestAWikipediaArticleGoesThroughTheAPINotItsOgImage(t *testing.T) {
 	article := "https://de.wikipedia.org/wiki/Waterloo-Tor"
 	cover := a.chooseCover(
 		context.Background(),
-		Request{Mode: ModeEnrich, Locale: "de"},
+		"de",
 		// The model named no article title: it has to be recovered from the
 		// link, which is worth doing because a model that finds the article
 		// well enough to link it has already done the hard part.

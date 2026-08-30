@@ -1,6 +1,9 @@
 package assist
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // The contract with the model: what it is asked to return, and the JSON Schema
 // that describes it.
@@ -108,6 +111,54 @@ var proposalSchema = json.RawMessage(`{
     }
   }
 }`)
+
+// maxSuggestions caps a trip-level answer.
+//
+// Six because the screen that reviews them has to be readable on a phone, and
+// because the cost of a run rises with the number of places researched: every
+// candidate is worth a search and a page read. It is a ceiling, not a target
+// -- a run that finds three good places should offer three.
+const maxSuggestions = 6
+
+// modelSuggestions is the trip-level answer: several places, each in exactly
+// the shape one place is proposed in.
+//
+// Reusing modelProposal as the element is the point. A separate flat struct
+// would drift from it the first time a field was added to one and not the
+// other, and everything downstream -- category validation, the geocoder, the
+// link check, the cover -- already knows how to finish one of these.
+type modelSuggestions struct {
+	Suggestions []modelProposal `json:"suggestions"`
+}
+
+// suggestionsSchemaName names the schema on the wire, as proposalSchemaName
+// does.
+const suggestionsSchemaName = "trip_suggestions"
+
+// suggestionsSchema wraps the proposal schema in an array rather than
+// restating it, so the property block above has exactly one definition. The
+// cap is written into the schema *and* enforced in Go: the json_object
+// fallback (see provider.go) has no schema enforcement at all, which is the
+// same reason category is validated rather than trusted.
+var suggestionsSchema = json.RawMessage(fmt.Sprintf(`{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["suggestions"],
+  "properties": {
+    "suggestions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": %d,
+      "description": "The places you are proposing, each a distinct real place. Offer fewer rather than padding the list.",
+      "items": %s
+    }
+  }
+}`, maxSuggestions, proposalSchema))
+
+// suggestionsFormat is the response_format for a trip-level final answer.
+func suggestionsFormat() responseFormat {
+	return responseFormat{Kind: formatJSONSchema, Name: suggestionsSchemaName, Schema: suggestionsSchema}
+}
 
 // proposalFormat is the response_format for the final answer.
 func proposalFormat() responseFormat {

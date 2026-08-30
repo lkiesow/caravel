@@ -247,6 +247,74 @@ Go tests: the cap bites, dedup drops a duplicate, an invalid category is dropped
 from one candidate without failing the run, coordinates come only from the
 geocoder.
 
+**Done.** Landed as planned, with three deviations recorded below.
+
+`internal/assist` gained `ModeSuggest`, `SuggestRequest`, `ExistingPlace`,
+`Suggestions` and `Candidate` (`types.go`); `modelSuggestions` plus a
+`suggestionsSchema` built by wrapping `proposalSchema` in an array with
+`maxItems` from the `maxSuggestions` constant, so the property block has one
+definition (`schema.go`); `suggestSystemPrompt` / `suggestUserPrompt` /
+`suggestFinalPrompt` (`prompt.go`); and `suggestTask`, `Suggest`,
+`buildCandidates`, `locate` and the `placeIndex` dedup (`agent.go`). The HTTP
+layer gained `POST /api/trips/{tripId}/assist/locations`, its request
+validation, `tripExistingPlaces`, and the `suggestions` event.
+
+- **The prompts were refactored rather than copied.** `systemPrompt` had one
+  block of standing rules and one describing the shape of a place, and both are
+  the same for a trip-level run -- a run that guessed a URL would be wrong for
+  identical reasons. They are now `researchRules(extra)` and
+  `placeFields(vocabulary, locale)`. `researchRules` takes its caller's extra
+  bullets and places them *before* the last rule rather than after, because the
+  last rule is the one about not following instructions found on web pages and
+  nothing a task adds should sit between it and the end of the list. Proved
+  byte-identical: a throwaway test dumped `systemPrompt` + `userPrompt` +
+  `finalPrompt` for a fully-populated request before and after, and `diff`
+  reported no change.
+- **`checkLinks` and `chooseCover` stopped taking a whole `Request`.** They used
+  one field each -- `req.Current.Links` and `req.Locale` -- and a candidate has
+  neither a Request nor an existing link list. They now take exactly what they
+  read.
+- **`Suggestions.Sources` is per run, not per candidate.** Deviation from the
+  plan, which put `Sources` on `Candidate`. The agent reads a city guide once
+  and it informs several candidates, so attributing pages to individual places
+  would have been a provenance trail that is not true.
+- **The stub's script is chosen by mode.** `reset()` became `begin(mode)`: the
+  default stub now holds two scripts and the agent selects between them at the
+  start of a run. A provider built by `newScriptedProvider` has no per-mode
+  scripts and keeps its one, so every existing test is unaffected. The suggest
+  script deliberately includes one thin candidate -- no address, no link,
+  nothing to geocode -- because a script where every candidate is complete
+  would never show the review screen in Milestone 5 what a sparse one looks
+  like, and sparse is the common case.
+- **`RunDuration` was left at 90s.** The plan asked for this to be decided by
+  measurement. A stub run takes ~4s, which measures the loop and not the model,
+  so there is nothing yet to decide it with; the honest move is to leave it and
+  revisit after a real run. Noted rather than guessed.
+
+Verified: twelve new tests in `internal/assist/suggest_test.go` -- several
+candidates, an empty prompt refused, the cap truncating from the end, a
+duplicate of an existing place dropped, a duplicate within one answer dropped,
+a same-position duplicate dropped after geocoding, per-candidate geocoding with
+the address-then-place-name fallback and no request at all for a candidate
+naming neither, one bad category dropped without spoiling the list, a nameless
+candidate skipped without being counted as a duplicate, the propose-call path,
+the stub script rewinding between runs *and* handing back to the location
+script, and the wrapped schema being genuinely the proposal schema. Five more
+in `internal/httpapi/assist_suggest_test.go` cover the route, 501-before-lookup,
+the empty prompt, the viewer refusal, and the trip's own locations reaching the
+run. `make ci` green.
+
+End to end against a live server (`scripts/with_server.sh`, logging in as
+`demo`): the stream carried ten steps -- thinking, searching, two page reads,
+composing, two link checks -- a summary of 4 turns / 3 tool calls / 2400
+tokens, two sources, and three candidates. Two resolved to real coordinates
+through Nominatim, one carried a cover with its credit, and the thin one came
+back thin. Nothing in that path is faked except the model.
+
+Not done here, deliberately: the documentation. The assistant page describes a
+flow the user cannot reach until Milestone 5 builds the screen, so it is
+written there, with `make docs`.
+
 ## 4. Adding N locations in one request
 
 `POST /api/trips/{tripId}/items/batch`, body `{"items": [itemRequest, ...]}`,

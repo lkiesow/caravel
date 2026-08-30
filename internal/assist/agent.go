@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/url"
 	"slices"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
 )
 
 // The agent loop.
@@ -246,6 +248,30 @@ func locationTask(req Request) task {
 	}
 }
 
+// suggestTask is the run behind Suggest: several places for a trip at once.
+func suggestTask(req SuggestRequest) task {
+	return task{
+		mode:   ModeSuggest,
+		system: suggestSystemPrompt(req),
+		user:   suggestUserPrompt(req),
+		final:  suggestFinalPrompt(req),
+		answer: answerTool{
+			Description: "Report the finished list of places and end the search. Call this once, as soon as you have what you need. " +
+				"Only include URLs you actually retrieved with fetch_page or saw in a search result. " +
+				"Give each place an address and a searchable place name, never coordinates. " +
+				"Leave a field as an empty string rather than guessing.",
+			Schema: suggestionsSchema,
+		},
+		format: suggestionsFormat(),
+		logFields: []any{
+			"trip_context", req.Trip.Sent(),
+			"locale", req.Locale,
+			"tag_vocabulary", len(req.TagVocabulary),
+			"existing", len(req.Existing),
+		},
+	}
+}
+
 // builder turns the model's answer into what the caller receives.
 //
 // It runs *inside* the run rather than after it, and that placement is the
@@ -280,6 +306,39 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 				"cover", coverFrom(p.Cover),
 			}, nil
 		})
+}
+
+// Suggest runs the agent to completion and returns several candidate places.
+//
+// The same loop, the same rails and the same tools as Propose; only the
+// question and the shape of the answer differ. See runTask.
+func (a *Agent) Suggest(ctx context.Context, req SuggestRequest, events func(Event)) (*Suggestions, error) {
+	if strings.TrimSpace(req.Prompt) == "" {
+		return nil, errors.New("assist: a suggestion run needs a prompt")
+	}
+	return runTask(ctx, a, suggestTask(req), events,
+		func(ctx context.Context, raw modelSuggestions, sources []Source, emit func(Event), log *slog.Logger) (*Suggestions, []any, error) {
+			out, err := a.buildCandidates(ctx, req, raw, sources, emit, log)
+			if err != nil {
+				return nil, nil, err
+			}
+			return out, []any{
+				"candidates", len(out.Candidates),
+				"dropped", out.Dropped,
+				"sources", len(sources),
+				"located", locatedCount(out.Candidates),
+			}, nil
+		})
+}
+
+func locatedCount(candidates []Candidate) int {
+	n := 0
+	for _, c := range candidates {
+		if c.Lat != nil {
+			n++
+		}
+	}
+	return n
 }
 
 // runTask is the agent loop: gather with tools until something stops it, then
@@ -356,10 +415,11 @@ func runTask[A any, R any](ctx context.Context, a *Agent, tk task, events func(E
 	defer cancel()
 
 	// The stub plays a fixed script, so a second run in the same process would
-	// find it exhausted. Real providers are stateless between runs and need
+	// find it exhausted -- and which script it should play depends on what is
+	// being asked for. Real providers are stateless between runs and need
 	// nothing here.
 	if s, ok := a.provider.(*stubProvider); ok {
-		s.reset()
+		s.begin(tk.mode)
 	}
 
 	tools := newToolset(a.search, a.fetcher, a.geocoder, emit, log)
@@ -747,7 +807,7 @@ func (a *Agent) buildProposal(ctx context.Context, req Request, raw modelProposa
 		p.Fields = append(p.Fields, Field{Name: f.name, Current: f.current, Proposed: f.proposed})
 	}
 
-	p.Links = a.checkLinks(ctx, req, raw.Links, events, log)
+	p.Links = a.checkLinks(ctx, req.Current.Links, raw.Links, events, log)
 
 	// Coordinates last, and only from the geocoder. The address the model
 	// proposed is tried first, then the place name, which is more forgiving of
@@ -780,9 +840,206 @@ func (a *Agent) buildProposal(ctx context.Context, req Request, raw modelProposa
 		log.Debug("assist: no coordinates", "reason", "no geocoder configured")
 	}
 
-	p.Cover = a.chooseCover(ctx, req, raw, p.Links, sources, log)
+	p.Cover = a.chooseCover(ctx, req.Locale, raw, p.Links, sources, log)
 
 	return p, nil
+}
+
+// buildCandidates turns a trip-level answer into the list the user reviews.
+//
+// Per candidate it applies exactly the checks buildProposal applies to one
+// place -- the category is validated, the links are fetched, the coordinates
+// come from the geocoder and never from the model -- and then two more that
+// only exist because there are several: the cap, and the dedup.
+func (a *Agent) buildCandidates(ctx context.Context, req SuggestRequest, raw modelSuggestions, sources []Source, events func(Event), log *slog.Logger) (*Suggestions, error) {
+	out := &Suggestions{Sources: sources}
+
+	proposed := raw.Suggestions
+	// The schema says maxItems and the prompt says the number in words, and
+	// neither is a guarantee: the json_object fallback enforces no schema at
+	// all. Truncating rather than failing, because five good places and a
+	// sixth too many is not a broken run.
+	if len(proposed) > maxSuggestions {
+		log.Debug("assist: suggestions truncated", "proposed", len(proposed), "cap", maxSuggestions)
+		proposed = proposed[:maxSuggestions]
+	}
+
+	seen := newPlaceIndex(req.Existing)
+
+	for i, item := range proposed {
+		title := strings.TrimSpace(item.Title)
+		if title == "" {
+			// Unlike an enrichment, where an empty title means "this place is
+			// already named", a candidate with no name is nothing at all: it
+			// cannot be reviewed and it cannot be saved.
+			log.Debug("assist: candidate dropped", "index", i, "reason", "no title")
+			continue
+		}
+
+		category := strings.ToLower(strings.TrimSpace(item.Category))
+		if !slices.Contains(validCategories, category) {
+			if category != "" {
+				log.Debug("assist: category dropped", "candidate", title, "proposed", category, "allowed", validCategories)
+			}
+			// Empty rather than guessed, exactly as in buildProposal -- but
+			// note the consequence differs: a candidate with no category is
+			// added as one the user has to categorise, where an enrichment
+			// simply proposes nothing for that field.
+			category = ""
+		}
+
+		if seen.has(title, nil, nil) {
+			log.Debug("assist: candidate dropped", "candidate", title, "reason", "already on the trip or already proposed")
+			out.Dropped++
+			continue
+		}
+
+		c := Candidate{
+			Place: Location{
+				Title:    title,
+				Category: category,
+				Tags:     strings.TrimSpace(item.Tags),
+				Notes:    strings.TrimSpace(item.Notes),
+				Address:  strings.TrimSpace(item.Address),
+			},
+		}
+		// Nothing is already on a candidate, so nothing is filtered as a
+		// duplicate of what is there -- which is the only argument checkLinks
+		// takes beyond the proposal itself.
+		c.Links = a.checkLinks(ctx, nil, item.Links, events, log)
+		c.Lat, c.Lng = a.locate(ctx, item, log)
+
+		// The position is what catches the duplicate a name cannot: the same
+		// church spelled differently, or named in the other language. Checked
+		// after geocoding for the obvious reason, and it is why the name check
+		// above happens first -- an obvious duplicate should not cost a
+		// geocoder request.
+		if c.Lat != nil && seen.has("", c.Lat, c.Lng) {
+			log.Debug("assist: candidate dropped", "candidate", title, "reason", "same position as a place already known")
+			out.Dropped++
+			continue
+		}
+
+		c.Place.Links = c.Links
+		c.Cover = a.chooseCover(ctx, req.Locale, item, c.Links, sources, log)
+
+		seen.add(title, c.Lat, c.Lng)
+		out.Candidates = append(out.Candidates, c)
+	}
+
+	return out, nil
+}
+
+// locate resolves one candidate's position, address first and place name
+// second, exactly as buildProposal does for a single place.
+//
+// Deliberately sequential across candidates, and it is the one place in this
+// package that could obviously be made parallel and is not. The default
+// geocoder is nominatim.openstreetmap.org, whose usage policy asks for at most
+// one request a second; six candidates resolving at once is precisely the
+// traffic a volunteer-run service asks people not to send. internal/geocode
+// has no rate limiting of its own to lean on.
+func (a *Agent) locate(ctx context.Context, raw modelProposal, log *slog.Logger) (*float64, *float64) {
+	if a.geocoder == nil {
+		return nil, nil
+	}
+	for _, from := range []struct{ source, query string }{
+		{"address", strings.TrimSpace(raw.Address)},
+		{"place_name", strings.TrimSpace(raw.PlaceName)},
+	} {
+		if from.query == "" {
+			continue
+		}
+		results, err := a.geocoder.Search(ctx, from.query, "")
+		if err != nil || len(results) == 0 {
+			log.Debug("assist: geocode missed", "from", from.source, "query", from.query, "err", err)
+			continue
+		}
+		lat, lng := results[0].Lat, results[0].Lng
+		log.Debug("assist: coordinates resolved", "from", from.source, "query", from.query, "matches", len(results))
+		return &lat, &lng
+	}
+	return nil, nil
+}
+
+// placeIndex answers "do we already know this place", by name and by position.
+//
+// Both halves are needed and neither is sufficient. Names catch the model
+// offering something the trip plainly has; positions catch the same place
+// under a second spelling, in the other language, or with a suffix the trip
+// does not use.
+type placeIndex struct {
+	names  map[string]bool
+	points [][2]float64
+}
+
+// samePlaceMetres is how close two positions have to be to be treated as one
+// place. 150m is a building and its car park, or a station and its forecourt;
+// it is not two restaurants on the same street, which are 20m apart and
+// genuinely different.
+const samePlaceMetres = 150
+
+func newPlaceIndex(existing []ExistingPlace) *placeIndex {
+	idx := &placeIndex{names: make(map[string]bool, len(existing))}
+	for _, p := range existing {
+		idx.add(p.Title, p.Lat, p.Lng)
+	}
+	return idx
+}
+
+func (i *placeIndex) add(title string, lat, lng *float64) {
+	if key := foldName(title); key != "" {
+		i.names[key] = true
+	}
+	if lat != nil && lng != nil {
+		i.points = append(i.points, [2]float64{*lat, *lng})
+	}
+}
+
+// has reports whether either the name or the position is already known. An
+// empty title checks only the position, which is how a candidate is tested
+// again once it has been geocoded.
+func (i *placeIndex) has(title string, lat, lng *float64) bool {
+	if key := foldName(title); key != "" && i.names[key] {
+		return true
+	}
+	if lat == nil || lng == nil {
+		return false
+	}
+	for _, p := range i.points {
+		if metresBetween(p[0], p[1], *lat, *lng) <= samePlaceMetres {
+			return true
+		}
+	}
+	return false
+}
+
+// foldName reduces a name to what two spellings of the same place share: case,
+// surrounding space and punctuation. Deliberately crude -- it is one of two
+// checks, and the other one does not care about spelling at all.
+func foldName(title string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(strings.TrimSpace(title)) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// metresBetween is the great-circle distance, which at these distances is the
+// same answer as any other formula and is the one that does not need a
+// projection. web/js/geolocation.js does the same arithmetic for the "near me"
+// filter; this is the first time the Go side has needed it.
+func metresBetween(lat1, lng1, lat2, lng2 float64) float64 {
+	const earthRadiusM = 6371000
+
+	rad := func(d float64) float64 { return d * math.Pi / 180 }
+	dLat := rad(lat2 - lat1)
+	dLng := rad(lng2 - lng1)
+	h := math.Sin(dLat/2)*math.Sin(dLat/2) +
+		math.Cos(rad(lat1))*math.Cos(rad(lat2))*math.Sin(dLng/2)*math.Sin(dLng/2)
+	return 2 * earthRadiusM * math.Asin(math.Min(1, math.Sqrt(h)))
 }
 
 // chooseCover picks a cover photograph, preferring the one with the best claim
@@ -795,7 +1052,7 @@ func (a *Agent) buildProposal(ctx context.Context, req Request, raw modelProposa
 // and covers the landmarks that have no useful site of their own. Nothing else
 // is offered: a generic image search would mean the model choosing a
 // photograph by the text around it, which it cannot see.
-func (a *Agent) chooseCover(ctx context.Context, req Request, raw modelProposal, links []Link, sources []Source, log *slog.Logger) *Cover {
+func (a *Agent) chooseCover(ctx context.Context, locale string, raw modelProposal, links []Link, sources []Source, log *slog.Logger) *Cover {
 	// First choice: a page the run both read *and* proposed as a link. The
 	// second condition matters -- an og:image from some aggregator the model
 	// happened to open is not this place's photograph of itself.
@@ -822,8 +1079,8 @@ func (a *Agent) chooseCover(ctx context.Context, req Request, raw modelProposal,
 			log.Debug("assist: og:image skipped, it is a wikipedia article", "page", src.URL, "title", title)
 			if strings.TrimSpace(raw.WikipediaTitle) == "" {
 				raw.WikipediaTitle = title
-				if strings.TrimSpace(req.Locale) == "" {
-					req.Locale = lang
+				if strings.TrimSpace(locale) == "" {
+					locale = lang
 				}
 			}
 			continue
@@ -850,15 +1107,15 @@ func (a *Agent) chooseCover(ctx context.Context, req Request, raw modelProposal,
 	// The user's own language, because the model was asked for a title from
 	// that edition -- article titles are not translations of each other, so
 	// looking a German title up in the English encyclopaedia simply misses.
-	img, err := a.wikimedia.LeadImage(ctx, req.Locale, title)
+	img, err := a.wikimedia.LeadImage(ctx, locale, title)
 	if err != nil {
 		// Not fatal, and not worth telling the user about: a proposal without
 		// a picture is the ordinary case anyway.
-		log.Debug("assist: wikipedia lookup failed", "title", title, "lang", req.Locale, "err", err)
+		log.Debug("assist: wikipedia lookup failed", "title", title, "lang", locale, "err", err)
 		return nil
 	}
 	if img.URL == "" {
-		log.Debug("assist: no cover", "reason", "no lead image", "title", title, "lang", req.Locale)
+		log.Debug("assist: no cover", "reason", "no lead image", "title", title, "lang", locale)
 		return nil
 	}
 
@@ -869,7 +1126,7 @@ func (a *Agent) chooseCover(ctx context.Context, req Request, raw modelProposal,
 		source = img.DescriptionURL
 	}
 	log.Debug("assist: cover from wikipedia",
-		"title", title, "lang", req.Locale, "image", img.URL, "licence", img.Licence, "credited", img.Credit != "")
+		"title", title, "lang", locale, "image", img.URL, "licence", img.Licence, "credited", img.Credit != "")
 	return &Cover{
 		URL:       img.URL,
 		ThumbURL:  img.ThumbURL,
@@ -892,13 +1149,13 @@ var validCategories = []string{"site", "stay", "transport"}
 // sequential requests at the end is a visible pause for no reason. Links
 // already on the location are dropped as duplicates rather than checked --
 // proposing what is already there wastes the user's attention.
-func (a *Agent) checkLinks(ctx context.Context, req Request, proposed []modelLink, events func(Event), log *slog.Logger) []Link {
+func (a *Agent) checkLinks(ctx context.Context, alreadyThere []Link, proposed []modelLink, events func(Event), log *slog.Logger) []Link {
 	if len(proposed) == 0 {
 		return nil
 	}
 
-	existing := make(map[string]bool, len(req.Current.Links))
-	for _, l := range req.Current.Links {
+	existing := make(map[string]bool, len(alreadyThere))
+	for _, l := range alreadyThere {
 		existing[normaliseURL(l.URL)] = true
 	}
 

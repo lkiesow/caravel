@@ -338,6 +338,9 @@ func (s *Server) buildRouter() chi.Router {
 				// the request may carry the trip title and dates outward to a
 				// third party. Its own limiter -- see AssistLimiter.
 				r.With(s.rateLimitAssist).Post("/assist/location", s.handleAssistLocation)
+				// Plural, and the same limiter: a trip-level run costs more than
+				// a single-location one, not less.
+				r.With(s.rateLimitAssist).Post("/assist/locations", s.handleAssistSuggest)
 
 				r.Get("/itinerary", s.handleGetItinerary)
 				r.Put("/itinerary/days/{date}", s.handleSetItineraryDayNotes)

@@ -140,6 +140,40 @@ type assistSourceResponse struct {
 	URL   string `json:"url"`
 }
 
+// The trip-level request. Much smaller than the location one, because there
+// is no draft to send: what the trip already contains is read from the
+// database rather than posted back, which is both cheaper and not something a
+// client should be able to misreport.
+type assistSuggestRequest struct {
+	Prompt             string `json:"prompt"`
+	IncludeTripContext *bool  `json:"include_trip_context"`
+	Locale             string `json:"locale"`
+}
+
+type assistSuggestionsResponse struct {
+	Candidates []assistCandidateResponse `json:"candidates"`
+	// Dropped is how many candidates were removed as duplicates of something
+	// already on the trip. Sent so the screen can say so: "two of these you
+	// already have" is a useful thing to read and an alarming thing to guess
+	// at from a short list.
+	Dropped int `json:"dropped"`
+	// Sources for the run as a whole, not per candidate -- see
+	// assist.Suggestions.
+	Sources []assistSourceResponse `json:"sources"`
+}
+
+type assistCandidateResponse struct {
+	Title    string               `json:"title"`
+	Category string               `json:"category"`
+	Tags     string               `json:"tags"`
+	Notes    string               `json:"notes"`
+	Address  string               `json:"address"`
+	Links    []assistLinkResponse `json:"links"`
+	Lat      *float64             `json:"lat"`
+	Lng      *float64             `json:"lng"`
+	Cover    *assistCoverResponse `json:"cover"`
+}
+
 func (s *Server) handleAssistLocation(w http.ResponseWriter, r *http.Request) {
 	// 501 before anything else, matching handleGeocode: the route exists, the
 	// capability is off. Before the trip lookup, so a disabled instance does
@@ -183,7 +217,131 @@ func (s *Server) handleAssistLocation(w http.ResponseWriter, r *http.Request) {
 	}
 	defer release()
 
-	s.streamAssistRun(w, r, agentReq)
+	s.streamAssistRun(w, r, agentReq.Mode, func(ctx context.Context, emit func(assist.Event)) (string, any, error) {
+		proposal, err := s.Assist.Propose(ctx, agentReq, emit)
+		if err != nil {
+			return "", nil, err
+		}
+		return "proposal", toAssistProposalResponse(proposal), nil
+	})
+}
+
+// handleAssistSuggest is the trip-level run: several places at once.
+//
+// Every guard the single-location endpoint applies applies here in the same
+// order and for the same reasons -- 501 before the trip lookup so a disabled
+// instance leaks nothing, editor rather than viewer because the request may
+// carry the trip title and dates to a third-party API, then the rate limiter
+// on the route and the concurrency slot here. A run of this shape researches
+// several places rather than one, so if anything it deserves the admission
+// control more.
+func (s *Server) handleAssistSuggest(w http.ResponseWriter, r *http.Request) {
+	if s.Assist == nil {
+		writeError(w, http.StatusNotImplemented, "the assistant is not enabled on this server")
+		return
+	}
+
+	trip, _, ok := s.loadTrip(w, r, db.RoleEditor)
+	if !ok {
+		return
+	}
+
+	var req assistSuggestRequest
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	agentReq, err := s.buildAssistSuggestRequest(r, trip, req)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	release, ok := s.acquireAssistSlot()
+	if !ok {
+		writeErrorCode(w, http.StatusTooManyRequests, "assist_busy",
+			"the assistant is busy with other requests, try again in a moment")
+		return
+	}
+	defer release()
+
+	s.streamAssistRun(w, r, assist.ModeSuggest, func(ctx context.Context, emit func(assist.Event)) (string, any, error) {
+		out, err := s.Assist.Suggest(ctx, agentReq, emit)
+		if err != nil {
+			return "", nil, err
+		}
+		return "suggestions", toAssistSuggestionsResponse(out), nil
+	})
+}
+
+// buildAssistSuggestRequest validates the body and adds what only the server
+// knows: the trip context, the tag vocabulary, and what the trip already has.
+func (s *Server) buildAssistSuggestRequest(r *http.Request, trip db.Trip, req assistSuggestRequest) (assist.SuggestRequest, error) {
+	prompt := strings.TrimSpace(req.Prompt)
+	if prompt == "" {
+		// There is nothing else to work from here -- no draft, no existing
+		// metadata -- so an empty prompt is a paid run asking the model to
+		// guess what was wanted.
+		return assist.SuggestRequest{}, fmt.Errorf("a description of what to look for is required")
+	}
+	if len(prompt) > assistMaxPromptBytes {
+		return assist.SuggestRequest{}, fmt.Errorf("the prompt is too long")
+	}
+
+	out := assist.SuggestRequest{
+		Prompt:        prompt,
+		Locale:        normaliseLocale(req.Locale),
+		TagVocabulary: s.tripTagVocabulary(r, trip.ID),
+		Existing:      s.tripExistingPlaces(r, trip.ID),
+	}
+
+	// Absent means yes, as on the location endpoint, and for the same reason:
+	// the dates are what make "is it open then" answerable at all.
+	if req.IncludeTripContext == nil || *req.IncludeTripContext {
+		out.Trip = assist.TripContext{Title: trip.Title}
+		if trip.StartDate != nil {
+			out.Trip.Start = *trip.StartDate
+		}
+		if trip.EndDate != nil {
+			out.Trip.End = *trip.EndDate
+		}
+	}
+
+	return out, nil
+}
+
+// tripExistingPlaces collects what the trip already has, so the run can be
+// asked not to offer it again and the answer can be checked against it.
+//
+// Two trip-wide queries, never one per location -- the same shape the
+// locations list uses. Neither is fatal: the worst case is a run that offers
+// something the trip already contains, which the review screen shows plainly
+// and the user can untick. Failing the whole run over it would be a much
+// worse trade.
+func (s *Server) tripExistingPlaces(r *http.Request, tripID string) []assist.ExistingPlace {
+	items, err := s.Store.ListItemsByTrip(r.Context(), tripID, nil)
+	if err != nil {
+		return nil
+	}
+
+	located := map[string]db.ItemCoordinate{}
+	if rows, err := s.Store.ListItemCoordinates(r.Context(), tripID); err == nil {
+		for _, c := range rows {
+			located[c.ItemID] = c
+		}
+	}
+
+	out := make([]assist.ExistingPlace, 0, len(items))
+	for _, item := range items {
+		place := assist.ExistingPlace{Title: item.Title}
+		if c, ok := located[item.ID]; ok {
+			lat, lng := c.Lat, c.Lng
+			place.Lat, place.Lng = &lat, &lng
+		}
+		out = append(out, place)
+	}
+	return out
 }
 
 // buildAssistRequest validates the body and adds what only the server knows:
@@ -281,8 +439,16 @@ func normaliseLocale(raw string) string {
 	return raw
 }
 
-// streamAssistRun runs the agent, writing events as it goes.
-func (s *Server) streamAssistRun(w http.ResponseWriter, r *http.Request, req assist.Request) {
+// streamAssistRun runs one agent call, writing events as it goes.
+//
+// The run itself is a callback because the two endpoints ask different
+// questions and end with differently-shaped final events, and *nothing else*
+// about the stream differs: the headers, the framing, the progress and step
+// and summary events, the "client went away" rule and the error contract are
+// properties of streaming an agent run, not of which run it is. mode is for
+// the log line only.
+func (s *Server) streamAssistRun(w http.ResponseWriter, r *http.Request, mode assist.Mode,
+	run func(ctx context.Context, emit func(assist.Event)) (event string, payload any, err error)) {
 	flusher, canFlush := w.(http.Flusher)
 	if !canFlush {
 		// Without flushing every event arrives at once when the handler
@@ -316,7 +482,7 @@ func (s *Server) streamAssistRun(w http.ResponseWriter, r *http.Request, req ass
 		flusher.Flush()
 	}
 
-	proposal, err := s.Assist.Propose(r.Context(), req, func(e assist.Event) {
+	event, payload, err := run(r.Context(), func(e assist.Event) {
 		switch e.Kind {
 		case assist.EventStep:
 			// One finished step, for the trace the editor collects. Separate
@@ -356,7 +522,7 @@ func (s *Server) streamAssistRun(w http.ResponseWriter, r *http.Request, req ass
 		// Error rather than debug, and unconditional: this is a failure the
 		// operator has to be able to see without having first predicted it and
 		// turned the level up.
-		slog.Error("assist run failed", "code", code, "mode", string(req.Mode), "err", err)
+		slog.Error("assist run failed", "code", code, "mode", string(mode), "err", err)
 		// The status line is already 200 by now, so a failure has to arrive as
 		// an event rather than as a status code. The client branches on the
 		// event name.
@@ -367,7 +533,7 @@ func (s *Server) streamAssistRun(w http.ResponseWriter, r *http.Request, req ass
 		return
 	}
 
-	send("proposal", toAssistProposalResponse(proposal))
+	send(event, payload)
 }
 
 // paramsOrEmpty keeps params an object rather than null. The client reads them
@@ -441,4 +607,44 @@ func toAssistProposalResponse(p *assist.Proposal) assistProposalResponse {
 		}
 	}
 	return out
+}
+
+func toAssistSuggestionsResponse(out *assist.Suggestions) assistSuggestionsResponse {
+	// Non-nil slices throughout, as on the proposal response: the client
+	// iterates them and a null is one more branch at every call site.
+	res := assistSuggestionsResponse{
+		Candidates: make([]assistCandidateResponse, 0, len(out.Candidates)),
+		Dropped:    out.Dropped,
+		Sources:    make([]assistSourceResponse, 0, len(out.Sources)),
+	}
+	for _, src := range out.Sources {
+		res.Sources = append(res.Sources, assistSourceResponse{Title: src.Title, URL: src.URL})
+	}
+	for _, c := range out.Candidates {
+		item := assistCandidateResponse{
+			Title:    c.Place.Title,
+			Category: c.Place.Category,
+			Tags:     c.Place.Tags,
+			Notes:    c.Place.Notes,
+			Address:  c.Place.Address,
+			Links:    make([]assistLinkResponse, 0, len(c.Links)),
+			Lat:      c.Lat,
+			Lng:      c.Lng,
+		}
+		for _, l := range c.Links {
+			item.Links = append(item.Links, assistLinkResponse{URL: l.URL, Label: l.Label})
+		}
+		if c.Cover != nil {
+			item.Cover = &assistCoverResponse{
+				URL:       c.Cover.URL,
+				ThumbURL:  c.Cover.ThumbURL,
+				SourceURL: c.Cover.SourceURL,
+				Credit:    c.Cover.Credit,
+				License:   c.Cover.Licence,
+				From:      c.Cover.From,
+			}
+		}
+		res.Candidates = append(res.Candidates, item)
+	}
+	return res
 }

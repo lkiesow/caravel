@@ -1489,9 +1489,24 @@ button {
   margin-top: 0;
 }
 
+/* Google Maps and OpenStreetMap sit on one row with a "·" between them --
+   without a separator the two links read as one run of text. The dot is its
+   own element rather than a ::before on the second link so it stays outside
+   the tap target and out of the accessible name. */
+.location-view__maps-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.location-view__maps-sep {
+  color: var(--color-text-muted);
+}
+
 .location-view__maps-link {
   display: inline-block;
-  margin-top: 0.5rem;
 }
 
 /* Full-width and always labelled (no .btn-collapse): it's the page's last
@@ -2815,6 +2830,21 @@ button {
   .location-form label.location-form__checkbox {
     display: flex;
     align-items: center;
+  }
+
+  /* Each link is its own full-width tap target here, so they stack -- and a
+     separator between stacked rows would read as a bullet list marker. */
+  .location-view__maps-links {
+    display: block;
+  }
+
+  .location-view__maps-sep {
+    display: none;
+  }
+
+  /* The row gap goes with the flex layout, so stacked links carry their own. */
+  .location-view__maps-links .location-view__maps-link:not(:first-child) {
+    margin-top: 0.5rem;
   }
 
   /* The editor's sub-resource rows stack into one control per line, each

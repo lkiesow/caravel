@@ -105,12 +105,15 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
             hasCoords
               ? `
             <leaflet-map lat="${item.location.lat}" lng="${item.location.lng}" marker-title="${escapeAttr(item.title)}" marker-address="${escapeAttr(item.location.address ?? "")}" marker-category="${escapeAttr(item.category)}"></leaflet-map>
-            <a class="location-view__maps-link" href="${escapeAttr(googleMapsUrl(item.location.lat, item.location.lng, item.title, item.location.address))}" target="_blank" rel="noopener" data-i18n="map.viewOnGoogleMaps"></a>
-            ${
-              osmUrl
-                ? `<a class="location-view__maps-link" href="${escapeAttr(osmUrl)}" target="_blank" rel="noopener" data-i18n="map.viewOnOpenStreetMap"></a>`
-                : ""
-            }
+            <div class="location-view__maps-links">
+              <a class="location-view__maps-link" href="${escapeAttr(googleMapsUrl(item.location.lat, item.location.lng, item.title, item.location.address))}" target="_blank" rel="noopener" data-i18n="map.viewOnGoogleMaps"></a>
+              ${
+                osmUrl
+                  ? `<span class="location-view__maps-sep" aria-hidden="true">\u00b7</span>
+                     <a class="location-view__maps-link" href="${escapeAttr(osmUrl)}" target="_blank" rel="noopener" data-i18n="map.viewOnOpenStreetMap"></a>`
+                  : ""
+              }
+            </div>
           `
               : ""
           }

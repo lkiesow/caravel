@@ -566,10 +566,12 @@ textarea {
    message itself uses --color-text, which is legible on both themes by
    construction.
 
-   One rule for all five error paragraphs in the app - auth, trip form,
-   location form, files, image field - which previously carried three
-   near-identical copies of the same declarations plus two
-   (.trip-form__error, .item-form__error) that had no error styling at all. */
+   One rule for every error paragraph in the app - auth, trip form, location
+   form, files, image field, admin, checklists, and both assistant surfaces -
+   which previously carried three near-identical copies of the same
+   declarations plus several with no error styling at all. The assistant pair
+   were the last holdouts: the suggest page drew plain --color-danger text
+   (the 3.08:1 case above) and the assist panel drew no error styling at all. */
 .auth-form__error,
 .trip-form__error,
 .password-form__error,
@@ -579,7 +581,9 @@ textarea {
 .admin-new-user__error,
 .admin-users__error,
 .checklist-item__error,
-.image-field__error {
+.image-field__error,
+.assist__error,
+.suggest-page__error {
   color: var(--color-text);
   font-size: 0.875rem;
   margin: 0.5rem 0;
@@ -4248,7 +4252,6 @@ button {
   }
 }
 
-.assist__error,
 .assist__note {
   margin-top: 0.75rem;
 }
@@ -4607,11 +4610,6 @@ button {
 .suggest-page__note[hidden],
 .suggest-page__bar[hidden] {
   display: none;
-}
-
-.suggest-page__error {
-  margin: 1rem 0 0;
-  color: var(--color-danger);
 }
 
 .suggest-page__note {

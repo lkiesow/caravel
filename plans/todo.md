@@ -69,6 +69,19 @@ purpose — do not reconstruct it from an older stage plan without asking.
   i18n keys, and entry-row layout work at 324px, where the row is already
   a thumbnail, a title and a menu.
 
+- **Per-file notes before the upload, and upload progress.** (The files-tab
+  staging patch after Stage 29.) That patch made a pick wait in a pending list
+  until the Upload button is pressed, and the note and visibility controls are
+  read for the whole batch at that moment. Two things it deliberately did not
+  do. A pending row has no note of its own, so uploading three files with three
+  different notes is still three uploads -- the staging mode the location create
+  page uses *does* carry a per-row note, so the shape exists and it is the batch
+  controls, the row menu and the copy that would need reconciling. And there is
+  still no progress indication beyond `.file-drop--busy` dimming the zone: the
+  upload uses `fetch`, so a 40 MB file on a slow connection shows nothing at all
+  for a minute. `XMLHttpRequest` and its `upload.onprogress` is the only way to
+  measure it, per file, which is a real change of shape for the request loop.
+
 - **Multi-select tag filtering.** (Stage 26.) The tag filter that stage builds
   is single-select, so it sits inside the `menuitemradio` model every menu in
   the app shares. Combining tags -- Reykjavik AND for-kids -- is where tags
@@ -291,6 +304,19 @@ purpose — do not reconstruct it from an older stage plan without asking.
   problem here.
 
 ## Testing, CI and dev tooling
+
+- **The full UI suite fails two or three specs that pass in isolation.**
+  (Observed while landing the files-tab staging patch after Stage 29, on
+  `main` with no changes at all: `map.spec.js`'s two distance-filter tests, and
+  sometimes `itinerary-order.spec.js`'s move-an-entry test, fail in a
+  `make test-ui` run and pass when run alone.) The failures are counts on the
+  seeded scenarios -- "expected 1 location within the radius, got 2" -- so the
+  cause is the shared seed plus four parallel workers: the specs that write
+  create locations and entries on trips other specs are counting. It is the
+  isolation problem the note at the top of `files.spec.js` describes, seen from
+  the other side. Options: give the counting specs their own trips the way
+  `files.spec.js` does, or assert on rows they created rather than on totals.
+  Worth fixing before it trains everyone to ignore a red run.
 
 - **The UI suite reaches the real Nominatim.** (Stage 21 Milestone 1.)
   `scripts/with_server.sh` sets `CARAVEL_LLM_URL=stub` and

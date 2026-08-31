@@ -5,12 +5,22 @@ import { icon } from "../icon.js";
 import { confirmDialog, promptDialog } from "./dialog.js";
 import { renderMenu } from "./menu.js";
 import { renderLoading } from "./loading.js";
+import { createGuard } from "../busy.js";
 
 // Renders a file list as cards (type tile, name, meta line, size, and a
 // per-row overflow menu holding Edit note / Delete) plus a drop zone that
-// accepts several files at once, dropped or browsed, and uploads them one at a
-// time. `path` is either `/trips/{id}/files` or `/items/{id}/files` - both
-// share the same list/upload/delete shape.
+// accepts several files at once, dropped or browsed. `path` is either
+// `/trips/{id}/files` or `/items/{id}/files` - both share the same
+// list/upload/delete shape.
+//
+// Picking does *not* upload. A pick lands in a "Ready to upload" list under the
+// zone and goes to the server only when the Upload button is pressed, one file
+// at a time. The reason is the note field and the visibility selector below the
+// zone: uploading on pick meant they were controls you noticed after they could
+// no longer be applied, so the only way to set either was to fix the file
+// afterwards through its row menu. Now they are read when the button is
+// pressed, which is what they look like they do. It also means an oversized
+// file is refused before anything is sent, and a pick can be taken back.
 //
 // The trip-level list mixes trip files with files attached to a location, so a
 // row carrying `item_title` shows it (".file-card__source"): one flat list
@@ -27,11 +37,20 @@ import { renderLoading } from "./loading.js";
 //
 // Staging mode: pass `path: null` plus a `staged` array to collect picks
 // in memory instead of uploading them. Nothing is fetched and nothing is
-// POSTed; each pick is pushed as { file, note } and the list renders from
-// the File objects (name + size). The location create page uses this so a
-// brand-new location can carry files, then uploads them itself once
+// POSTed, ever; each pick is pushed as { file, note, visibility } and the list
+// renders from the File objects (name + size). The location create page uses
+// this so a brand-new location can carry files, then uploads them itself once
 // the item ID exists - a multipart upload can't be part of the JSON create
 // request, so post-create is the only option regardless (see todo.md).
+//
+// Staged picks are the create page's *only* list, so they sit in the main list
+// and keep a per-row menu for their own note and visibility - that page has no
+// Upload button to read a batch-level choice at. The pending picks described
+// above are the other half of the same idea: same { file, note, visibility }
+// shape, rendered by the same row template, but held in their own list under
+// the zone and given their note and visibility by the batch when the button is
+// pressed.
+//
 // Visibility (Stage 14 Milestone 7, reworked in its follow-up): pass
 // `shared: true` when the trip has somebody else on it. Left off, nothing about
 // visibility is rendered at all — on a solo trip the distinction cannot mean
@@ -67,6 +86,23 @@ export async function renderFileList(container, path, { staged, rows: given, rea
   // cleared once it has been used: a note is about one document, so inheriting
   // it silently on the next upload would be wrong.
   let pendingNote = "";
+  // Picks waiting for the Upload button, in the live-path case. Same shape as
+  // `staged`, but note and visibility are left off here: they are filled in
+  // from the batch controls when the button is pressed, so holding a per-row
+  // copy would only be a second answer to the same question.
+  let pending = [];
+  // One id per component instance for the pending list's label, so two file
+  // lists on one page (the location editor has the item's, the trip tab has the
+  // trip's) do not both point aria-labelledby at the same node.
+  const pendingTitleId = `file-pending-${sectionSeq++}`;
+  // A selector rather than a node: render() rebuilds the whole subtree, so
+  // whatever a handler wanted focused no longer exists by the time it could be
+  // focused. Consumed at the end of render().
+  let focusAfter = null;
+  // One in-flight flag for the whole component rather than per render: the
+  // button is a fresh node after every render(), so `elements` is a function -
+  // busy.js resolves it at invocation time for exactly this case.
+  const uploadGuarded = createGuard({ elements: () => container.querySelector(".file-upload__submit") }).wrap(upload);
   // Errors survive the re-render that shows them: render() rebuilds the whole
   // subtree, so the paragraph a handler wrote into is gone by the time the user
   // would read it.
@@ -107,7 +143,9 @@ export async function renderFileList(container, path, { staged, rows: given, rea
             : `
         <p class="file-list__error" role="alert" hidden></p>
         <div class="file-upload">
-        <label class="file-drop">
+        <!-- tabindex="-1" so upload() can hand the focus back here once the
+             button it was on is gone; it stays out of the tab order. -->
+        <label class="file-drop" tabindex="-1">
           <input type="file" name="file" multiple hidden data-i18n-aria-label="common.uploadFile" />
           <span class="file-drop__icon">${icon("upload")}</span>
           <span class="file-drop__text">
@@ -118,11 +156,17 @@ export async function renderFileList(container, path, { staged, rows: given, rea
           </span>
           <span class="btn btn-secondary file-drop__browse" aria-hidden="true" data-i18n="files.browse"></span>
         </label>
-        <!-- Everything below applies to whatever is added next, which is what
-             the hint says once for the group rather than once per control. A
-             note typed here lands on every file in the batch: it is a title
-             for a document, so the usual case is one file, and per-file notes
-             are still editable from each row's menu afterwards. -->
+        <!-- The picks waiting for the button. Hidden until there is one, so a
+             first visit looks the way it always did: a zone and its options. -->
+        <div class="file-upload__pending" ${pending.length ? "" : "hidden"}>
+          <p class="file-upload__pending-title" id="${pendingTitleId}" data-i18n="files.pendingTitle"></p>
+          <ul class="files files--pending" aria-labelledby="${pendingTitleId}"></ul>
+        </div>
+        <!-- Everything below applies to the pending batch, which is what the
+             hint says once for the group rather than once per control. A note
+             typed here lands on every file in the batch: it is a title for a
+             document, so the usual case is one file, and per-file notes are
+             still editable from each row's menu afterwards. -->
         <div class="file-upload__options">
           <p class="file-upload__hint" data-i18n="files.uploadOptionsHint"></p>
           <label class="file-upload__field">
@@ -147,6 +191,10 @@ export async function renderFileList(container, path, { staged, rows: given, rea
               : ""
           }
         </div>
+        <!-- The commit. Hidden rather than disabled with nothing pending: a
+             permanently dead button under an empty zone says less than no
+             button at all. -->
+        <button type="button" class="btn btn-primary file-upload__submit" ${pending.length ? "" : "hidden"}></button>
         </div>
         `
         }
@@ -198,15 +246,24 @@ export async function renderFileList(container, path, { staged, rows: given, rea
         : `<ul class="files"></ul>`;
       sections.appendChild(wrapper);
       const list = wrapper.querySelector(".files");
-      group.entries.forEach(({ row, i }) => renderRow(list, row, i));
+      group.entries.forEach(({ row, i }) => renderRow(list, row, i, isStaging ? "staged" : "stored"));
     });
 
-    function renderRow(list, row, i) {
+    // The pending picks, in their own list under the zone rather than mixed
+    // into the groups above: their visibility is not decided until the button
+    // is pressed, so there is no group they could honestly sit in, and they are
+    // not part of what the summary line counts either - that sentence is about
+    // what the trip has, not about what this tab is holding.
+    const pendingList = container.querySelector(".files--pending");
+    if (pendingList) pending.forEach((row, i) => renderRow(pendingList, row, i, "pending"));
+
+    function renderRow(list, row, i, kind) {
+      const isPick = kind !== "stored";
       // One view model for both modes: a staged pick is a File object
       // (name/size/type and nothing else), an uploaded one is an API row, and
       // every difference between them belongs here rather than in two copies
       // of the card template.
-      const view = isStaging
+      const view = isPick
         ? { filename: row.file.name, size: row.file.size, contentType: row.file.type, note: row.note, itemTitle: null, href: null, visibility: row.visibility || "trip", isMine: true }
         : { filename: row.filename, size: row.size_bytes, contentType: row.content_type, note: row.note, itemTitle: row.item_title, href: row.download_url, visibility: row.visibility, isMine: row.is_mine };
 
@@ -240,8 +297,12 @@ export async function renderFileList(container, path, { staged, rows: given, rea
       // No visibility marker on the row: it lives in a labelled group that
       // already says which kind it is, and repeating that per row was noise in
       // a list that is mostly filenames.
+      // "No note" is a statement about a row that could have one of its own.
+      // A pending pick cannot: its note comes from the batch field below, which
+      // has not been read yet, so the hint would be answering a question the
+      // row does not own. Staged rows keep it - those do have a per-row note.
       const metaTail =
-        (view.note ? "" : `<span class="file-card__nonote">${escapeHtml(t("files.noNote"))}</span>`) +
+        (view.note || kind === "pending" ? "" : `<span class="file-card__nonote">${escapeHtml(t("files.noNote"))}</span>`) +
         (view.itemTitle ? `${sep("source")}<span class="file-card__source">${escapeHtml(view.itemTitle)}</span>` : "");
 
       const body = `
@@ -274,6 +335,25 @@ export async function renderFileList(container, path, { staged, rows: given, rea
         list.appendChild(li);
         return;
       }
+      // A pending pick has exactly one thing you can do to it - take it back -
+      // and .icon-remove is what this app puts beside a row for that (see the
+      // link and date lists in location-editor-page.js). A menu holding one
+      // item would be two taps for the same move. Note and visibility are the
+      // batch controls below, not per-row here.
+      if (kind === "pending") {
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "icon-remove";
+        remove.setAttribute("aria-label", t("common.remove"));
+        remove.innerHTML = icon("x");
+        remove.addEventListener("click", () => {
+          pending.splice(i, 1);
+          render();
+        });
+        li.querySelector(".file-actions").replaceWith(remove);
+        list.appendChild(li);
+        return;
+      }
       renderMenu(li.querySelector(".file-actions"), {
         // Vertical, not the horizontal ellipsis the tab bar's "More" uses: this
         // one belongs to the row it sits in, and the vertical form is what a
@@ -300,7 +380,7 @@ export async function renderFileList(container, path, { staged, rows: given, rea
               ]
             : []),
           { value: "note", label: t("files.editNote"), iconName: "pencil", action: true },
-          { value: "delete", label: t(isStaging ? "common.remove" : "common.delete"), iconName: "trash-2", action: true, danger: true },
+          { value: "delete", label: t(isPick ? "common.remove" : "common.delete"), iconName: "trash-2", action: true, danger: true },
         ],
         onSelect: async (action) => {
           if (action === "share" || action === "hide") {
@@ -355,18 +435,20 @@ export async function renderFileList(container, path, { staged, rows: given, rea
     const fileInput = drop.querySelector('input[type="file"]');
     const errorEl = container.querySelector(".file-list__error");
 
-    // The note is read at upload time rather than tracked on every keystroke:
-    // unlike the visibility choice it has no state to reflect back, and it is
-    // cleared once consumed so the next upload does not inherit it.
+    // Tracked on every keystroke and reflected back after a render, the same
+    // way the visibility choice is: staging a pick re-renders the whole
+    // subtree, so a half-typed note would otherwise vanish the moment you
+    // picked the file it was for. It is read - and cleared - by upload().
     const noteInput = container.querySelector('[name="uploadNote"]');
     if (noteInput) noteInput.value = pendingNote;
     noteInput?.addEventListener("input", () => {
       pendingNote = noteInput.value;
     });
 
-    // The selector reflects the remembered choice and writes back to it. Not a
-    // form field read at submit time: the drop zone has no submit, and a drop
-    // gesture never touches this control.
+    // The selector reflects the remembered choice and writes back to it, rather
+    // than being read out of the DOM at submit time: the value has to survive
+    // the re-render that staging a pick causes, and a drop gesture never
+    // touches this control at all.
     if (shared) {
       const current = container.querySelector(`[name="uploadVisibility"][value="${uploadVisibility}"]`);
       if (current) current.checked = true;
@@ -385,9 +467,9 @@ export async function renderFileList(container, path, { staged, rows: given, rea
       errors = [];
     }
 
-    // Picking is the trigger now - there is no Upload button left to press, so
-    // the old "Choose a file first." case can't happen.
-    fileInput.addEventListener("change", () => add(fileInput.files));
+    // Picking stages, it does not upload. The old "Choose a file first." case
+    // still cannot happen: an empty pick is simply ignored by stage().
+    fileInput.addEventListener("change", () => stage(fileInput.files));
 
     // The drag half. dragover has to preventDefault on every event or the
     // browser navigates to the dropped file instead of handing it over, and
@@ -404,61 +486,114 @@ export async function renderFileList(container, path, { staged, rows: given, rea
     drop.addEventListener("drop", (e) => {
       e.preventDefault();
       drop.classList.remove("file-drop--over");
-      add(e.dataTransfer?.files);
+      stage(e.dataTransfer?.files);
     });
 
-    // Everything a pick can be: one file or several, dropped or browsed,
-    // staged locally or uploaded one at a time. Sequential rather than
-    // parallel so a failure belongs to a named file, and so a dozen dropped
-    // files don't open a dozen simultaneous requests.
-    async function add(fileList) {
-      const picked = [...(fileList || [])];
-      if (!picked.length) return;
-      errorEl.hidden = true;
-
-      drop.setAttribute("aria-busy", "true");
-      drop.classList.add("file-drop--busy");
-
-      // Captured before the loop and cleared after it: the note belongs to this
-      // batch, and the re-render below rebuilds the input either way.
-      const batchNote = pendingNote.trim();
-      pendingNote = "";
-
-      for (const file of picked) {
-        // Checked here as well as by the server, which answers an oversized
-        // upload with a 413 whose body is about multipart parsing rather than
-        // about this file - see maxFileUploadBytes in internal/httpapi/files.go.
-        if (file.size > MAX_UPLOAD_BYTES) {
-          errors.push(t("files.tooLarge", { name: file.name, limit: formatBytes(MAX_UPLOAD_BYTES) }));
-          continue;
-        }
-        // unshift, not push: the list is newest-first (the API sorts by
-        // uploaded_at DESC), so appending put a new file at the *bottom* until
-        // the next load moved it to the top. Found by the spec below, which
-        // asserted the order before and after a reload.
-        if (isStaging) {
-          staged.unshift({ file, note: batchNote || null, visibility: uploadVisibility });
-          continue;
-        }
-        try {
-          const formData = new FormData();
-          formData.append("file", file);
-          formData.append("visibility", uploadVisibility);
-          if (batchNote) formData.append("note", batchNote);
-          const res = await fetch(`/api${path}`, { method: "POST", body: formData, credentials: "same-origin" });
-          const created = await res.json();
-          if (!res.ok) throw new Error(created.error || t("common.error"));
-          files.unshift(created);
-        } catch (err) {
-          errors.push(`${file.name}: ${err.message || t("common.error")}`);
-        }
-      }
-
-      // One re-render for the whole batch, which also replaces the file input -
-      // so picking the same file twice in a row still fires `change` the second
-      // time, and any errors collected above are printed by the next render().
-      render();
+    const submitBtn = container.querySelector(".file-upload__submit");
+    if (pending.length) {
+      // Plural through t()'s count argument, so German gets its own two forms -
+      // and the count is the only place the size of the batch is stated, since
+      // .file-list__summary counts what the server has.
+      submitBtn.textContent = t("files.upload", {}, pending.length);
+      submitBtn.addEventListener("click", uploadGuarded);
     }
+
+    // What the last handler asked to be focused, now that render() has replaced
+    // every node it could have held a reference to.
+    if (focusAfter) {
+      container.querySelector(focusAfter)?.focus();
+      focusAfter = null;
+    }
+  }
+
+  // Everything a pick can be: one file or several, dropped or browsed. Nothing
+  // leaves the browser here.
+  function stage(fileList) {
+    const picked = [...(fileList || [])];
+    if (!picked.length) return;
+    errors = [];
+
+    // Captured here only for staging mode, which has no button to read it at
+    // later, and cleared once used: a note is about one document, so inheriting
+    // it silently on the next pick would be wrong. The live path leaves it
+    // alone - upload() reads it when the button is pressed.
+    const batchNote = pendingNote.trim();
+
+    for (const file of picked) {
+      // Checked here as well as by the server, which answers an oversized
+      // upload with a 413 whose body is about multipart parsing rather than
+      // about this file - see maxFileUploadBytes in internal/httpapi/files.go.
+      // Refused at pick time now, so an oversized file never reaches the wire.
+      if (file.size > MAX_UPLOAD_BYTES) {
+        errors.push(t("files.tooLarge", { name: file.name, limit: formatBytes(MAX_UPLOAD_BYTES) }));
+        continue;
+      }
+      // unshift, not push: the list is newest-first (the API sorts by
+      // uploaded_at DESC), so appending put a new file at the *bottom* until
+      // the next load moved it to the top. Found by the spec below, which
+      // asserted the order before and after a reload.
+      if (isStaging) {
+        staged.unshift({ file, note: batchNote || null, visibility: uploadVisibility });
+        continue;
+      }
+      pending.unshift({ file });
+    }
+    if (isStaging) pendingNote = "";
+    // The button is the next thing to press and, at 324px, can be below the
+    // fold - so hand it the focus rather than leaving it on a file input that
+    // has already done its job.
+    if (pending.length) focusAfter = ".file-upload__submit";
+
+    // One re-render for the whole batch, which also replaces the file input -
+    // so picking the same file twice in a row still fires `change` the second
+    // time, and any errors collected above are printed by the next render().
+    render();
+  }
+
+  // The commit. Sequential rather than parallel so a failure belongs to a named
+  // file, and so a dozen dropped files don't open a dozen simultaneous
+  // requests. A double press is dropped by uploadGuarded above.
+  async function upload() {
+    const batch = [...pending];
+    if (!batch.length) return;
+    const drop = container.querySelector(".file-drop");
+    container.querySelector(".file-list__error").hidden = true;
+    errors = [];
+
+    drop.setAttribute("aria-busy", "true");
+    drop.classList.add("file-drop--busy");
+
+    // Read now, not when the file was picked - the whole point of the button.
+    const batchNote = pendingNote.trim();
+
+    for (const entry of batch) {
+      try {
+        const formData = new FormData();
+        formData.append("file", entry.file);
+        formData.append("visibility", uploadVisibility);
+        if (batchNote) formData.append("note", batchNote);
+        const res = await fetch(`/api${path}`, { method: "POST", body: formData, credentials: "same-origin" });
+        const created = await res.json();
+        if (!res.ok) throw new Error(created.error || t("common.error"));
+        files.unshift(created);
+        // Only what actually landed leaves the pending list, so a partly failed
+        // batch can be retried by pressing the button again rather than picking
+        // the same files a second time.
+        pending = pending.filter((p) => p !== entry);
+      } catch (err) {
+        errors.push(`${entry.file.name}: ${err.message || t("common.error")}`);
+      }
+    }
+
+    // The note belongs to the batch that consumed it, so it is cleared only
+    // once that batch is actually gone - a retry keeps the note it was typed
+    // for. Same for the focus: back to the zone when there is nothing left to
+    // upload, and left on the button when there is.
+    if (!pending.length) {
+      pendingNote = "";
+      focusAfter = ".file-drop";
+    }
+    render();
   }
 
   render();

@@ -178,7 +178,9 @@ for (const locale of ["en", "de"]) {
 
       // The `cascade` scenario seeds two files: one on the trip, one on a
       // location. Both rows carry their own menu.
-      const rows = page.locator(".files > li");
+      // Scoped to the stored list: the pending picks under the drop zone are
+      // .files too, and this test picks nothing.
+      const rows = page.locator(".file-sections .files > li");
       await expect(
         rows,
         "the cascade trip should show exactly its two seeded files — a different count means the dev database has drifted from the seed (leftover manual test data; run `make dev-reset FORCE=1`)"
@@ -193,6 +195,10 @@ for (const locale of ["en", "de"]) {
       // The note field is not about sharing, so it is there either way — an
       // upload has always been able to carry one, it just had nowhere to type it.
       await expect(page.locator('[name="uploadNote"]')).toHaveCount(1);
+      // Nothing picked, so nothing to commit: the pending list and its button
+      // are both absent from the page rather than sitting there inert.
+      await expect(page.locator(".file-upload__pending")).toBeHidden();
+      await expect(page.locator(".file-upload__submit")).toBeHidden();
 
       const trigger = rows.first().locator(".menu__trigger");
       const dropdown = rows.first().locator(".menu__dropdown");
@@ -256,6 +262,9 @@ for (const locale of ["en", "de"]) {
       await expect(group.locator(".file-drop")).toHaveCount(1);
       await expect(group.locator('[name="uploadNote"]')).toHaveCount(1);
       await expect(group.locator('[name="uploadVisibility"]')).toHaveCount(2);
+      // And the button that reads them, hidden until there is a pick for it to
+      // apply them to - picking is no longer the upload.
+      await expect(group.locator(".file-upload__submit")).toBeHidden();
 
       // Both groups, addressed by their own data attribute rather than by
       // position. Milestone 10 seeded a personal file on this trip, so the

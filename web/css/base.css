@@ -3304,6 +3304,41 @@ button {
   margin-top: 0;
 }
 
+/* The picks waiting for the Upload button, between the zone and the options
+   that apply to them. A hairline above it rather than a border all round: it is
+   a stage of the same block, not a box beside it, and at 324px a second border
+   inside a bordered group inside a card is three frames deep. */
+.file-upload__pending {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border);
+}
+
+/* Same treatment as the visibility group titles in the list above (a muted
+   uppercase label, not a heading - see the note on .file-section__title), so
+   the two lists on this tab are labelled the same way. */
+.file-upload__pending-title {
+  margin: 0 0 0.5rem;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* The commit, last in the block and after the options it reads - the reading
+   order of the group is now zone, batch, options, go. */
+.file-upload__submit {
+  margin-top: 0.75rem;
+}
+
+/* .btn sets display, which outranks the UA stylesheet's [hidden] rule - so the
+   hidden button stayed visible until this companion existed. Every rule in
+   this file that sets display needs one; see the note by .assist__bar. */
+.file-upload__submit[hidden] {
+  display: none;
+}
+
 .file-upload__options {
   display: flex;
   flex-wrap: wrap;
@@ -3355,6 +3390,12 @@ button {
   /* .setting-choices already stacks its choices full-width under this
      breakpoint (see the appearance settings), so the radio pair inherits the
      right layout rather than needing its own. */
+
+  /* Full width at phone width, like every other primary action in this app:
+     a right-aligned button in a 324px group has nowhere to be aligned to. */
+  .file-upload__submit {
+    width: 100%;
+  }
 
   /* Note for whatever is added next: put a feature's mobile rules *here*,
      after its own base rules, not in the stylesheet's central mobile block

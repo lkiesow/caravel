@@ -43,6 +43,11 @@ That second one is the point of the feature rather than a detail: your insurance
 document and your passport scan belong on the trip, and not in front of everyone
 else on it.
 
+Which is why choosing a file does not upload it. Picks wait under the drop zone
+until you press **Upload**, so the note and the visibility you set apply to the
+files you just chose rather than to the next ones — and a file picked by mistake
+can be taken back before it is sent anywhere.
+
 Images are re-encoded on upload, which caps their dimensions and, as a side
 effect, strips their metadata — so a photo's GPS tag does not travel with it into
 a shared trip.

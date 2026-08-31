@@ -194,7 +194,7 @@ func (q *Queries) ListItemsByTrip(ctx context.Context, arg ListItemsByTripParams
 }
 
 const listMapItemsByTrip = `-- name: ListMapItemsByTrip :many
-SELECT i.id, i.category, i.title, i.show_on_map, l.lat, l.lng
+SELECT i.id, i.category, i.title, i.show_on_map, l.lat, l.lng, l.address
 FROM items i
 INNER JOIN item_locations l ON l.item_id = i.id
 WHERE i.trip_id = ?1 AND l.lat IS NOT NULL AND l.lng IS NOT NULL
@@ -207,10 +207,16 @@ type ListMapItemsByTripRow struct {
 	ShowOnMap int64           `json:"show_on_map"`
 	Lat       sql.NullFloat64 `json:"lat"`
 	Lng       sql.NullFloat64 `json:"lng"`
+	Address   sql.NullString  `json:"address"`
 }
 
 // ListMapItemsByTrip: show_on_map is filtered in the store layer, not here,
 // since its Go type (int64 vs bool) diverges by dialect (plan Section 2.1).
+//
+// The address is selected for the outbound Google Maps link, which names the
+// place rather than dropping a pin at a coordinate (Stage 29). A popup that
+// linked to a coordinate while the same location page linked to the named
+// place would be the inconsistency Milestone 1 just removed.
 func (q *Queries) ListMapItemsByTrip(ctx context.Context, tripID string) ([]ListMapItemsByTripRow, error) {
 	rows, err := q.db.QueryContext(ctx, listMapItemsByTrip, tripID)
 	if err != nil {
@@ -227,6 +233,7 @@ func (q *Queries) ListMapItemsByTrip(ctx context.Context, tripID string) ([]List
 			&i.ShowOnMap,
 			&i.Lat,
 			&i.Lng,
+			&i.Address,
 		); err != nil {
 			return nil, err
 		}

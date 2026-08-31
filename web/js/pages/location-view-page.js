@@ -101,8 +101,8 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
           ${
             hasCoords
               ? `
-            <leaflet-map lat="${item.location.lat}" lng="${item.location.lng}" marker-title="${escapeAttr(item.title)}" marker-category="${escapeAttr(item.category)}"></leaflet-map>
-            <a class="location-view__maps-link" href="${escapeAttr(googleMapsUrl(item.location.lat, item.location.lng))}" target="_blank" rel="noopener" data-i18n="map.viewOnGoogleMaps"></a>
+            <leaflet-map lat="${item.location.lat}" lng="${item.location.lng}" marker-title="${escapeAttr(item.title)}" marker-address="${escapeAttr(item.location.address ?? "")}" marker-category="${escapeAttr(item.category)}"></leaflet-map>
+            <a class="location-view__maps-link" href="${escapeAttr(googleMapsUrl(item.location.lat, item.location.lng, item.title, item.location.address))}" target="_blank" rel="noopener" data-i18n="map.viewOnGoogleMaps"></a>
           `
               : ""
           }

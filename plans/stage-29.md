@@ -172,6 +172,65 @@ screenshots. No attribution requirement applies -- the survey checked, and a
 plain outbound hyperlink displays no Google Maps content -- so the existing
 `map.viewOnGoogleMaps` string stays as it is, and no logo ships.
 
+**Done.** Landed as planned, with one deviation and one open question closed
+against the plan's own instruction.
+
+Both helpers now take `(lat, lng, title, address)` and choose between two forms:
+the biased path search when there is a usable title, and the documented
+coordinate query when there is not. `db.MapItem` grew `Address *string` as the
+plan preferred, which was a **query change and no migration** -- `address` has
+been a column on `item_locations` since `0001_init`, so this was one line in
+`ListMapItemsByTrip`, `sqlc generate` for both dialects, and the two store
+mappers. `leaflet-map.js` gained a `marker-address` attribute (observed, but
+never drawn from -- it exists only for this link), which the location view
+passes alongside `marker-title`.
+
+**Deviation: the encoding is hand-rolled, and had to be.** The plan assumed
+`url.PathEscape` server-side and `encodeURIComponent` in the browser. Those two
+do not agree, which would have quietly broken the byte-for-byte parity Milestone
+1 established: an apostrophe is `%27` to Go and untouched to JS, so *Bob's Cafe*
+would have produced two different URLs from the two twins. They also both
+disagree with the form actually verified in a browser, which is the one Google
+itself emits -- spaces as `+`, commas left alone -- where those two write `%20`
+and `%2C`. So `escapeMapsQuery` exists in both languages, escaping exactly
+`% # ? & + / \` and writing space as `+`, in that order, with non-ASCII left
+raw on both sides.
+
+**`hl=` works, and is deliberately not used.** Measured: appending `hl=de` to
+the exact URL this milestone builds returns a fully German place card
+(`Preise`, `Routenplaner`, `Speichern`), so Stage 22's finding that Google
+ignores `Accept-Language` does not extend to this parameter. It is dropped
+anyway, because the *server* cannot know the reader's app locale -- it lives in
+`localStorage` (`web/js/i18n.js`), never reaches the backend, and a locale on
+the client link only would mean the two twins stop agreeing, which is the one
+property this stage spent a milestone establishing. Recorded in `plans/todo.md`
+with what it would actually take.
+
+Verified with `make ci` **and `make test-postgres`** both green -- the latter
+because this touched a query, even though it needed no migration. Nine table
+cases in the new `internal/httpapi/map_url_test.go` pin the exact bytes,
+including the two fallbacks (no title, and a title that is itself a coordinate),
+the escaping, and a standalone test asserting the bias is a *path segment*
+rather than a query parameter, since a refactor "simplifying" that back would
+silently restore the original bug. The same ten cases were run against the JS
+twin and match byte for byte.
+
+Proved end to end rather than only in unit tests. Caravel's own running server
+produced
+`https://www.google.com/maps/search/Hallgrimskirkja,+Hallgrimstorg+1,+101+Reykjavik,+Iceland/@64.1417951,-21.9267103,17z`,
+and opening that in a real browser resolves to `/maps/place/Hallgrimskirkja/`
+with the h1, a 4.6 rating over 29,029 reviews, the Church category and the
+Overview/Tickets/Reviews/About tabs -- the place card, from a link built by this
+code, with no API key. The seeded set also shows both branches working on real
+data: pinned locations such as *The Only Pin* get the title-only form, while
+searched ones carry their full address.
+
+The UI spec from Milestone 1 was updated rather than added to: its form
+assertion was written for the coordinate URL, and now asserts the named form,
+the presence of the `/@lat,lng,17z` bias, and explicitly that `?api=1&query=`
+is *absent* for a named place. A second spec covers the fallback through the
+real render path, by mounting an embed with coordinates and no title.
+
 ## 3. The OpenStreetMap feature page
 
 The link this project should arguably have had first.

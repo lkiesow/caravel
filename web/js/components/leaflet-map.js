@@ -404,7 +404,7 @@ const styles = `
 
 class LeafletMap extends HTMLElement {
   static get observedAttributes() {
-    return ["trip-id", "lat", "lng", "marker-title", "marker-category", "pick", "locate"];
+    return ["trip-id", "lat", "lng", "marker-title", "marker-address", "marker-category", "pick", "locate"];
   }
 
   connectedCallback() {
@@ -464,6 +464,9 @@ class LeafletMap extends HTMLElement {
         lat: Number(lat),
         lng: Number(lng),
         title: this.getAttribute("marker-title") || "",
+        // Only for the outbound Google Maps link, which names the place rather
+        // than dropping a pin on a coordinate. Nothing is drawn from it.
+        address: this.getAttribute("marker-address") || "",
         category: this.getAttribute("marker-category") || "",
       };
       this._items = [];
@@ -689,8 +692,8 @@ class LeafletMap extends HTMLElement {
     }
 
     if (this._singleMarker) {
-      const { lat, lng, title, category } = this._singleMarker;
-      const mapsUrl = googleMapsUrl(lat, lng);
+      const { lat, lng, title, address, category } = this._singleMarker;
+      const mapsUrl = googleMapsUrl(lat, lng, title, address);
       const marker = L.marker([lat, lng], { icon: markerIcon(L, category) }).addTo(this._map);
       marker.bindPopup(
         `<strong>${escapeHtml(title)}</strong><br/><a href="${escapeAttr(mapsUrl)}" target="_blank" rel="noopener">${t("map.viewOnGoogleMaps")}</a>`

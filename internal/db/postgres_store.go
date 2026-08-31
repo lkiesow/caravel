@@ -790,6 +790,7 @@ func (s *postgresStore) ListMapItems(ctx context.Context, tripID string) ([]MapI
 			Title:    row.Title,
 			Lat:      row.Lat.Float64,
 			Lng:      row.Lng.Float64,
+			Address:  strPtr(row.Address),
 		})
 	}
 	return items, nil

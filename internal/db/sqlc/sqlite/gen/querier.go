@@ -164,6 +164,11 @@ type Querier interface {
 	ListItineraryEntriesByTrip(ctx context.Context, tripID string) ([]ListItineraryEntriesByTripRow, error)
 	// ListMapItemsByTrip: show_on_map is filtered in the store layer, not here,
 	// since its Go type (int64 vs bool) diverges by dialect (plan Section 2.1).
+	//
+	// The address is selected for the outbound Google Maps link, which names the
+	// place rather than dropping a pin at a coordinate (Stage 29). A popup that
+	// linked to a coordinate while the same location page linked to the named
+	// place would be the inconsistency Milestone 1 just removed.
 	ListMapItemsByTrip(ctx context.Context, tripID string) ([]ListMapItemsByTripRow, error)
 	// Every personal list belonging to one user on one trip, for the moment they
 	// stop being a member. Same treatment as their personal files.

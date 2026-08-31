@@ -1588,8 +1588,20 @@ test.describe("the Google Maps link is built in one place", () => {
 
     // Sanity-check the *form* too, not only that the three agree: three
     // identical wrong URLs would pass an equality-only test.
-    expect(fromTripMap.href).toMatch(/^https:\/\/www\.google\.com\/maps\/search\/\?api=1&query=-?\d/);
-    expect(fromTripMap.href, "%f would leave trailing zeros on the coordinates").not.toMatch(/0{3},|0{3}$/);
+    //
+    // Since Milestone 2 a seeded location has a title, so the link must be the
+    // named form -- a text search in the path segment, biased by /@lat,lng,17z.
+    // The old coordinate query would land on a dropped pin, which is the whole
+    // bug this stage exists to fix, so its absence is asserted explicitly.
+    expect(fromTripMap.href, "a named place should not get the coordinate query").not.toContain("?api=1&query=");
+    expect(fromTripMap.href).toMatch(/^https:\/\/www\.google\.com\/maps\/search\/[^/]+\/@-?[\d.]+,-?[\d.]+,17z$/);
+    expect(fromTripMap.href, "%f would leave trailing zeros on the coordinates").not.toMatch(/0{4},|0{4},17z/);
+
+    // The bias must be the path segment. Coordinates inside `query` are read as
+    // literal text -- measured during Stage 29 planning, where a name plus a
+    // Paris coordinate pair returned results in San Francisco -- so a refactor
+    // that moved them back into the query string would silently restore the bug.
+    expect(fromTripMap.href.split("/@")[1], "the bias should carry the zoom").toMatch(/,17z$/);
 
     // Now the same location's own page, which renders the other two.
     const tripId = mapPath.split("/")[2];
@@ -1603,5 +1615,44 @@ test.describe("the Google Maps link is built in one place", () => {
 
     expect(fromLocationView, "the location view's link should match the server's").toBe(fromTripMap.href);
     expect(fromSingleMarker, "the single-marker popup's link should match the server's").toBe(fromTripMap.href);
+  });
+});
+
+// Stage 29 Milestone 2. The fallback, which is the form every link in Caravel
+// had before this stage: a place with no usable name has nothing to search for,
+// so the coordinate query -- and the dropped pin it produces -- is the honest
+// answer rather than a bug. Asserted through the real render path by blanking
+// the title on the component that builds the link.
+test.describe("a place with no name falls back to the coordinate link", () => {
+  test("the single-marker popup drops back to ?api=1&query=", async ({ page }) => {
+    await login(page);
+    const routes = await buildRoutes(page);
+    await gotoRoute(page, routes.find((r) => r.label === "trip map").path);
+    await page.waitForFunction(() => document.querySelector("leaflet-map")?.hasAttribute("data-ready"));
+
+    // Mount a single-marker embed with coordinates but no marker-title, which
+    // is the state a location saved without a title would render.
+    const href = await page.evaluate(async () => {
+      const el = document.createElement("leaflet-map");
+      el.setAttribute("lat", "64.1");
+      el.setAttribute("lng", "-21.9");
+      el.dataset.testNoTitle = "1";
+      document.querySelector(".page").append(el);
+      await new Promise((r) => {
+        const done = () => (el.hasAttribute("data-ready") ? r() : requestAnimationFrame(done));
+        done();
+      });
+      const sr = el.shadowRoot;
+      const marker = sr.querySelector(".leaflet-marker-icon");
+      for (const type of ["mousedown", "mouseup", "click"]) {
+        marker.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window, button: 0 }));
+      }
+      const a = sr.querySelector(".leaflet-popup-content a[target=_blank]");
+      const out = a.getAttribute("href");
+      el.remove();
+      return out;
+    });
+
+    expect(href).toBe("https://www.google.com/maps/search/?api=1&query=64.1,-21.9");
   });
 });

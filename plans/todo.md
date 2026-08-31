@@ -126,6 +126,26 @@ purpose — do not reconstruct it from an older stage plan without asking.
   keyless via an OSM `wikidata` tag and has 66,382 items worldwide -- it fires
   for the Brandenburg Gate and never for the guesthouse you booked.
 
+- **The outbound map link could be in the reader's language.** (Stage 29
+  Milestone 2.) Appending `hl=de` to the link that milestone builds returns a
+  fully German Google place card -- measured, so this is a known-working
+  parameter and not a guess. Note it contradicts nothing from Stage 22, which
+  found Google ignoring `Accept-Language`: that was a server-side fetch of a
+  page, this is a query parameter on a link a browser opens.
+
+  It was dropped because the server cannot know the app locale. It lives in
+  `localStorage` (`web/js/i18n.js`), never reaches the backend, so the
+  server-built `google_maps_url` could not carry it -- and adding it on the
+  client link only would mean the two twins (`googleMapsUrl` in `web/js/url.js`
+  and `googleMapsURL` in `internal/httpapi/map.go`) stop producing the same URL,
+  which Stage 29 Milestone 1 spent a whole milestone establishing and asserts in
+  `tests/ui/map.spec.js`. Two honest ways out, both bigger than the feature:
+  send the locale to the server (it has no reason to know it otherwise), or drop
+  `google_maps_url` from the API and let the browser build all three links --
+  which is now nearly possible, since the map payload carries the address as of
+  that milestone. The second is tempting and would make the JS helper the single
+  source outright.
+
 - **Apple Maps and `geo:` links beside the Google one.** (Stage 29 planning.)
   Apple's URL form gets right what Google's does not: `q` for the name and `ll`
   for the coordinates are separate documented parameters, so name-plus-coordinate

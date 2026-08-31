@@ -56,8 +56,13 @@ WHERE i.trip_id = sqlc.arg(trip_id) AND l.lat IS NOT NULL AND l.lng IS NOT NULL;
 
 -- ListMapItemsByTrip: show_on_map is filtered in the store layer, not here,
 -- since its Go type (int64 vs bool) diverges by dialect (plan Section 2.1).
+--
+-- The address is selected for the outbound Google Maps link, which names the
+-- place rather than dropping a pin at a coordinate (Stage 29). A popup that
+-- linked to a coordinate while the same location page linked to the named
+-- place would be the inconsistency Milestone 1 just removed.
 -- name: ListMapItemsByTrip :many
-SELECT i.id, i.category, i.title, i.show_on_map, l.lat, l.lng
+SELECT i.id, i.category, i.title, i.show_on_map, l.lat, l.lng, l.address
 FROM items i
 INNER JOIN item_locations l ON l.item_id = i.id
 WHERE i.trip_id = sqlc.arg(trip_id) AND l.lat IS NOT NULL AND l.lng IS NOT NULL;

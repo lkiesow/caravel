@@ -212,12 +212,19 @@ type TripForUser struct {
 // MapItem is a lightweight projection for the map view: items with a
 // resolvable location and show_on_map=true. Lat/Lng are always present here
 // (the query only returns items with non-null coordinates).
+//
+// Address is the exception: it is nil for a place positioned by dropping a pin
+// rather than by searching for an address. It is here for the outbound Google
+// Maps link, which names the place instead of dropping a pin on a coordinate
+// (Stage 29) -- a title alone already gets a place card, and the address is
+// what keeps a chain from resolving to the wrong branch.
 type MapItem struct {
 	ID       string
 	Category string
 	Title    string
 	Lat      float64
 	Lng      float64
+	Address  *string
 }
 
 // ItemCoordinate is one item's position, for callers that need coordinates

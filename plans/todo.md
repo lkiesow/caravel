@@ -101,21 +101,39 @@ purpose — do not reconstruct it from an older stage plan without asking.
   location in context is to go back to the trip and pick the tab.
 
 - **Google Maps interoperability: the outbound half.** **(soon)** (Stage 13; the
-  inbound half built in Stage 22 Milestone 6.) Pasting a Maps link into the
-  address search now resolves it to coordinates. What is left is the other
-  direction: the popup's and the location view's "View on Google Maps" links are
-  a `?q=lat,lng` **search**, so they land on a dropped pin rather than on the
-  hotel's own Google entry with its hours and reviews.
+  inbound half built in Stage 22 Milestone 6; **being built in Stage 29**.)
+  Pasting a Maps link into the address search resolves it to coordinates. What is
+  left is the other direction: the popup's and the location view's "View on
+  Google Maps" links are a `?query=lat,lng` **search**, so they land on a dropped
+  pin rather than on the hotel's own Google entry with its hours and reviews.
 
-  **Investigate before deciding.** Linking the actual place needs a place ID,
-  which Caravel cannot get from OSM -- but the old conclusion that this leaves
-  only "store a user-pasted Google URL per location or accept the search link"
-  was drawn without looking at what is available. Serper has a maps search
-  endpoint that returns place IDs, and it is not the only such service; there
-  may also be a URL form that resolves a name plus coordinates to the right
-  entry without an ID at all. Survey the options (cost, key requirement, terms,
-  whether a self-hosted instance can use them at all), *then* pick between
-  automatic resolution, a pasted URL per location, and the status quo.
+  **The survey this entry asked for was done in Stage 29 planning, and it
+  overturned the premise.** The old framing -- "linking the actual place needs a
+  place ID, which Caravel cannot get from OSM" -- is wrong, and so is the
+  matching comment in `internal/geocode/maplink.go`. No identifier is needed:
+  Google's `query` parameter takes a name or an address, and a bare coordinate
+  pair is *defined* to produce a dropped pin. Sending the title and address
+  instead lands on the real place card, keylessly. Measured in a browser on
+  2026-08-31; the full findings table is in `plans/stage-29.md`. One trap worth
+  keeping: coordinates *inside* `query` do not bias the search at all (a name
+  plus a Paris coordinate pair returned results in San Francisco) -- biasing
+  needs the undocumented `/@lat,lng,17z` path form.
+
+  Rejected there, with numbers, so it is not re-litigated: **Serper** (2,500 free
+  credits then ~$1/1,000) and **SerpApi** (~25x that) do return `placeId` and
+  `cid`, but both make a third-party API key a prerequisite for a core link and
+  route saved place names through a scraper. **Wikidata P3749** is free and
+  keyless via an OSM `wikidata` tag and has 66,382 items worldwide -- it fires
+  for the Brandenburg Gate and never for the guesthouse you booked.
+
+- **Apple Maps and `geo:` links beside the Google one.** (Stage 29 planning.)
+  Apple's URL form gets right what Google's does not: `q` for the name and `ll`
+  for the coordinates are separate documented parameters, so name-plus-coordinate
+  biasing is a one-liner rather than an undocumented path segment. A `geo:` URI
+  opens whichever map app the reader actually chose and sends nothing to anyone,
+  but has no handler on desktop browsers or iOS Safari. Both are additions to a
+  link list rather than fixes to a broken link, which is why Stage 29 left them
+  out; worth revisiting if the location view ever grows a row of map handoffs.
 
 - **Prompt caching for the assistant.** (Stage 21 Milestone 4; the two companion
   levers -- a reasoning-effort knob and mechanical conversation compaction --

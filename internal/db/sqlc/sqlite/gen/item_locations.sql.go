@@ -11,7 +11,7 @@ import (
 )
 
 const getItemLocationByItemID = `-- name: GetItemLocationByItemID :one
-SELECT id, item_id, lat, lng, address FROM item_locations WHERE item_id = ?1
+SELECT id, item_id, lat, lng, address, osm_type, osm_id FROM item_locations WHERE item_id = ?1
 `
 
 func (q *Queries) GetItemLocationByItemID(ctx context.Context, itemID string) (ItemLocation, error) {
@@ -23,14 +23,16 @@ func (q *Queries) GetItemLocationByItemID(ctx context.Context, itemID string) (I
 		&i.Lat,
 		&i.Lng,
 		&i.Address,
+		&i.OsmType,
+		&i.OsmID,
 	)
 	return i, err
 }
 
 const insertItemLocation = `-- name: InsertItemLocation :one
-INSERT INTO item_locations (id, item_id, lat, lng, address)
-VALUES (?1, ?2, ?3, ?4, ?5)
-RETURNING id, item_id, lat, lng, address
+INSERT INTO item_locations (id, item_id, lat, lng, address, osm_type, osm_id)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+RETURNING id, item_id, lat, lng, address, osm_type, osm_id
 `
 
 type InsertItemLocationParams struct {
@@ -39,6 +41,8 @@ type InsertItemLocationParams struct {
 	Lat     sql.NullFloat64 `json:"lat"`
 	Lng     sql.NullFloat64 `json:"lng"`
 	Address sql.NullString  `json:"address"`
+	OsmType sql.NullString  `json:"osm_type"`
+	OsmID   sql.NullString  `json:"osm_id"`
 }
 
 func (q *Queries) InsertItemLocation(ctx context.Context, arg InsertItemLocationParams) (ItemLocation, error) {
@@ -48,6 +52,8 @@ func (q *Queries) InsertItemLocation(ctx context.Context, arg InsertItemLocation
 		arg.Lat,
 		arg.Lng,
 		arg.Address,
+		arg.OsmType,
+		arg.OsmID,
 	)
 	var i ItemLocation
 	err := row.Scan(
@@ -56,20 +62,25 @@ func (q *Queries) InsertItemLocation(ctx context.Context, arg InsertItemLocation
 		&i.Lat,
 		&i.Lng,
 		&i.Address,
+		&i.OsmType,
+		&i.OsmID,
 	)
 	return i, err
 }
 
 const updateItemLocation = `-- name: UpdateItemLocation :execrows
 UPDATE item_locations
-SET lat = ?1, lng = ?2, address = ?3
-WHERE item_id = ?4
+SET lat = ?1, lng = ?2, address = ?3,
+    osm_type = ?4, osm_id = ?5
+WHERE item_id = ?6
 `
 
 type UpdateItemLocationParams struct {
 	Lat     sql.NullFloat64 `json:"lat"`
 	Lng     sql.NullFloat64 `json:"lng"`
 	Address sql.NullString  `json:"address"`
+	OsmType sql.NullString  `json:"osm_type"`
+	OsmID   sql.NullString  `json:"osm_id"`
 	ItemID  string          `json:"item_id"`
 }
 
@@ -78,6 +89,8 @@ func (q *Queries) UpdateItemLocation(ctx context.Context, arg UpdateItemLocation
 		arg.Lat,
 		arg.Lng,
 		arg.Address,
+		arg.OsmType,
+		arg.OsmID,
 		arg.ItemID,
 	)
 	if err != nil {

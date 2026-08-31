@@ -59,6 +59,20 @@ type Result struct {
 	DisplayName string  `json:"display_name"`
 	Lat         float64 `json:"lat"`
 	Lng         float64 `json:"lng"`
+
+	// OSMType and OSMID identify the OpenStreetMap element this candidate came
+	// from -- node, way or relation, plus its id. They are what makes a link to
+	// openstreetmap.org/node/240109189 possible, which is a real feature page
+	// with the hours and tag set somebody mapped, rather than a pin on a
+	// coordinate (Stage 29).
+	//
+	// Empty for a result that did not come from an OSM element. Note in
+	// particular that the map-link resolver (maplink.go) never sets them: it
+	// resolves a Google URL to coordinates, and a coordinate has no OSM
+	// identity. Callers must treat these as optional, not as "always present
+	// on a search result".
+	OSMType string `json:"osm_type,omitempty"`
+	OSMID   string `json:"osm_id,omitempty"`
 }
 
 // Client searches one upstream endpoint.
@@ -272,6 +286,11 @@ type nominatimResult struct {
 	DisplayName string `json:"display_name"`
 	Lat         string `json:"lat"`
 	Lon         string `json:"lon"`
+	// osm_id arrives as a *number*, unlike lat/lon. json.Number keeps it as
+	// the digits that were on the wire rather than round-tripping it through a
+	// float64, which for a large way id would be a silent precision loss.
+	OSMType string      `json:"osm_type"`
+	OSMID   json.Number `json:"osm_id"`
 }
 
 // toResult parses one upstream row, reporting false for a row that cannot be
@@ -282,7 +301,33 @@ func (n nominatimResult) toResult() (Result, bool) {
 	if latErr != nil || lngErr != nil || n.DisplayName == "" {
 		return Result{}, false
 	}
-	return Result{DisplayName: n.DisplayName, Lat: lat, Lng: lng}, true
+	r := Result{DisplayName: n.DisplayName, Lat: lat, Lng: lng}
+	// Both or neither: an element type without an id, or the reverse, cannot
+	// build a URL, and half an identity stored is worse than none.
+	if isOSMType(n.OSMType) && isOSMID(n.OSMID.String()) {
+		r.OSMType, r.OSMID = n.OSMType, n.OSMID.String()
+	}
+	return r, true
+}
+
+// The three element types OpenStreetMap has. Anything else is not an OSM
+// identity, whatever the upstream called it.
+func isOSMType(s string) bool {
+	return s == "node" || s == "way" || s == "relation"
+}
+
+// An OSM element id is a positive integer. Checked as digits rather than
+// parsed, because it is stored and echoed as text and never used as a number.
+func isOSMID(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // ErrNoResult means the lookup succeeded and there is nothing at that point.

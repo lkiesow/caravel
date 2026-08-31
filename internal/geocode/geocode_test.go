@@ -294,3 +294,50 @@ func TestLocaleReachesTheUpstream(t *testing.T) {
 		})
 	}
 }
+
+// Stage 29 Milestone 3. Nominatim reports osm_type and osm_id on every result
+// and this package used to discard both, which is what kept Caravel from
+// linking to a real OpenStreetMap feature page.
+func TestSearchCapturesOSMIdentity(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// osm_id is a JSON *number* on the wire, unlike lat/lon which are
+		// strings. The way id below is deliberately large: decoded through a
+		// float64 it would still be exact, but the point is that it is kept as
+		// the digits that arrived.
+		_, _ = w.Write([]byte(`[
+			{"display_name":"Hallgrimskirkja, Reykjavik","lat":"64.1417951","lon":"-21.9267103","osm_type":"way","osm_id":1234567890123},
+			{"display_name":"A node","lat":"1.0","lon":"2.0","osm_type":"node","osm_id":240109189},
+			{"display_name":"No identity at all","lat":"3.0","lon":"4.0"},
+			{"display_name":"Type Caravel does not know","lat":"5.0","lon":"6.0","osm_type":"nonsense","osm_id":7},
+			{"display_name":"Half an identity","lat":"7.0","lon":"8.0","osm_type":"node"}
+		]`))
+	}))
+	defer srv.Close()
+
+	got, err := New(srv.URL).Search(context.Background(), "anything", "en")
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(got) != 5 {
+		t.Fatalf("got %d results, want 5", len(got))
+	}
+
+	want := []struct{ osmType, osmID string }{
+		{"way", "1234567890123"},
+		{"node", "240109189"},
+		// A row with no identity, an unrecognised element type, or only half of
+		// one leaves both fields empty: half an identity cannot build a URL,
+		// and storing half invites a render site to interpolate an empty
+		// string into the path.
+		{"", ""},
+		{"", ""},
+		{"", ""},
+	}
+	for i, w := range want {
+		if got[i].OSMType != w.osmType || got[i].OSMID != w.osmID {
+			t.Errorf("result %d (%s): got %q/%q, want %q/%q",
+				i, got[i].DisplayName, got[i].OSMType, got[i].OSMID, w.osmType, w.osmID)
+		}
+	}
+}

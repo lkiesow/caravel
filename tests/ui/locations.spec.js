@@ -16,7 +16,7 @@
 // direction: no spec had ever pressed Save on this form and then looked at what
 // came back.
 import { test, expect } from "@playwright/test";
-import { login, gotoRoute } from "./helpers/scenarios.js";
+import { login, gotoRoute, resolveScenarioTrips } from "./helpers/scenarios.js";
 
 const MOBILE = { width: 324, height: 756 };
 
@@ -1216,5 +1216,77 @@ test.describe("creating a location is atomic", () => {
 
     const files = await (await page.request.get(`/api/items/${items[0].id}/files`)).json();
     expect(files.map((f) => f.filename), "the file landed").toEqual(["booking.txt"]);
+  });
+});
+
+// Stage 29 Milestone 3. The OpenStreetMap feature page -- the link this
+// project arguably should have had before the Google one. Nominatim returns
+// osm_type and osm_id on every search result and Caravel discarded both, so a
+// place saved through the address search now carries its OSM identity and links
+// to openstreetmap.org/<type>/<id>, which is a real feature page with the hours
+// and tag set somebody mapped.
+//
+// Note the coverage limit this asserts around: only a location saved through
+// the address search has an identity at all. A dropped pin is not an OSM
+// feature and shows no OSM link, which is why the absence case is asserted
+// rather than assumed.
+test.describe("the OpenStreetMap link on a location", () => {
+  // Creates a location with whatever location block is given, and returns its
+  // id, so each case owns its own row rather than depending on the seed
+  // carrying an OSM identity.
+  async function createLocation(page, tripId, title, location) {
+    return page.evaluate(
+      async ({ tripId, title, location }) => {
+        const res = await fetch(`/api/trips/${tripId}/items`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title, category: "site", location }),
+        });
+        if (!res.ok) throw new Error(`create returned ${res.status}: ${await res.text()}`);
+        return (await res.json()).id;
+      },
+      { tripId, title, location }
+    );
+  }
+
+  test("appears for a place with an OSM identity, and points at the feature page", async ({ page }) => {
+    await login(page);
+    const trips = await resolveScenarioTrips(page);
+    const itemId = await createLocation(page, trips.full, "Stage 29: Hallgrimskirkja", {
+      lat: 64.1417951,
+      lng: -21.9267103,
+      address: "Hallgrimstorg 1, 101 Reykjavik",
+      osm_type: "way",
+      osm_id: "1234567890123",
+    });
+
+    await gotoRoute(page, `/trips/${trips.full}/locations/${itemId}`);
+
+    const links = page.locator(".location-view__maps-link");
+    await expect(links).toHaveCount(2);
+    await expect(links.nth(1)).toHaveAttribute("href", "https://www.openstreetmap.org/way/1234567890123");
+    // Same treatment as the Google link beside it: a new tab, and no referrer
+    // window handle back into the app.
+    await expect(links.nth(1)).toHaveAttribute("rel", "noopener");
+    await expect(links.nth(1)).toHaveAttribute("target", "_blank");
+    // The accessible name comes from the locale file, not from a hardcoded
+    // string in the page.
+    await expect(links.nth(1)).toHaveText("View on OpenStreetMap");
+  });
+
+  test("is absent for a dropped pin, which has no OSM identity", async ({ page }) => {
+    await login(page);
+    const trips = await resolveScenarioTrips(page);
+    const itemId = await createLocation(page, trips.full, "Stage 29: just a pin", {
+      lat: 52.2799,
+      lng: 8.0472,
+    });
+
+    await gotoRoute(page, `/trips/${trips.full}/locations/${itemId}`);
+
+    // The Google link is still there -- it needs no identity -- so this is
+    // asserting one link rather than none.
+    await expect(page.locator(".location-view__maps-link")).toHaveCount(1);
+    await expect(page.locator(".location-view__maps-link")).toHaveText("View on Google Maps");
   });
 });

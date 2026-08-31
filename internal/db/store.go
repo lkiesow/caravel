@@ -187,6 +187,8 @@ type UpsertItemLocationParams struct {
 	Lat     *float64
 	Lng     *float64
 	Address *string
+	OSMType *string
+	OSMID   *string
 }
 
 type CreateItemLinkParams struct {

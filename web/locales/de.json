@@ -239,6 +239,7 @@
   "map.empty": "Noch keine Einträge mit Standort. Füge einem Eintrag einen Standort hinzu, damit er hier erscheint.",
   "map.openLocation": "Ort öffnen",
   "map.viewOnGoogleMaps": "In Google Maps ansehen",
+  "map.viewOnOpenStreetMap": "In OpenStreetMap ansehen",
   "map.ctrlZoomHint": "Zum Zoomen Strg + Scrollen verwenden.",
   "map.twoFingerHint": "Bewege die Karte mit zwei Fingern.",
   "map.locate.label": "Mein Standort",

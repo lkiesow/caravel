@@ -7,7 +7,7 @@ import { renderLoading } from "../components/loading.js";
 import { canEdit, isShared } from "../trip-role.js";
 import { renderFileList } from "../components/file-list.js";
 import { formatDateRange } from "../format.js";
-import { googleMapsUrl, safeHref } from "../url.js";
+import { googleMapsUrl, openStreetMapUrl, safeHref } from "../url.js";
 
 // A URL reduced to its host, for a credit that has a source page but no named
 // author.
@@ -68,6 +68,9 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
   const editable = canEdit(trip);
   const hasCoords = item.location?.lat != null && item.location?.lng != null;
   const hasAddress = Boolean(item.location?.address);
+  // null unless this place was saved through the address search, which is the
+  // only route that knows an OSM element. Absent, not broken, for a dropped pin.
+  const osmUrl = openStreetMapUrl(item.location?.osm_type, item.location?.osm_id);
 
   container.innerHTML = `
     <div class="page location-view">
@@ -103,6 +106,11 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
               ? `
             <leaflet-map lat="${item.location.lat}" lng="${item.location.lng}" marker-title="${escapeAttr(item.title)}" marker-address="${escapeAttr(item.location.address ?? "")}" marker-category="${escapeAttr(item.category)}"></leaflet-map>
             <a class="location-view__maps-link" href="${escapeAttr(googleMapsUrl(item.location.lat, item.location.lng, item.title, item.location.address))}" target="_blank" rel="noopener" data-i18n="map.viewOnGoogleMaps"></a>
+            ${
+              osmUrl
+                ? `<a class="location-view__maps-link" href="${escapeAttr(osmUrl)}" target="_blank" rel="noopener" data-i18n="map.viewOnOpenStreetMap"></a>`
+                : ""
+            }
           `
               : ""
           }

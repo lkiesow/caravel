@@ -110,3 +110,27 @@ function escapeMapsQuery(s) {
 function looksLikeCoordinate(s) {
   return s.includes(",") && /^[0-9+\-., ]+$/.test(s);
 }
+
+// openStreetMapUrl returns the feature page for an OpenStreetMap element, or
+// null when the location has no OSM identity -- which is most of them: only a
+// place saved through the address search has one, and a dropped pin is not an
+// OSM feature.
+//
+// The link this project should arguably have had before the Google one. It is
+// the OSM equivalent of a place card, carrying the opening hours, phone,
+// website and full tag set somebody already mapped, and it costs no key, no
+// third party and no request leaving the instance.
+//
+// The type and id are validated server-side on the way in (validate on
+// itemLocationRequest in internal/httpapi/items.go, and geocode.toResult before
+// that), and re-checked here rather than trusted. This is the same reasoning as
+// safeHref above: the check that matters is the one at the render site, because
+// a database written before the check existed is still a database this code has
+// to render.
+export function openStreetMapUrl(type, id) {
+  if (!OSM_ELEMENT_TYPES.includes(type)) return null;
+  if (!/^[0-9]+$/.test(String(id ?? ""))) return null;
+  return `https://www.openstreetmap.org/${type}/${id}`;
+}
+
+const OSM_ELEMENT_TYPES = ["node", "way", "relation"];

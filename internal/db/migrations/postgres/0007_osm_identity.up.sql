@@ -1,0 +1,21 @@
+-- The OpenStreetMap identity of a location, when it has one.
+--
+-- Nominatim returns osm_type and osm_id on every search result and Caravel
+-- discarded both -- nominatimResult kept only display_name, lat and lon. Those
+-- two fields are the difference between a pin on a coordinate and
+-- openstreetmap.org/node/240109189, which is a real feature page carrying the
+-- opening hours, phone number, website and full tag set somebody already
+-- mapped. Free, keyless, and no request leaving the instance.
+--
+-- Nullable, and mostly null: only a location saved through the address search
+-- has an OSM identity at all. A place positioned by dropping a pin, or by
+-- pasting a Google Maps link, is not an OSM feature and will never have one.
+-- The link appears when the columns are set and is absent otherwise.
+--
+-- osm_type is node, way or relation -- the three element types OSM has. It is
+-- not constrained here: the check lives in the API (validateOSMIdentity in
+-- internal/httpapi/items.go), which is where a bad value can be reported to
+-- the client instead of failing a write. osm_id is text rather than an integer
+-- because it is an identifier to be echoed into a URL and never arithmetic on.
+ALTER TABLE item_locations ADD COLUMN osm_type TEXT;
+ALTER TABLE item_locations ADD COLUMN osm_id TEXT;

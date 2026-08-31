@@ -119,8 +119,16 @@ func TestMigration0006FoldsTypeIntoTags(t *testing.T) {
 	}
 
 	// Down puts the column back, empty, and leaves the tags alone.
-	if err := newM().Steps(-1); err != nil {
-		t.Fatalf("down: %v", err)
+	//
+	// Migrate(5) rather than Steps(-1): this used to step down exactly one
+	// version, which silently meant "undo 0006" only for as long as 0006 was
+	// the newest migration in the tree. Stage 29's 0007 broke it -- one step
+	// down from head undid 0007 instead and the assertions below failed on a
+	// column that was never restored. Naming the target version is immune to
+	// that, and it walks every down migration above 5 on the way, which is more
+	// coverage than the step version had rather than less.
+	if err := newM().Migrate(5); err != nil {
+		t.Fatalf("down to 5: %v", err)
 	}
 	var empty int
 	if err := conn.QueryRow(`SELECT count(*) FROM items WHERE type <> ''`).Scan(&empty); err != nil {

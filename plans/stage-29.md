@@ -266,6 +266,79 @@ query change is exactly what that target exists for. Go tests for the new
 Nominatim fields and for the validation rejecting a bad `osm_type`. A UI
 assertion that the link appears with the fields and is absent without them.
 
+**Done.** Landed as planned. `0007_osm_identity` adds two nullable `TEXT`
+columns to `item_locations` on both dialects, `geocode.Result` carries
+`OSMType`/`OSMID`, and the identity now flows Nominatim -> API -> database ->
+API -> a link on the location view, with a new `map.viewOnOpenStreetMap` key in
+both locale files.
+
+Three things worth recording.
+
+**`osm_id` arrives as a JSON number**, unlike `lat`/`lon`, which are strings.
+It is decoded into a `json.Number` and kept as the digits that were on the
+wire: routed through a `float64` a large way id would lose precision silently.
+It is stored as `TEXT` throughout for the same reason -- it is an identifier to
+be echoed into a URL, never arithmetic.
+
+**Both halves or neither, enforced in three places.** `geocode.toResult` drops
+an identity whose type is not node/way/relation or whose id is not digits;
+`itemLocationRequest.validate` refuses half an identity with a 400 and is
+wired into *both* write doors (the nested location on create/update, and the
+standalone `PUT /items/{id}/location`, which is a second way into the same
+columns); and `openStreetMapUrl` in `web/js/url.js` re-checks at the render
+site rather than trusting the database, on the same reasoning as `safeHref`
+beside it -- a row written before the check existed is still a row this code has
+to render. That last one is why this is a security check and not a tidiness one:
+these two values are interpolated into a URL path, so an unchecked `osm_type` of
+`../../evil` or a `javascript:` payload would be a working link that any editor
+could plant on a shared trip.
+
+**The editor clears the identity when the point moves**, which is the subtle
+part. It is not a form field -- nobody types an element id -- so it is a closure
+variable cleared inside `coordinatesChanged()`, the one choke point all five
+coordinate writers already call, and set again immediately afterwards by the
+only writer that legitimately knows one. Drag the pin 500m and the identity goes
+with it, because a stale identity is a link to the wrong place, which is worse
+than no link. An existing location's identity survives an edit that does not
+touch the coordinates.
+
+**One deviation, forced by the migration.** `TestMigration0006FoldsTypeIntoTags`
+failed: it stepped down exactly one version and asserted `items.type` was back,
+which silently meant "undo 0006" only while 0006 was the newest migration in the
+tree. It now targets `Migrate(5)` by version, which is immune to the next
+migration and walks every down migration above 5 on the way -- so it exercises
+0007's down as well, which is more coverage than the step version had.
+
+Verified with `make ci` and `make test-postgres` both green. New Go tests: five
+Nominatim rows in `internal/geocode` covering a way, a node, no identity, an
+unknown element type and half an identity; fourteen validation cases in
+`internal/httpapi/item_osm_test.go` including path traversal, a smuggled scheme,
+wrong case and a non-numeric id; and a round-trip test through both write doors
+that also asserts a later coordinate-only write *clears* the identity. Two UI
+specs in `locations.spec.js` assert the link's href, `rel`, `target` and
+accessible name for a location with an identity, and that a dropped pin renders
+exactly one link rather than none.
+
+Proved end to end against the running server and the real services. Caravel's
+own `/api/geocode?q=Hallgrimskirkja Reykjavik` returned
+`"osm_type":"relation","osm_id":"6184378"` from live Nominatim -- fields it
+discarded before this milestone. That identity round-tripped through item create
+and back out of `GET /api/items/{id}` unchanged, a `PUT` with
+`osm_type:"../../evil"` was refused with a 400 and the message naming the three
+valid types, and opening the resulting
+`https://www.openstreetmap.org/relation/6184378` gives the real feature page:
+*Relation: Hallgrímskirkja (6184378)*, carrying `amenity=place_of_worship`,
+`building=church`, the full address tags and even the architect. That is the
+thing this milestone was for -- the same class of detail as a Google place card,
+free, keyless, and with no request leaving the instance.
+
+**The coverage limit, stated rather than discovered later.** Only a location
+saved through the address search gets an identity, and only from this milestone
+onward. Every existing location, and anything placed by dropping a pin or
+pasting a Google Maps link, has none and shows no OSM link. The
+`geocode.Result` comment says so explicitly for the map-link resolver, which
+resolves to coordinates and can never populate these.
+
 ## Build order
 
 0 → 1 → 2 → 3. Milestone 1 is a pure refactor and lands first so Milestone 2 is

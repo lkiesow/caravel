@@ -239,6 +239,7 @@
   "map.empty": "No items with a location yet. Add a location to an item and it'll show up here.",
   "map.openLocation": "Open location",
   "map.viewOnGoogleMaps": "View on Google Maps",
+  "map.viewOnOpenStreetMap": "View on OpenStreetMap",
   "map.ctrlZoomHint": "Use Ctrl + scroll to zoom the map.",
   "map.twoFingerHint": "Use two fingers to move the map.",
   "map.locate.label": "My location",

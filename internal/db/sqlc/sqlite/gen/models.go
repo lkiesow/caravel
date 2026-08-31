@@ -98,6 +98,8 @@ type ItemLocation struct {
 	Lat     sql.NullFloat64 `json:"lat"`
 	Lng     sql.NullFloat64 `json:"lng"`
 	Address sql.NullString  `json:"address"`
+	OsmType sql.NullString  `json:"osm_type"`
+	OsmID   sql.NullString  `json:"osm_id"`
 }
 
 type ItemTag struct {

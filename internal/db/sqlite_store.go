@@ -471,6 +471,8 @@ func (s *sqliteStore) UpsertItemLocation(ctx context.Context, p UpsertItemLocati
 		Lat:     nullFloat64(p.Lat),
 		Lng:     nullFloat64(p.Lng),
 		Address: nullString(p.Address),
+		OsmType: nullString(p.OSMType),
+		OsmID:   nullString(p.OSMID),
 	})
 	if err != nil {
 		return ItemLocation{}, err
@@ -485,6 +487,8 @@ func (s *sqliteStore) UpsertItemLocation(ctx context.Context, p UpsertItemLocati
 		Lat:     nullFloat64(p.Lat),
 		Lng:     nullFloat64(p.Lng),
 		Address: nullString(p.Address),
+		OsmType: nullString(p.OSMType),
+		OsmID:   nullString(p.OSMID),
 	})
 	if err != nil {
 		return ItemLocation{}, err
@@ -1233,6 +1237,8 @@ func sqliteItemLocationToDomain(l sqlitegen.ItemLocation) ItemLocation {
 		Lat:     floatPtr(l.Lat),
 		Lng:     floatPtr(l.Lng),
 		Address: strPtr(l.Address),
+		OSMType: strPtr(l.OsmType),
+		OSMID:   strPtr(l.OsmID),
 	}
 }
 

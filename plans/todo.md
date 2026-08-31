@@ -100,31 +100,16 @@ purpose — do not reconstruct it from an older stage plan without asking.
   shows the days it is on but does not link to them, so the way to see a
   location in context is to go back to the trip and pick the tab.
 
-- **Google Maps interoperability: the outbound half.** **(soon)** (Stage 13; the
-  inbound half built in Stage 22 Milestone 6; **being built in Stage 29**.)
-  Pasting a Maps link into the address search resolves it to coordinates. What is
-  left is the other direction: the popup's and the location view's "View on
-  Google Maps" links are a `?query=lat,lng` **search**, so they land on a dropped
-  pin rather than on the hotel's own Google entry with its hours and reviews.
-
-  **The survey this entry asked for was done in Stage 29 planning, and it
-  overturned the premise.** The old framing -- "linking the actual place needs a
-  place ID, which Caravel cannot get from OSM" -- is wrong, and so is the
-  matching comment in `internal/geocode/maplink.go`. No identifier is needed:
-  Google's `query` parameter takes a name or an address, and a bare coordinate
-  pair is *defined* to produce a dropped pin. Sending the title and address
-  instead lands on the real place card, keylessly. Measured in a browser on
-  2026-08-31; the full findings table is in `plans/stage-29.md`. One trap worth
-  keeping: coordinates *inside* `query` do not bias the search at all (a name
-  plus a Paris coordinate pair returned results in San Francisco) -- biasing
-  needs the undocumented `/@lat,lng,17z` path form.
-
-  Rejected there, with numbers, so it is not re-litigated: **Serper** (2,500 free
-  credits then ~$1/1,000) and **SerpApi** (~25x that) do return `placeId` and
-  `cid`, but both make a third-party API key a prerequisite for a core link and
-  route saved place names through a scraper. **Wikidata P3749** is free and
-  keyless via an OSM `wikidata` tag and has 66,382 items worldwide -- it fires
-  for the Brandenburg Gate and never for the guesthouse you booked.
+- **A location's OpenStreetMap identity, for places that predate it.** (Stage
+  29 Milestone 3.) `osm_type`/`osm_id` are captured from the address search from
+  that milestone onward, so the OpenStreetMap feature link appears only on
+  locations saved since. Everything older, and anything positioned by dropping a
+  pin or pasting a Google Maps link, has no identity and shows no link. A
+  backfill would mean re-searching each stored address through Nominatim and
+  accepting a match, which is a guess made on the user's behalf; an "is this the
+  right OSM feature?" affordance in the editor would be honest but is a screen
+  nobody has asked for. Worth doing only if the link turns out to be one people
+  use.
 
 - **The outbound map link could be in the reader's language.** (Stage 29
   Milestone 2.) Appending `hl=de` to the link that milestone builds returns a

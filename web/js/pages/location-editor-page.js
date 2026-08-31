@@ -90,6 +90,16 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
   // it so the map and the "show on map" hint update exactly as they do when a
   // pin is dragged, rather than the fields being set behind their backs.
   let setCoordinates = null;
+  // The OpenStreetMap element the current coordinates came from, or null.
+  //
+  // Not a form field: nobody types an element id, and it is not something to
+  // edit. It is metadata that belongs to a *chosen search result*, and it stops
+  // being true the moment the coordinates move by any other route -- drag the
+  // pin 500m and the place is no longer that OSM feature. So it is cleared in
+  // coordinatesChanged(), the one choke point every coordinate writer already
+  // has to call, and set again immediately afterwards by the only writer that
+  // legitimately knows an identity. See the note above coordinatesChanged.
+  let osmIdentity = null;
   let assistPanel = null;
 
   const draft = {
@@ -457,6 +467,10 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       lat: form.lat.value ? Number(form.lat.value) : null,
       lng: form.lng.value ? Number(form.lng.value) : null,
       address: form.address.value || null,
+      // Both or neither -- the API refuses half an identity, and half of one
+      // cannot build a URL anyway.
+      osm_type: osmIdentity?.type ?? null,
+      osm_id: osmIdentity?.id ?? null,
     };
   }
 
@@ -466,6 +480,11 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       form.lat.value = item.location.lat ?? "";
       form.lng.value = item.location.lng ?? "";
       form.address.value = item.location.address ?? "";
+      // Carried through an edit that does not touch the coordinates, so
+      // renaming a location does not silently drop its OSM identity.
+      if (item.location.osm_type && item.location.osm_id) {
+        osmIdentity = { type: item.location.osm_type, id: item.location.osm_id };
+      }
     }
     // Checked by default for a new location, matching the API's own default.
     if (item) form.showOnMap.checked = item.show_on_map;
@@ -519,6 +538,11 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     const coordinateListeners = [];
     const onCoordinatesChanged = (fn) => coordinateListeners.push(fn);
     const coordinatesChanged = () => {
+      // The OSM identity describes a point, so moving the point invalidates
+      // it. Cleared here rather than in each of the five writers, for the same
+      // reason the listeners are: the writer that forgets is the bug. The one
+      // writer that *does* know an identity sets it again after calling this.
+      osmIdentity = null;
       syncMapFromFields();
       syncHint();
       for (const listener of coordinateListeners) listener();
@@ -637,6 +661,13 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
           // hand would lose their wording for the sake of tidiness.
           if (!form.address.value.trim()) form.address.value = place.display_name;
           coordinatesChanged();
+          // After, not before: coordinatesChanged() clears the identity, and
+          // this is the only place that has one to set. Nominatim reports both
+          // fields or neither, and the server has already checked they are a
+          // node/way/relation and a run of digits (geocode.toResult).
+          if (place.osm_type && place.osm_id) {
+            osmIdentity = { type: place.osm_type, id: place.osm_id };
+          }
           results.innerHTML = "";
           setStatus(null);
         });

@@ -81,6 +81,22 @@ type itemLocationResponse struct {
 	Lat     *float64 `json:"lat"`
 	Lng     *float64 `json:"lng"`
 	Address *string  `json:"address"`
+	// The OpenStreetMap element this place was saved from, when it was saved
+	// through the address search. Null otherwise, which is the common case:
+	// a dropped pin is not an OSM feature. The client renders a link to the
+	// feature page when both are present.
+	OSMType *string `json:"osm_type"`
+	OSMID   *string `json:"osm_id"`
+}
+
+func newItemLocationResponse(loc db.ItemLocation) itemLocationResponse {
+	return itemLocationResponse{
+		Lat:     loc.Lat,
+		Lng:     loc.Lng,
+		Address: loc.Address,
+		OSMType: loc.OSMType,
+		OSMID:   loc.OSMID,
+	}
 }
 
 type itemLinkResponse struct {
@@ -202,6 +218,11 @@ func (req itemRequest) validate() error {
 	}
 	// Validate the nested blocks up front so a bad link or date is a 400
 	// before anything is written, rather than a rolled-back 500.
+	if req.Location != nil {
+		if err := req.Location.validate(); err != nil {
+			return err
+		}
+	}
 	if req.Links != nil {
 		for _, l := range *req.Links {
 			if err := validateLinkURL(l.URL); err != nil {
@@ -280,6 +301,8 @@ func writeItemNested(ctx context.Context, store db.Store, item db.Item, req item
 			Lat:     req.Location.Lat,
 			Lng:     req.Location.Lng,
 			Address: req.Location.Address,
+			OSMType: req.Location.OSMType,
+			OSMID:   req.Location.OSMID,
 		}); err != nil {
 			return err
 		}
@@ -373,7 +396,8 @@ func (s *Server) buildItemDetail(r *http.Request, item db.Item) itemDetailRespon
 	detail := itemDetailResponse{itemResponse: s.itemToResponse(r.Context(), item), Links: []itemLinkResponse{}}
 
 	if loc, err := s.Store.GetItemLocationByItemID(r.Context(), item.ID); err == nil {
-		detail.Location = &itemLocationResponse{Lat: loc.Lat, Lng: loc.Lng, Address: loc.Address}
+		locResp := newItemLocationResponse(loc)
+		detail.Location = &locResp
 	}
 
 	if links, err := s.Store.ListItemLinksByItem(r.Context(), item.ID); err == nil {
@@ -470,6 +494,58 @@ type itemLocationRequest struct {
 	Lat     *float64 `json:"lat"`
 	Lng     *float64 `json:"lng"`
 	Address *string  `json:"address"`
+	OSMType *string  `json:"osm_type"`
+	OSMID   *string  `json:"osm_id"`
+}
+
+// osmElementTypes is what OpenStreetMap has, and there is no fourth.
+var osmElementTypes = map[string]bool{"node": true, "way": true, "relation": true}
+
+// validate checks the OpenStreetMap identity, which the client turns into
+// https://www.openstreetmap.org/<type>/<id> and renders as an href.
+//
+// A security check in the same family as validateLinkURL, not a tidiness one.
+// These two fields arrive from the client and are interpolated into a URL path,
+// so an unchecked osm_type of "../../evil" or a javascript: payload would be
+// rendered as a working link on a shared trip -- any editor could plant it and
+// any member who clicked would run it with their own session. Constraining the
+// values to what OSM actually has is a stronger defence than escaping, and it
+// is available here in a way it is not for a free-text link.
+//
+// Both or neither. Half an identity cannot build a URL, and storing one half
+// only invites a render site to interpolate an empty string into the path.
+func (r itemLocationRequest) validate() error {
+	typeSet := r.OSMType != nil && strings.TrimSpace(*r.OSMType) != ""
+	idSet := r.OSMID != nil && strings.TrimSpace(*r.OSMID) != ""
+	if typeSet != idSet {
+		return errors.New("osm_type and osm_id must be given together")
+	}
+	if !typeSet {
+		return nil
+	}
+	if !osmElementTypes[*r.OSMType] {
+		return errors.New("osm_type must be one of: node, way, relation")
+	}
+	if !isDigits(*r.OSMID) {
+		return errors.New("osm_id must be a positive integer")
+	}
+	return nil
+}
+
+// isDigits reports whether s is a non-empty run of ASCII digits. An OSM element
+// id is checked rather than parsed because it is stored and echoed as text and
+// never used as a number -- and because a large way id parsed into a float
+// would lose precision silently.
+func isDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Server) handlePutItemLocation(w http.ResponseWriter, r *http.Request) {
@@ -483,6 +559,12 @@ func (s *Server) handlePutItemLocation(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	// The same check the nested location gets on item create/update: this
+	// endpoint is a second door to the same columns.
+	if err := req.validate(); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	loc, err := s.Store.UpsertItemLocation(r.Context(), db.UpsertItemLocationParams{
 		ID:      uuid.NewString(),
@@ -490,12 +572,14 @@ func (s *Server) handlePutItemLocation(w http.ResponseWriter, r *http.Request) {
 		Lat:     req.Lat,
 		Lng:     req.Lng,
 		Address: req.Address,
+		OSMType: req.OSMType,
+		OSMID:   req.OSMID,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not save location")
 		return
 	}
-	writeJSON(w, http.StatusOK, itemLocationResponse{Lat: loc.Lat, Lng: loc.Lng, Address: loc.Address})
+	writeJSON(w, http.StatusOK, newItemLocationResponse(loc))
 }
 
 type itemLinkRequest struct {

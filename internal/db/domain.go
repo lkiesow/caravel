@@ -414,12 +414,20 @@ type Item struct {
 	UpdatedAt time.Time
 }
 
+// ItemLocation is where a place is. OSMType and OSMID are its OpenStreetMap
+// identity, and are nil for all but a location saved through the address
+// search -- a dropped pin is not an OSM feature. They exist to link out to the
+// feature's own page on openstreetmap.org, which carries the hours, phone and
+// tag set somebody already mapped (Stage 29). OSMID is a string because it is
+// only ever echoed into a URL.
 type ItemLocation struct {
 	ID      string
 	ItemID  string
 	Lat     *float64
 	Lng     *float64
 	Address *string
+	OSMType *string
+	OSMID   *string
 }
 
 type ItemLink struct {

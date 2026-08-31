@@ -1,8 +1,8 @@
 package httpapi
 
 import (
-	"fmt"
 	"net/http"
+	"strconv"
 
 	"caravel/internal/db"
 )
@@ -79,6 +79,24 @@ type mapItemResponse struct {
 	GoogleMapsURL string  `json:"google_maps_url"`
 }
 
+// googleMapsURL builds the outbound "View on Google Maps" link for a place.
+//
+// The twin of googleMapsUrl in web/js/url.js, and deliberately identical to it:
+// the same place must produce the same URL whether the link is rendered from
+// this payload or built in the browser. Before Stage 29 Milestone 1 they were
+// not identical -- this side used %f, which is six decimals with the trailing
+// zeros left on, and the two JS copies interpolated the raw number. FormatFloat
+// with a precision of -1 is the shortest form that round-trips, which is what
+// JS gives a number in a template literal, so the two now agree byte for byte.
+//
+// Duplicated across the language boundary rather than made the single source,
+// because the single-marker map embed is driven entirely by its own attributes
+// and has no server payload to read. See the note in web/js/url.js.
+func googleMapsURL(lat, lng float64) string {
+	return "https://www.google.com/maps/search/?api=1&query=" +
+		strconv.FormatFloat(lat, 'f', -1, 64) + "," + strconv.FormatFloat(lng, 'f', -1, 64)
+}
+
 func mapItemToResponse(i db.MapItem) mapItemResponse {
 	return mapItemResponse{
 		ID:            i.ID,
@@ -86,7 +104,7 @@ func mapItemToResponse(i db.MapItem) mapItemResponse {
 		Category:      i.Category,
 		Lat:           i.Lat,
 		Lng:           i.Lng,
-		GoogleMapsURL: fmt.Sprintf("https://www.google.com/maps/search/?api=1&query=%f,%f", i.Lat, i.Lng),
+		GoogleMapsURL: googleMapsURL(i.Lat, i.Lng),
 	}
 }
 

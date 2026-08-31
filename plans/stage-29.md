@@ -74,6 +74,46 @@ URL for the same coordinates -- the assertion that makes this refactor worth
 having. `tests/ui/map.spec.js:523`, which pins that the popup offers exactly two
 links at 44px each, must keep passing unedited.
 
+**Done.** Landed as planned. `googleMapsUrl(lat, lng)` is exported from
+`web/js/url.js` and `googleMapsURL(lat, lng float64)` sits beside
+`mapItemToResponse` in `internal/httpapi/map.go`; all three call sites
+(`map.go:89`, `leaflet-map.js:692`, `location-view-page.js:105`) now go through
+one of the two, and no `maps/search` string survives outside them.
+
+Two decisions the plan left open, both settled:
+
+*Precision.* The Go side formats with `strconv.FormatFloat(v, 'f', -1, 64)`,
+the shortest form that round-trips, because that is exactly what JS gives a
+number in a template literal -- so the two agree byte for byte rather than
+merely both being correct. `%f` did not: measured on five coordinate pairs, it
+rounded `52.5161791` to `52.516179` (losing a digit) and rendered `64.1` as
+`64.100000`, while the new form and `node` produce identical strings for all
+five. That is a real change to the `google_maps_url` payload, and the reason the
+milestone is "behaviour-preserving" rather than byte-preserving.
+
+*Whether the single-marker popup consumes a server URL.* It does not, and
+cannot: that embed is driven entirely by its own `lat`/`lng` attributes with no
+server payload to read, so the shared JS helper *is* the single path for both
+browser callers. The Go function is therefore a deliberate twin across the
+language boundary rather than the single source, and both carry a comment
+saying so and pointing at the other.
+
+Verified with `make ci` green, and with the new UI assertion in
+`tests/ui/map.spec.js` -- "the Google Maps link is built in one place" -- which
+reaches all three renderers for *one* seeded location: the trip-map popup (the
+server's string, verbatim), then that location's own page for the single-marker
+popup's href and the location view's `.location-view__maps-link`. It asserts the
+three are equal, and separately that the form is right and carries no `%f`
+trailing zeros, since three identical wrong URLs would pass an equality-only
+test. Two of the three hrefs are inside a shadow root; the single-marker popup
+needed its own opener because it has no `[data-item-id]` link to wait for.
+
+`map.spec.js` (75 tests, including the tap-target test that pins the popup to
+exactly two links, unedited), `locations.spec.js`, `link-safety.spec.js` and
+`routes.spec.js` all pass. Note the suite runs these on **firefox only** --
+`playwright.config.js` reserves chromium for the gesture specs -- so "both
+browsers" is not available here the way Stage 28 had it.
+
 ## 2. The link names the place
 
 The payoff. One helper signature, three callers already wired by Milestone 1.

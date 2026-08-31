@@ -270,7 +270,9 @@ purpose — do not reconstruct it from an older stage plan without asking.
 ---
 
 - **`escapeAttr` promises attribute safety and delivers entity escaping.**
-  (Stage 27 Milestone 4a.) Five files define `escapeAttr` and in most of them
+  (Stage 27 Milestone 4a; the count corrected in Stage 29.) **Eight** files
+  define `escapeAttr` -- the entry said five and `web/js/url.js:12` says seven,
+  both undercounts -- and in most of them
   it is a bare alias of `escapeHtml`, which escapes `&<>"'` and says nothing
   whatever about what the value *means* in the attribute it lands in. Quoting a
   `javascript:` URL into an `href` produces a perfectly well-formed dangerous

@@ -2,6 +2,7 @@ import { api } from "../api.js";
 import { t } from "../i18n.js";
 import { icon } from "../icon.js";
 import { getCurrentPosition, locateErrorKey, locateUnavailableReason } from "../geolocation.js";
+import { googleMapsUrl } from "../url.js";
 
 // The tile layer, as the instance has it configured. Defaults duplicated from
 // internal/httpapi/map.go on purpose: they are what the map falls back to when
@@ -689,7 +690,7 @@ class LeafletMap extends HTMLElement {
 
     if (this._singleMarker) {
       const { lat, lng, title, category } = this._singleMarker;
-      const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+      const mapsUrl = googleMapsUrl(lat, lng);
       const marker = L.marker([lat, lng], { icon: markerIcon(L, category) }).addTo(this._map);
       marker.bindPopup(
         `<strong>${escapeHtml(title)}</strong><br/><a href="${escapeAttr(mapsUrl)}" target="_blank" rel="noopener">${t("map.viewOnGoogleMaps")}</a>`

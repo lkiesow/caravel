@@ -1539,3 +1539,69 @@ test.describe("Stage 13's surfaces in German at 324px", () => {
     await assertFitsAndTappable(page, ".items-tab");
   });
 });
+
+
+// Stage 29 Milestone 1. The outbound Google Maps URL was written out three
+// times -- internal/httpapi/map.go, and twice in web/js -- and the three had
+// drifted: the Go copy used %f while both JS copies interpolated the raw
+// number, so the same place produced a different URL depending on which link
+// you clicked. It is one helper per language now, deliberately identical.
+//
+// This is the assertion that makes that refactor worth having, and it is the
+// only place in the suite that compares the three. It deliberately reaches all
+// three renderers for *one* location: the trip-map popup (built by the server
+// and passed through as item.google_maps_url), the single-marker popup on that
+// location's own page, and the location view's own link beside the map. Two of
+// those three are in a shadow root.
+test.describe("the Google Maps link is built in one place", () => {
+  // The single-marker popup, unlike the trip-wide one, has no [data-item-id]
+  // link to wait for -- it is on the location's own page, so linking there
+  // would link to itself. So this waits for the popup's only anchor instead.
+  async function openSingleMarkerPopup(page) {
+    await page.evaluate(() => {
+      const sr = document.querySelector("leaflet-map").shadowRoot;
+      const marker = sr.querySelector(".leaflet-marker-icon");
+      if (!marker) throw new Error("the location page's map embed has no marker");
+      for (const type of ["mousedown", "mouseup", "click"]) {
+        marker.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window, button: 0 }));
+      }
+    });
+    return page.waitForFunction(() => {
+      const a = document.querySelector("leaflet-map").shadowRoot.querySelector(".leaflet-popup-content a[target=_blank]");
+      return a ? a.getAttribute("href") : false;
+    });
+  }
+
+  test("all three renderers agree, for the same location", async ({ page }) => {
+    await login(page);
+    const mapPath = await gotoTripMap(page);
+    await openFirstPopup(page);
+
+    // The trip-wide popup: this href is the server's, verbatim.
+    const fromTripMap = await page.evaluate(() => {
+      const sr = document.querySelector("leaflet-map").shadowRoot;
+      const links = [...sr.querySelectorAll(".leaflet-popup-content a")];
+      const google = links.find((a) => a.getAttribute("target") === "_blank");
+      return { href: google?.getAttribute("href") ?? null, itemId: sr.querySelector("[data-item-id]").dataset.itemId };
+    });
+    expect(fromTripMap.href, "the trip map popup should offer a Google Maps link").toBeTruthy();
+
+    // Sanity-check the *form* too, not only that the three agree: three
+    // identical wrong URLs would pass an equality-only test.
+    expect(fromTripMap.href).toMatch(/^https:\/\/www\.google\.com\/maps\/search\/\?api=1&query=-?\d/);
+    expect(fromTripMap.href, "%f would leave trailing zeros on the coordinates").not.toMatch(/0{3},|0{3}$/);
+
+    // Now the same location's own page, which renders the other two.
+    const tripId = mapPath.split("/")[2];
+    await gotoRoute(page, `/trips/${tripId}/locations/${fromTripMap.itemId}`);
+    await page.waitForFunction(() => document.querySelector("leaflet-map")?.hasAttribute("data-ready"));
+
+    const fromLocationView = await page
+      .locator(".location-view__maps-link")
+      .getAttribute("href");
+    const fromSingleMarker = await (await openSingleMarkerPopup(page)).jsonValue();
+
+    expect(fromLocationView, "the location view's link should match the server's").toBe(fromTripMap.href);
+    expect(fromSingleMarker, "the single-marker popup's link should match the server's").toBe(fromTripMap.href);
+  });
+});

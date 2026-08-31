@@ -40,3 +40,27 @@ export function safeHref(raw) {
   if (parsed.host === "") return null;
   return trimmed;
 }
+
+// googleMapsUrl builds the outbound "View on Google Maps" link for a place.
+//
+// One helper rather than a string in each caller. It was written out three
+// times before Stage 29 Milestone 1 -- twice here in web/js and once in
+// internal/httpapi/map.go -- and the three had drifted apart: the Go copy
+// formatted coordinates with %f (six decimals, trailing zeros and all) while
+// both JS copies interpolated the raw number. Worse, the two popups in
+// leaflet-map.js disagreed about where the URL even comes from, the trip-wide
+// one reading a server-provided item.google_maps_url while the single-marker
+// one built its own. A change made in two of the three places did not look
+// wrong.
+//
+// The single-marker embed has no server payload to read -- it is driven
+// entirely by its own attributes -- so this function is the single path for
+// both JS callers, and its Go twin (googleMapsURL in internal/httpapi/map.go)
+// is kept byte-for-byte identical rather than being the one source. The Go
+// side formats with strconv.FormatFloat(v, 'f', -1, 64), which is the same
+// shortest-round-trip form JS gives a number in a template literal, so the
+// same place produces the same URL wherever the link is rendered. A UI spec
+// asserts that.
+export function googleMapsUrl(lat, lng) {
+  return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+}

@@ -7,7 +7,7 @@ import { renderLoading } from "../components/loading.js";
 import { canEdit, isShared } from "../trip-role.js";
 import { renderFileList } from "../components/file-list.js";
 import { formatDateRange } from "../format.js";
-import { safeHref } from "../url.js";
+import { googleMapsUrl, safeHref } from "../url.js";
 
 // A URL reduced to its host, for a credit that has a source page but no named
 // author.
@@ -102,7 +102,7 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
             hasCoords
               ? `
             <leaflet-map lat="${item.location.lat}" lng="${item.location.lng}" marker-title="${escapeAttr(item.title)}" marker-category="${escapeAttr(item.category)}"></leaflet-map>
-            <a class="location-view__maps-link" href="https://www.google.com/maps/search/?api=1&query=${item.location.lat},${item.location.lng}" target="_blank" rel="noopener" data-i18n="map.viewOnGoogleMaps"></a>
+            <a class="location-view__maps-link" href="${escapeAttr(googleMapsUrl(item.location.lat, item.location.lng))}" target="_blank" rel="noopener" data-i18n="map.viewOnGoogleMaps"></a>
           `
               : ""
           }

@@ -1730,6 +1730,131 @@ async function assertFitsAndTappable(page, root) {
   expect(result.small, "controls under 44px").toEqual([]);
 }
 
+// The reason this stage exists. Raster tiles bake their labels in before
+// anyone asks, so an instance had one language for everybody; a vector style
+// draws them in the browser, so the label expression can follow the reader.
+//
+// Asserted against the style object rather than against rendered glyphs,
+// deliberately: blockExternalRequests stops the fonts and the tiles, so
+// nothing is drawn to read. That the *drawing* follows the expression was
+// confirmed by hand against live tiles - Prague/Prag, Warsaw/Warschau,
+// Cologne/Köln - and is recorded in plans/stage-30.md rather than pretended at
+// here.
+test.describe("map labels follow the reader's language", () => {
+  const labelChains = (page) =>
+    page.evaluate(() => {
+      const layers = document.querySelector("leaflet-map")._map.getStyle().layers;
+      const withText = layers.filter((l) => l.layout?.["text-field"]);
+      return {
+        total: withText.length,
+        localised: withText
+          .filter((l) => l.layout["text-field"][0] === "coalesce")
+          .map((l) => l.layout["text-field"].slice(1).map((g) => g[1]).join(",")),
+        untouched: withText
+          .filter((l) => l.layout["text-field"][0] !== "coalesce")
+          .map((l) => JSON.stringify(l.layout["text-field"])),
+      };
+    });
+
+  test("English asks for English names, and falls back rather than blanking", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+    const { total, localised, untouched } = await labelChains(page);
+
+    expect(localised.length, "most label layers should be localised").toBeGreaterThan(10);
+    // One chain, every layer: the reader's locale, then whatever Latin-script
+    // name exists, then the local name. The last two are what keeps a place
+    // labelled at all where there is no translation - a bare ["get","name:en"]
+    // would blank every unlabelled feature on the map.
+    expect([...new Set(localised)]).toEqual(["name:en,name_en,name:latin,name"]);
+    expect(total).toBe(localised.length + untouched.length);
+  });
+
+  test("road shields keep their numbers", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+    const { untouched } = await labelChains(page);
+
+    // The trap in "rewrite every text-field layer": three layers in positron
+    // are motorway shields, whose text is ["to-string", ["get","ref"]]. A
+    // shield reads "A1" - not a name, with no translation - so localising it
+    // would blank every shield on the map. They must be left exactly as they
+    // came.
+    expect(untouched.length, "the shield layers should still be there").toBeGreaterThan(0);
+    for (const expr of untouched) {
+      expect(expr, "a non-name label must not have been rewritten").toBe('["to-string",["get","ref"]]');
+    }
+  });
+
+  test.describe("in German", () => {
+    test.use({ locale: "de-DE" });
+
+    test("the same map asks for German names", async ({ page }) => {
+      await login(page);
+      await gotoTripMap(page);
+      const { localised } = await labelChains(page);
+      expect([...new Set(localised)]).toEqual(["name:de,name_de,name:latin,name"]);
+    });
+  });
+
+  // The locale is a client-side preference that never reaches the server, so
+  // nothing refetches the style - the route re-renders and the component
+  // rebuilds. Worth asserting rather than assuming: the map is the only part
+  // of the app whose *content* comes from a document built at construction
+  // time, so a re-render that reused the existing map would leave the labels
+  // in the old language with everything around them switched.
+  test("switching language in the app relabels the map", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+    expect([...new Set((await labelChains(page)).localised)]).toEqual([
+      "name:en,name_en,name:latin,name",
+    ]);
+
+    await page.evaluate(async () => {
+      const { setLocale } = await import("/js/i18n.js");
+      await setLocale("de");
+    });
+    await page.waitForFunction(
+      () => document.querySelector("leaflet-map")?.hasAttribute("data-ready"),
+      null,
+      { timeout: 20000 }
+    );
+    await expect
+      .poll(async () => [...new Set((await labelChains(page)).localised)].join("|"), {
+        message: "the map should relabel itself when the app language changes",
+        timeout: 15000,
+      })
+      .toBe("name:de,name_de,name:latin,name");
+  });
+
+  // The other two mounts build their own maps, and the editor's picker in
+  // particular is constructed by a different page with different attributes.
+  test("the location view and the editor picker localise too", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("caravel.locale", "de"));
+    await login(page);
+    const routes = await buildRoutes(page);
+
+    // "new location" rather than "edit location" for the picker: it needs no
+    // surviving seeded row, and the specs that write are the reason the suite
+    // has an isolation problem (todo.md). Same mount, same claim, less shared
+    // state to depend on.
+    for (const label of ["view location", "new location"]) {
+      const route = routes.find((r) => r.label === label);
+      expect(route, `the sweep should know a ${label} route`).toBeTruthy();
+      await gotoRoute(page, route.path);
+      const chains = await page.evaluate(() => {
+        const host = document.querySelector("leaflet-map");
+        return host._map
+          .getStyle()
+          .layers.filter((l) => l.layout?.["text-field"]?.[0] === "coalesce")
+          .map((l) => l.layout["text-field"][1][1]);
+      });
+      expect(chains.length, `${label} should have localised label layers`).toBeGreaterThan(10);
+      expect([...new Set(chains)], `${label} should ask for German`).toEqual(["name:de"]);
+    }
+  });
+});
+
 test.describe("Stage 13's surfaces in German at 324px", () => {
   test.use({ locale: "de-DE", viewport: MOBILE });
 

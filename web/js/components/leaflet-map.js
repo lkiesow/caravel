@@ -1,5 +1,5 @@
 import { api } from "../api.js";
-import { t } from "../i18n.js";
+import { t, getLocale } from "../i18n.js";
 import { icon } from "../icon.js";
 import { getCurrentPosition, locateErrorKey, locateUnavailableReason } from "../geolocation.js";
 import { googleMapsUrl } from "../url.js";
@@ -59,7 +59,7 @@ async function buildStyle(tiles) {
     // object it is given, so two maps sharing one parsed document would
     // corrupt each other -- and the trip page mounts a second map without
     // tearing the first one down.
-    return structuredClone(await styleCache.get(tiles.style_url));
+    return localiseLabels(structuredClone(await styleCache.get(tiles.style_url)), getLocale());
   } catch {
     // A missing or malformed style should not leave a blank rectangle when
     // there is still a tile URL to fall back to. Same reasoning as
@@ -68,6 +68,55 @@ async function buildStyle(tiles) {
     styleCache.delete(tiles.style_url);
     return rasterStyle(tiles);
   }
+}
+
+// Labels in the reader's own language, which is the thing raster tiles could
+// never do: their labels are pixels baked in before anyone asked, so the whole
+// instance had to share one language. A vector style draws them in the browser,
+// so this rewrites the expression that chooses the text.
+//
+// The stock OpenFreeMap styles ship
+//   ["case", ["has","name:nonlatin"],
+//            ["concat", ["get","name:latin"], "\n", ["get","name:nonlatin"]],
+//            ["coalesce", ["get","name_en"], ["get","name"]]]
+// which is "English for everyone, and both scripts stacked where the local one
+// is non-Latin". Replaced with a plain preference chain: the reader's locale,
+// then whatever Latin-script name the data has, then the local name. The last
+// two are what keeps a place labelled at all when it has no translation.
+//
+// OpenMapTiles carries both spellings for the two locales this app supports --
+// `name:de` and `name_de` -- and which one a given feature has varies, so both
+// are asked for before falling back.
+//
+// NOT every text-field layer, which is the trap here: three layers in each
+// style are road shields, whose text-field is ["to-string", ["get","ref"]].
+// A motorway shield reads "A1", which is not a name and has no translation, so
+// rewriting those would blank every shield on the map. Only expressions that
+// actually ask for a name are touched.
+function localiseLabels(style, locale) {
+  for (const layer of style.layers || []) {
+    const field = layer.layout?.["text-field"];
+    if (!field || !readsAName(field)) continue;
+    layer.layout["text-field"] = [
+      "coalesce",
+      ["get", `name:${locale}`],
+      ["get", `name_${locale}`],
+      ["get", "name:latin"],
+      ["get", "name"],
+    ];
+  }
+  return style;
+}
+
+// Does this expression read any of the name fields? Walked rather than
+// string-matched so that a nested expression cannot hide a ["get", "name..."]
+// from it, and so "ref" can never look like a name.
+function readsAName(expr) {
+  if (!Array.isArray(expr)) return false;
+  if (expr[0] === "get" && typeof expr[1] === "string" && /^name([:_]|$)/.test(expr[1])) {
+    return true;
+  }
+  return expr.some((part) => readsAName(part));
 }
 
 // A raster provider expressed as a style document.

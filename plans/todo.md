@@ -59,6 +59,17 @@ purpose — do not reconstruct it from an older stage plan without asking.
 
 ## Planned features
 
+- **Right-to-left map labels are unshaped.** (Stage 30 Milestone 4.) MapLibre
+  renders Arabic and Hebrew correctly only with `setRTLTextPlugin`, which is a
+  separate ~200KB JS+WASM download it fetches from unpkg -- a third-party
+  runtime dependency in a project that vendors everything, for a case the label
+  chain already mostly covers: `name:latin` means an en or de reader sees
+  Cairo, not an unshaped attempt at the Arabic. What is left uncovered is a
+  place that has no Latin name at all, where the local name renders with its
+  letters in isolated forms. Worth doing if the app ever supports an RTL
+  interface language, at which point vendoring the plugin is the smaller
+  question.
+
 - **A time on an itinerary entry.** (Stage 25.) `item_dates` carried
   `all_day`, `start_time` and `end_time` from Stage 01 and never grew a UI for
   any of them; Stage 25 dropped the table without replacing them, so a 09:40
@@ -328,7 +339,11 @@ purpose — do not reconstruct it from an older stage plan without asking.
   (Observed while landing the files-tab staging patch after Stage 29, on
   `main` with no changes at all: `map.spec.js`'s two distance-filter tests, and
   sometimes `itinerary-order.spec.js`'s move-an-entry test, fail in a
-  `make test-ui` run and pass when run alone.) The failures are counts on the
+  `make test-ui` run and pass when run alone. Stage 30 Milestone 4 added a
+  fourth to the list: `register.spec.js`'s "logs the newcomer straight in",
+  which failed once in a full run and passes alone -- so this is not confined
+  to specs that count rows, and the list should be read as "whichever specs
+  happen to collide", not as four known cases.) The failures are counts on the
   seeded scenarios -- "expected 1 location within the radius, got 2" -- so the
   cause is the shared seed plus four parallel workers: the specs that write
   create locations and entries on trips other specs are counting. It is the

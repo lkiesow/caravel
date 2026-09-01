@@ -446,6 +446,70 @@ all three mount sites; switch back and confirm it reverts. Assert it in
 `map.spec.js` against the style object (`getStyle().layers`) rather than
 against rendered glyphs, which the suite blocks.
 
+**Done.** `localiseLabels()` runs inside `buildStyle()`, after the clone, so
+the cached parse is shared while each map gets its own localised copy. The
+chain is `name:<locale>` → `name_<locale>` → `name:latin` → `name`. The
+plan specified three links; the fourth is there because OpenMapTiles carries
+*both* spellings for exactly the two locales this app supports (`name:de` and
+`name_de`) and which one a given feature has varies, so asking for both costs
+nothing and misses less. The last two links are load-bearing rather than
+decorative: a bare `["get","name:en"]` would blank every feature without a
+translation.
+
+**The plan said "patch the 19 `text-field` layers" and that would have been a
+bug.** There are three distinct expression shapes in positron, not one, and the
+third is `["to-string", ["get","ref"]]` — road shields. A motorway shield reads
+"A1", which is not a name and has no translation, so rewriting those would have
+blanked every shield on the map. `localiseLabels` therefore rewrites only
+expressions that actually read a name field, decided by `readsAName()` walking
+the expression tree rather than by matching strings, so a nested expression
+cannot hide a `["get","name…"]` and `ref` can never look like a name. Measured
+result: positron 16 of 19 rewritten, dark 12 of 13, and every untouched layer
+in both is a shield. The counts also correct the plan's "19 for each" —
+that was positron's number; dark has 13.
+
+Also worth recording: the plan's premise that only 2 locales matter held, but
+the *style* counts differ per document, so anything that hardcodes a number
+here will drift.
+
+Verified: `make ci` green; `make test-ui` at 211 passed. Six new specs assert
+the chain for English and for German, that a `setLocale` call inside the app
+relabels the live map, that the other two mount sites localise too, and — the
+one that guards the trap — that every non-name label is still exactly
+`["to-string",["get","ref"]]`. They read the style object rather than rendered
+glyphs, because `blockExternalRequests` stops the fonts, so there is nothing
+drawn to read.
+
+That the *drawing* follows the expression was confirmed by hand against a live
+`make dev` with real tiles, which is the evidence the specs cannot give. The
+same view of central Europe at zoom 5, in the two locales:
+
+- **en** — Germany, Poland, Czechia, Slovakia, Prague, Warsaw, Vienna,
+  Nuremberg, Cologne, Frankfurt
+- **de** — Deutschland, Polen, Tschechien, Slowakei, Prag, Warschau, Wien,
+  Nürnberg, Köln, Frankfurt am Main
+
+with the German screenshot also showing "Krakau", "Woiwodschaft
+Niederschlesien" and the app's own chrome (Ort / Unterkunft / Transport, Mein
+Standort) — the map and the interface finally in the same language, which is
+the thing raster tiles could not do at any price.
+
+**Not shipped, as planned:** `setRTLTextPlugin`. The coalesce already renders
+Arabic and Hebrew places in Latin script for en/de readers via `name:latin`;
+unshaped RTL is only reachable for a place that has no Latin name at all.
+Recorded in `todo.md` rather than vendoring a ~200KB WASM download into a repo
+whose whole shape is hand-written ES modules.
+
+**One flake observed and recorded, not caused here.** `register.spec.js`'s
+"logs the newcomer straight in" failed once in a full run and passes alone. It
+is untouched since Stage 19 and has nothing to do with maps — it is the same
+shared-seed collision `todo.md:308-319` describes, and that entry now says so,
+since a fourth spec means the list should be read as "whichever specs happen to
+collide" rather than as three known cases. One of this milestone's own new
+specs also failed once the same way and was made less exposed to it (it uses
+the "new location" route, which needs no surviving seeded row, rather than
+"edit location").
+
 ## 5. Map appearance: four modes
 
 The stage's second half, and the part not in the backlog.

@@ -27,12 +27,23 @@ const (
 	DefaultTileMaxZoom     = 19
 )
 
+// DefaultMapStyleURL is the vector style the frontend draws by default, served
+// from Caravel's own origin (web/js/vendor/map-styles/). Vector rather than
+// raster because the labels are drawn in the browser, which is the only way
+// they can follow each reader's own language rather than the instance's --
+// the whole point of Stage 30.
+//
+// It is a path, not a full URL: the styles are vendored, so an instance behind
+// any hostname serves its own copy.
+const DefaultMapStyleURL = "/js/vendor/map-styles/positron.json"
+
 // TileSettings is the tile layer as the operator configured it. A zero field
 // means unset and takes the default above -- the same convention the assist
 // limits use.
 type TileSettings struct {
 	URL string
-	// Attribution is HTML, rendered as markup by Leaflet and deliberately not
+	// Attribution is HTML, rendered as markup by the map library and
+	// deliberately not
 	// escaped: every provider's terms require a working link back, and this
 	// value comes from the operator's environment rather than from a user.
 	Attribution string
@@ -53,9 +64,34 @@ func (t TileSettings) withDefaults() TileSettings {
 }
 
 type tileConfigResponse struct {
+	// StyleURL is the vector style to draw, or empty when the operator has
+	// pinned a raster provider -- see styleURL below. The frontend treats an
+	// empty value as "build a raster style from the tile fields".
+	StyleURL        string `json:"style_url"`
 	TileURL         string `json:"tile_url"`
 	TileAttribution string `json:"tile_attribution"`
 	MaxZoom         int    `json:"max_zoom"`
+}
+
+// styleURL decides between the vector default and the operator's raster
+// provider.
+//
+// The rule is deliberately made here rather than in the browser: an operator
+// who set CARAVEL_TILE_URL asked for those tiles and should get them, and an
+// operator who did not should get the vector default. The frontend could infer
+// the same thing by comparing against a copy of DefaultTileURL, but then the
+// default would have to stay in step across two languages to keep meaning what
+// it says.
+//
+// This is the smaller half of what Stage 30 Milestone 6 will do properly, with
+// its own setting for choosing a style. It exists now so that swapping the map
+// library does not quietly ignore a documented configuration option in the
+// meantime.
+func (s *Server) styleURL() string {
+	if s.Tiles.URL != DefaultTileURL {
+		return ""
+	}
+	return DefaultMapStyleURL
 }
 
 // handleMapConfig tells the frontend where to fetch tiles from.
@@ -65,6 +101,7 @@ type tileConfigResponse struct {
 // instance's tile provider to anonymous callers.
 func (s *Server) handleMapConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, tileConfigResponse{
+		StyleURL:        s.styleURL(),
 		TileURL:         s.Tiles.URL,
 		TileAttribution: s.Tiles.Attribution,
 		MaxZoom:         s.Tiles.MaxZoom,

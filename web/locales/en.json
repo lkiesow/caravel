@@ -237,6 +237,7 @@
   "trip.editor.basicInfo": "Basic info",
   "trip.editor.createButton": "Create trip",
   "map.empty": "No items with a location yet. Add a location to an item and it'll show up here.",
+  "map.unavailable": "This map could not be displayed in this browser.",
   "map.openLocation": "Open location",
   "map.viewOnGoogleMaps": "View on Google Maps",
   "map.viewOnOpenStreetMap": "View on OpenStreetMap",

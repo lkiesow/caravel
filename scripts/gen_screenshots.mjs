@@ -112,64 +112,41 @@ async function shoot(page, name, opts = {}) {
   // it asks for more tiles than fit in the settle, and mobile-map.png came out
   // with a grey rectangle where the top-left ones had not arrived.
   //
-  // "Settled" is not "loaded": a tile whose request was aborted ends up
-  // complete with naturalWidth 0 and never gains leaflet-tile-loaded, so
-  // waiting for every tile to load would hang for the full timeout every run.
-  // Those are counted as finished and retried once instead -- re-assigning src
-  // re-requests them -- because the tiles themselves are fine; they were
-  // dropped, not missing. Verified by hand: the two that failed here answer 200
-  // over the network.
+  // Stage 30 made this both shorter and stronger. This used to poll the DOM
+  // for <img class="leaflet-tile"> and work out "settled" from complete and
+  // naturalWidth, because a tile whose request was aborted never gains
+  // leaflet-tile-loaded and waiting for every tile to load would hang for the
+  // full timeout. Vector tiles are not elements at all, and MapLibre answers
+  // the question directly: `idle` means every tile for the current view has
+  // been fetched and drawn, and areTilesLoaded() reports whether any are still
+  // outstanding. No polling, no retry-by-reassigning-src, no heuristic.
   //
-  // This is the failure the comment at the top of this function calls the one
-  // the script cannot detect itself. It can now.
-  const tileState = () =>
-    page.evaluate(() => {
-      const host = document.querySelector("leaflet-map");
-      if (!host?.shadowRoot) return null;
-      const tiles = [...host.shadowRoot.querySelectorAll(".leaflet-tile")];
-      const failed = tiles.filter((t) => !t.classList.contains("leaflet-tile-loaded") && t.complete && t.naturalWidth === 0);
-      const pending = tiles.filter((t) => !t.classList.contains("leaflet-tile-loaded") && !(t.complete && t.naturalWidth === 0));
-      return { total: tiles.length, failed: failed.length, pending: pending.length };
-    });
-
-  const settle = () =>
+  // The retry is kept in spirit: the failures seen while writing the original
+  // were NS_ERROR_UNKNOWN_HOST, transient DNS rather than the server saying no,
+  // so one pause-and-refresh is still worth a try before warning.
+  const mapSettled = (timeout) =>
     page
       .waitForFunction(
         () => {
           const host = document.querySelector("leaflet-map");
           if (!host?.shadowRoot) return true; // no map on this page
-          const tiles = [...host.shadowRoot.querySelectorAll(".leaflet-tile")];
-          if (!tiles.length) return false;
-          return tiles.every(
-            (t) => t.classList.contains("leaflet-tile-loaded") || (t.complete && t.naturalWidth === 0)
-          );
+          const map = host._map;
+          if (!map) return false;
+          return map.loaded() && map.areTilesLoaded();
         },
         null,
-        { timeout: 15_000 }
+        { timeout }
       )
-      .catch(() => {});
+      .then(() => true)
+      .catch(() => false);
 
-  await settle();
-  if ((await tileState())?.failed) {
-    // A pause before retrying, because the failures seen while writing this
-    // were NS_ERROR_UNKNOWN_HOST -- transient DNS, not the tile server saying
-    // no (the same tiles answer 200 to curl). Retrying instantly just fails
-    // again against the same unresolved name.
+  if (!(await mapSettled(15_000))) {
     await page.waitForTimeout(1500);
-    await page.evaluate(() => {
-      const host = document.querySelector("leaflet-map");
-      host?.shadowRoot?.querySelectorAll(".leaflet-tile").forEach((t) => {
-        if (!t.classList.contains("leaflet-tile-loaded") && t.complete && t.naturalWidth === 0) {
-          const src = t.src;
-          t.src = "";
-          t.src = src;
-        }
-      });
-    });
-    await settle();
-    const after = await tileState();
-    if (after?.failed) {
-      console.log(`  WARNING: ${name} has ${after.failed} tile(s) that would not load — expect grey patches`);
+    // triggerRepaint re-asks for anything that failed; there is no per-tile
+    // handle to poke the way there was with an <img> src.
+    await page.evaluate(() => document.querySelector("leaflet-map")?._map?.triggerRepaint());
+    if (!(await mapSettled(15_000))) {
+      console.log(`  WARNING: ${name} has tiles that would not load — expect grey patches`);
     }
   }
 

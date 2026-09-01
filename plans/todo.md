@@ -305,6 +305,16 @@ purpose — do not reconstruct it from an older stage plan without asking.
 
 ## Testing, CI and dev tooling
 
+- **A vertical two-finger pan cannot move the trip map, by design.** (Stage 30
+  Milestone 2.) MapLibre pins the camera when the world already fits the
+  viewport, and at the trip map's `fitBounds` zoom the world height and the
+  container height agree to within a pixel (measured: 643 and 643). That is
+  correct behaviour and an improvement on Leaflet, which would drag the world
+  off the top of the screen -- but it means latitude is the one axis that
+  cannot demonstrate a pan there, and both gesture tests had to move to
+  longitude to keep asserting anything. Worth knowing before writing any
+  further gesture test against that route.
+
 - **`scripts/check_js.sh` cannot see a `.mjs` file.** (Stage 30 Milestone 1.)
   It walks `find web/js -name '*.js'`, so the three vendored MapLibre modules
   go unparsed where `leaflet.esm.js` was covered by virtue of its extension.

@@ -9,6 +9,7 @@ import { googleMapsUrl } from "../url.js";
 // the request fails, and a Map tab of grey squares is a worse answer to "the
 // config endpoint is briefly unreachable" than the tiles Caravel shipped with.
 const DEFAULT_TILE_CONFIG = {
+  style_url: "/js/vendor/map-styles/positron.json",
   tile_url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
   tile_attribution:
     '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
@@ -25,6 +26,81 @@ function loadTileConfig() {
     tileConfigPromise = api.get("/map/config").catch(() => DEFAULT_TILE_CONFIG);
   }
   return tileConfigPromise;
+}
+
+// MapLibre draws from a *style*, not from a tile layer, so there is no longer
+// a one-line "here is the tile URL" call. Two shapes come out of here:
+//
+//   - the vector style the instance points at, vendored under
+//     web/js/vendor/map-styles/ and served from our own origin;
+//   - a raster style synthesised from CARAVEL_TILE_URL, for an operator who
+//     has pinned a raster provider. The server decides which by leaving
+//     style_url empty when the tile URL is not the shipped default, so the
+//     choice lives with the person who configured it rather than being
+//     guessed from a string comparison in the browser.
+//
+// Memoised per style URL for the same reason loadTileConfig is: three mounts,
+// one answer, and re-parsing 25KB of JSON per map is waste.
+const styleCache = new Map();
+
+async function buildStyle(tiles) {
+  if (!tiles.style_url) return rasterStyle(tiles);
+  if (!styleCache.has(tiles.style_url)) {
+    styleCache.set(
+      tiles.style_url,
+      fetch(tiles.style_url).then((r) => {
+        if (!r.ok) throw new Error(`style ${r.status}`);
+        return r.json();
+      })
+    );
+  }
+  try {
+    // Structured-cloned rather than handed out: MapLibre mutates the style
+    // object it is given, so two maps sharing one parsed document would
+    // corrupt each other -- and the trip page mounts a second map without
+    // tearing the first one down.
+    return structuredClone(await styleCache.get(tiles.style_url));
+  } catch {
+    // A missing or malformed style should not leave a blank rectangle when
+    // there is still a tile URL to fall back to. Same reasoning as
+    // DEFAULT_TILE_CONFIG above: a working map from the shipped defaults
+    // beats an honest void.
+    styleCache.delete(tiles.style_url);
+    return rasterStyle(tiles);
+  }
+}
+
+// A raster provider expressed as a style document.
+//
+// Two of Leaflet's tile-layer conveniences have no MapLibre counterpart and
+// are handled here instead:
+//
+//   - {s}. MapLibre round-robins the `tiles` array, which is exactly what
+//     Leaflet's subdomains option did, so expanding the placeholder into three
+//     URLs reproduces it -- and reproduces it *correctly*, since the list is
+//     written out rather than inferred. The old "abcd" bug (a quarter of all
+//     tiles sent to d.tile.openstreetmap.org, a host that does not resolve)
+//     cannot recur in this shape.
+//   - {r}, the @2x retina suffix, which MapLibre does not substitute. Stripped
+//     rather than faked: a URL asking for @2x tiles still resolves without it,
+//     where leaving the literal "{r}" in would 404 every tile.
+function rasterStyle(tiles) {
+  const url = tiles.tile_url.replace("{r}", "");
+  const urls = url.includes("{s}")
+    ? ["a", "b", "c"].map((s) => url.replace("{s}", s))
+    : [url];
+  return {
+    version: 8,
+    sources: {
+      tiles: {
+        type: "raster",
+        tiles: urls,
+        tileSize: 256,
+        maxzoom: tiles.max_zoom,
+      },
+    },
+    layers: [{ id: "tiles", type: "raster", source: "tiles" }],
+  };
 }
 
 const CATEGORY_COLORS = {
@@ -71,45 +147,80 @@ const PICK_PRECISION = 1e6;
 // same hue at low opacity so the two read as one thing.
 const HERE_MARKER_COLOR = "#0891b2";
 
+// The GeoJSON source and layer prefix for the accuracy ring.
+const ACCURACY_SOURCE = "here-accuracy";
+
 // Zoom used when centring on the device's position. Closer than
 // SINGLE_MARKER_ZOOM: you know roughly where you are, so the useful question
 // is what is on the next street, not which region this is.
 const HERE_ZOOM = 15;
 
-// Every marker in this component is drawn as a CSS dot rather than an image.
-// Leaflet's default marker is an <img> whose src is resolved relative to the
-// *page* URL, which in an SPA means /trips/<id>/locations/marker-icon.png -
-// answered with the app's HTML and rendered as a broken image. Sidestepping
-// the icon assets entirely also keeps the vendored Leaflet copy image-free.
-function markerIcon(L, category) {
+// Every marker in this component is drawn as a CSS dot rather than an image,
+// and under MapLibre that is simply what a marker *is*: `new Marker({element})`
+// takes a DOM node and positions it. The library's own default marker is an
+// inline SVG, so there are no icon assets to vendor either way -- which is one
+// of the small things that got easier in the swap. Leaflet's default marker
+// was an <img> whose src resolved against the *page* URL, meaning
+// /trips/<id>/locations/marker-icon.png in an SPA, answered with the app's own
+// HTML and rendered as a broken image; sidestepping that is no longer a
+// consideration.
+//
+// MapLibre adds `maplibregl-marker` and an anchor class to whatever element it
+// is handed, and writes `transform` on it to place it, leaving everything else
+// alone -- so the inline styles below survive and the tests can still select a
+// marker by class.
+function markerElement(category) {
   const color = CATEGORY_COLORS[category] || FALLBACK_MARKER_COLOR;
-  return L.divIcon({
-    className: "",
-    html: `<span style="display:block;width:1rem;height:1rem;border-radius:50%;background:${color};border:2px solid white;box-shadow:0 0 2px rgba(0,0,0,.5)"></span>`,
-    iconSize: [16, 16],
-  });
+  return styled(
+    `display:block;width:1rem;height:1rem;border-radius:50%;background:${color};` +
+      `border:2px solid white;box-shadow:0 0 2px rgba(0,0,0,.5)`
+  );
 }
 
-function pickMarkerIcon(L) {
-  return L.divIcon({
-    className: "",
-    html:
-      `<span style="display:block;width:1.5rem;height:1.5rem;border-radius:50%;box-sizing:border-box;` +
+function pickMarkerElement() {
+  return styled(
+    `display:block;width:1.5rem;height:1.5rem;border-radius:50%;box-sizing:border-box;` +
       `border:4px solid ${PICK_MARKER_COLOR};background:rgba(255,255,255,.85);` +
-      `box-shadow:0 0 3px rgba(0,0,0,.6)"></span>`,
-    iconSize: [24, 24],
-  });
+      `box-shadow:0 0 3px rgba(0,0,0,.6)`
+  );
 }
 
-function hereMarkerIcon(L) {
-  return L.divIcon({
-    className: "",
-    html:
-      `<span style="display:block;width:1rem;height:1rem;border-radius:50%;box-sizing:border-box;` +
+function hereMarkerElement() {
+  return styled(
+    `display:block;width:1rem;height:1rem;border-radius:50%;box-sizing:border-box;` +
       `background:${HERE_MARKER_COLOR};border:3px solid white;` +
-      `box-shadow:0 0 4px rgba(0,0,0,.6)"></span>`,
-    iconSize: [16, 16],
-  });
+      `box-shadow:0 0 4px rgba(0,0,0,.6)`
+  );
+}
+
+function styled(css) {
+  const el = document.createElement("span");
+  el.style.cssText = css;
+  return el;
+}
+
+// The accuracy ring, as a polygon.
+//
+// MapLibre has no metre-radius circle: a `circle` layer's radius is in screen
+// pixels, so it would be a fixed dot that means a different distance at every
+// zoom -- the opposite of what this ring is for. Approximating the circle in
+// degrees instead keeps it correct on the ground at any zoom, with no
+// expression arithmetic to re-derive when the position changes.
+//
+// 111320 is metres per degree of latitude; longitude is that scaled by
+// cos(latitude), which is what keeps the ring circular rather than an ellipse
+// away from the equator.
+const RING_VERTICES = 64;
+
+function accuracyRing(lat, lng, radiusMetres) {
+  const dLat = radiusMetres / 111320;
+  const dLng = radiusMetres / (111320 * Math.cos((lat * Math.PI) / 180));
+  const ring = [];
+  for (let i = 0; i <= RING_VERTICES; i++) {
+    const theta = (i / RING_VERTICES) * 2 * Math.PI;
+    ring.push([lng + dLng * Math.sin(theta), lat + dLat * Math.cos(theta)]);
+  }
+  return { type: "Feature", geometry: { type: "Polygon", coordinates: [ring] }, properties: {} };
 }
 
 const styles = `
@@ -141,13 +252,14 @@ const styles = `
     /* A flex item's default min-height: auto would let the map's content
        floor the box instead of the flex basis doing it. */
     min-height: 0;
-    /* Leaflet parks internal helpers (.leaflet-proxy, the zoom-animation
-       panes) at very large offsets - measured at right=1825757 on a settled
-       page. .leaflet-container clips them once it is initialised, but during
-       init and zoom animation they briefly contribute to layout, and the UI
-       suite caught that as a page-level horizontal overflow of 1636px against
-       a 1280px viewport. The component should not be able to widen the
-       document whatever the library does mid-animation. */
+    /* Kept from the Leaflet era, for a weaker reason than it had then.
+       Leaflet parked internal helpers at very large offsets (measured at
+       right=1825757) and briefly widened the document by 1636px mid-animation,
+       which the UI suite caught as a page-level overflow. MapLibre draws into
+       one canvas and does no such thing. This stays because the component
+       still should not be able to widen the document whatever the library does
+       -- the popup and the attribution control both live in here and are sized
+       by their own content. */
     overflow: hidden;
   }
   /* --map-height is what the map box measures, and it exists so the gesture
@@ -215,8 +327,9 @@ const styles = `
     display: block;
   }
   /* The locate control, overlaid on the map like a map control should be.
-     Bottom left: Leaflet's zoom sits top left, the legend top right and the
-     attribution bottom right, so this is the one free corner. */
+     Bottom left: the zoom control sits top left, the legend top right and the
+     attribution bottom right, so this is the one free corner. Unchanged by the
+     MapLibre swap -- it puts its controls in the same corners. */
   .locate {
     position: absolute;
     bottom: 0.5rem;
@@ -302,6 +415,19 @@ const styles = `
     opacity: 1;
     transition: opacity 150ms ease-out;
   }
+  /* MapLibre's own cooperative-gesture overlay, suppressed in favour of
+     .gesture-hint above.
+     Not a styling preference. Its screen is aria-hidden="true" with no
+     role="status", so it announces nothing; it picks its wording from the user
+     agent (Windows vs Mac help text) rather than from which modifier was
+     actually pressed; and it runs on its own ~2s opacity transition rather
+     than GESTURE_HINT_MS. The hint above is the app's accessibility contract
+     and is what both gesture specs assert on, so having two overlays saying
+     the same thing differently would be strictly worse than one. The handler
+     itself stays on -- it is what makes a one-finger drag scroll the page. */
+  .maplibregl-cooperative-gesture-screen {
+    display: none;
+  }
   .gesture-hint[hidden] {
     /* [hidden] alone would be display:none, which cannot transition. Keeping
        it in the layout and fading it out is what makes the appearance and the
@@ -345,9 +471,10 @@ const styles = `
 
        The cap on the trip map is gone. This entry has carried a warning since
        Stage 21 that the cap was the Stage 13 fix for the map swallowing the
-       page scroll -- but that reasoning predates dragging: !isCoarsePointer()
-       landing in the same milestone, and with Leaflet's drag handler off a
-       one-finger drag over the map is never consumed at any height. The legend
+       page scroll -- but that reasoning predates the coarse-pointer drag fix
+       landing in the same milestone, and a one-finger drag over the map is
+       never consumed at any height (Stage 30 replaced the mechanism with
+       MapLibre's cooperativeGestures, which keeps that property). The legend
        above the map stays because that is where the filters live, not because
        the page needs somewhere to be dragged from.
 
@@ -391,8 +518,8 @@ const styles = `
     }
     /* Same reasoning, and it needs stating here rather than being caught by
        the sweep: routes.spec.js's tap-target check skips anything under a
-       leaflet-* class, and Leaflet renders popup content inside
-       .leaflet-popup-content - so these links are invisible to it. They are
+       maplibregl-* class, and popup content is rendered inside
+       .maplibregl-popup-content - so these links are invisible to it. They are
        asserted directly in map.spec.js instead. */
     .popup-link {
       min-height: var(--tap-min, 2.75rem);
@@ -416,6 +543,37 @@ class LeafletMap extends HTMLElement {
 
   attributeChangedCallback() {
     if (this.isConnected) this.load();
+  }
+
+  // Leaflet needed no teardown worth the name. MapLibre holds a WebGL context
+  // and a worker, and a browser will start killing the oldest contexts once
+  // enough are live - so a map that is navigated away from has to say so.
+  disconnectedCallback() {
+    this._generation = (this._generation || 0) + 1;
+    this.destroyMap();
+  }
+
+  destroyMap() {
+    this._map?.remove();
+    this._map = null;
+    this._markers = [];
+    this._pickMarker = null;
+    this._hereMarker = null;
+  }
+
+  // Shown instead of a map when a context cannot be had at all. Reuses the
+  // .empty overlay the trip map already has for "nothing has a location yet":
+  // both are the same situation from the reader's side - a rectangle where a
+  // map should be, with a sentence saying why.
+  showMapUnavailable(err) {
+    console.warn("map unavailable", err);
+    const wrap = this.shadowRoot.querySelector(".map-wrap");
+    if (!wrap) return;
+    wrap.querySelector(".empty")?.remove();
+    const p = document.createElement("p");
+    p.className = "empty";
+    p.textContent = t("map.unavailable");
+    wrap.appendChild(p);
   }
 
   async load() {
@@ -451,8 +609,8 @@ class LeafletMap extends HTMLElement {
     // is allowed to touch the DOM once its awaits resolve.
     const generation = (this._generation = (this._generation || 0) + 1);
 
-    // A render builds a new Leaflet map, so whatever the person did to the
-    // previous one does not carry over.
+    // A render builds a new map, so whatever the person did to the previous
+    // one does not carry over.
     this._userMovedMap = false;
 
     const lat = this.getAttribute("lat");
@@ -485,21 +643,27 @@ class LeafletMap extends HTMLElement {
   }
 
   async render(generation) {
-    // Cleared up front and set again at the end: Leaflet is lazily imported
-    // inside this method, so between "the route's fetches have settled" and
-    // "the map has laid itself out" there is a window in which the component
-    // is on the page but half-built. The UI sweeps used to measure that
-    // window under load and report Leaflet's un-sized controls as content
-    // overflowing .map-wrap. This is the component stating its own readiness
-    // rather than the suite guessing - the small version of the "ready
-    // signal" todo.md asks for app-wide.
+    // Before the innerHTML below detaches its container, not after: a map torn
+    // down with its container already gone still releases the GL context, but
+    // only by the library's good manners. Doing it in the right order means
+    // not depending on them.
+    this.destroyMap();
+
+    // Cleared up front and set again on the map's own `load`: the library is
+    // lazily imported inside this method, so between "the route's fetches have
+    // settled" and "the map has laid itself out" there is a window in which
+    // the component is on the page but half-built. The UI sweeps used to
+    // measure that window under load and report un-sized map controls as
+    // content overflowing .map-wrap. This is the component stating its own
+    // readiness rather than the suite guessing - the small version of the
+    // "ready signal" todo.md asks for app-wide.
     this.removeAttribute("data-ready");
     const single = this._singleMarker;
     // The legend filters trip-wide markers, of which pick mode has none - and
     // so does the "nothing has a location yet" line below.
     const chromeless = single || this._pick;
     this.shadowRoot.innerHTML = `
-      <link rel="stylesheet" href="/js/vendor/leaflet/leaflet.css" />
+      <link rel="stylesheet" href="/js/vendor/maplibre/maplibre-gl.css" />
       <style>${styles}</style>
       <div class="map-wrap">
         <div id="map"></div>
@@ -536,75 +700,101 @@ class LeafletMap extends HTMLElement {
       );
     }
 
-    // Lazy-load Leaflet only when the map is actually shown, keeping it out
-    // of the initial page weight for users who never open the Map tab. The
-    // tile config is fetched alongside it rather than after: both are needed
-    // before the first tile can be requested, so serialising them would cost
-    // a round trip, and awaiting the config *after* L.map() would leave a
-    // constructed, tile-less map behind whenever this render is superseded
-    // mid-fetch.
-    const [L, tiles] = await Promise.all([
-      import("../vendor/leaflet/leaflet.esm.js"),
+    // Lazy-load MapLibre only when the map is actually shown, keeping it out
+    // of the initial page weight for users who never open the Map tab. That
+    // mattered with Leaflet and matters more now: the vendored library is
+    // ~1.1MB across three modules against Leaflet's 440KB.
+    //
+    // The tile config is fetched alongside it rather than after: both are
+    // needed before the first tile can be requested, so serialising them would
+    // cost a round trip, and awaiting the config *after* constructing the map
+    // would leave a constructed, tile-less map behind whenever this render is
+    // superseded mid-fetch.
+    const [maplibre, tiles] = await Promise.all([
+      import("../vendor/maplibre/maplibre-gl.mjs"),
       loadTileConfig(),
     ]);
     if (generation !== this._generation) return;
-    this._L = L;
+    this._maplibre = maplibre;
+
+    const style = await buildStyle(tiles);
+    if (generation !== this._generation) return;
 
     const mapEl = this.shadowRoot.getElementById("map");
-    // dragging: false on touch is the other half of the "the map swallows the
-    // page scroll" fix. With Leaflet's drag handler off, a one-finger drag is
-    // not consumed by the map at all and scrolls the page; two fingers still
-    // pan *and* zoom, because Leaflet's touchZoom handler (left enabled)
-    // applies the pinch centre's delta even when the pinch scale is exactly 1
-    // - see TouchZoom._onTouchMove in the vendored leaflet.esm.js. So this
-    // needs no touchstart/touchend juggling of our own, which the Stage 13
-    // plan had budgeted for: enabling dragging mid-touchstart would have been
-    // too late for Leaflet's own listener to see that same gesture anyway.
-    // scrollWheelZoom: false because the wheel is handled entirely in
-    // bindGestureGate below -- see the reasoning there. Leaflet's own handler
-    // being off is what makes the gesture deterministic: there is exactly one
-    // piece of code deciding what a wheel does.
-    const map = L.map(mapEl, {
-      attributionControl: true,
-      dragging: !isCoarsePointer(),
-      scrollWheelZoom: false,
-    });
-    this._map = map;
 
-    L.tileLayer(tiles.tile_url, {
-      maxZoom: tiles.max_zoom,
-      attribution: tiles.tile_attribution,
-      // detectRetina does more than substitute {r}: it also halves tileSize
-      // and bumps zoomOffset, so switching it on for a provider with no @2x
-      // variant asks for four tiles where one would do. Gating on the
-      // placeholder lets a provider that serves @2x opt in through its URL
-      // alone, and leaves the default provider loading exactly what it did
-      // before this was configurable.
-      detectRetina: tiles.tile_url.includes("{r}"),
-      // a, b, c -- Leaflet's own default, and what OpenStreetMap actually
-      // serves. This said "abcd" on the theory that it covered both the
-      // 3-subdomain and 4-subdomain conventions, which is not how Leaflet uses
-      // the list: it picks one per tile by hashing the coordinates, so a fourth
-      // entry does not add a fallback, it sends a quarter of all tiles to
-      // d.tile.openstreetmap.org -- a host that does not resolve. That is where
-      // the grey patches in every map came from, and why the documentation
-      // screenshots could not be regenerated cleanly.
-      // Leaflet ignores this entirely for a URL with no {s}.
-      subdomains: "abc",
-    }).addTo(map);
+    let map;
+    try {
+      map = new maplibre.Map({
+        container: mapEl,
+        style,
+        // MapLibre needs a view up front, where Leaflet tolerated a map with
+        // none until setView. This is the same world view the empty trip map
+        // and the coordinate-less picker settle on anyway.
+        center: [0, 20],
+        zoom: 2,
+        // The default attribution control credits MapLibre itself and hides
+        // behind a toggle under 640px. compact: false keeps the operator's
+        // configured credit visible, which is what every provider's terms
+        // actually ask for; customAttribution is how that credit gets in,
+        // since it no longer travels with a tile layer. It is rendered as
+        // markup - MapLibre strips <script>, on* and javascript:/data: URLs
+        // and leaves the rest - so the "attribution is HTML" contract that
+        // internal/httpapi/map.go documents survives the swap unchanged.
+        attributionControl: { compact: false, customAttribution: tiles.tile_attribution },
+        // The wheel is handled entirely in bindGestureGate below - see the
+        // reasoning there. The library's own handler being off is what makes
+        // the gesture deterministic: there is exactly one piece of code
+        // deciding what a wheel does. This also sidesteps MapLibre's
+        // cooperative-gesture bypass key, which is metaKey only on a Mac user
+        // agent and so would drop Meta support everywhere else.
+        scrollZoom: false,
+        // "One finger scrolls the page, two fingers work the map" - the other
+        // half of Stage 07's "the map swallows the page scroll" fix, and now a
+        // supported option rather than something assembled from handler flags.
+        // Note it is NOT dragPan: false, which was the obvious translation of
+        // Leaflet's dragging: false and is wrong: MapLibre routes touch
+        // panning of *any* finger count through dragPan, so turning it off
+        // would take the two-finger pan with it. cooperativeGestures raises
+        // the handler's minimum to two touches and puts touch-action on the
+        // canvas container so the browser scrolls the page for the first one.
+        // It applies on every pointer type, so the matchMedia check the old
+        // code needed is gone; mouse dragging is unaffected.
+        cooperativeGestures: true,
+        // Rotation and pitch are capabilities Leaflet never had, on by default
+        // here, and nothing in this app wants them: a tilted map with north
+        // somewhere other than up is a new way to be lost, and two fingers on
+        // a phone would reach for it constantly.
+        dragRotate: false,
+        touchPitch: false,
+        pitchWithRotate: false,
+        rollEnabled: false,
+      });
+    } catch (err) {
+      // MapLibre v6 requires WebGL2 and throws when it cannot get a context.
+      // Failing here must still finish the render: data-ready is what every
+      // route sweep in the UI suite blocks on, so leaving it off would turn a
+      // missing GPU into a 15s timeout on every page with a map rather than
+      // into a message.
+      this.showMapUnavailable(err);
+      this.setAttribute("data-ready", "");
+      return;
+    }
+    this._map = map;
+    map.touchZoomRotate.disableRotation();
+    map.keyboard.disableRotation();
 
     // Has the person moved this map themselves? syncPickMarker needs to know,
     // so that typing coordinates into the form can zoom to them without
     // yanking a map somebody has already positioned.
     //
-    // Real input events rather than Leaflet's zoomend/dragend, and that is the
-    // point: setView fires those too, so a flag fed by them would be set by
-    // our *own* recentring - including the world view this very component
+    // Real input events rather than the map's own move/zoom events, and that
+    // is the point: jumpTo fires those too, so a flag fed by them would be set
+    // by our *own* recentring - including the world view this very component
     // takes when it opens with no coordinates, which would disable the
     // feature outright. mousedown covers dragging, the zoom buttons and
     // double-click zoom; wheel covers wheel zoom; touchstart covers pinch;
     // keydown covers the arrow and +/- keys. None of them can be raised by
-    // setView.
+    // jumpTo.
     const noteUserMovedMap = () => {
       this._userMovedMap = true;
     };
@@ -628,8 +818,8 @@ class LeafletMap extends HTMLElement {
 
     this.plotMarkers();
 
-    // Delegated, because Leaflet builds and destroys popup DOM on demand -
-    // there is nothing to bind to until a marker is clicked.
+    // Delegated, because popup DOM is built and destroyed on demand - there is
+    // nothing to bind to until a marker is clicked.
     //
     // The router's own [data-link] interception cannot reach this. It is a
     // listener on `document` doing e.target.closest("[data-link]"), and a
@@ -658,16 +848,32 @@ class LeafletMap extends HTMLElement {
     });
 
     if (this._pick) {
-      // Click anywhere to place or move the point. Leaflet's own click event
-      // rather than a DOM listener, because it hands over the latlng already
-      // projected - and it does not fire on a marker drag, which has its own
-      // handler in syncPickMarker.
-      map.on("click", (e) => this.emitPick(e.latlng));
+      // Click anywhere to place or move the point. The map's own click event
+      // rather than a DOM listener, because it hands over the coordinate
+      // already projected - and it does not fire on a marker drag, which has
+      // its own handler in syncPickMarker.
+      map.on("click", (e) => this.emitPick(e.lngLat));
     }
+
+    // The touch half of the gesture hint, now driven by the handler that
+    // actually made the decision rather than by a touchmove listener guessing
+    // at it: MapLibre raises this whenever cooperative gestures swallow a
+    // one-finger pan. The wheel half stays in bindGestureGate, because
+    // scrollZoom is off and so no wheel_zoom event is ever emitted.
+    map.on("cooperativegestureprevented", (e) => {
+      if (e.gestureType === "touch_pan") this.showGestureHint(t("map.twoFingerHint"));
+    });
 
     if (this.hasAttribute("locate")) this.bindLocate();
 
-    this.setAttribute("data-ready", "");
+    // Ready means "the style is loaded and the first frame is on screen",
+    // which is what `load` reports. That is a stronger claim than this
+    // attribute used to make: it was set as soon as the map object existed,
+    // and the honest version is what the UI suite wanted all along.
+    map.on("load", () => {
+      if (generation !== this._generation) return;
+      this.setAttribute("data-ready", "");
+    });
 
     if (!chromeless) {
       this.shadowRoot.querySelectorAll("[data-category]").forEach((cb) => {
@@ -682,7 +888,8 @@ class LeafletMap extends HTMLElement {
   }
 
   plotMarkers() {
-    const L = this._L;
+    const maplibre = this._maplibre;
+    if (!maplibre || !this._map) return;
     this._markers.forEach((m) => m.remove());
     this._markers = [];
 
@@ -694,15 +901,19 @@ class LeafletMap extends HTMLElement {
     if (this._singleMarker) {
       const { lat, lng, title, address, category } = this._singleMarker;
       const mapsUrl = googleMapsUrl(lat, lng, title, address);
-      const marker = L.marker([lat, lng], { icon: markerIcon(L, category) }).addTo(this._map);
-      marker.bindPopup(
-        `<strong>${escapeHtml(title)}</strong><br/><a href="${escapeAttr(mapsUrl)}" target="_blank" rel="noopener">${t("map.viewOnGoogleMaps")}</a>`
-      );
+      const marker = new maplibre.Marker({ element: markerElement(category) })
+        .setLngLat([lng, lat])
+        .setPopup(
+          this.popup(
+            `<strong>${escapeHtml(title)}</strong><br/><a href="${escapeAttr(mapsUrl)}" target="_blank" rel="noopener">${t("map.viewOnGoogleMaps")}</a>`
+          )
+        )
+        .addTo(this._map);
       this._markers.push(marker);
-      // animate: false - this is the first and only view this embed ever
+      // jumpTo, not a flyTo - this is the first and only view this embed ever
       // takes, so there is nothing to animate *from*; the animation only
       // produced a transient wide layout (see .map-wrap's overflow note).
-      this._map.setView([lat, lng], SINGLE_MARKER_ZOOM, { animate: false });
+      this._map.jumpTo({ center: [lng, lat], zoom: SINGLE_MARKER_ZOOM });
       return;
     }
 
@@ -719,34 +930,56 @@ class LeafletMap extends HTMLElement {
     const tripId = this.getAttribute("trip-id");
 
     for (const item of visible) {
-      const marker = L.marker([item.lat, item.lng], { icon: markerIcon(L, item.category) }).addTo(this._map);
-      marker.bindPopup(
-        `<strong>${escapeHtml(item.title)}</strong>` +
-          `<a class="popup-link" data-item-id="${escapeAttr(item.id)}" href="${escapeAttr(`/trips/${tripId}/locations/${item.id}`)}">${t("map.openLocation")}</a>` +
-          `<a class="popup-link" href="${escapeAttr(item.google_maps_url)}" target="_blank" rel="noopener">${t("map.viewOnGoogleMaps")}</a>`
-      );
+      const marker = new maplibre.Marker({ element: markerElement(item.category) })
+        .setLngLat([item.lng, item.lat])
+        .setPopup(
+          this.popup(
+            `<strong>${escapeHtml(item.title)}</strong>` +
+              `<a class="popup-link" data-item-id="${escapeAttr(item.id)}" href="${escapeAttr(`/trips/${tripId}/locations/${item.id}`)}">${t("map.openLocation")}</a>` +
+              `<a class="popup-link" href="${escapeAttr(item.google_maps_url)}" target="_blank" rel="noopener">${t("map.viewOnGoogleMaps")}</a>`
+          )
+        )
+        .addTo(this._map);
       this._markers.push(marker);
     }
 
     if (visible.length) {
-      const bounds = L.latLngBounds(visible.map((i) => [i.lat, i.lng]));
+      const bounds = visible.reduce(
+        (b, i) => b.extend([i.lng, i.lat]),
+        new maplibre.LngLatBounds([visible[0].lng, visible[0].lat], [visible[0].lng, visible[0].lat])
+      );
       // maxZoom matters for a single marker (or several at the same spot):
       // the bounds are then zero-size and fitBounds would zoom all the way to
       // the tile layer's own maxZoom, past where most providers serve tiles
       // at all - a grey rectangle with one dot on it. 14 is the same zoom the
       // single-marker branch above picks deliberately.
-      this._map.fitBounds(bounds, { padding: [32, 32], maxZoom: SINGLE_MARKER_ZOOM });
+      // padding is a number here, not Leaflet's [x, y] pair. maxZoom still
+      // matters for a single marker (or several at the same spot): the bounds
+      // are then zero-size and an unbounded fit would zoom past where any
+      // provider serves anything.
+      this._map.fitBounds(bounds, { padding: 32, maxZoom: SINGLE_MARKER_ZOOM, animate: false });
     } else {
-      this._map.setView([20, 0], 2);
+      this._map.jumpTo({ center: [0, 20], zoom: 2 });
     }
+  }
+
+  // Popups, with the two defaults this app disagrees with.
+  //
+  // focusAfterOpen: false because moving focus into a popup on open scrolls
+  // the page to it, and these open from a marker the person just clicked -
+  // they are already looking at it. setHTML does no sanitising, so escapeHtml
+  // and escapeAttr at the call sites remain the only escaping, exactly as they
+  // were under Leaflet's bindPopup.
+  popup(html) {
+    return new this._maplibre.Popup({ offset: 12, focusAfterOpen: false }).setHTML(html);
   }
 
   // Pick mode's one marker. Deliberately not part of plotMarkers' other two
   // branches: it is the only marker that can be moved, and it has to survive
   // a lat/lng change instead of being torn down and rebuilt with the map.
   syncPickMarker({ initial = false } = {}) {
-    const L = this._L;
-    if (!L || !this._map) return;
+    const maplibre = this._maplibre;
+    if (!maplibre || !this._map) return;
 
     const lat = readCoordinate(this, "lat");
     const lng = readCoordinate(this, "lng");
@@ -756,25 +989,27 @@ class LeafletMap extends HTMLElement {
       // same "we don't know where you mean" view the empty trip map takes.
       this._pickMarker?.remove();
       this._pickMarker = null;
-      if (initial) this._map.setView([20, 0], 2);
+      if (initial) this._map.jumpTo({ center: [0, 20], zoom: 2 });
       return;
     }
 
     const creating = !this._pickMarker;
     if (this._pickMarker) {
-      this._pickMarker.setLatLng([lat, lng]);
+      this._pickMarker.setLngLat([lng, lat]);
     } else {
-      this._pickMarker = L.marker([lat, lng], {
-        icon: pickMarkerIcon(L),
-        draggable: true,
-        // The marker is a control, so it has to be reachable and describable
-        // without a mouse; Leaflet gives a draggable marker keyboard focus
-        // but no name of its own.
-        keyboard: true,
-        title: t("map.pickMarkerLabel"),
-        alt: t("map.pickMarkerLabel"),
-      }).addTo(this._map);
-      this._pickMarker.on("dragend", () => this.emitPick(this._pickMarker.getLatLng()));
+      // The marker is a control, so it has to be reachable and describable
+      // without a mouse. Leaflet had keyboard/title/alt options for that;
+      // MapLibre adds no accessibility affordances to an element it is handed,
+      // so they go on the element directly.
+      const el = pickMarkerElement();
+      el.tabIndex = 0;
+      el.setAttribute("role", "button");
+      el.setAttribute("aria-label", t("map.pickMarkerLabel"));
+      el.title = t("map.pickMarkerLabel");
+      this._pickMarker = new maplibre.Marker({ element: el, draggable: true })
+        .setLngLat([lng, lat])
+        .addTo(this._map);
+      this._pickMarker.on("dragend", () => this.emitPick(this._pickMarker.getLngLat()));
     }
 
     // Three cases, and the middle one is the fix for a real complaint.
@@ -799,9 +1034,9 @@ class LeafletMap extends HTMLElement {
     // deliberate: somebody who clicks a spot at the zoom they chose should
     // keep that zoom.
     if (initial || (creating && !this._userMovedMap)) {
-      this._map.setView([lat, lng], SINGLE_MARKER_ZOOM, { animate: false });
-    } else if (!this._map.getBounds().contains([lat, lng])) {
-      this._map.setView([lat, lng], this._map.getZoom(), { animate: false });
+      this._map.jumpTo({ center: [lng, lat], zoom: SINGLE_MARKER_ZOOM });
+    } else if (!this._map.getBounds().contains([lng, lat])) {
+      this._map.jumpTo({ center: [lng, lat], zoom: this._map.getZoom() });
     }
   }
 
@@ -858,55 +1093,94 @@ class LeafletMap extends HTMLElement {
   // as a ring. The ring is not decoration - a 2km fix and a 5m fix look
   // identical without it, and only one of them is worth acting on.
   showPosition(lat, lng, accuracy) {
-    const L = this._L;
-    if (!L || !this._map) return;
+    const maplibre = this._maplibre;
+    if (!maplibre || !this._map) return;
 
     this._hereMarker?.remove();
-    this._hereCircle?.remove();
 
-    this._hereMarker = L.marker([lat, lng], {
-      icon: hereMarkerIcon(L),
-      // Not draggable, unlike the pick marker: this is a reading, not a
-      // choice, so dragging it would claim to move the device.
-      interactive: false,
-      keyboard: false,
-    }).addTo(this._map);
+    // Not draggable, unlike the pick marker: this is a reading, not a choice,
+    // so dragging it would claim to move the device. A plain element takes no
+    // focus and no pointer events of its own, so Leaflet's interactive: false
+    // and keyboard: false have nothing to translate to.
+    this._hereMarker = new maplibre.Marker({ element: hereMarkerElement() })
+      .setLngLat([lng, lat])
+      .addTo(this._map);
 
-    if (Number.isFinite(accuracy) && accuracy > 0) {
-      this._hereCircle = L.circle([lat, lng], {
-        radius: accuracy,
-        color: HERE_MARKER_COLOR,
-        weight: 1,
-        fillColor: HERE_MARKER_COLOR,
-        fillOpacity: 0.12,
-        interactive: false,
-      }).addTo(this._map);
-    } else {
-      this._hereCircle = null;
+    this._hereAccuracy = Number.isFinite(accuracy) && accuracy > 0 ? accuracy : null;
+    this.drawAccuracyRing(lat, lng);
+
+    this._map.jumpTo({ center: [lng, lat], zoom: HERE_ZOOM });
+  }
+
+  // The ring, as a source and two layers rather than as an object with a
+  // radius. Split out from showPosition because layers, unlike markers, do not
+  // survive a style change - so this has to be callable again on its own.
+  drawAccuracyRing(lat, lng) {
+    const map = this._map;
+    if (!map) return;
+    const radius = this._hereAccuracy;
+    if (!radius) {
+      this._hereRing = null;
+      this.removeAccuracyRing();
+      return;
     }
+    this._hereRingAt = { lat, lng };
+    // Kept on the component as well as handed to the source. MapLibre offers
+    // no public read-back of a GeoJSON source's data, and both the accuracy
+    // test and a later re-add after a style change need the geometry that is
+    // actually on the map rather than the number it was derived from.
+    const data = (this._hereRing = accuracyRing(lat, lng, radius));
+    const existing = map.getSource(ACCURACY_SOURCE);
+    if (existing) {
+      existing.setData(data);
+      return;
+    }
+    map.addSource(ACCURACY_SOURCE, { type: "geojson", data });
+    map.addLayer({
+      id: `${ACCURACY_SOURCE}-fill`,
+      type: "fill",
+      source: ACCURACY_SOURCE,
+      paint: { "fill-color": HERE_MARKER_COLOR, "fill-opacity": 0.12 },
+    });
+    map.addLayer({
+      id: `${ACCURACY_SOURCE}-line`,
+      type: "line",
+      source: ACCURACY_SOURCE,
+      paint: { "line-color": HERE_MARKER_COLOR, "line-width": 1 },
+    });
+  }
 
-    this._map.setView([lat, lng], HERE_ZOOM, { animate: false });
+  removeAccuracyRing() {
+    const map = this._map;
+    if (!map || !map.getSource(ACCURACY_SOURCE)) return;
+    for (const suffix of ["-fill", "-line"]) {
+      const id = `${ACCURACY_SOURCE}${suffix}`;
+      if (map.getLayer(id)) map.removeLayer(id);
+    }
+    map.removeSource(ACCURACY_SOURCE);
   }
 
   // A scroll that happens to pass under the cursor must not zoom the map.
   //
-  // Leaflet's scrollWheelZoom handler zooms on *any* wheel event, so a page
-  // scroll that crossed the map turned into a zoom - and on a map that is
-  // most of the screen, that is most scrolls. The embedded-Google-Maps
+  // A stock scroll-wheel handler zooms on *any* wheel event, so a page scroll
+  // that crossed the map turned into a zoom - and on a map that is most of the
+  // screen, that is most scrolls. The embedded-Google-Maps
   // convention is the fix: the wheel zooms only while Ctrl (or Meta, for the
   // Mac) is held, and a plain wheel says so and scrolls the page.
   //
-  // Implemented by intercepting rather than by turning the handler off,
-  // because enabling it mid-gesture is too late for the event that started
-  // the gesture: Leaflet attaches its listener when the handler is enabled,
-  // and the wheel event already in flight would never reach it. So the
-  // handler stays on and a plain wheel is stopped before it arrives.
+  // MapLibre has its own version of this (cooperativeGestures also gates the
+  // wheel), and it is deliberately not used for the wheel half. Its bypass key
+  // is metaKey only when the user agent says Mac, so Meta would stop working
+  // everywhere else; and handing the wheel back to a library is re-opening the
+  // failure that produced zoomByWheel below. cooperativeGestures stays on for
+  // the *touch* half, where it is the only supported way to get one-finger
+  // page scroll with two-finger pan.
   //
   // The listener sits on .map-wrap, in the capture phase, and that placement
-  // is load-bearing. Leaflet registers its own listener on the map container
-  // itself, and on a shared target the capture/bubble distinction does not
-  // decide the order - registration order does. Capturing on the *parent*
-  // means this runs first whatever Leaflet did.
+  // is load-bearing. The library registers its own listeners on the map
+  // container itself, and on a shared target the capture/bubble distinction
+  // does not decide the order - registration order does. Capturing on the
+  // *parent* means this runs first whatever the library did.
   bindGestureGate(mapEl) {
     const wrap = this.shadowRoot.querySelector(".map-wrap");
     if (!wrap) return;
@@ -923,7 +1197,7 @@ class LeafletMap extends HTMLElement {
           return;
         }
         // A plain wheel is deliberately *not* prevented: the whole point is
-        // that the page scrolls the way it would anywhere else. Only Leaflet
+        // that the page scrolls the way it would anywhere else. Only the map
         // is kept from seeing it.
         e.stopPropagation();
         this.showGestureHint(t("map.ctrlZoomHint"));
@@ -934,27 +1208,21 @@ class LeafletMap extends HTMLElement {
       { capture: true, passive: false }
     );
 
-    // The touch half. Dragging is already disabled on a coarse pointer
-    // (Stage 13), so a one-finger drag scrolls the page and the map ignores
-    // it -- correct, and silent about why. This is the explanation, and it
-    // fires on touchmove rather than touchstart so that a tap, which in pick
-    // mode places a point, never triggers it.
-    if (!isCoarsePointer()) return;
-    mapEl.addEventListener(
-      "touchmove",
-      (e) => {
-        if (e.touches.length !== 1) return; // two fingers already work
-        this.showGestureHint(t("map.twoFingerHint"));
-      },
-      { passive: true }
-    );
+    // The touch half used to live here as a touchmove listener guarded by a
+    // matchMedia check. It now hangs off the map's own
+    // cooperativegestureprevented event in render(), which fires from the code
+    // that actually swallowed the pan - no guessing at pointer type, and no
+    // risk of the hint and the behaviour disagreeing.
   }
 
   // Zoom the map for a Ctrl-held wheel.
   //
-  // Leaflet's own scroll-wheel handler is switched off and this replaces it,
-  // after two rounds of the gesture not working on the reporter's machine
-  // while working everywhere it could be measured.
+  // The library's own scroll-wheel handler is switched off and this replaces
+  // it, after two rounds of the gesture not working on the reporter's machine
+  // while working everywhere it could be measured. Carried over to MapLibre
+  // unchanged, deliberately: its wheel handler uses the same
+  // accumulate-normalise-sigmoid shape Leaflet's did, so the swap is no reason
+  // to believe the original problem would not come back.
   //
   // Be honest about what is and is not known here. The failure was real and
   // reproducible for them - Ctrl + wheel zoomed nothing, in both the version
@@ -994,10 +1262,20 @@ class LeafletMap extends HTMLElement {
     const step = this._wheelAccum > 0 ? -1 : 1;
     this._wheelAccum = 0;
 
-    // setZoomAround rather than setZoom: the point under the cursor stays
+    // `around` rather than a plain zoom: the point under the cursor stays
     // under the cursor, which is what makes wheel zoom feel like a map rather
-    // than a slideshow.
-    map.setZoomAround(map.mouseEventToContainerPoint(e), map.getZoom() + step);
+    // than a slideshow. It is Leaflet's setZoomAround under another name, with
+    // the container-relative point worked out by hand because MapLibre has no
+    // mouseEventToContainerPoint.
+    //
+    // duration must stay well under the 350ms the wheel specs wait before
+    // measuring; the library's default ease is 300ms, which would race them.
+    const rect = map.getCanvasContainer().getBoundingClientRect();
+    map.easeTo({
+      zoom: map.getZoom() + step,
+      around: map.unproject([e.clientX - rect.left, e.clientY - rect.top]),
+      duration: 150,
+    });
   }
 
   // Show the overlay, and take it away again. Re-triggering while it is up
@@ -1016,11 +1294,11 @@ class LeafletMap extends HTMLElement {
 
   // The component's one output in pick mode. Composed, because it has to
   // cross the shadow boundary to reach the page that mounted it.
-  emitPick(latlng) {
+  emitPick(lngLat) {
     // Panning the world sideways gives longitudes past +/-180; wrap() folds
     // them back, so a click three worlds to the right still stores a
     // coordinate a database and a map tile server both accept.
-    const { lat, lng } = this._map.wrapLatLng(latlng);
+    const { lat, lng } = new this._maplibre.LngLat(lngLat.lng, lngLat.lat).wrap();
     const round = (n) => Math.round(n * PICK_PRECISION) / PICK_PRECISION;
     this.dispatchEvent(
       new CustomEvent("location-picked", {
@@ -1040,13 +1318,6 @@ function readCoordinate(el, name) {
   if (raw == null || raw.trim() === "") return null;
   const n = Number(raw);
   return Number.isFinite(n) ? n : null;
-}
-
-// Touch-first devices, where a one-finger drag has to belong to the page
-// rather than to the map. Guarded because matchMedia is absent in some
-// non-browser environments, and a missing match is the desktop answer.
-function isCoarsePointer() {
-  return window.matchMedia?.("(pointer: coarse)").matches ?? false;
 }
 
 function escapeHtml(s) {

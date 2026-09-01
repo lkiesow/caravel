@@ -52,14 +52,26 @@ export const VIEWPORTS = [
 export const COLOR_SCHEMES = ["light", "dark"];
 
 // Blocks every request that isn't to the app itself, and serves a 1x1 PNG in
-// place of map tiles.
+// place of any off-origin image.
 //
-// Without this the Map route fetches a dozen tiles from whichever provider the
-// instance is configured with (tile.openstreetmap.org by default), which makes
-// the suite slow, flaky, dependent on a third party being reachable, and rude
-// to a free service — and in CI it would be the main reason for random
-// failures. Tiles are replaced rather than merely aborted so Leaflet still lays
-// out and still creates its markers, which is what the checks actually look at.
+// Without this the Map route fetches map data from whichever provider the
+// instance is configured with, which makes the suite slow, flaky, dependent on
+// a third party being reachable, and rude to a free service — and in CI it
+// would be the main reason for random failures.
+//
+// Since Stage 30 the default provider is vector rather than raster, so what
+// gets blocked has changed shape: tiles are .pbf fetches made from MapLibre's
+// worker, and the glyphs and sprites the labels need are off-origin too. All
+// of them are aborted. That is deliberately fine — a source whose fetch fails
+// is marked loaded rather than left pending (MapLibre does this on purpose),
+// so the map still fires `load`, still lays out, still places its markers and
+// still answers questions about the camera. What the suite sees is a map with
+// correct geometry and no cartography drawn under it, which is exactly the
+// part every assertion here reads. The vendored style itself is same-origin
+// and loads for real.
+//
+// The PNG fulfilment stays for off-origin images generally (photo fixtures,
+// and a raster tile provider if an operator's config is under test).
 const TRANSPARENT_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
   "base64"
@@ -77,8 +89,13 @@ export const APP_ORIGIN = new URL(process.env.CARAVEL_TEST_URL || "http://localh
 // "#app has children" is true well before the page has content — which made the
 // heading spec report "no headings at all" on the location view page that in fact
 // has a perfectly good h1/h2/h2 outline. Counting fetches is the app-level
-// equivalent of networkidle, minus the map-tile noise (tiles are <img>, not
-// fetch).
+// equivalent of networkidle.
+//
+// Map tiles used to be exempt for free, because raster tiles are <img> and not
+// fetch. Vector tiles are fetch — but they are issued from MapLibre's worker,
+// which has its own unpatched fetch, so they still do not reach this counter.
+// The style document does, and should: it is same-origin and the map is not
+// ready without it.
 const FETCH_TRACKER = `
   window.__caravelFetches = { pending: 0, completed: 0 };
   const origFetch = window.fetch;
@@ -259,11 +276,13 @@ export async function gotoRoute(page, path) {
     { timeout: 15000 }
   );
   // A map is lazily imported *after* its route's fetches settle, so the
-  // condition above can be true while Leaflet is still loading. Without this
-  // the sweeps intermittently measured a half-built map and reported its
+  // condition above can be true while the library is still loading. Without
+  // this the sweeps intermittently measured a half-built map and reported its
   // un-sized controls as content overflowing .map-wrap - a failure that only
-  // ever appeared under a full parallel run. leaflet-map.js sets data-ready
-  // on itself once the map has laid out.
+  // ever appeared under a full parallel run. leaflet-map.js sets data-ready on
+  // itself once the map has laid out - since Stage 30 on the map's own `load`
+  // event, meaning the style is parsed and the first frame is drawn, which is
+  // a stronger guarantee than the attribute used to carry.
   await page.waitForFunction(
     () => [...document.querySelectorAll("leaflet-map")].every((el) => el.hasAttribute("data-ready")),
     undefined,

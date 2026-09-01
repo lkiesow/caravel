@@ -112,7 +112,7 @@ for (const { scheme, viewport, locale } of COMBINATIONS) {
             //    *implemented* as content wider than its box.
             //  - form controls: an <input>/<textarea>/<select> whose value is
             //    longer than its box is normal, not a layout bug.
-            //  - Leaflet's internals, whose panes are far wider than the map on
+            //  - the map library's internals, which can measure wider than the map on
             //    purpose (same reason the tap-target sweep skips them).
             const clipped = [];
             for (const el of deepQueryAll("*")) {
@@ -128,17 +128,17 @@ for (const { scheme, viewport, locale } of COMBINATIONS) {
                 )
               )
                 continue;
-              if (el.closest?.('[class*="leaflet-"]')) continue;
-              // ...and the box immediately *around* a Leaflet map, for the
-              // same reason one level up. Leaflet parks its panes at enormous
+              if (el.closest?.('[class*="maplibregl-"]')) continue;
+              // ...and the box immediately *around* a map, for the
+              // same reason one level up. Leaflet parked its panes at enormous
               // offsets on purpose (measured at right=1825757), and
               // .map-wrap's overflow:hidden exists precisely to stop that
               // reaching the document - so its content width reports the
               // library's internals, not a layout bug of ours. Matched by
-              // "contains a .leaflet-container" rather than by our own class
+              // "contains a .maplibregl-canvas" rather than by our own class
               // name, so it cannot quietly start excluding something else.
               // The legend inside it is our markup and is still swept.
-              if (el.querySelector?.(".leaflet-container")) continue;
+              if (el.querySelector?.(".maplibregl-canvas")) continue;
               // Visually-hidden labels, which are *defined* as content much
               // wider than a 1px box: .sr-only and the .btn-collapse span rule
               // (base.css) clip a real label down to 1x1 so the button keeps its
@@ -232,8 +232,8 @@ for (const { scheme, viewport, locale } of COMBINATIONS) {
                 // 1. Prose links. A link inside a paragraph has to be allowed
                 //    to be inline-sized; making body copy 44px tall per line
                 //    is not the guideline's intent.
-                // 2. Leaflet's own controls and its OpenStreetMap attribution
-                //    (anything under a `leaflet-*` class). That markup and its
+                // 2. The map library's own controls and its attribution
+                //    (anything under a `maplibregl-*` class). That markup and its
                 //    CSS come from the vendored library inside the map's shadow
                 //    root — the zoom buttons measure 30px and the attribution
                 //    link 14px. Restyling a dependency's internals to satisfy
@@ -247,7 +247,7 @@ for (const { scheme, viewport, locale } of COMBINATIONS) {
                 //    target and is still measured.
                 const scope = (el) => {
                   if (el.closest("p")) return false;
-                  if (el.closest('[class*="leaflet-"]')) return false;
+                  if (el.closest('[class*="maplibregl-"]')) return false;
                   if (el.localName === "label")
                     return Boolean(el.querySelector("input, select, textarea"));
                   if (

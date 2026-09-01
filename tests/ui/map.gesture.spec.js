@@ -105,15 +105,24 @@ test.describe("map gestures on a real touch device", () => {
     }));
     const dy = room.y < room.max - 20 ? -120 : 120;
 
-    await drag(cdp, [centre], 0, dy);
+    // Diagonal, not straight up: the vertical component is what the page
+    // scrolls on, and the horizontal component is what makes the assertion
+    // below mean anything. Since Stage 30 the map cannot pan vertically at
+    // this zoom at all -- MapLibre pins the camera when the whole world
+    // already fits the viewport, which at the trip map's fitBounds zoom it
+    // exactly does -- so a purely vertical drag would leave the centre
+    // unchanged whether or not the map had swallowed the gesture. Longitude
+    // is unconstrained, so a sideways component turns "the map must not pan"
+    // back into a claim that can fail.
+    await drag(cdp, [centre], -60, dy);
     await page.waitForFunction((y) => window.scrollY !== y, before.scrollY);
 
     const after = await mapState(page);
     expect(after.scrollY, "a one-finger drag should scroll the page").not.toBe(before.scrollY);
     // And the map must not have moved with it. This is the bug the whole
     // arrangement exists to prevent: a map that eats the scroll gesture.
-    expect(after.lat, "the map must not pan under one finger").toBeCloseTo(before.lat, 6);
-    expect(after.lng).toBeCloseTo(before.lng, 6);
+    expect(after.lng, "the map must not pan under one finger").toBeCloseTo(before.lng, 6);
+    expect(after.lat).toBeCloseTo(before.lat, 6);
   });
 
   // Stage 23 Milestone 6. The one-finger drag correctly does nothing to the
@@ -166,14 +175,22 @@ test.describe("map gestures on a real touch device", () => {
       { x: cx + 30, y: cy + 20 },
     ];
 
-    await drag(cdp, fingers, 0, -60);
+    // Sideways, and longitude is what is asserted. The obvious version of this
+    // test drags upwards and watches latitude, which is what it did until
+    // Stage 30 -- but MapLibre will not pan vertically when the world already
+    // fits the viewport, and at the trip map's fitBounds zoom the world height
+    // and the container height agree to within a pixel (measured: 643 and
+    // 643). That is correct behaviour and an improvement on Leaflet, which
+    // would happily drag the world off the top of the screen; it just means
+    // latitude is the one axis that cannot demonstrate a pan here.
+    await drag(cdp, fingers, -60, 0);
 
-    // Leaflet animates the pinch, so the centre settles a frame or two later.
+    // The pan is animated, so the centre settles a frame or two later.
     await expect
-      .poll(async () => (await mapState(page)).lat, {
+      .poll(async () => (await mapState(page)).lng, {
         message: "two fingers should pan the map",
       })
-      .not.toBeCloseTo(before.lat, 6);
+      .not.toBeCloseTo(before.lng, 6);
 
     const after = await mapState(page);
     expect(after.scrollY, "a two-finger gesture belongs to the map, not the page").toBe(before.scrollY);

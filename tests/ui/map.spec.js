@@ -63,14 +63,14 @@ async function gotoTripMap(page) {
 async function openFirstPopup(page) {
   await page.evaluate(() => {
     const sr = document.querySelector("leaflet-map").shadowRoot;
-    const marker = sr.querySelector(".leaflet-marker-icon");
+    const marker = sr.querySelector(".maplibregl-marker");
     if (!marker) throw new Error("no markers on the trip map - does the seed still give the `full` trip coordinates?");
     for (const type of ["mousedown", "mouseup", "click"]) {
       marker.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window, button: 0 }));
     }
   });
   await page.waitForFunction(
-    () => document.querySelector("leaflet-map").shadowRoot.querySelector(".leaflet-popup-content [data-item-id]") !== null
+    () => document.querySelector("leaflet-map").shadowRoot.querySelector(".maplibregl-popup-content [data-item-id]") !== null
   );
 }
 
@@ -89,8 +89,13 @@ function readMap(page) {
         const el = sr.querySelector(".gesture-hint");
         return el ? !el.hidden : false;
       })(),
-      dragging: host._map.dragging.enabled(),
-      touchZoom: host._map.touchZoom.enabled(),
+      // Handler names and shapes are MapLibre's since Stage 30. dragPan is
+      // mouse-and-touch panning; cooperativeGestures is what makes touch
+      // panning need two fingers.
+      dragPan: host._map.dragPan.isEnabled(),
+      cooperativeGestures: host._map.cooperativeGestures.isEnabled(),
+      touchZoomRotate: host._map.touchZoomRotate.isEnabled(),
+      dragRotate: host._map.dragRotate.isEnabled(),
       innerHeight: window.innerHeight,
     };
   });
@@ -173,15 +178,25 @@ test.describe("the trip map at phone width", () => {
     await pretendCoarsePointer(page);
     await login(page);
     await gotoTripMap(page);
-    const { dragging, touchZoom, hint } = await readMap(page);
+    const { cooperativeGestures, touchZoomRotate, dragRotate, hint } = await readMap(page);
 
-    // Leaflet's Drag handler is what was eating the gesture. Off, a one-finger
-    // touchmove is never consumed and the page scrolls normally.
-    expect(dragging, "Leaflet's drag handler should be off on a coarse pointer").toBe(false);
-    // ...but the map must still be movable, and it is: touchZoom applies the
-    // pinch centre's delta even at scale 1, so two fingers pan as well as zoom
-    // (TouchZoom._onTouchMove in the vendored leaflet.esm.js).
-    expect(touchZoom, "two-finger pan/zoom must survive").toBe(true);
+    // What this test asserts changed shape in Stage 30, because the mechanism
+    // did. It used to be "Leaflet's Drag handler is off on a coarse pointer",
+    // which is how one-finger drags were left to the page. MapLibre routes
+    // touch panning of every finger count through dragPan, so turning that off
+    // would take two-finger panning with it; cooperativeGestures raises the
+    // handler's minimum to two touches instead and marks the canvas
+    // touch-action: pan-x pan-y so the browser scrolls the page for the first
+    // finger. Same guarantee, stated as the configuration that now provides it.
+    expect(
+      cooperativeGestures,
+      "one finger must belong to the page, which is what cooperative gestures buy"
+    ).toBe(true);
+    // ...and the map must still be movable with two.
+    expect(touchZoomRotate, "two-finger pan/zoom must survive").toBe(true);
+    // Rotation is a capability Leaflet never had and this app does not want:
+    // north stays up.
+    expect(dragRotate, "the map must not rotate").toBe(false);
     // The gesture is still spelled out, but only when it happens (Stage 23
     // Milestone 6): a caption standing under the map at all times explained
     // nothing to the person who never made the gesture, and cost a line of
@@ -195,45 +210,108 @@ test.describe("the trip map at phone width", () => {
 // The tile layer used to be a literal in leaflet-map.js, which is why the map
 // could only ever speak the local language: the standard OSM tiles label
 // places in the local script (Tokyo renders as the Japanese for it) and no
-// parameter on them changes that. The URL is configuration now, so what is
-// worth asserting is the wiring - that the layer is built from whatever
+// parameter on them changes that. It is configuration now, so what is worth
+// asserting is the wiring - that the map is built from whatever
 // /api/map/config answers, rather than from a constant that merely happens to
 // agree with it today.
-test.describe("the tile layer follows the server's configuration", () => {
+//
+// Stage 30 had to re-found this test rather than rename its selectors. There
+// are no tile <img> elements to read any more: a vector tile is a .pbf fetched
+// into a worker and drawn into one canvas. The claim is unchanged, so it is
+// asserted from the two places it is now observable - the style document the
+// map was actually given, and the requests that went out - which between them
+// are a closer reading of "requested from the configured provider" than
+// scraping img.src ever was, and which work for a raster provider too.
+test.describe("the map follows the server's configuration", () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 
-  test("tiles are requested from the configured provider, and it is credited", async ({ page }) => {
+  test("map data is requested from the configured provider, and it is credited", async ({ page }) => {
     await login(page);
+
+    // Collected across the navigation rather than after it: by the time the
+    // map is ready the requests have already gone.
+    const requested = [];
+    page.on("request", (r) => requested.push(r.url()));
+
     await gotoTripMap(page);
 
-    const { configured, tileSrcs, attribution, attributionText } = await page.evaluate(async () => {
+    const { configured, sources, attribution, attributionText } = await page.evaluate(async () => {
       const res = await fetch("/api/map/config", { credentials: "same-origin" });
-      const sr = document.querySelector("leaflet-map").shadowRoot;
+      const host = document.querySelector("leaflet-map");
+      const sr = host.shadowRoot;
+      const style = host._map.getStyle();
       return {
         configured: await res.json(),
-        tileSrcs: [...sr.querySelectorAll("img.leaflet-tile")].map((img) => img.src),
-        attribution: sr.querySelector(".leaflet-control-attribution")?.innerHTML ?? null,
-        attributionText: sr.querySelector(".leaflet-control-attribution")?.textContent ?? null,
+        // Every source's endpoint, whichever shape it takes: a vector source
+        // names a TileJSON `url`, a raster source lists `tiles` outright.
+        sources: Object.values(style.sources).flatMap((src) =>
+          src.url ? [src.url] : src.tiles || []
+        ),
+        attribution: sr.querySelector(".maplibregl-ctrl-attrib-inner")?.innerHTML ?? null,
+        attributionText: sr.querySelector(".maplibregl-ctrl-attrib-inner")?.textContent ?? null,
       };
     });
 
-    // The host is the part a provider swap actually changes, and it survives
-    // Leaflet's substitution of {z}/{x}/{y} - which the full template does
-    // not, so this cannot just compare strings. {s} is dropped rather than
-    // filled in: Leaflet rotates it over a, b and c, so which subdomain any
-    // one tile came from is not something to assert.
-    const expectedDomain = new URL(configured.tile_url.replace("{s}.", "")).host;
-    expect(tileSrcs.length, "the map should have requested some tiles").toBeGreaterThan(0);
-    for (const src of tileSrcs) {
-      expect(new URL(src).host, `tile ${src} should come from the configured provider`).toContain(expectedDomain);
+    // Which provider the config points at, in whichever of the two shapes it
+    // answered with. style_url means "draw this vector style"; empty means the
+    // operator pinned a raster provider through CARAVEL_TILE_URL.
+    expect(sources.length, "the style should name at least one source").toBeGreaterThan(0);
+
+    let expectedHosts;
+    if (configured.style_url) {
+      // The style is vendored and same-origin, so its own sources are what
+      // name the third party. Read them from the served document rather than
+      // hardcoding OpenFreeMap here: the point of the test is that nothing in
+      // the browser holds a second opinion about where map data comes from.
+      expectedHosts = await page.evaluate(async (u) => {
+        const style = await (await fetch(u)).json();
+        return [
+          ...new Set(
+            Object.values(style.sources)
+              .flatMap((src) => (src.url ? [src.url] : src.tiles || []))
+              .map((t) => new URL(t, location.href).host)
+          ),
+        ];
+      }, configured.style_url);
+    } else {
+      // {s} dropped rather than filled in: the subdomain is rotated over
+      // a, b and c, so which one any single request used is not worth
+      // asserting.
+      expectedHosts = [new URL(configured.tile_url.replace("{s}.", "")).host];
     }
+
+    // Suffix rather than equality: a raster URL's {s} is expanded here into
+    // a./b./c., which are the configured provider and must count as it.
+    const belongs = (host) => expectedHosts.some((h) => host === h || host.endsWith(`.${h}`));
+    for (const src of sources) {
+      const host = new URL(src, page.url()).host;
+      expect(
+        belongs(host),
+        `source ${src} (${host}) should belong to the configured provider: ${expectedHosts.join(", ")}`
+      ).toBe(true);
+    }
+
+    // And the wire, not just the wiring: something must actually have been
+    // asked of that host. The requests are aborted by blockExternalRequests,
+    // but an aborted request is still a request that was made.
+    const wentOut = requested.filter((u) => belongs(new URL(u).host));
+    expect(
+      wentOut.length,
+      `the map should have asked ${expectedHosts.join(", ")} for something`
+    ).toBeGreaterThan(0);
 
     // Attribution is served as HTML and rendered unescaped on purpose: every
     // provider's terms require a working link back, so a "fix" that escaped
     // the markup would leave the instance out of compliance with text that
-    // still looks right in a screenshot. The links are what is asserted,
-    // rather than the markup verbatim - the DOM renders `&copy;` back out as
-    // `©`, so a string comparison would fail on a correctly rendered credit.
+    // still looks right in a screenshot. MapLibre sanitises only <script>, on*
+    // handlers and javascript:/data: URLs, so an operator's credit survives.
+    // The links are what is asserted, rather than the markup verbatim - the
+    // DOM renders `&copy;` back out as `©`, so a string comparison would fail
+    // on a correctly rendered credit.
+    //
+    // Only the configured credit is asserted, deliberately: the provider's own
+    // credit arrives with the TileJSON, which never resolves under
+    // blockExternalRequests.
     const requiredLinks = [...configured.tile_attribution.matchAll(/href="([^"]+)"/g)].map((m) => m[1]);
     expect(requiredLinks.length, "the configured attribution should carry at least one link").toBeGreaterThan(0);
     for (const href of requiredLinks) {
@@ -254,8 +332,11 @@ test.describe("the trip map with a mouse", () => {
   test("dragging still works and no hint stands over the map", async ({ page }) => {
     await login(page);
     await gotoTripMap(page);
-    const { dragging, hintShown } = await readMap(page);
-    expect(dragging, "a fine pointer should keep click-and-drag panning").toBe(true);
+    const { dragPan, hintShown } = await readMap(page);
+    // Unconditionally true since Stage 30, and correct: cooperative gestures
+    // constrain touch, not the mouse, so click-and-drag panning is unaffected
+    // on every pointer type.
+    expect(dragPan, "a fine pointer should keep click-and-drag panning").toBe(true);
     expect(hintShown, "the hint should not be showing before any gesture").toBe(false);
   });
 
@@ -331,11 +412,23 @@ test.describe("the trip map with a mouse", () => {
         .getElementById("map")
         .dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, ...i }));
     }, init);
-    // Leaflet animates the zoom, so the level settles a few frames later; a
-    // synchronous read here would race it and report no change.
-    await page.waitForTimeout(350);
+    // The zoom is animated, so the level settles a few frames later; a
+    // synchronous read here would race it and report no change. This waited a
+    // flat 350ms until Stage 30 and that became a source of failures under a
+    // full parallel run - the ease is 150ms, but only once the browser gets
+    // around to running its frames. Waiting for the camera to actually stop is
+    // both faster in the common case and not a race in the slow one. A plain
+    // wheel starts no animation at all, so this returns immediately for the
+    // "left entirely alone" case below.
+    await page.waitForTimeout(50);
+    await settleMap(page, "leaflet-map");
     const after = await page.evaluate(() => document.querySelector("leaflet-map")._map.getZoom());
-    return { zoomed: after - before, cancelled };
+    // Rounded, because since Stage 30 the starting zoom is fractional. Leaflet
+    // snapped to whole levels, so `after - before` came out exactly 1;
+    // MapLibre's fitBounds lands on values like 0.3289 and the same
+    // subtraction gives 1.0000000000000004. The claim being tested is "one
+    // notch is one level", which is about the step and not about IEEE 754.
+    return { zoomed: Number((after - before).toFixed(6)), cancelled };
   };
 
   test("Ctrl + wheel zooms the map, whatever shape the wheel event has", async ({ page }) => {
@@ -402,7 +495,7 @@ test.describe("the trip map with a mouse", () => {
         const el = sr.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2);
         return {
           emptyShown: !!sr.querySelector(".empty"),
-          topElementIsTheMap: !!el?.classList?.contains("leaflet-container"),
+          topElementIsTheMap: !!el?.classList?.contains("maplibregl-canvas"),
         };
       });
 
@@ -439,7 +532,7 @@ test.describe("the trip map with a mouse", () => {
     await gotoTripMap(page);
 
     const enabled = await page.evaluate(() =>
-      document.querySelector("leaflet-map")._map.scrollWheelZoom.enabled()
+      document.querySelector("leaflet-map")._map.scrollZoom.isEnabled()
     );
     expect(enabled, "Leaflet's wheel handler must stay off; one piece of code owns the wheel").toBe(false);
   });
@@ -479,7 +572,7 @@ test.describe("a marker popup links back into the app", () => {
 
     await openFirstPopup(page);
     const link = await page.evaluate(() => {
-      const a = document.querySelector("leaflet-map").shadowRoot.querySelector(".leaflet-popup-content [data-item-id]");
+      const a = document.querySelector("leaflet-map").shadowRoot.querySelector(".maplibregl-popup-content [data-item-id]");
       return { href: a.getAttribute("href"), text: a.textContent.trim(), itemId: a.dataset.itemId };
     });
 
@@ -490,7 +583,7 @@ test.describe("a marker popup links back into the app", () => {
     expect(link.text, "the in-app link should be labelled").toBeTruthy();
 
     await page.evaluate(() => {
-      document.querySelector("leaflet-map").shadowRoot.querySelector(".leaflet-popup-content [data-item-id]").click();
+      document.querySelector("leaflet-map").shadowRoot.querySelector(".maplibregl-popup-content [data-item-id]").click();
     });
     await page.waitForFunction((href) => window.location.pathname === href, link.href);
 
@@ -511,7 +604,7 @@ test.describe("a marker popup links back into the app", () => {
     // Ctrl-click means "new tab". The handler must not preventDefault it, or
     // the link loses every affordance it was kept an <a href> for.
     const defaultPrevented = await page.evaluate(() => {
-      const a = document.querySelector("leaflet-map").shadowRoot.querySelector(".leaflet-popup-content [data-item-id]");
+      const a = document.querySelector("leaflet-map").shadowRoot.querySelector(".maplibregl-popup-content [data-item-id]");
       const e = new MouseEvent("click", { bubbles: true, cancelable: true, view: window, button: 0, ctrlKey: true });
       a.dispatchEvent(e);
       return e.defaultPrevented;
@@ -521,8 +614,8 @@ test.describe("a marker popup links back into the app", () => {
   });
 
   test("the popup links meet the tap target floor on a phone", async ({ page }) => {
-    // routes.spec.js's sweep skips anything under a leaflet-* class, and
-    // Leaflet renders popup content inside .leaflet-popup-content - so these
+    // routes.spec.js's sweep skips anything under a maplibregl-* class, and
+    // popup content is rendered inside .maplibregl-popup-content - so these
     // two links are invisible to it and have to be measured here.
     await page.setViewportSize(MOBILE);
     await login(page);
@@ -531,7 +624,7 @@ test.describe("a marker popup links back into the app", () => {
 
     const heights = await page.evaluate(() => {
       const sr = document.querySelector("leaflet-map").shadowRoot;
-      return [...sr.querySelectorAll(".leaflet-popup-content .popup-link")].map((a) => ({
+      return [...sr.querySelectorAll(".maplibregl-popup-content .popup-link")].map((a) => ({
         text: a.textContent.trim(),
         height: a.getBoundingClientRect().height,
       }));
@@ -571,17 +664,35 @@ async function mountPicker(page, attrs = {}) {
 
 // A real DOM click at a point inside the map, which is what Leaflet turns into
 // a latlng. Going through map.fire("click") instead would test nothing.
+// Waits for camera animation to finish. Anything reading a zoom or a centre
+// after a gesture needs this: the map eases rather than jumping.
+async function settleMap(page, selector) {
+  await page.waitForFunction(
+    (sel) => {
+      const host = document.querySelector(sel);
+      return host?._map && !host._map.isMoving() && !host._map.isZooming();
+    },
+    selector,
+    { timeout: 10000 }
+  );
+}
+
 async function clickPickerAt(page, fractionX, fractionY, selector = "[data-test-picker]") {
   await page.evaluate(
     ({ fx, fy, sel }) => {
       const host = document.querySelector(sel);
-      const mapEl = host.shadowRoot.getElementById("map");
-      const r = mapEl.getBoundingClientRect();
+      // The canvas, not #map. MapLibre listens on the canvas rather than on
+      // the container it was handed, so events dispatched at #map never reach
+      // its handler chain and the map registers no click at all - silently,
+      // which is what makes this worth stating: the old Leaflet version of
+      // this helper targeted #map and worked.
+      const canvas = host.shadowRoot.querySelector(".maplibregl-canvas");
+      const r = canvas.getBoundingClientRect();
       const clientX = r.left + r.width * fx;
       const clientY = r.top + r.height * fy;
       const opts = { bubbles: true, cancelable: true, view: window, button: 0, clientX, clientY };
       for (const type of ["mousedown", "mouseup", "click"]) {
-        mapEl.dispatchEvent(new MouseEvent(type, opts));
+        canvas.dispatchEvent(new MouseEvent(type, opts));
       }
     },
     { fx: fractionX, fy: fractionY, sel: selector }
@@ -603,7 +714,7 @@ test.describe("pick mode", () => {
       const host = document.querySelector("[data-test-picker]");
       return {
         zoom: host._map.getZoom(),
-        markers: host.shadowRoot.querySelectorAll(".leaflet-marker-icon").length,
+        markers: host.shadowRoot.querySelectorAll(".maplibregl-marker").length,
       };
     });
     expect(before.zoom, "an empty picker should open on the world view").toBe(2);
@@ -634,7 +745,7 @@ test.describe("pick mode", () => {
       host.setAttribute("lng", String(lng));
     }, picks[0]);
     await expect
-      .poll(() => page.evaluate(() => document.querySelector("[data-test-picker]").shadowRoot.querySelectorAll(".leaflet-marker-icon").length))
+      .poll(() => page.evaluate(() => document.querySelector("[data-test-picker]").shadowRoot.querySelectorAll(".maplibregl-marker").length))
       .toBe(1);
   });
 
@@ -647,8 +758,11 @@ test.describe("pick mode", () => {
     await page.evaluate(() => {
       const host = document.querySelector("[data-test-picker]");
       window.__mapInstance = host._map;
-      window.__tilePane = host.shadowRoot.querySelector(".leaflet-tile-pane");
-      window.__markerEl = host.shadowRoot.querySelector(".leaflet-marker-icon");
+      // The canvas stands in for Leaflet's tile pane as the "was the shadow
+      // root rebuilt?" sentinel, and is a stronger one: a re-created canvas is
+      // literally a new WebGL context.
+      window.__canvas = host.shadowRoot.querySelector(".maplibregl-canvas");
+      window.__markerEl = host.shadowRoot.querySelector(".maplibregl-marker");
     });
 
     await page.evaluate(() => {
@@ -661,7 +775,7 @@ test.describe("pick mode", () => {
       .poll(async () =>
         page.evaluate(() => {
           const host = document.querySelector("[data-test-picker]");
-          const p = host._pickMarker.getLatLng();
+          const p = host._pickMarker.getLngLat();
           return { lat: Math.round(p.lat * 1e4) / 1e4, lng: Math.round(p.lng * 1e4) / 1e4 };
         })
       )
@@ -671,8 +785,8 @@ test.describe("pick mode", () => {
       const host = document.querySelector("[data-test-picker]");
       return {
         sameMap: host._map === window.__mapInstance,
-        sameTilePane: host.shadowRoot.querySelector(".leaflet-tile-pane") === window.__tilePane,
-        sameMarker: host.shadowRoot.querySelector(".leaflet-marker-icon") === window.__markerEl,
+        sameTilePane: host.shadowRoot.querySelector(".maplibregl-canvas") === window.__canvas,
+        sameMarker: host.shadowRoot.querySelector(".maplibregl-marker") === window.__markerEl,
       };
     });
     expect(survived.sameMap, "the Leaflet map was re-created").toBe(true);
@@ -696,7 +810,7 @@ test.describe("pick mode", () => {
     const from = await page.evaluate(() => {
       const host = document.querySelector("[data-test-picker]");
       host.scrollIntoView({ block: "center" });
-      const r = host.shadowRoot.querySelector(".leaflet-marker-icon").getBoundingClientRect();
+      const r = host.shadowRoot.querySelector(".maplibregl-marker").getBoundingClientRect();
       return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
     });
     await page.mouse.move(from.x, from.y);
@@ -721,7 +835,7 @@ test.describe("pick mode", () => {
     await page.evaluate(() => document.querySelector("[data-test-picker]").setAttribute("lat", ""));
     await expect
       .poll(() =>
-        page.evaluate(() => document.querySelector("[data-test-picker]").shadowRoot.querySelectorAll(".leaflet-marker-icon").length)
+        page.evaluate(() => document.querySelector("[data-test-picker]").shadowRoot.querySelectorAll(".maplibregl-marker").length)
       )
       .toBe(0);
   });
@@ -812,7 +926,7 @@ test.describe("the location editor's coordinate picker", () => {
     await expect(picker).toHaveAttribute("lat", "48.8584");
     await expect(picker).toHaveAttribute("lng", "2.2945");
     await expect
-      .poll(() => page.evaluate(() => document.querySelector(".location-form__map").shadowRoot.querySelectorAll(".leaflet-marker-icon").length))
+      .poll(() => page.evaluate(() => document.querySelector(".location-form__map").shadowRoot.querySelectorAll(".maplibregl-marker").length))
       .toBe(1);
 
     // A cleared field must remove the attribute, not set it blank: "no
@@ -820,7 +934,7 @@ test.describe("the location editor's coordinate picker", () => {
     await page.locator('.location-form input[name="lat"]').fill("");
     await expect(picker).not.toHaveAttribute("lat", /.*/);
     await expect
-      .poll(() => page.evaluate(() => document.querySelector(".location-form__map").shadowRoot.querySelectorAll(".leaflet-marker-icon").length))
+      .poll(() => page.evaluate(() => document.querySelector(".location-form__map").shadowRoot.querySelectorAll(".maplibregl-marker").length))
       .toBe(0);
   });
 
@@ -868,12 +982,18 @@ test.describe("the location editor's coordinate picker", () => {
       mapEl.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: -100, ctrlKey: true }));
     });
     await expect.poll(async () => (await view(page)).zoom).toBeGreaterThan(2);
+    // Wait for the ease to finish before recording the view. Under Leaflet
+    // setZoomAround landed on a whole level and the poll above effectively
+    // caught the end of it; MapLibre eases over 150ms and the poll catches a
+    // fractional zoom mid-flight, so "the view the person chose" has to mean
+    // the one they were left with.
+    await settleMap(page, ".location-form__map");
     const moved = await view(page);
 
     await page.locator('.location-form input[name="lat"]').fill("48.8584");
     await page.locator('.location-form input[name="lng"]').fill("2.2945");
     await expect
-      .poll(() => page.evaluate(() => document.querySelector(".location-form__map").shadowRoot.querySelectorAll(".leaflet-marker-icon").length))
+      .poll(() => page.evaluate(() => document.querySelector(".location-form__map").shadowRoot.querySelectorAll(".maplibregl-marker").length))
       .toBe(1);
 
     // The point is inside the visible bounds at this zoom, so nothing should
@@ -1021,7 +1141,7 @@ test.describe("address search in the location editor", () => {
     // And the picker followed, which is the whole point of filling the fields.
     await expect(page.locator(".location-form__map")).toHaveAttribute("lat", "64.1466");
     await expect
-      .poll(() => page.evaluate(() => document.querySelector(".location-form__map").shadowRoot.querySelectorAll(".leaflet-marker-icon").length))
+      .poll(() => page.evaluate(() => document.querySelector(".location-form__map").shadowRoot.querySelectorAll(".maplibregl-marker").length))
       .toBe(1);
   });
 
@@ -1119,14 +1239,23 @@ test.describe("the locate control", () => {
 
     const here = await page.evaluate(() => {
       const el = document.querySelector("leaflet-map");
-      const p = el._hereMarker.getLatLng();
+      const p = el._hereMarker.getLngLat();
       const c = el._map.getCenter();
+      // The ring is a GeoJSON source and two layers since Stage 30, not an
+      // object with a radius - MapLibre has no metre-radius circle. Its extent
+      // is measured off the geometry instead, which is a better assertion
+      // anyway: it reads what is on the map rather than what was asked for.
+      const src = el._map.getSource("here-accuracy");
+      const ring = el._hereRing?.geometry?.coordinates?.[0] ?? null;
+      const lats = ring ? ring.map((c2) => c2[1]) : [];
       return {
         marker: { lat: p.lat, lng: p.lng },
         centre: { lat: c.lat, lng: c.lng },
         zoom: el._map.getZoom(),
-        hasAccuracyRing: Boolean(el._hereCircle),
-        radius: el._hereCircle?.getRadius() ?? null,
+        hasAccuracyRing: Boolean(src) && Boolean(el._map.getLayer("here-accuracy-fill")),
+        // Height of the ring in metres, from its own coordinates.
+        spanMetres: lats.length ? (Math.max(...lats) - Math.min(...lats)) * 111320 : null,
+        reportedAccuracy: el._hereAccuracy,
         status: el.shadowRoot.querySelector(".locate-status").hidden,
       };
     });
@@ -1139,7 +1268,13 @@ test.describe("the locate control", () => {
     // The ring is not decoration: a 2km fix and a 5m fix look identical
     // without it and only one is worth acting on.
     expect(here.hasAccuracyRing, "an accuracy ring should be drawn").toBe(true);
-    expect(here.radius, "the ring should have a real radius").toBeGreaterThan(0);
+    expect(here.reportedAccuracy, "the ring should have a real radius").toBeGreaterThan(0);
+    // And the drawn geometry must match the number it was drawn from, within
+    // the tolerance of a 64-sided approximation of a circle: a ring that is
+    // always the same size on screen would satisfy the check above and defeat
+    // the purpose entirely.
+    expect(here.spanMetres).toBeGreaterThan(here.reportedAccuracy * 1.9);
+    expect(here.spanMetres).toBeLessThan(here.reportedAccuracy * 2.1);
     expect(here.status, "no error line on success").toBe(true);
   });
 
@@ -1427,13 +1562,13 @@ async function assertFitsAndTappable(page, root) {
       for (const el of node.querySelectorAll("*")) {
         const style = getComputedStyle(el);
         if (style.display === "none" || style.visibility === "hidden") continue;
-        // Leaflet's own markup, skipped for both checks exactly as
-        // routes.spec.js skips it. Its tiles and panes are *supposed* to
-        // extend past the map - .leaflet-container and .map-wrap clip them -
-        // so measuring their raw boxes reports the library's internals as our
-        // overflow. Measuring the first version of this test without the
-        // exclusion is how that got noticed: two leaflet-tile images.
-        if (el.closest('[class*="leaflet-"]')) continue;
+        // The map library's own markup, skipped for both checks exactly as
+        // routes.spec.js skips it. Under Leaflet this was about tiles and
+        // panes measuring wider than the map; MapLibre draws into one canvas
+        // and does not, but the exclusion is still wanted for its controls -
+        // the attribution toggle and the popup close button are both well
+        // under a 44px tap target and neither is ours to size.
+        if (el.closest('[class*="maplibregl-"]')) continue;
         const r = el.getBoundingClientRect();
         if (r.width === 0 || r.height === 0) continue;
         if (r.right > window.innerWidth + 1) wide.push(`${el.localName}.${el.className}`);
@@ -1560,14 +1695,14 @@ test.describe("the Google Maps link is built in one place", () => {
   async function openSingleMarkerPopup(page) {
     await page.evaluate(() => {
       const sr = document.querySelector("leaflet-map").shadowRoot;
-      const marker = sr.querySelector(".leaflet-marker-icon");
+      const marker = sr.querySelector(".maplibregl-marker");
       if (!marker) throw new Error("the location page's map embed has no marker");
       for (const type of ["mousedown", "mouseup", "click"]) {
         marker.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window, button: 0 }));
       }
     });
     return page.waitForFunction(() => {
-      const a = document.querySelector("leaflet-map").shadowRoot.querySelector(".leaflet-popup-content a[target=_blank]");
+      const a = document.querySelector("leaflet-map").shadowRoot.querySelector(".maplibregl-popup-content a[target=_blank]");
       return a ? a.getAttribute("href") : false;
     });
   }
@@ -1580,7 +1715,7 @@ test.describe("the Google Maps link is built in one place", () => {
     // The trip-wide popup: this href is the server's, verbatim.
     const fromTripMap = await page.evaluate(() => {
       const sr = document.querySelector("leaflet-map").shadowRoot;
-      const links = [...sr.querySelectorAll(".leaflet-popup-content a")];
+      const links = [...sr.querySelectorAll(".maplibregl-popup-content a")];
       const google = links.find((a) => a.getAttribute("target") === "_blank");
       return { href: google?.getAttribute("href") ?? null, itemId: sr.querySelector("[data-item-id]").dataset.itemId };
     });
@@ -1608,8 +1743,13 @@ test.describe("the Google Maps link is built in one place", () => {
     await gotoRoute(page, `/trips/${tripId}/locations/${fromTripMap.itemId}`);
     await page.waitForFunction(() => document.querySelector("leaflet-map")?.hasAttribute("data-ready"));
 
+    // Not a bare .location-view__maps-link: Stage 29 Milestone 3 added an
+    // OpenStreetMap link beside the Google one under the same class, which
+    // made this locator ambiguous and the test a strict-mode failure on main.
+    // Named rather than positional, so a third link would not silently
+    // re-point it.
     const fromLocationView = await page
-      .locator(".location-view__maps-link")
+      .locator('.location-view__maps-link[data-i18n="map.viewOnGoogleMaps"]')
       .getAttribute("href");
     const fromSingleMarker = await (await openSingleMarkerPopup(page)).jsonValue();
 
@@ -1643,11 +1783,11 @@ test.describe("a place with no name falls back to the coordinate link", () => {
         done();
       });
       const sr = el.shadowRoot;
-      const marker = sr.querySelector(".leaflet-marker-icon");
+      const marker = sr.querySelector(".maplibregl-marker");
       for (const type of ["mousedown", "mouseup", "click"]) {
         marker.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window, button: 0 }));
       }
-      const a = sr.querySelector(".leaflet-popup-content a[target=_blank]");
+      const a = sr.querySelector(".maplibregl-popup-content a[target=_blank]");
       const out = a.getAttribute("href");
       el.remove();
       return out;

@@ -244,8 +244,108 @@ one scrolls the page, two pan, hint appears and fades. Then by hand on the dev
 server: trip map with markers and both popup links, the location-view embed,
 and the editor picker (click / drag / type / clear).
 
-## 3. Locate: the here-marker and the accuracy ring
+**Done.** All three modes swapped in one commit and `web/js/vendor/leaflet/`
+deleted. Everything the plan predicted about the API translation held; what
+follows is what it did *not* predict, since that is the part worth reading.
 
+**One deviation, taken deliberately.** The plan had `buildStyle()` return
+vector positron unconditionally and left the operator's `CARAVEL_TILE_URL` to
+Milestone 6. That would have shipped four milestones during which a documented
+configuration option was silently ignored, and it would have made this
+milestone's tile-conformance test assert something untrue. So the raster path
+landed here instead: `rasterStyle()` synthesises a style from the tile fields,
+and `/api/httpapi/map.go` grew one derived field, `style_url`, empty when the
+operator has set a non-default tile URL. The rule lives on the server on
+purpose — the browser inferring operator intent by string-comparing against its
+own copy of the default would put the default in two languages. Milestone 6
+extends this rather than rewriting it; its own setting (`CARAVEL_MAP_STYLE`)
+and the docs are still its work. This also meant the raster path got exercised
+for real by accident: the first spec run went against a dev server still
+running the pre-change binary, so every map came up raster, and worked.
+
+**Four things measured rather than assumed**, all before writing the component,
+and one of them would have been a silent failure:
+
+- A custom element handed to `Marker` *does* get `maplibregl-marker` (plus an
+  anchor class), so the test selectors survive; inline styles survive too, with
+  `transform` applied separately.
+- Popups reach into the shadow root, `[data-item-id]` is queryable, and
+  `customAttribution` renders unescaped.
+- Degenerate `fitBounds` lands on exactly `maxZoom`, so no special case.
+- **Synthetic `mousedown`/`mouseup`/`click` on `#map` produce zero map clicks.**
+  MapLibre listens on the canvas, not the container it is handed. `clickPickerAt`
+  had to be retargeted to `.maplibregl-canvas`; six tests depend on it, and the
+  failure mode is a click that simply never happens.
+
+**Three behavioural differences found by the suite**, each fixed on its merits
+rather than papered over:
+
+- **MapLibre will not pan vertically when the world already fits the
+  viewport** — and at the trip map's `fitBounds` zoom it exactly does (measured:
+  world 643px, container 643px). This is correct, and better than Leaflet,
+  which would drag the world off the top of the screen. But it made
+  `map.gesture.spec.js`'s two-finger test assert something the library rightly
+  refuses, *and* silently hollowed out the one-finger test, whose "the map must
+  not pan" was purely vertical and could no longer fail. The two-finger drag is
+  now sideways and asserts longitude; the one-finger drag is now diagonal, so
+  the vertical half still scrolls the page and the horizontal half keeps the
+  assertion real.
+- **`fitBounds` returns fractional zoom**, so the wheel test's `after - before`
+  came out `1.0000000000000004` where Leaflet's integer snap gave exactly 1.
+  The delta is rounded now, with the reason stated.
+- **The wheel helper's flat 350ms wait** became a race against the 150ms ease
+  under a full parallel run. It waits for the camera to stop instead, which is
+  both faster and not a race. The same fix was needed where a test recorded
+  "the view the person chose" mid-ease.
+
+**A pre-existing failure fixed in passing.** `map.spec.js`'s three-way Google
+Maps link test was already red on `main`: Stage 29 Milestone 3 added an
+OpenStreetMap link under the same `.location-view__maps-link` class, making a
+Stage 29 Milestone 1 locator a strict-mode violation. Confirmed unrelated —
+`location-view-page.js` is untouched by this milestone. The locator now names
+the Google link by its `data-i18n` rather than by position.
+
+Also here: `data-ready` moved to the map's own `load` event (style parsed and
+first frame drawn, a stronger claim than "the object exists"); a
+`disconnectedCallback` and a `destroyMap()` before the shadow root is
+rebuilt, because a WebGL context and a worker are now at stake where Leaflet
+leaked nothing that mattered; a `map.unavailable` string and a fallback that
+still sets `data-ready`, so a browser without WebGL2 gets a sentence instead of
+a 15s timeout on every route with a map; rotation and pitch explicitly
+disabled; MapLibre's own `aria-hidden` gesture overlay hidden in favour of the
+app's `role="status"` hint, now driven by the library's own
+`cooperativegestureprevented` event rather than by a `matchMedia` guess. The
+accuracy ring came along too rather than waiting for Milestone 3 — leaving a
+visible regression standing for one commit was not worth the tidier split, so
+Milestone 3 is now the overlay *lifecycle* rather than the ring itself.
+
+Verified: `make ci` green; `make test-ui` at 204 passed with the only failures
+being the three `todo.md:308-319` names verbatim (both distance-filter tests
+and, intermittently, `itinerary-order.spec.js`'s move-an-entry test), each
+confirmed to pass in isolation — the documented shared-seed flake, not this
+work. `map.gesture.spec.js` green on real fingers, 5/5. By hand against a live
+`make dev` with **real tiles and no request blocking**: the trip map draws 15
+markers over 55 rendered label features, the location-view embed and both
+editor pickers render, the attribution reads
+"© OpenStreetMap contributors | OpenFreeMap © OpenMapTiles Data from
+OpenStreetMap" — our configured credit joined with the provider's own — and
+there are zero console errors across all four mounts.
+
+## 3. Locate: the overlay lifecycle
+
+*Narrowed by Milestone 2, which brought the accuracy ring forward rather than
+leave a visible regression standing for a commit. What is left here is the part
+that only matters once something re-creates the style.*
+
+The ring is already a GeoJSON source plus `fill` and `line` layers, drawn by
+`drawAccuracyRing()` and asserted from the geometry it produced. What is not
+yet done is making it survive a style change: `setStyle()` destroys sources and
+layers (markers and popups are DOM and survive), so the re-add has to be a
+single `_applyOverlays()` bound to `style.load`, which Milestone 5 then relies
+on. Verify by restyling with a position shown and confirming the ring comes
+back, and that it stays metrically correct across three zoom levels.
+
+The original reasoning, kept because it is the *why* behind the shape:
 `L.circle` has no MapLibre equivalent — there is no metre-radius circle.
 Render the accuracy ring as a GeoJSON `Polygon` approximating the circle in
 metres (64 vertices, `lat + (r/111320)·cos θ`,

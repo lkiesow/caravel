@@ -1318,13 +1318,17 @@ button {
    rise past the chrome above it - specifically the "More" dropdown, which
    hangs off the tab row into the panel below.
 
-   The map tab is what made this necessary. <leaflet-map>'s legend and Leaflet's
-   own zoom control both sit at z-index: 1000, the same level as
-   .menu__dropdown, and a shadow root is not a stacking context - so they were
-   competing with the dropdown in the *page* stacking context, where an equal
-   z-index is settled by document order and the map comes later. On a phone,
-   where the dropdown drops over the map instead of hanging beside it, that put
-   the legend and the zoom buttons on top of the menu items.
+   The map tab is what made this necessary. <leaflet-map>'s legend and locate
+   control both sit at z-index: 1000, the same level as .menu__dropdown, and a
+   shadow root is not a stacking context - so they were competing with the
+   dropdown in the *page* stacking context, where an equal z-index is settled
+   by document order and the map comes later. On a phone, where the dropdown
+   drops over the map instead of hanging beside it, that put them on top of the
+   menu items.
+
+   Stage 30 removed half the original cause without removing the need: Leaflet's
+   zoom control was one of the 1000s, and MapLibre's controls sit at z-index 2.
+   The component's own two overlays still do not, so this rule stays.
 
    z-index: 0 (not `auto`) is what does the work: it makes this element the
    context those 1000s are relative to, capping the whole panel below the

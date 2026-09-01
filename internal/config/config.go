@@ -53,8 +53,9 @@ type Config struct {
 	// frontend. See docs/configuration/server.md for the providers worth
 	// knowing about and what each one is good for.
 	//
-	// TileAttribution is HTML and is *not* escaped anywhere: Leaflet renders
-	// it as markup, and every provider's terms require a working link back.
+	// TileAttribution is HTML and is *not* escaped anywhere: the map library
+	// renders it as markup, and every provider's terms require a working link
+	// back.
 	// It comes from the operator's own environment, the same trust level as
 	// the database password sitting next to it.
 	TileURL         string // CARAVEL_TILE_URL

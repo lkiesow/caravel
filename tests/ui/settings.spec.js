@@ -18,7 +18,12 @@ const STORAGE_KEY = "caravel.theme";
 const LIGHT_BG = "rgb(255, 255, 255)";
 const DARK_BG = "rgb(24, 24, 27)";
 
-const choice = (page, value) => page.locator(`.setting-choice input[value="${value}"]`);
+// Scoped to the app's own appearance group. Stage 30 Milestone 5 put a second
+// radiogroup in the same card for the *map's* light/dark, which shares the
+// values "light" and "dark" - so an unscoped .setting-choice selector matches
+// both and every locator here becomes a strict-mode violation.
+const choice = (page, value) =>
+  page.locator(`.appearance-slot .setting-choice input[value="${value}"]`);
 const bodyBackground = (page) => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
 const storedTheme = (page) => page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY);
 
@@ -86,7 +91,7 @@ test.describe("appearance: the choices lay out sanely at both widths", () => {
     await login(page);
     await gotoRoute(page, "/settings");
 
-    const choices = page.locator(".setting-choice");
+    const choices = page.locator(".appearance-slot .setting-choice");
     await expect(choices).toHaveCount(3);
     const boxes = async () => Promise.all((await choices.all()).map((c) => c.boundingBox()));
 
@@ -103,7 +108,7 @@ test.describe("appearance: the choices lay out sanely at both widths", () => {
     expect(new Set(narrow.map((b) => Math.round(b.y))).size, "phone rows").toBe(3);
     const widths = narrow.map((b) => Math.round(b.width));
     expect(new Set(widths).size, `phone widths ${widths.join("/")}`).toBe(1);
-    const group = await page.locator(".setting-choices").boundingBox();
+    const group = await page.locator(".appearance-slot .setting-choices").boundingBox();
     expect(widths[0], "choice fills the group's width").toBe(Math.round(group.width));
   });
 });

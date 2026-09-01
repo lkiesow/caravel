@@ -988,6 +988,16 @@ textarea {
   gap: 0.5rem;
 }
 
+/* A second question inside the Appearance card: the map's own light/dark,
+   which is a separate preference from the app's (Stage 30 Milestone 5). An h3
+   rather than a second card, because it is the same question about a different
+   surface -- and the heading-outline sweep in routes.spec.js wants the level
+   below the card's h2, not a second h2. */
+.setting-subhead {
+  margin: 1.5rem 0 0.25rem;
+  font-size: 0.95rem;
+}
+
 .setting-choice {
   display: inline-flex;
   align-items: center;

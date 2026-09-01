@@ -13,6 +13,8 @@
 // The pre-paint copy of this rule lives inline in web/index.html - it has to
 // run before the first paint, and this module is loaded from app.js. Keep the
 // two in step; the storage key is the contract between them.
+import { eventBus } from "./eventbus.js";
+
 const STORAGE_KEY = "caravel.theme";
 const THEMES = ["auto", "light", "dark"];
 const DEFAULT_THEME = "auto";
@@ -56,7 +58,15 @@ export function setTheme(preference) {
 }
 
 export function applyTheme() {
-  document.documentElement.dataset.theme = resolveTheme();
+  const resolved = resolveTheme();
+  const changed = document.documentElement.dataset.theme !== resolved;
+  document.documentElement.dataset.theme = resolved;
+  // CSS handles everything that keys off data-theme, but the map is drawn from
+  // a style document rather than styled by the page, so it cannot follow an
+  // attribute. It listens for this instead (see map-theme.js). Fired only on
+  // an actual change, so the pre-paint script in index.html having already set
+  // the attribute does not cause a spurious restyle at boot.
+  if (changed) eventBus.dispatchEvent(new CustomEvent("theme-changed", { detail: { theme: resolved } }));
 }
 
 // Called once at boot. While the preference is "auto" the app has to follow the

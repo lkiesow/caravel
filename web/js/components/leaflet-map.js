@@ -3,11 +3,21 @@ import { t, getLocale } from "../i18n.js";
 import { icon } from "../icon.js";
 import { getCurrentPosition, locateErrorKey, locateUnavailableReason } from "../geolocation.js";
 import { googleMapsUrl } from "../url.js";
+import { eventBus } from "../eventbus.js";
+import { resolveMapTheme } from "../map-theme.js";
 
 // The tile layer, as the instance has it configured. Defaults duplicated from
 // internal/httpapi/map.go on purpose: they are what the map falls back to when
 // the request fails, and a Map tab of grey squares is a worse answer to "the
 // config endpoint is briefly unreachable" than the tiles Caravel shipped with.
+// The dark cartography is the light one's sibling, named by convention rather
+// than configured: the server points at one style, and this is where its
+// counterpart lives. Kept to a substitution so an operator who points
+// style_url at a style of their own gets that style in both modes rather than
+// a 404 half the time -- see darkStyleUrl below.
+const LIGHT_STYLE = "positron";
+const DARK_STYLE = "dark";
+
 const DEFAULT_TILE_CONFIG = {
   style_url: "/js/vendor/map-styles/positron.json",
   tile_url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
@@ -43,12 +53,13 @@ function loadTileConfig() {
 // one answer, and re-parsing 25KB of JSON per map is waste.
 const styleCache = new Map();
 
-async function buildStyle(tiles) {
+async function buildStyle(tiles, scheme) {
   if (!tiles.style_url) return rasterStyle(tiles);
-  if (!styleCache.has(tiles.style_url)) {
+  const url = scheme === "dark" ? darkStyleUrl(tiles.style_url) : tiles.style_url;
+  if (!styleCache.has(url)) {
     styleCache.set(
-      tiles.style_url,
-      fetch(tiles.style_url).then((r) => {
+      url,
+      fetch(url).then((r) => {
         if (!r.ok) throw new Error(`style ${r.status}`);
         return r.json();
       })
@@ -59,15 +70,26 @@ async function buildStyle(tiles) {
     // object it is given, so two maps sharing one parsed document would
     // corrupt each other -- and the trip page mounts a second map without
     // tearing the first one down.
-    return localiseLabels(structuredClone(await styleCache.get(tiles.style_url)), getLocale());
+    return localiseLabels(structuredClone(await styleCache.get(url)), getLocale());
   } catch {
     // A missing or malformed style should not leave a blank rectangle when
     // there is still a tile URL to fall back to. Same reasoning as
     // DEFAULT_TILE_CONFIG above: a working map from the shipped defaults
     // beats an honest void.
-    styleCache.delete(tiles.style_url);
+    styleCache.delete(url);
+    // A dark style that will not load falls back to the light one rather than
+    // to raster: the vendored pair are siblings, so a missing dark counterpart
+    // is much more likely than the whole vector setup being broken -- and an
+    // operator pointing style_url at a custom style is exactly the case where
+    // no dark sibling exists.
+    if (url !== tiles.style_url) return buildStyle(tiles, "light");
     return rasterStyle(tiles);
   }
+}
+
+// positron.json -> dark.json, without assuming the directory or the extension.
+function darkStyleUrl(lightUrl) {
+  return lightUrl.replace(new RegExp(`${LIGHT_STYLE}(?=\\.json$|$)`), DARK_STYLE);
 }
 
 // Labels in the reader's own language, which is the thing raster tiles could
@@ -219,17 +241,27 @@ const HERE_ZOOM = 15;
 // alone -- so the inline styles below survive and the tests can still select a
 // marker by class.
 function markerElement(category) {
-  const color = CATEGORY_COLORS[category] || FALLBACK_MARKER_COLOR;
+  // A custom property rather than the hex, so that changing the map's
+  // light/dark scheme restyles every marker already on the map without
+  // rebuilding any of them. Markers survive setStyle deliberately (they are
+  // DOM), so recreating them to recolour them would undo that.
+  const color = markerColorVar(category);
   return styled(
     `display:block;width:1rem;height:1rem;border-radius:50%;background:${color};` +
-      `border:2px solid white;box-shadow:0 0 2px rgba(0,0,0,.5)`
+      `border:2px solid var(--marker-ring);box-shadow:0 0 2px rgba(0,0,0,.5)`
   );
+}
+
+export function markerColorVar(category) {
+  return Object.prototype.hasOwnProperty.call(CATEGORY_COLORS, category)
+    ? `var(--marker-${category})`
+    : "var(--marker-fallback)";
 }
 
 function pickMarkerElement() {
   return styled(
     `display:block;width:1.5rem;height:1.5rem;border-radius:50%;box-sizing:border-box;` +
-      `border:4px solid ${PICK_MARKER_COLOR};background:rgba(255,255,255,.85);` +
+      `border:4px solid var(--marker-pick);background:var(--marker-pick-fill);` +
       `box-shadow:0 0 3px rgba(0,0,0,.6)`
   );
 }
@@ -237,7 +269,7 @@ function pickMarkerElement() {
 function hereMarkerElement() {
   return styled(
     `display:block;width:1rem;height:1rem;border-radius:50%;box-sizing:border-box;` +
-      `background:${HERE_MARKER_COLOR};border:3px solid white;` +
+      `background:var(--marker-here);border:3px solid var(--marker-ring);` +
       `box-shadow:0 0 4px rgba(0,0,0,.6)`
   );
 }
@@ -273,6 +305,44 @@ function accuracyRing(lat, lng, radiusMetres) {
 }
 
 const styles = `
+  /* The marker palette, as custom properties so that a light/dark change
+     restyles every marker and legend dot in place.
+
+     Two sets rather than one, because a colour chosen to read on near-white
+     paper does not read on near-black. Measured against each cartography's own
+     background (positron rgb(242,243,240), dark rgb(12,12,12)): the light
+     values sit between 3.1:1 and 5.5:1 there, but "stay" and "transport" fall
+     to 3.4:1 and 3.8:1 on the dark map - above the 3:1 floor for a graphical
+     object, and visibly dimmer than their neighbours. The dark set is the same
+     hues two steps lighter, which puts all six between 7:1 and 11:1.
+
+     The legend dots use these too. They sit on app chrome rather than on the
+     map, so they could have followed the app's theme instead - but a legend
+     whose dot is a different colour from the marker it names is worse than a
+     legend dot with less contrast behind it. */
+  :host {
+    --marker-site: ${CATEGORY_COLORS.site};
+    --marker-stay: ${CATEGORY_COLORS.stay};
+    --marker-transport: ${CATEGORY_COLORS.transport};
+    --marker-fallback: ${FALLBACK_MARKER_COLOR};
+    --marker-pick: ${PICK_MARKER_COLOR};
+    --marker-pick-fill: rgba(255, 255, 255, 0.85);
+    --marker-here: ${HERE_MARKER_COLOR};
+    --marker-ring: #fff;
+  }
+  :host([data-scheme="dark"]) {
+    --marker-site: #22c55e;
+    --marker-stay: #a78bfa;
+    --marker-transport: #60a5fa;
+    --marker-fallback: #a1a1aa;
+    --marker-pick: #fb923c;
+    --marker-pick-fill: rgba(24, 24, 27, 0.85);
+    --marker-here: #22d3ee;
+    /* The white ring that separates a marker from the map underneath has to
+       become a dark one, or every marker wears a bright halo on a dark map. */
+    --marker-ring: #18181b;
+  }
+
   /* A column flex box, not a plain block: the map fills the height and the
      two-finger hint below it takes its own, so adding that line can't push
      the map past :host's height at any width. */
@@ -602,7 +672,37 @@ class LeafletMap extends HTMLElement {
     this.destroyMap();
   }
 
+  // Swap the cartography under a live map.
+  //
+  // setStyle rather than a rebuild, and that is the point of the whole
+  // arrangement: it keeps the camera, keeps the markers (they are DOM), and
+  // costs no refetch of the trip's locations. What it does *not* keep is
+  // sources and layers, which is why applyOverlays exists and is bound to
+  // style.load.
+  async restyle() {
+    const map = this._map;
+    if (!map || !this._tiles) return;
+    // The map's own centre is the best coordinate the day/night mode can have:
+    // better than a remembered fix when somebody is looking at somewhere they
+    // are not, which on a trip-planning app is most of the time.
+    const centre = map.getCenter();
+    const next = resolveMapTheme({ near: { lat: centre.lat, lng: centre.lng } });
+    if (next === this._scheme) return;
+    this._scheme = next;
+    // Set before the style is fetched, so the markers recolour immediately
+    // rather than a network round trip later.
+    this.dataset.scheme = next;
+    const generation = this._generation;
+    const style = await buildStyle(this._tiles, next);
+    if (generation !== this._generation || this._map !== map) return;
+    map.setStyle(style, { diff: false });
+  }
+
   destroyMap() {
+    if (this._onMapThemeChanged) {
+      eventBus.removeEventListener("map-theme-changed", this._onMapThemeChanged);
+      this._onMapThemeChanged = null;
+    }
     this._map?.remove();
     this._map = null;
     this._markers = [];
@@ -726,7 +826,7 @@ class LeafletMap extends HTMLElement {
               (cat) => `
               <label>
                 <input type="checkbox" data-category="${cat}" checked />
-                <span class="dot" style="background:${CATEGORY_COLORS[cat]}"></span>
+                <span class="dot" style="background:${markerColorVar(cat)}"></span>
                 ${t(`item.category.${cat}`)}
               </label>`
             )
@@ -766,7 +866,13 @@ class LeafletMap extends HTMLElement {
     if (generation !== this._generation) return;
     this._maplibre = maplibre;
 
-    const style = await buildStyle(tiles);
+    // No map exists yet, so there is no viewport centre to offer the day/night
+    // mode as a coordinate hint; it falls back to a remembered fix, or to the
+    // app's own theme. Once the map is up, restyle() can do better.
+    this._tiles = tiles;
+    this._scheme = resolveMapTheme();
+    this.dataset.scheme = this._scheme;
+    const style = await buildStyle(tiles, this._scheme);
     if (generation !== this._generation) return;
 
     const mapEl = this.shadowRoot.getElementById("map");
@@ -920,6 +1026,12 @@ class LeafletMap extends HTMLElement {
     // anything can restyle the map, and it fires for the initial style too -
     // harmless, since there is nothing to re-add until a position is taken.
     map.on("style.load", () => this.applyOverlays());
+
+    // The map is drawn from a style document, so it cannot follow data-theme
+    // the way the rest of the app does - it has to be told. Removed again in
+    // destroyMap, or a navigated-away map would go on being restyled.
+    this._onMapThemeChanged = () => this.restyle();
+    eventBus.addEventListener("map-theme-changed", this._onMapThemeChanged);
 
     // Ready means "the style is loaded and the first frame is on screen",
     // which is what `load` reports. That is a stronger claim than this

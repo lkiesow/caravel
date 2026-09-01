@@ -568,6 +568,84 @@ confirm the map flips. `make check-contrast` passes on
 `/trips/{trip}/map` in both schemes. Assert the resolved style id in
 `map.spec.js` for all four modes.
 
+**Done.** Four modes, in `web/js/map-theme.js`, built on the same storage
+shape as `theme.js` — including "the default is the absence of a key", so a
+browser told "follow the app" and one never told anything are the same state.
+`theme.js` gained a `theme-changed` event (fired only on an actual change, so
+the pre-paint script in `index.html` does not cause a boot-time restyle), which
+is what the `app` mode listens to. The component resolves a scheme in
+`render()` and again in `restyle()`, and `setStyle(..., {diff:false})` swaps
+the cartography under a live map — Milestone 3's `applyOverlays()` re-adds the
+ring, markers are DOM and survive, and the camera is preserved.
+
+**The sun got its own module** (`web/js/sun.js`), and the one design decision
+in it is worth stating: it computes the sun's **altitude** rather than solving
+for a sunrise time. A sunrise-time formula has no answer above the polar
+circles, where the sun can fail to rise or set for weeks, and typically returns
+NaN — which reads as "night" and would give a Norwegian summer a dark map at
+noon. In a travel app that is not a corner case. The threshold is civil
+twilight (-6°) rather than the geometric horizon, which turns out to matter:
+Tromsø on 21 December never gets the sun above the horizon but does reach
+-3.1°, a dim blue daylight that is the brightest part of its day, and a light
+map is right there. Longyearbyen at 78°N peaks at -11.7° the same day and
+correctly gets a dark one.
+
+**Two "failures" while validating that arithmetic were my own reference values,
+not the code**, and both are recorded in the spec so nobody re-derives them:
+solar noon at the equator on the equinox is 12:08 UTC at 89.78°, not 12:00 at
+90 — the equation of time puts it eight minutes late in late March, which is
+2° of rotation — and the Tromsø case above. Cross-checks against NOAA for
+Greenwich (38.27 vs 38.4) and London midsummer (61.94 vs 61.9) land within
+0.15°.
+
+**Never prompts for a location, which was the constraint.** `resolveMapTheme()`
+is synchronous — a map cannot be built without a style, so an awaiting
+resolution would mean either a flash of the wrong cartography or a map that
+waits on a permission dialog. Coordinates come from a remembered fix (written
+by `getCurrentPosition` on success, so the locate control feeds it for free),
+then the map's own viewport centre, then the app's theme. `primeMapTheme()`
+refreshes the fix out of band and only when `navigator.permissions` already
+reports `granted`, so it can never raise a prompt. Sunrise and sunset are the
+only inputs that change by themselves, so rather than polling, the module works
+out when the answer next flips and arms one timer.
+
+**Marker colours were measured, not eyeballed.** Against each cartography's own
+background: the light palette sits between 3.1:1 and 5.5:1 on positron, but
+`stay` and `transport` fall to 3.4:1 and 3.8:1 on the dark map — above the 3:1
+floor for a graphical object and visibly dimmer than their neighbours. The dark
+set is the same hues two steps lighter, putting all six between 7:1 and 11:1,
+plus a dark `--marker-ring` because a white halo round every pin on a dark map
+is worse than the contrast problem it solves. They are custom properties on the
+host keyed off `data-scheme`, so markers already on the map recolour without
+being rebuilt — which matters, since surviving `setStyle` is the whole point of
+them being DOM. The legend dots read the same properties: a legend key in a
+different colour from the pin it names would be a lie.
+
+**One regression caused and fixed.** Adding a second radiogroup to the
+Appearance card broke four `settings.spec.js` tests, which selected
+`.setting-choice` unscoped and now matched both groups — `light` and `dark` are
+values in each. Their locators are scoped to `.appearance-slot` now, which is
+what they always meant.
+
+**One flake of my own, found and fixed rather than retried.** Three new specs
+passed alone and failed in the full suite: `getStyle()` returns `undefined`
+*during* a swap, since MapLibre drops the old style before the new one parses,
+and the test helper threw instead of reporting "not yet". Under parallel load
+that window is wide enough to land in. The helper tolerates it now, which is
+what a poll waiting for a settled state should have done from the start.
+
+Verified: `make ci` green; `make test-ui` at 220 passed with only the
+documented shared-seed flakes. Eleven new specs in `tests/ui/map-theme.spec.js`
+cover the four modes, the camera and markers surviving a restyle, markers and
+legend recolouring together, `app` following the app, `auto` disagreeing with
+the interface and agreeing with `sun.js`, the solar arithmetic against places
+whose answers are not in dispute, and the settings control at 324px. By hand
+against a live `make dev` with real tiles: all four modes switch the
+cartography with the camera and all 15 markers held exactly, no console errors,
+and `auto` chose dark at 23:44 local in Copenhagen with the sun at -23.7°,
+predicting the change 5.9 hours out — sunrise at 05:37, which is correct for
+1 September.
+
 ## 6. Operator configuration compatibility
 
 `CARAVEL_TILE_URL` is documented (`docs/configuration/map-tiles.md`) and

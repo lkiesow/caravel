@@ -4,6 +4,7 @@ import { icon } from "../icon.js";
 import { renderLanguageField } from "../components/language-field.js";
 import { renderPasswordField } from "../components/password-field.js";
 import { renderThemeField } from "../components/theme-field.js";
+import { renderMapThemeField } from "../components/map-theme-field.js";
 
 // The account settings screen, reached from the header's user menu.
 //
@@ -36,6 +37,9 @@ export async function renderSettingsPage(container) {
         <h2 data-i18n="settings.appearance"></h2>
         <p class="editor-card__hint" data-i18n="settings.appearanceHint"></p>
         <div class="appearance-slot"></div>
+        <h3 class="setting-subhead" data-i18n="settings.mapTheme"></h3>
+        <p class="editor-card__hint" data-i18n="settings.mapThemeHint"></p>
+        <div class="map-appearance-slot"></div>
       </div>
       <div class="editor-card password-card" hidden>
         <h2 data-i18n="settings.password"></h2>
@@ -48,6 +52,10 @@ export async function renderSettingsPage(container) {
 
   renderLanguageField(container.querySelector(".language-slot"));
   renderThemeField(container.querySelector(".appearance-slot"));
+  // Inside the same Appearance card rather than a card of its own: it is the
+  // same question asked about a different surface, and a reader deciding one
+  // is usually deciding both.
+  renderMapThemeField(container.querySelector(".map-appearance-slot"));
 
   // The Password card starts hidden and is shown only for an account that has
   // one: /auth/me reports has_password, which is false for an identity that

@@ -59,6 +59,18 @@ purpose — do not reconstruct it from an older stage plan without asking.
 
 ## Planned features
 
+- **Panning across the terminator does not re-light the map.** (Stage 30
+  Milestone 5.) The day/night mode takes its coordinate from a remembered fix
+  first and the map's viewport centre only as a fallback, and it re-resolves
+  when something announces a change -- a preference edit, a new fix, the
+  scheduled sunrise or sunset -- but not on `moveend`. So panning a map from
+  Europe to a night-time Pacific leaves it light until one of those happens.
+  Deliberate rather than missed: re-resolving on every pan would make the
+  cartography flip mid-drag, which is a worse experience than a slightly stale
+  answer, and the viewport is the *fallback* coordinate rather than the
+  intended one. Revisit if anyone reports it, probably by re-resolving on
+  `moveend` with a debounce and only when there is no remembered fix.
+
 - **Right-to-left map labels are unshaped.** (Stage 30 Milestone 4.) MapLibre
   renders Arabic and Hebrew correctly only with `setRTLTextPlugin`, which is a
   separate ~200KB JS+WASM download it fetches from unpkg -- a third-party

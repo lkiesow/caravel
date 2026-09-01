@@ -4,6 +4,8 @@
 // list wants the same position and, more importantly, the same vocabulary for
 // why it could not be had. Every caller must be able to say *which* of these
 // happened, since they call for different responses from the user.
+import { rememberPosition } from "./map-theme.js";
+
 export const LOCATE_UNSUPPORTED = "unsupported";
 export const LOCATE_INSECURE = "insecure";
 export const LOCATE_DENIED = "denied";
@@ -81,12 +83,20 @@ export async function getCurrentPosition({ timeoutMs = 10000 } = {}) {
     const timer = setTimeout(() => finish(reject, locateError(LOCATE_TIMEOUT)), timeoutMs);
 
     navigator.geolocation.getCurrentPosition(
-      (position) =>
-        finish(resolve, {
+      (position) => {
+        const fix = {
           lat: position.coords.latitude,
           lng: position.coords.longitude,
           accuracy: position.coords.accuracy,
-        }),
+        };
+        // Remembered for the map's day/night mode, which needs a coordinate to
+        // know whether the sun is up and must never raise a prompt of its own
+        // to get one. Every caller of this function has, by definition, just
+        // been given permission - so this is the honest place to capture it,
+        // rather than each caller remembering to.
+        rememberPosition(fix);
+        finish(resolve, fix);
+      },
       (error) => finish(reject, locateError(reasonFromError(error))),
       // enableHighAccuracy is deliberately off: it costs battery and seconds
       // for a precision nothing here needs - a map view and a distance

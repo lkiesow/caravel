@@ -14,6 +14,7 @@ import { renderSuggestPage } from "./pages/suggest-page.js";
 import { renderUserMenu } from "./components/user-menu.js";
 import { createRouter, navigate } from "./router.js";
 import { initTheme } from "./theme.js";
+import { initMapTheme } from "./map-theme.js";
 import { TRIP_TABS } from "./trip-tabs.js";
 import { setCurrentUser } from "./session.js";
 
@@ -120,6 +121,11 @@ async function boot() {
 // the part that needs a live listener - following the OS while the preference is
 // "auto" and the tab stays open.
 initTheme();
+// And the map's own light/dark, which is a separate preference with a fourth
+// state ("follow the app") -- see map-theme.js. Hooked up here because its
+// day/night mode has a timer to arm and a position to look for, neither of
+// which should wait for a map to be opened.
+initMapTheme();
 
 initI18n().then(boot);
 

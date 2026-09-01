@@ -1278,6 +1278,146 @@ test.describe("the locate control", () => {
     expect(here.status, "no error line on success").toBe(true);
   });
 
+  // Two claims about the ring, and they fail in different ways.
+  //
+  // The first is that it is the size it says it is. accuracyRing() converts
+  // metres to degrees, and the longitude half has to be divided by cos(lat) or
+  // the ring is an ellipse that is too narrow everywhere except the equator -
+  // at Reykjavik, cos(64 degrees) is about 0.44, so getting that wrong makes
+  // the ring less than half as wide as it should be. Measuring the east-west
+  // span on the ground is what catches it; the north-south span, which the
+  // test above checks, would look perfect either way.
+  //
+  // The second is that it is anchored to the ground rather than to the screen.
+  // MapLibre's circle layer takes a *pixel* radius, which would give a fixed
+  // dot silently claiming a different distance at every zoom - and a 2km fix
+  // and a 5m fix would look identical again, which is the bug the ring exists
+  // to prevent. A ring in degrees grows on screen as you zoom in; a ring in
+  // pixels does not.
+  test("the accuracy ring is the size it claims, at any zoom", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+    await page.evaluate(() =>
+      document.querySelector("leaflet-map").shadowRoot.querySelector('[data-action="locate"]').click()
+    );
+    await waitForLocateSettled(page);
+
+    const measure = async (zoom) => {
+      await page.evaluate((z) => {
+        const m = document.querySelector("leaflet-map")._map;
+        m.jumpTo({ center: m.getCenter(), zoom: z });
+      }, zoom);
+      await settleMap(page, "leaflet-map");
+      return page.evaluate(() => {
+        const el = document.querySelector("leaflet-map");
+        const ring = el._hereRing.geometry.coordinates[0];
+        const lngs = ring.map((c) => c[0]);
+        const lats = ring.map((c) => c[1]);
+        const midLat = (Math.max(...lats) + Math.min(...lats)) / 2;
+        // Degrees of longitude are shorter away from the equator, so the
+        // east-west span only converts to metres through cos(latitude).
+        const eastWest =
+          (Math.max(...lngs) - Math.min(...lngs)) * 111320 * Math.cos((midLat * Math.PI) / 180);
+        const ys = ring.map((c) => el._map.project(c).y);
+        return {
+          eastWest,
+          accuracy: el._hereAccuracy,
+          pixelSpan: Math.max(...ys) - Math.min(...ys),
+        };
+      });
+    };
+
+    const at12 = await measure(12);
+    const at13 = await measure(13);
+    const at14 = await measure(14);
+
+    // Diameter, so twice the reported accuracy. The tolerance covers the
+    // 64-sided approximation of a circle, nothing more.
+    for (const [name, m] of [["z12", at12], ["z13", at13], ["z14", at14]]) {
+      expect(m.eastWest, `${name}: the ring should be as wide as the fix it reports`).toBeGreaterThan(
+        m.accuracy * 1.9
+      );
+      expect(m.eastWest, `${name}: and no wider`).toBeLessThan(m.accuracy * 2.1);
+    }
+
+    // ...and it is on the ground, not on the glass.
+    expect(at12.pixelSpan, "the ring should have a measurable size on screen").toBeGreaterThan(0);
+    expect(at13.pixelSpan / at12.pixelSpan, "one zoom level should double it on screen").toBeGreaterThan(1.9);
+    expect(at13.pixelSpan / at12.pixelSpan).toBeLessThan(2.1);
+    expect(at14.pixelSpan / at13.pixelSpan, "and again").toBeGreaterThan(1.9);
+    expect(at14.pixelSpan / at13.pixelSpan).toBeLessThan(2.1);
+  });
+
+  // Sources and layers are destroyed by setStyle(); markers and popups are DOM
+  // and are not. Nothing in the app restyles a map yet - Milestone 5 will, on
+  // every light/dark change - so this drives setStyle directly rather than
+  // waiting for a feature to exist. Without applyOverlays() bound to
+  // style.load, the ring simply vanishes the first time the theme changes and
+  // nothing else reports it.
+  test("the accuracy ring survives the style being replaced", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+    await page.evaluate(() =>
+      document.querySelector("leaflet-map").shadowRoot.querySelector('[data-action="locate"]').click()
+    );
+    await waitForLocateSettled(page);
+
+    const before = await page.evaluate(() => {
+      const el = document.querySelector("leaflet-map");
+      const c = el._map.getCenter();
+      return {
+        ring: Boolean(el._map.getSource("here-accuracy")),
+        fill: Boolean(el._map.getLayer("here-accuracy-fill")),
+        line: Boolean(el._map.getLayer("here-accuracy-line")),
+        markerEl: el.shadowRoot.querySelectorAll(".maplibregl-marker").length,
+        centre: { lat: c.lat, lng: c.lng },
+        zoom: el._map.getZoom(),
+        geometry: el._hereRing.geometry.coordinates[0].length,
+      };
+    });
+    expect(before.ring && before.fill && before.line, "the ring should be there to begin with").toBe(true);
+
+    // The other vendored style, so this is the real operation Milestone 5 runs
+    // rather than a re-application of the same document.
+    await page.evaluate(async () => {
+      const el = document.querySelector("leaflet-map");
+      const style = await (await fetch("/js/vendor/map-styles/dark.json")).json();
+      el._map.setStyle(style, { diff: false });
+    });
+    await page.waitForFunction(
+      () => document.querySelector("leaflet-map")._map.isStyleLoaded(),
+      null,
+      { timeout: 20000 }
+    );
+
+    const after = await page.evaluate(() => {
+      const el = document.querySelector("leaflet-map");
+      const c = el._map.getCenter();
+      return {
+        ring: Boolean(el._map.getSource("here-accuracy")),
+        fill: Boolean(el._map.getLayer("here-accuracy-fill")),
+        line: Boolean(el._map.getLayer("here-accuracy-line")),
+        markerEl: el.shadowRoot.querySelectorAll(".maplibregl-marker").length,
+        centre: { lat: c.lat, lng: c.lng },
+        zoom: el._map.getZoom(),
+        geometry: el._hereRing.geometry.coordinates[0].length,
+      };
+    });
+
+    expect(after.ring, "the source must be re-added after a restyle").toBe(true);
+    expect(after.fill, "and its fill layer").toBe(true);
+    expect(after.line, "and its outline").toBe(true);
+    expect(after.geometry, "with the same geometry").toBe(before.geometry);
+    // Markers are DOM, so they should never have been at risk - asserted so a
+    // future change that moves them into the style would be noticed.
+    expect(after.markerEl, "markers should survive a restyle untouched").toBe(before.markerEl);
+    // And the camera, which setStyle preserves: a restyle must not look like a
+    // navigation.
+    expect(after.centre.lat).toBeCloseTo(before.centre.lat, 6);
+    expect(after.centre.lng).toBeCloseTo(before.centre.lng, 6);
+    expect(after.zoom).toBeCloseTo(before.zoom, 6);
+  });
+
   test("in the editor, it sets the point being picked", async ({ page }) => {
     await login(page);
     const res = await page.request.post("/api/trips", { data: { title: "UI suite: locate spec" } });

@@ -866,6 +866,12 @@ class LeafletMap extends HTMLElement {
 
     if (this.hasAttribute("locate")) this.bindLocate();
 
+    // Sources and layers do not survive a style change, so everything the
+    // component draws through the style is re-added from here. Bound before
+    // anything can restyle the map, and it fires for the initial style too -
+    // harmless, since there is nothing to re-add until a position is taken.
+    map.on("style.load", () => this.applyOverlays());
+
     // Ready means "the style is loaded and the first frame is on screen",
     // which is what `load` reports. That is a stronger claim than this
     // attribute used to make: it was set as soon as the map object existed,
@@ -1107,29 +1113,48 @@ class LeafletMap extends HTMLElement {
       .addTo(this._map);
 
     this._hereAccuracy = Number.isFinite(accuracy) && accuracy > 0 ? accuracy : null;
-    this.drawAccuracyRing(lat, lng);
+    this._hereRingAt = this._hereAccuracy ? { lat, lng } : null;
+    this.applyOverlays();
 
     this._map.jumpTo({ center: [lng, lat], zoom: HERE_ZOOM });
   }
 
-  // The ring, as a source and two layers rather than as an object with a
-  // radius. Split out from showPosition because layers, unlike markers, do not
-  // survive a style change - so this has to be callable again on its own.
-  drawAccuracyRing(lat, lng) {
+  // Everything the *style* owns, (re-)built from the component's own state.
+  //
+  // This indirection is the whole point rather than tidiness. Markers and
+  // popups are DOM and belong to the map, so they outlive anything done to the
+  // style; sources and layers belong to the style and are destroyed outright
+  // by setStyle(). So the accuracy ring cannot be drawn once and forgotten -
+  // it has to be reconstructible from state the component holds, and something
+  // has to call for it again afterwards. render() binds this to the map's
+  // `style.load`, which fires for the first style and for every replacement,
+  // so a restyle re-adds whatever was on the map without the caller knowing a
+  // restyle happened. Milestone 5 swaps the style on every light/dark change
+  // and needs exactly that.
+  //
+  // Safe to call at any time: with no position taken it removes what is not
+  // there and returns.
+  applyOverlays() {
     const map = this._map;
     if (!map) return;
+
+    const at = this._hereRingAt;
     const radius = this._hereAccuracy;
-    if (!radius) {
+    if (!at || !radius) {
       this._hereRing = null;
       this.removeAccuracyRing();
       return;
     }
-    this._hereRingAt = { lat, lng };
-    // Kept on the component as well as handed to the source. MapLibre offers
-    // no public read-back of a GeoJSON source's data, and both the accuracy
-    // test and a later re-add after a style change need the geometry that is
-    // actually on the map rather than the number it was derived from.
-    const data = (this._hereRing = accuracyRing(lat, lng, radius));
+
+    // Recomputed rather than cached, because the ring is in degrees and a
+    // degree of longitude is a different distance at every latitude - so the
+    // geometry is a function of *where* it is, not only how big it is.
+    //
+    // Kept on the component as well as handed to the source: MapLibre offers
+    // no public read-back of a GeoJSON source's data, and the accuracy test
+    // needs the geometry that is actually on the map rather than the number it
+    // was derived from.
+    const data = (this._hereRing = accuracyRing(at.lat, at.lng, radius));
     const existing = map.getSource(ACCURACY_SOURCE);
     if (existing) {
       existing.setData(data);

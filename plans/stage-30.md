@@ -366,6 +366,53 @@ plus a radius carried on the component, keeping the assertion's spirit ("a
 accuracies the ring is visibly two sizes and stays metrically correct across
 three zoom levels.
 
+**Done.** `applyOverlays()` is now the one place that builds everything the
+*style* owns, from state the component holds (`_hereRingAt`, `_hereAccuracy`)
+rather than from whatever the caller happened to pass. `render()` binds it to
+the map's `style.load`, which fires for the first style and for every
+replacement, so a restyle re-adds the ring without the code doing the restyle
+needing to know the ring exists — which is exactly what Milestone 5 needs.
+`showPosition()` now only records where and how accurate, and calls it. The
+geometry is recomputed rather than cached on re-add, because a degree of
+longitude is a different distance at every latitude, so the ring is a function
+of where it is and not only of how big it is.
+
+Two tests, and both were checked by breaking the code to make sure they can
+fail — a regression test that has never been red is a guess:
+
+- **"the accuracy ring survives the style being replaced"** drives `setStyle()`
+  onto the *other* vendored style directly, since nothing in the app restyles a
+  map until Milestone 5. Removing the `style.load` binding turns it red on "the
+  source must be re-added after a restyle". It also pins two things that should
+  never have been at risk but would be silent if they broke: markers are DOM
+  and must survive untouched, and the camera must be preserved, because a
+  restyle must not read as a navigation.
+- **"the accuracy ring is the size it claims, at any zoom"** replaced a weaker
+  test I had written first. That one projected the ring's geometry and asserted
+  the on-screen size doubles per zoom level — which sounds like it proves the
+  ring is anchored to the ground, but is true of *any* fixed geographic
+  coordinates by definition of Web Mercator. It was testing the projection, not
+  the code. The version that landed measures the **east-west** span on the
+  ground, which is the half that can actually be wrong: `accuracyRing()` has to
+  divide the longitude offset by cos(latitude) or the ring is an ellipse too
+  narrow everywhere but the equator. Deleting that correction makes the ring
+  measure 30.5m where 70m is expected, and the test says so. The north-south
+  span the earlier locate test checks would look perfect either way. The
+  zoom-scaling assertions are kept alongside it, honestly labelled as the
+  "on the ground, not on the glass" half.
+
+Verified: `make ci` green; `make test-ui` at 207 passed with only the two
+documented distance-filter flakes (`todo.md:308-319`), both of which pass in
+isolation. By hand against a live `make dev` with a faked 400m fix over
+Reykjavik: the ring paints as a filled cyan disc with an outline, is visibly
+*circular* at 64°N rather than an ellipse — the cos(latitude) correction doing
+its job where it is most visible — and comes back intact after a live
+`setStyle()` onto the dark cartography. Worth noting from that screenshot,
+since it is Milestone 5's problem and not a defect here: on the dark map the
+legend and the locate button are still light-themed, and the category dot
+colours are unchanged. That is the marker-and-chrome work Milestone 5 already
+plans.
+
 ## 4. Labels in the reader's language
 
 The payoff the todo entry asks for. Patch the 19 `text-field` layers of each

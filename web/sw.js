@@ -153,8 +153,19 @@ async function staleWhileRevalidate(event, request) {
 // Network-first costs little now that Stage 23 Milestone 1 gives every asset
 // an ETag: an unchanged module is a conditional request and a 304, not a
 // refetch. Offline still works, from the same cache as the fallback.
+//
+// ".mjs" is here because ".js" does not cover it -- endsWith(".js") reads the
+// last three characters, and those are "mjs". Vendored MapLibre ships three
+// .mjs files (Stage 30 Milestone 1); without this line they would take the
+// stale-while-revalidate path below, which is exactly the two-reload bug the
+// paragraph above describes.
 function isCodeRequest(pathname) {
-  return pathname.endsWith(".js") || pathname.endsWith(".css") || pathname.endsWith(".json");
+  return (
+    pathname.endsWith(".js") ||
+    pathname.endsWith(".mjs") ||
+    pathname.endsWith(".css") ||
+    pathname.endsWith(".json")
+  );
 }
 
 self.addEventListener("fetch", (event) => {

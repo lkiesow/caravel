@@ -305,6 +305,15 @@ purpose — do not reconstruct it from an older stage plan without asking.
 
 ## Testing, CI and dev tooling
 
+- **`scripts/check_js.sh` cannot see a `.mjs` file.** (Stage 30 Milestone 1.)
+  It walks `find web/js -name '*.js'`, so the three vendored MapLibre modules
+  go unparsed where `leaflet.esm.js` was covered by virtue of its extension.
+  Accepted at the time rather than worked around: the files are unmodified
+  upstream output and `web/js/vendor/maplibre/README.md` records a sha256 for
+  each, which catches a corrupted copy that a syntax parse would not. It stops
+  being a fair trade the moment any hand-written module in this project is
+  named `.mjs` -- at that point widen the `find` rather than renaming the file.
+
 - **The full UI suite fails two or three specs that pass in isolation.**
   (Observed while landing the files-tab staging patch after Stage 29, on
   `main` with no changes at all: `map.spec.js`'s two distance-filter tests, and

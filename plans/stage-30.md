@@ -646,39 +646,92 @@ and `auto` chose dark at 23:44 local in Copenhagen with the sun at -23.7°,
 predicting the change 5.9 hours out — sunrise at 05:37, which is correct for
 1 September.
 
-## 6. Operator configuration compatibility
+## 6. Raster removed, and one setting in its place
 
-`CARAVEL_TILE_URL` is documented (`docs/configuration/map-tiles.md`) and
-deployments set it, so it must keep working. MapLibre renders raster fine —
-synthesise a raster style when it is set:
+*Rewritten mid-stage. The plan called for keeping `CARAVEL_TILE_URL` working
+alongside the vector default and adding a `CARAVEL_MAP_STYLE` beside it. That
+premise did not survive being questioned: the tile URL existed **only** because
+pre-rendered labels cannot follow a reader's language, which Milestone 4 fixed
+properly. Keeping it would have meant two rendering paths, two documentation
+pages, and a per-reader light/dark preference that silently did nothing
+wherever an operator had pinned a provider.*
 
-```
-{version:8, sources:{tiles:{type:'raster', tiles:[…], tileSize:256, maxzoom, attribution}},
- layers:[{id:'tiles', type:'raster', source:'tiles'}]}
-```
+*Three things settled it. The docs already conceded the point — their closing
+section was titled "What none of them can do", about exactly the per-user
+language this stage delivered. The one case that looked like a genuine reason
+to keep raster is not one: OpenTopoMap and CyclOSM are different data, but the
+same page says they "do **not** help here", and they were documented as trivia
+rather than as a supported use. And there is no released version, no tag and no
+changelog, so `CARAVEL_TILE_URL` carries no compatibility promise. Pre-1.0, the
+call was to delete rather than deprecate — no warning path, no migration code.*
 
-Two sub-differences to handle in `buildStyle()`: **`{s}` is not supported** —
-expand it into a three-URL array `a`/`b`/`c`, which is exactly Leaflet's
-subdomain semantics *and* fixes the `d.tile.openstreetmap.org` bug the comment
-at `leaflet-map.js:584-592` records, by construction. **`{r}` is not
-supported** — strip it, or map it to `tileSize: 512`.
+**Removed:** `CARAVEL_TILE_URL`, `CARAVEL_TILE_ATTRIBUTION`,
+`CARAVEL_TILE_MAX_ZOOM`, the `maxTileZoom` ceiling and its validation,
+`TileSettings`, the three `DefaultTile*` constants, `Server.Tiles`, the
+`styleURL()` heuristic Milestone 2 added, the client's `rasterStyle()`, and the
+`positron`→`dark` filename substitution Milestone 5 used to guess a dark
+counterpart.
 
-Server side (`internal/config/config.go:60-62,209-210,324-336`,
-`internal/httpapi/map.go:24-72`): add `CARAVEL_MAP_STYLE`
-(`positron` | `dark` | `auto` | a URL), extend `handleMapConfig`'s response,
-keep the startup validation of `CARAVEL_TILE_URL`'s `{z}/{x}/{y}`, and update
-the Go comments that name Leaflet. Then `docs/configuration/map-tiles.md`,
-`docs/configuration/server.md`, `.env.sample`, and
-`scripts/check_env_vars.py`'s parity.
+**Added:** `CARAVEL_MAP_STYLE_URL` and `CARAVEL_MAP_STYLE_DARK_URL`, both
+defaulting to the vendored pair, validated at startup as an absolute path or an
+`http(s)` URL. `MapStyleSettings.withDefaults()` holds the one interesting rule:
+an operator who names a light style but no dark one gets **their** style in
+both modes rather than ours in one of them — a reader flipping to dark should
+not land on a different instance's cartography. `/api/map/config` answers
+`{style_url, dark_style_url}` and the browser draws what it is told, with no
+convention inferred on the client side.
 
-Note the interaction to document: an operator-pinned raster provider has one
-cartography, so the four-mode setting degrades to "whatever the tiles are".
-Say so in the docs rather than pretending otherwise.
+**Attribution lost its variable**, which is a net improvement: a style carries
+its own credit, inline on a source or in the TileJSON the source points at, and
+MapLibre renders it. The old variable was a standing trap — change the provider,
+forget the credit, and the instance is out of compliance with a map that still
+looks right.
 
-**Verify.** Dev server with `CARAVEL_TILE_URL` at OSM raster shows raster
-tiles with the OSM credit; unset, the vector style. `make check-env` green.
-The re-designed tile-host conformance test passes in both modes. Add a Go test
-beside `internal/httpapi/map_config_test.go`.
+**Done.** All of the above, plus: `docs/configuration/map-tiles.md` became
+`docs/configuration/map-style.md`, rewritten rather than edited — its old
+closing section is now the feature, so the page leads with "you probably do not
+need to change this" and is about *who serves your map data* (self-hosting,
+OpenFreeMap, a commercial provider, your own cartography). `server.md`'s table,
+`docs/features/the-map.md`'s now-obsolete paragraph about non-latin tile
+labels, `.env.sample`, the nav in `zensical.toml`, and the Go tests in
+`config_test.go`, `map_config_test.go` and `main_test.go` all followed.
+
+Four Go tests cover `withDefaults`, including both asymmetric cases: a custom
+light style repeating itself into dark, and a dark-only override keeping the
+shipped light default.
+
+**`make check-env` caught something worth keeping.** The rewritten docs
+originally had a "Removed variables" section naming all three, which is exactly
+what that check exists to prevent — it was written because the README
+documented a removed variable for four stages. Rather than exempt the section,
+the page describes them without naming them ("a URL template, an attribution
+string and a maximum zoom"), which the reader can still act on.
+
+**One test removed rather than made to pass.** Attribution cannot be asserted
+in this suite, and finding that out took three attempts, each recorded in
+`map.spec.js` where the test would sit. The credit is now a property of *loaded
+map data*, and the suite blocks every request for map data, so the attribution
+control has no loaded source to report: stubbing the TileJSON makes the source
+resolve and then request tiles that are aborted, so the map never reaches
+`load` and the suite times out on `data-ready`; rewriting the style with
+`page.route` loses to `blockExternalRequests`, which is registered first and
+continues same-origin requests; and injecting attribution onto an inline-tiles
+source via `setStyle` fails for the original reason, since that source never
+loads either. A test that passed here would pass for the wrong reason. It is
+verified by hand and recorded in `todo.md` as a real gap — a silent regression
+there is a licence-compliance problem, not a cosmetic one.
+
+**Verify.** `make ci` green; `make docs` clean under `--strict`;
+`make check-env` green; `make test-ui` at 221 passed with only the two
+documented distance-filter flakes. Live against a running instance: the credit
+reads "OpenFreeMap © OpenMapTiles Data from OpenStreetMap" with all three
+links working, from the style alone and with no attribution variable in play.
+A bad value refuses to start with the variable named
+(`invalid CARAVEL_MAP_STYLE_URL "tiles.example/style.json": must be an absolute
+path or an http(s) URL`), separately for the light and dark settings. And the
+client honours whatever the server says rather than any convention of its own:
+with the pair deliberately inverted, the `light` scheme drew the dark
+cartography (`rgb(12,12,12)`) and `dark` drew positron (`rgb(242,243,240)`).
 
 ## 7. Cleanup and the name
 
@@ -731,8 +784,10 @@ next milestone until told to continue.
 
 - **Offline vector tiles.** `web/sw.js` deliberately skips cross-origin
   requests; a tile store is its own project.
-- **Self-hosting OpenFreeMap.** Worth documenting eventually; this stage keeps
-  the public instance as the default and the config as the escape hatch.
+- **Self-hosting OpenFreeMap.** Documented in Milestone 6 rather than
+  deferred, since removing raster left the style URL as the only escape hatch
+  and it needed explaining. Actually *running* a tile server is still out of
+  scope.
 - **The RTL text plugin** (see Milestone 4) — recorded in `todo.md` instead.
 - **The Ctrl-vs-Cmd hint string** (`todo.md:48-56`) — unchanged by this stage,
   since `zoomByWheel` is ported as-is.

@@ -207,25 +207,21 @@ test.describe("the trip map at phone width", () => {
   });
 });
 
-// The tile layer used to be a literal in leaflet-map.js, which is why the map
-// could only ever speak the local language: the standard OSM tiles label
-// places in the local script (Tokyo renders as the Japanese for it) and no
-// parameter on them changes that. It is configuration now, so what is worth
-// asserting is the wiring - that the map is built from whatever
+// The map used to be a literal in leaflet-map.js, which is why it could only
+// ever speak one language: the old raster tiles labelled places in the local
+// script and no parameter on them changed that. It is configuration now, so
+// what is worth asserting is the wiring - that the map is built from whatever
 // /api/map/config answers, rather than from a constant that merely happens to
 // agree with it today.
 //
-// Stage 30 had to re-found this test rather than rename its selectors. There
-// are no tile <img> elements to read any more: a vector tile is a .pbf fetched
-// into a worker and drawn into one canvas. The claim is unchanged, so it is
-// asserted from the two places it is now observable - the style document the
-// map was actually given, and the requests that went out - which between them
-// are a closer reading of "requested from the configured provider" than
-// scraping img.src ever was, and which work for a raster provider too.
+// Stage 30 re-founded this test twice. Milestone 2 had to stop scraping
+// img.src, because a vector tile is a .pbf fetched into a worker and drawn
+// into one canvas rather than an element to read. Milestone 6 then removed
+// raster support outright, so the raster branch went with it.
 test.describe("the map follows the server's configuration", () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 
-  test("map data is requested from the configured provider, and it is credited", async ({ page }) => {
+  test("map data is requested from the configured provider", async ({ page }) => {
     await login(page);
 
     // Collected across the navigation rather than after it: by the time the
@@ -235,53 +231,35 @@ test.describe("the map follows the server's configuration", () => {
 
     await gotoTripMap(page);
 
-    const { configured, sources, attribution, attributionText } = await page.evaluate(async () => {
+    const { configured, sources } = await page.evaluate(async () => {
       const res = await fetch("/api/map/config", { credentials: "same-origin" });
-      const host = document.querySelector("leaflet-map");
-      const sr = host.shadowRoot;
-      const style = host._map.getStyle();
+      const style = document.querySelector("leaflet-map")._map.getStyle();
       return {
         configured: await res.json(),
         // Every source's endpoint, whichever shape it takes: a vector source
-        // names a TileJSON `url`, a raster source lists `tiles` outright.
-        sources: Object.values(style.sources).flatMap((src) =>
-          src.url ? [src.url] : src.tiles || []
-        ),
-        attribution: sr.querySelector(".maplibregl-ctrl-attrib-inner")?.innerHTML ?? null,
-        attributionText: sr.querySelector(".maplibregl-ctrl-attrib-inner")?.textContent ?? null,
+        // names a TileJSON `url`, a raster one lists `tiles` outright.
+        sources: Object.values(style.sources).flatMap((src) => (src.url ? [src.url] : src.tiles || [])),
       };
     });
 
-    // Which provider the config points at, in whichever of the two shapes it
-    // answered with. style_url means "draw this vector style"; empty means the
-    // operator pinned a raster provider through CARAVEL_TILE_URL.
+    expect(configured.style_url, "the server must name a style").toBeTruthy();
+    expect(configured.dark_style_url, "and a dark one").toBeTruthy();
     expect(sources.length, "the style should name at least one source").toBeGreaterThan(0);
 
-    let expectedHosts;
-    if (configured.style_url) {
-      // The style is vendored and same-origin, so its own sources are what
-      // name the third party. Read them from the served document rather than
-      // hardcoding OpenFreeMap here: the point of the test is that nothing in
-      // the browser holds a second opinion about where map data comes from.
-      expectedHosts = await page.evaluate(async (u) => {
-        const style = await (await fetch(u)).json();
-        return [
-          ...new Set(
-            Object.values(style.sources)
-              .flatMap((src) => (src.url ? [src.url] : src.tiles || []))
-              .map((t) => new URL(t, location.href).host)
-          ),
-        ];
-      }, configured.style_url);
-    } else {
-      // {s} dropped rather than filled in: the subdomain is rotated over
-      // a, b and c, so which one any single request used is not worth
-      // asserting.
-      expectedHosts = [new URL(configured.tile_url.replace("{s}.", "")).host];
-    }
+    // Read the expected hosts out of the served style document rather than
+    // hardcoding OpenFreeMap: the point of the test is that nothing in the
+    // browser holds a second opinion about where map data comes from.
+    const expectedHosts = await page.evaluate(async (u) => {
+      const style = await (await fetch(u)).json();
+      return [
+        ...new Set(
+          Object.values(style.sources)
+            .flatMap((src) => (src.url ? [src.url] : src.tiles || []))
+            .map((t) => new URL(t, location.href).host)
+        ),
+      ];
+    }, configured.style_url);
 
-    // Suffix rather than equality: a raster URL's {s} is expanded here into
-    // a./b./c., which are the configured provider and must count as it.
     const belongs = (host) => expectedHosts.some((h) => host === h || host.endsWith(`.${h}`));
     for (const src of sources) {
       const host = new URL(src, page.url()).host;
@@ -299,31 +277,37 @@ test.describe("the map follows the server's configuration", () => {
       wentOut.length,
       `the map should have asked ${expectedHosts.join(", ")} for something`
     ).toBeGreaterThan(0);
-
-    // Attribution is served as HTML and rendered unescaped on purpose: every
-    // provider's terms require a working link back, so a "fix" that escaped
-    // the markup would leave the instance out of compliance with text that
-    // still looks right in a screenshot. MapLibre sanitises only <script>, on*
-    // handlers and javascript:/data: URLs, so an operator's credit survives.
-    // The links are what is asserted, rather than the markup verbatim - the
-    // DOM renders `&copy;` back out as `©`, so a string comparison would fail
-    // on a correctly rendered credit.
-    //
-    // Only the configured credit is asserted, deliberately: the provider's own
-    // credit arrives with the TileJSON, which never resolves under
-    // blockExternalRequests.
-    const requiredLinks = [...configured.tile_attribution.matchAll(/href="([^"]+)"/g)].map((m) => m[1]);
-    expect(requiredLinks.length, "the configured attribution should carry at least one link").toBeGreaterThan(0);
-    for (const href of requiredLinks) {
-      expect(attribution, `the provider's credit link ${href} must survive into the DOM`).toContain(
-        `href="${href}"`
-      );
-    }
-    // And the visible text, so an anchor with no words in it would still fail.
-    expect(attributionText, "the credit should read as text, not just link to somewhere").toContain(
-      "OpenStreetMap"
-    );
   });
+
+  // There is deliberately no attribution test here, and the reason is worth
+  // recording rather than leaving as an absence.
+  //
+  // Milestone 6 removed CARAVEL_TILE_ATTRIBUTION: a style carries its own
+  // credit, either inline on a source or in the TileJSON the source points at,
+  // and MapLibre renders it. That is a better arrangement - the variable was a
+  // standing trap, since changing the provider and forgetting the credit left
+  // an instance out of compliance with a map that still looked right - but it
+  // makes the credit a property of *loaded map data*, and this suite blocks
+  // every request for map data.
+  //
+  // The attribution control reports the sources that actually loaded, so with
+  // all of them aborted there is nothing to read, and three ways round it were
+  // tried and rejected:
+  //
+  //   - answering the source's TileJSON from the spec. The source resolves,
+  //     asks for tiles, they are aborted, and the map never reaches `load` -
+  //     the suite times out on data-ready rather than failing an assertion.
+  //   - rewriting the style in flight with page.route. login() installs
+  //     blockExternalRequests over "**/*" first and continues same-origin
+  //     requests, so the style arrives unmodified.
+  //   - setStyle with attribution injected onto an inline-tiles source. The
+  //     source still never loads, so the control still never lists it.
+  //
+  // A test that passed here would be passing for the wrong reason. It is
+  // verified by hand against live tiles instead, and recorded in
+  // plans/todo.md as a real gap: on a running instance the credit reads
+  // "OpenFreeMap © OpenMapTiles Data from OpenStreetMap" with all three links
+  // working, which is what the providers' terms require.
 });
 
 test.describe("the trip map with a mouse", () => {

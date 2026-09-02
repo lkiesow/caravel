@@ -328,6 +328,20 @@ purpose — do not reconstruct it from an older stage plan without asking.
 
 ## Testing, CI and dev tooling
 
+- **Map attribution is not asserted anywhere.** (Stage 30 Milestone 6.)
+  Removing the attribution variable made the credit a property of loaded map
+  data -- a style's source metadata, or the TileJSON it points at -- and the UI
+  suite blocks every request for map data, so the attribution control has no
+  loaded source to report and there is nothing to read. Three routes round it
+  were tried and rejected; the reasoning is in `map.spec.js` where the test
+  would otherwise sit. Verified by hand instead: a running instance credits
+  "OpenFreeMap (c) OpenMapTiles Data from OpenStreetMap" with all three links
+  live. It matters because a silent regression here is a licence-compliance
+  problem rather than a cosmetic one, so it is worth an assertion the day the
+  suite gains a way to let one source load -- a stubbed vector tile, most
+  likely, which the "UI suite reaches the real Nominatim" entry below would
+  also benefit from.
+
 - **A vertical two-finger pan cannot move the trip map, by design.** (Stage 30
   Milestone 2.) MapLibre pins the camera when the world already fits the
   viewport, and at the trip map's `fitBounds` zoom the world height and the

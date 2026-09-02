@@ -6,89 +6,94 @@ import (
 	"testing"
 )
 
-func decodeTileConfig(t *testing.T, body []byte) tileConfigResponse {
+func decodeMapConfig(t *testing.T, body []byte) mapConfigResponse {
 	t.Helper()
-	var got tileConfigResponse
+	var got mapConfigResponse
 	if err := json.Unmarshal(body, &got); err != nil {
 		t.Fatalf("decode /map/config: %v -- body %s", err, body)
 	}
 	return got
 }
 
-// An unconfigured instance has to answer with the tiles Caravel shipped with,
-// because that answer is the frontend's only source for them: the URL is no
+// An unconfigured instance has to answer with the styles Caravel shipped with,
+// because that answer is the frontend's only source for them: the map is no
 // longer a literal in leaflet-map.js.
 func TestMapConfigDefaults(t *testing.T) {
 	ts := newTestServer(t)
-	cookie := ts.login("tiles-default")
+	cookie := ts.login("style-default")
 
 	w := ts.do(http.MethodGet, "/api/map/config", cookie, "")
 	if w.Code != http.StatusOK {
 		t.Fatalf("GET /map/config: got %d, want 200 -- body %s", w.Code, w.Body.String())
 	}
 
-	got := decodeTileConfig(t, w.Body.Bytes())
-	if got.TileURL != DefaultTileURL {
-		t.Errorf("tile_url = %q, want the shipped default %q", got.TileURL, DefaultTileURL)
+	got := decodeMapConfig(t, w.Body.Bytes())
+	if got.StyleURL != DefaultMapStyleURL {
+		t.Errorf("style_url = %q, want the shipped default %q", got.StyleURL, DefaultMapStyleURL)
 	}
-	if got.TileAttribution != DefaultTileAttribution {
-		t.Errorf("tile_attribution = %q, want %q", got.TileAttribution, DefaultTileAttribution)
-	}
-	if got.MaxZoom != DefaultTileMaxZoom {
-		t.Errorf("max_zoom = %d, want %d", got.MaxZoom, DefaultTileMaxZoom)
+	if got.DarkStyleURL != DefaultMapStyleDarkURL {
+		t.Errorf("dark_style_url = %q, want %q", got.DarkStyleURL, DefaultMapStyleDarkURL)
 	}
 }
 
-// The point of the whole change: an operator who sets a provider gets that
-// provider, markup and all. The attribution is checked byte for byte because
-// escaping it would break the link every provider's terms require.
+// An operator who names their own styles gets them, both of them.
 func TestMapConfigOverride(t *testing.T) {
 	const (
-		url         = "https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-		attribution = `&copy; <a href="https://carto.com/attributions">CARTO</a>`
+		light = "https://tiles.example.invalid/styles/day"
+		dark  = "https://tiles.example.invalid/styles/night"
 	)
 
 	ts := newTestServerWithOptions(t, func(o *Options) {
-		o.Tiles = TileSettings{URL: url, Attribution: attribution, MaxZoom: 20}
+		o.MapStyle = MapStyleSettings{URL: light, DarkURL: dark}
 	})
-	cookie := ts.login("tiles-override")
+	cookie := ts.login("style-override")
 
-	w := ts.do(http.MethodGet, "/api/map/config", cookie, "")
-	if w.Code != http.StatusOK {
-		t.Fatalf("GET /map/config: got %d, want 200 -- body %s", w.Code, w.Body.String())
+	got := decodeMapConfig(t, ts.do(http.MethodGet, "/api/map/config", cookie, "").Body.Bytes())
+	if got.StyleURL != light {
+		t.Errorf("style_url = %q, want %q", got.StyleURL, light)
 	}
-
-	got := decodeTileConfig(t, w.Body.Bytes())
-	if got.TileURL != url {
-		t.Errorf("tile_url = %q, want %q", got.TileURL, url)
-	}
-	if got.TileAttribution != attribution {
-		t.Errorf("tile_attribution = %q, want the configured markup unescaped %q", got.TileAttribution, attribution)
-	}
-	if got.MaxZoom != 20 {
-		t.Errorf("max_zoom = %d, want 20", got.MaxZoom)
+	if got.DarkStyleURL != dark {
+		t.Errorf("dark_style_url = %q, want %q", got.DarkStyleURL, dark)
 	}
 }
 
-// A half-set TileSettings takes the defaults field by field, so an operator
-// who overrides only the URL does not silently lose the max zoom.
-func TestMapConfigPartialOverrideKeepsOtherDefaults(t *testing.T) {
-	const url = "https://tiles.example.invalid/{z}/{x}/{y}.png"
+// The interesting half of withDefaults. An operator who names a style of their
+// own but no dark counterpart gets *their* map in both modes -- not ours in
+// one of them, which would mean a reader flipping to dark landed on a
+// completely different instance's cartography.
+func TestMapConfigCustomLightWithoutDarkRepeatsItself(t *testing.T) {
+	const light = "https://tiles.example.invalid/styles/house"
 
 	ts := newTestServerWithOptions(t, func(o *Options) {
-		o.Tiles = TileSettings{URL: url}
+		o.MapStyle = MapStyleSettings{URL: light}
 	})
-	cookie := ts.login("tiles-partial")
+	cookie := ts.login("style-nodark")
 
-	got := decodeTileConfig(t, ts.do(http.MethodGet, "/api/map/config", cookie, "").Body.Bytes())
-	if got.TileURL != url {
-		t.Errorf("tile_url = %q, want %q", got.TileURL, url)
+	got := decodeMapConfig(t, ts.do(http.MethodGet, "/api/map/config", cookie, "").Body.Bytes())
+	if got.StyleURL != light {
+		t.Errorf("style_url = %q, want %q", got.StyleURL, light)
 	}
-	if got.TileAttribution != DefaultTileAttribution {
-		t.Errorf("tile_attribution = %q, want the default %q", got.TileAttribution, DefaultTileAttribution)
+	if got.DarkStyleURL != light {
+		t.Errorf("dark_style_url = %q, want the operator's own style %q, not a shipped default", got.DarkStyleURL, light)
 	}
-	if got.MaxZoom != DefaultTileMaxZoom {
-		t.Errorf("max_zoom = %d, want the default %d", got.MaxZoom, DefaultTileMaxZoom)
+}
+
+// ...whereas leaving both unset must still give the shipped *pair*, so a stock
+// instance has a real dark map rather than a light one twice.
+func TestMapConfigDarkOnlyOverrideKeepsDefaultLight(t *testing.T) {
+	const dark = "https://tiles.example.invalid/styles/night"
+
+	ts := newTestServerWithOptions(t, func(o *Options) {
+		o.MapStyle = MapStyleSettings{DarkURL: dark}
+	})
+	cookie := ts.login("style-darkonly")
+
+	got := decodeMapConfig(t, ts.do(http.MethodGet, "/api/map/config", cookie, "").Body.Bytes())
+	if got.StyleURL != DefaultMapStyleURL {
+		t.Errorf("style_url = %q, want the shipped default %q", got.StyleURL, DefaultMapStyleURL)
+	}
+	if got.DarkStyleURL != dark {
+		t.Errorf("dark_style_url = %q, want %q", got.DarkStyleURL, dark)
 	}
 }
 

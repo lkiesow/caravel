@@ -56,9 +56,8 @@ func TestServerOptionsCarriesTheRestOfTheConfiguration(t *testing.T) {
 		WebDir:          "web",
 		TrustedProxies:  proxies,
 		BaseURL:         "https://caravel.example",
-		TileURL:         "https://tiles.example/{z}/{x}/{y}.png",
-		TileAttribution: "&copy; Somebody",
-		TileMaxZoom:     17,
+		MapStyleURL:     "https://tiles.example/styles/day",
+		MapStyleDarkURL: "https://tiles.example/styles/night",
 	}
 
 	opts := serverOptions(cfg, httpapi.Options{})
@@ -74,14 +73,11 @@ func TestServerOptionsCarriesTheRestOfTheConfiguration(t *testing.T) {
 	if opts.BaseURL != cfg.BaseURL {
 		t.Errorf("BaseURL = %q, want %q", opts.BaseURL, cfg.BaseURL)
 	}
-	if opts.Tiles.URL != cfg.TileURL {
-		t.Errorf("Tiles.URL = %q, want %q", opts.Tiles.URL, cfg.TileURL)
+	if opts.MapStyle.URL != cfg.MapStyleURL {
+		t.Errorf("MapStyle.URL = %q, want %q", opts.MapStyle.URL, cfg.MapStyleURL)
 	}
-	if opts.Tiles.Attribution != cfg.TileAttribution {
-		t.Errorf("Tiles.Attribution = %q, want %q", opts.Tiles.Attribution, cfg.TileAttribution)
-	}
-	if opts.Tiles.MaxZoom != cfg.TileMaxZoom {
-		t.Errorf("Tiles.MaxZoom = %d, want %d", opts.Tiles.MaxZoom, cfg.TileMaxZoom)
+	if opts.MapStyle.DarkURL != cfg.MapStyleDarkURL {
+		t.Errorf("MapStyle.DarkURL = %q, want %q", opts.MapStyle.DarkURL, cfg.MapStyleDarkURL)
 	}
 }
 

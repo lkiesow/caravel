@@ -34,7 +34,7 @@ nav = [
     { "The assistant" = "configuration/assistant.md" },
     { "Address search" = "configuration/address-search.md" },
     { "Finding an image" = "configuration/images.md" },
-    { "Map tiles" = "configuration/map-tiles.md" },
+    { "Map style" = "configuration/map-style.md" },
   ] },
   { Features = [
     { "Trips and locations" = "features/trips-and-locations.md" },

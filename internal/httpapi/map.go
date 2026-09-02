@@ -8,103 +8,80 @@ import (
 	"caravel/internal/db"
 )
 
-// The tile layer the browser draws the map with, and its shipped default:
-// the standard OpenStreetMap tiles, which is what Caravel used when the URL
-// was a literal in the frontend.
+// The map the browser draws, as a pair of MapLibre style documents served
+// from Caravel's own origin.
 //
-// Worth knowing before changing the default: these tiles label places in the
-// local script, so Japan reads 東京 rather than Tokyo, and no parameter on
-// them changes that -- the labels are pixels in a pre-rendered PNG. That is
-// the reason this is configuration at all, and the alternatives (and what
-// each is good for) are written up in docs/configuration/server.md.
+// Vector rather than raster, and that is the whole point of Stage 30: raster
+// tiles are pre-rendered images, so their labels are baked in before anyone
+// asks and an instance had one language for everybody. A vector style is drawn
+// in the browser, so every reader gets place names in their own language --
+// see localiseLabels in web/js/components/leaflet-map.js.
 //
-// The default stays OSM because it adds no third party to a stock install and
-// needs no key. Picking a nicer-labelled provider for everyone would send
-// every user of every instance to a company that did not ask for the traffic.
+// This replaced CARAVEL_TILE_URL and its two companions outright rather than
+// joining them. That setting existed *because* raster could not do the above;
+// with the reason gone, keeping a second rendering path would have meant two
+// sets of documentation, two code paths and a per-reader light/dark setting
+// that silently did nothing on half of them.
+//
+// Two URLs because light and dark are a per-browser preference
+// (web/js/map-theme.js), so an instance has to be able to answer both.
 const (
-	DefaultTileURL         = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-	DefaultTileAttribution = `&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors`
-	DefaultTileMaxZoom     = 19
+	DefaultMapStyleURL     = "/js/vendor/map-styles/positron.json"
+	DefaultMapStyleDarkURL = "/js/vendor/map-styles/dark.json"
 )
 
-// DefaultMapStyleURL is the vector style the frontend draws by default, served
-// from Caravel's own origin (web/js/vendor/map-styles/). Vector rather than
-// raster because the labels are drawn in the browser, which is the only way
-// they can follow each reader's own language rather than the instance's --
-// the whole point of Stage 30.
-//
-// It is a path, not a full URL: the styles are vendored, so an instance behind
-// any hostname serves its own copy.
-const DefaultMapStyleURL = "/js/vendor/map-styles/positron.json"
-
-// TileSettings is the tile layer as the operator configured it. A zero field
+// MapStyleSettings is the map as the operator configured it. An empty field
 // means unset and takes the default above -- the same convention the assist
 // limits use.
-type TileSettings struct {
-	URL string
-	// Attribution is HTML, rendered as markup by the map library and
-	// deliberately not
-	// escaped: every provider's terms require a working link back, and this
-	// value comes from the operator's environment rather than from a user.
-	Attribution string
-	MaxZoom     int
-}
-
-func (t TileSettings) withDefaults() TileSettings {
-	if t.URL == "" {
-		t.URL = DefaultTileURL
-	}
-	if t.Attribution == "" {
-		t.Attribution = DefaultTileAttribution
-	}
-	if t.MaxZoom <= 0 {
-		t.MaxZoom = DefaultTileMaxZoom
-	}
-	return t
-}
-
-type tileConfigResponse struct {
-	// StyleURL is the vector style to draw, or empty when the operator has
-	// pinned a raster provider -- see styleURL below. The frontend treats an
-	// empty value as "build a raster style from the tile fields".
-	StyleURL        string `json:"style_url"`
-	TileURL         string `json:"tile_url"`
-	TileAttribution string `json:"tile_attribution"`
-	MaxZoom         int    `json:"max_zoom"`
-}
-
-// styleURL decides between the vector default and the operator's raster
-// provider.
 //
-// The rule is deliberately made here rather than in the browser: an operator
-// who set CARAVEL_TILE_URL asked for those tiles and should get them, and an
-// operator who did not should get the vector default. The frontend could infer
-// the same thing by comparing against a copy of DefaultTileURL, but then the
-// default would have to stay in step across two languages to keep meaning what
-// it says.
-//
-// This is the smaller half of what Stage 30 Milestone 6 will do properly, with
-// its own setting for choosing a style. It exists now so that swapping the map
-// library does not quietly ignore a documented configuration option in the
-// meantime.
-func (s *Server) styleURL() string {
-	if s.Tiles.URL != DefaultTileURL {
-		return ""
-	}
-	return DefaultMapStyleURL
+// Paths by default, not URLs: the styles are vendored under web/js/vendor, so
+// a stock instance serves its own map definition and reaches a third party
+// only for the tiles the style names. An operator pointing these at their own
+// tile server, or at a commercial provider, is the reason they are settings.
+type MapStyleSettings struct {
+	URL     string
+	DarkURL string
 }
 
-// handleMapConfig tells the frontend where to fetch tiles from.
+func (m MapStyleSettings) withDefaults() MapStyleSettings {
+	if m.URL == "" {
+		m.URL = DefaultMapStyleURL
+	}
+	// Deliberately falls back to the light style rather than to the dark
+	// default: an operator who named a style of their own but no dark
+	// counterpart should get *their* map in both modes, not ours in one of
+	// them.
+	if m.DarkURL == "" {
+		if m.URL != DefaultMapStyleURL {
+			m.DarkURL = m.URL
+		} else {
+			m.DarkURL = DefaultMapStyleDarkURL
+		}
+	}
+	return m
+}
+
+type mapConfigResponse struct {
+	StyleURL     string `json:"style_url"`
+	DarkStyleURL string `json:"dark_style_url"`
+}
+
+// handleMapConfig tells the frontend which map to draw.
 //
 // Behind RequireAuth, unlike /auth/config: no page renders a map before
 // anyone has a session, so there is nothing to gain by publishing the
-// instance's tile provider to anonymous callers.
+// instance's map provider to anonymous callers.
+//
+// No attribution field: a style carries its own credit, either inline on its
+// sources or in the TileJSON they point at, and MapLibre renders it. The old
+// CARAVEL_TILE_ATTRIBUTION existed because a bare XYZ template carries no
+// provenance at all, and it was a standing trap -- change the URL, forget the
+// credit, and the instance is out of compliance with a map that still looks
+// right.
 func (s *Server) handleMapConfig(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, tileConfigResponse{
-		StyleURL:        s.styleURL(),
-		TileURL:         s.Tiles.URL,
-		TileAttribution: s.Tiles.Attribution,
-		MaxZoom:         s.Tiles.MaxZoom,
+	writeJSON(w, http.StatusOK, mapConfigResponse{
+		StyleURL:     s.MapStyle.URL,
+		DarkStyleURL: s.MapStyle.DarkURL,
 	})
 }
 

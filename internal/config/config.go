@@ -41,26 +41,25 @@ type Config struct {
 	// runs against).
 	WikimediaURL string
 
-	// The map tile layer, which the browser loads directly from whoever
-	// serves it -- unlike the geocoder above, which Caravel proxies. Empty
-	// and zero mean "not set" and take the defaults in internal/httpapi,
-	// which owns the values so they are not written down twice.
+	// The map, as a pair of MapLibre style documents the browser fetches
+	// directly -- unlike the geocoder above, which Caravel proxies. Empty
+	// means "not set" and takes the defaults in internal/httpapi, which owns
+	// the values so they are not written down twice.
 	//
-	// Configurable because the default renders place names in the local
-	// script: a trip to Japan is labelled 東京 rather than Tokyo, and there
-	// is no language option on those tiles to change it. Swapping the
-	// provider is the only fix, so the URL cannot be a literal in the
-	// frontend. See docs/configuration/server.md for the providers worth
-	// knowing about and what each one is good for.
+	// Two URLs rather than one because the reader chooses light or dark per
+	// browser (see web/js/map-theme.js), so an instance has to be able to
+	// answer both. An operator who sets only the light one gets that style in
+	// both modes, which is the honest degradation: a style has no obligation
+	// to have a dark counterpart.
 	//
-	// TileAttribution is HTML and is *not* escaped anywhere: the map library
-	// renders it as markup, and every provider's terms require a working link
-	// back.
-	// It comes from the operator's own environment, the same trust level as
-	// the database password sitting next to it.
-	TileURL         string // CARAVEL_TILE_URL
-	TileAttribution string // CARAVEL_TILE_ATTRIBUTION
-	TileMaxZoom     int    // CARAVEL_TILE_MAX_ZOOM
+	// Configurable so an instance can point at its own tile server rather
+	// than the public OpenFreeMap one -- self-hosting, or a commercial
+	// provider. It is *not* configurable in order to change the label
+	// language any more, which is what the old raster tile URL existed for:
+	// vector labels follow each reader's own locale, which no choice of
+	// provider could do. See docs/configuration/map-style.md.
+	MapStyleURL     string // CARAVEL_MAP_STYLE_URL
+	MapStyleDarkURL string // CARAVEL_MAP_STYLE_DARK_URL
 
 	// AI-assisted location metadata, off unless LLMURL is set.
 	//
@@ -176,11 +175,6 @@ var SearchProviders = []string{"stub", "ollama", "ddgs", "serper"}
 // provider rather than a real HTTP endpoint.
 const LLMStub = "stub"
 
-// maxTileZoom is the deepest zoom the XYZ tile scheme addresses at all. No
-// provider serves this far down -- the usual ceiling is 19 or 20 -- but a
-// number beyond it is certainly a typo rather than an ambitious operator.
-const maxTileZoom = 22
-
 // AssistEnabled reports whether the assistant is configured at all. It is the
 // single off switch: everything downstream keys off this one answer rather
 // than re-deriving it from a combination of fields.
@@ -207,8 +201,8 @@ func Load() (Config, error) {
 
 		// No defaults here: internal/httpapi holds them, the same way it
 		// holds the assist limiter defaults.
-		TileURL:         strings.TrimSpace(os.Getenv("CARAVEL_TILE_URL")),
-		TileAttribution: strings.TrimSpace(os.Getenv("CARAVEL_TILE_ATTRIBUTION")),
+		MapStyleURL:     strings.TrimSpace(os.Getenv("CARAVEL_MAP_STYLE_URL")),
+		MapStyleDarkURL: strings.TrimSpace(os.Getenv("CARAVEL_MAP_STYLE_DARK_URL")),
 
 		// No defaults on purpose. A default endpoint would mean an instance
 		// that starts talking to a third party because someone set a model
@@ -249,7 +243,6 @@ func Load() (Config, error) {
 	cfg.AssistAnswerReserve = pickInt("CARAVEL_ASSIST_ANSWER_RESERVE")
 	cfg.AssistRateLimit = pickInt("CARAVEL_ASSIST_RATE_LIMIT")
 	cfg.AssistMaxConcurrent = pickInt("CARAVEL_ASSIST_MAX_CONCURRENT")
-	cfg.TileMaxZoom = pickInt("CARAVEL_TILE_MAX_ZOOM")
 
 	proxies, err := getEnvPrefixList("CARAVEL_TRUSTED_PROXIES", DefaultTrustedProxies)
 	if err != nil {
@@ -318,22 +311,24 @@ func Load() (Config, error) {
 		}
 	}
 
-	// A tile URL without its placeholders is not a slow map, it is a blank
-	// one: the browser requests a literal "{z}" once, gets a 404, and shows
-	// grey squares with nothing in the UI pointing at the variable that
-	// caused it. Checked here so the server refuses to start instead.
-	if cfg.TileURL != "" {
-		for _, placeholder := range []string{"{z}", "{x}", "{y}"} {
-			if !strings.Contains(cfg.TileURL, placeholder) {
-				return Config{}, fmt.Errorf("invalid CARAVEL_TILE_URL %q: missing %s -- the template needs {z}, {x} and {y}", cfg.TileURL, placeholder)
-			}
+	// A style URL the browser cannot resolve is a blank map with nothing in
+	// the UI pointing at the variable that caused it, so the server refuses to
+	// start instead -- the same bargain the old tile-template check made. Only
+	// the shape is checked: whether the document on the other end is a valid
+	// style is not knowable here, and MapLibre falls back to the light style
+	// if the dark one will not load.
+	for _, v := range []struct {
+		name, value string
+	}{
+		{"CARAVEL_MAP_STYLE_URL", cfg.MapStyleURL},
+		{"CARAVEL_MAP_STYLE_DARK_URL", cfg.MapStyleDarkURL},
+	} {
+		if v.value == "" {
+			continue
 		}
-	}
-	// getEnvInt has already refused a negative or unparseable value; 0 means
-	// unset. The ceiling is the deepest zoom the XYZ scheme defines, and the
-	// floor rules out a 0 that would be indistinguishable from unset anyway.
-	if cfg.TileMaxZoom > maxTileZoom {
-		return Config{}, fmt.Errorf("invalid CARAVEL_TILE_MAX_ZOOM %d: must be between 1 and %d", cfg.TileMaxZoom, maxTileZoom)
+		if !strings.HasPrefix(v.value, "/") && !strings.HasPrefix(v.value, "http://") && !strings.HasPrefix(v.value, "https://") {
+			return Config{}, fmt.Errorf("invalid %s %q: must be an absolute path or an http(s) URL", v.name, v.value)
+		}
 	}
 
 	return cfg, nil

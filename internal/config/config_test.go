@@ -254,11 +254,17 @@ func TestLoadAssistLimits(t *testing.T) {
 	})
 }
 
-// The tile vars carry no defaults of their own -- internal/httpapi owns those
-// -- so what Load has to get right is passing a set value through untouched
-// and refusing one that would produce a blank map with no visible cause.
-func TestLoadTileValidation(t *testing.T) {
-	const carto = "https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+// The map style vars carry no defaults of their own -- internal/httpapi owns
+// those -- so what Load has to get right is passing a set value through
+// untouched and refusing one that would produce a blank map with no visible
+// cause.
+//
+// This replaced the CARAVEL_TILE_* validation in Stage 30 Milestone 6, when
+// raster support was removed outright. The old check was for {z}/{x}/{y}
+// placeholders; a style URL has no placeholders, so what is left to check is
+// that the browser can resolve it at all.
+func TestLoadMapStyleValidation(t *testing.T) {
+	const custom = "https://tiles.example.invalid/styles/house"
 
 	cases := []struct {
 		name    string
@@ -270,62 +276,55 @@ func TestLoadTileValidation(t *testing.T) {
 			name: "unset leaves the defaults to httpapi",
 			env:  map[string]string{},
 			check: func(t *testing.T, c Config) {
-				if c.TileURL != "" || c.TileAttribution != "" || c.TileMaxZoom != 0 {
-					t.Errorf("unset tile vars produced %q / %q / %d, want all zero", c.TileURL, c.TileAttribution, c.TileMaxZoom)
+				if c.MapStyleURL != "" || c.MapStyleDarkURL != "" {
+					t.Errorf("unset style vars produced %q / %q, want both empty", c.MapStyleURL, c.MapStyleDarkURL)
 				}
 			},
 		},
 		{
-			name: "a set provider comes through verbatim",
+			name: "a set pair comes through verbatim",
 			env: map[string]string{
-				"CARAVEL_TILE_URL":         carto,
-				"CARAVEL_TILE_ATTRIBUTION": "&copy; CARTO",
-				"CARAVEL_TILE_MAX_ZOOM":    "20",
+				"CARAVEL_MAP_STYLE_URL":      custom,
+				"CARAVEL_MAP_STYLE_DARK_URL": custom + "-dark",
 			},
 			check: func(t *testing.T, c Config) {
-				if c.TileURL != carto {
-					t.Errorf("TileURL = %q, want %q", c.TileURL, carto)
+				if c.MapStyleURL != custom {
+					t.Errorf("MapStyleURL = %q, want %q", c.MapStyleURL, custom)
 				}
-				if c.TileAttribution != "&copy; CARTO" {
-					t.Errorf("TileAttribution = %q, want the configured markup unescaped", c.TileAttribution)
-				}
-				if c.TileMaxZoom != 20 {
-					t.Errorf("TileMaxZoom = %d, want 20", c.TileMaxZoom)
+				if c.MapStyleDarkURL != custom+"-dark" {
+					t.Errorf("MapStyleDarkURL = %q, want %q", c.MapStyleDarkURL, custom+"-dark")
 				}
 			},
 		},
 		{
-			// Each placeholder separately: a URL with {z} and {x} but no {y}
-			// still fetches something, so the check cannot stop at the first.
-			name:    "a url missing the y placeholder is refused",
-			env:     map[string]string{"CARAVEL_TILE_URL": "https://tiles.invalid/{z}/{x}.png"},
-			wantErr: "missing {y}",
+			// The vendored default is a path, so paths have to stay legal --
+			// an operator serving a style from their own origin writes one.
+			name: "an absolute path is accepted",
+			env:  map[string]string{"CARAVEL_MAP_STYLE_URL": "/styles/house.json"},
+			check: func(t *testing.T, c Config) {
+				if c.MapStyleURL != "/styles/house.json" {
+					t.Errorf("MapStyleURL = %q, want the path unchanged", c.MapStyleURL)
+				}
+			},
 		},
 		{
-			name:    "a url with no placeholders at all is refused",
-			env:     map[string]string{"CARAVEL_TILE_URL": "https://tiles.invalid/tile.png"},
-			wantErr: "missing {z}",
+			name:    "something the browser cannot resolve is refused",
+			env:     map[string]string{"CARAVEL_MAP_STYLE_URL": "tiles.example.invalid/style.json"},
+			wantErr: "must be an absolute path or an http(s) URL",
 		},
 		{
-			name:    "a zoom past the scheme is refused",
-			env:     map[string]string{"CARAVEL_TILE_MAX_ZOOM": "30"},
-			wantErr: "CARAVEL_TILE_MAX_ZOOM 30",
-		},
-		{
-			name:    "a negative zoom is refused by getEnvInt",
-			env:     map[string]string{"CARAVEL_TILE_MAX_ZOOM": "-1"},
-			wantErr: "must not be negative",
-		},
-		{
-			name:    "a misspelled zoom is refused rather than ignored",
-			env:     map[string]string{"CARAVEL_TILE_MAX_ZOOM": "2O"},
-			wantErr: "must be a whole number",
+			// Checked separately from the light one: a dark style that 404s
+			// is a map that silently stops following the reader's preference,
+			// which is harder to notice than no map at all.
+			name:    "and so is a bad dark style",
+			env:     map[string]string{"CARAVEL_MAP_STYLE_DARK_URL": "file:///etc/style.json"},
+			wantErr: "CARAVEL_MAP_STYLE_DARK_URL",
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			for _, k := range []string{"CARAVEL_TILE_URL", "CARAVEL_TILE_ATTRIBUTION", "CARAVEL_TILE_MAX_ZOOM"} {
+			for _, k := range []string{"CARAVEL_MAP_STYLE_URL", "CARAVEL_MAP_STYLE_DARK_URL"} {
 				t.Setenv(k, "")
 			}
 			for k, v := range tc.env {

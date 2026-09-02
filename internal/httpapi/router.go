@@ -85,11 +85,11 @@ type Server struct {
 	GeocodeLimiter     *rateLimiter
 	AssistLimiter      *rateLimiter
 	ImageSearchLimiter *rateLimiter
-	// Tiles is what /api/map/config hands the frontend, already resolved
+	// MapStyle is what /api/map/config hands the frontend, already resolved
 	// against the defaults, so nothing downstream has to ask "is this the
 	// configured value or the fallback".
-	Tiles  TileSettings
-	router chi.Router
+	MapStyle MapStyleSettings
+	router   chi.Router
 }
 
 // Options are NewServer's dependencies and settings.
@@ -133,9 +133,9 @@ type Options struct {
 	// is what a test wants unless it is testing this; production passes
 	// config.DefaultTrustedProxies unless the operator narrowed it.
 	TrustedProxies []netip.Prefix
-	// Tiles is the map tile layer the browser loads. Zero fields take the
-	// defaults below.
-	Tiles TileSettings
+	// MapStyle is the pair of MapLibre styles the browser draws. Zero fields
+	// take the defaults below.
+	MapStyle MapStyleSettings
 	// BaseURL pins the public origin used by the shell social tags. Empty --
 	// the usual case, and what a test wants -- derives it from each request.
 	BaseURL string
@@ -190,7 +190,7 @@ func NewServer(opts Options) *Server {
 		// that costs by the token.
 		ImageSearchLimiter: newRateLimiter(10, time.Minute),
 		assistSlots:        make(chan struct{}, assistMaxConcurrent(opts.AssistMaxConcurrent)),
-		Tiles:              opts.Tiles.withDefaults(),
+		MapStyle:           opts.MapStyle.withDefaults(),
 	}
 	// Hashing the asset tree is skipped in dev: the files change under the
 	// running process, so a startup snapshot of their hashes would be wrong

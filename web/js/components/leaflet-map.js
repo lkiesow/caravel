@@ -6,56 +6,49 @@ import { googleMapsUrl } from "../url.js";
 import { eventBus } from "../eventbus.js";
 import { resolveMapTheme } from "../map-theme.js";
 
-// The tile layer, as the instance has it configured. Defaults duplicated from
+// The map, as the instance has it configured. Defaults duplicated from
 // internal/httpapi/map.go on purpose: they are what the map falls back to when
-// the request fails, and a Map tab of grey squares is a worse answer to "the
-// config endpoint is briefly unreachable" than the tiles Caravel shipped with.
-// The dark cartography is the light one's sibling, named by convention rather
-// than configured: the server points at one style, and this is where its
-// counterpart lives. Kept to a substitution so an operator who points
-// style_url at a style of their own gets that style in both modes rather than
-// a 404 half the time -- see darkStyleUrl below.
-const LIGHT_STYLE = "positron";
-const DARK_STYLE = "dark";
-
-const DEFAULT_TILE_CONFIG = {
+// the request fails, and a Map tab of nothing is a worse answer to "the config
+// endpoint is briefly unreachable" than the map Caravel shipped with.
+//
+// Two styles, because light and dark are a per-browser preference
+// (map-theme.js) and the instance has to be able to answer both. The server
+// resolves them -- including repeating the light one when an operator named no
+// dark counterpart -- so there is no naming convention guessed at here.
+const DEFAULT_MAP_CONFIG = {
   style_url: "/js/vendor/map-styles/positron.json",
-  tile_url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-  tile_attribution:
-    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  max_zoom: 19,
+  dark_style_url: "/js/vendor/map-styles/dark.json",
 };
 
 // Memoised at module scope, not per instance: three routes mount a map and a
 // trip page can swap between them, but the answer is instance-wide and cannot
 // change without a server restart. One request per page load, not per map.
-let tileConfigPromise = null;
+let mapConfigPromise = null;
 
-function loadTileConfig() {
-  if (!tileConfigPromise) {
-    tileConfigPromise = api.get("/map/config").catch(() => DEFAULT_TILE_CONFIG);
+function loadMapConfig() {
+  if (!mapConfigPromise) {
+    mapConfigPromise = api.get("/map/config").catch(() => DEFAULT_MAP_CONFIG);
   }
-  return tileConfigPromise;
+  return mapConfigPromise;
 }
 
 // MapLibre draws from a *style*, not from a tile layer, so there is no longer
-// a one-line "here is the tile URL" call. Two shapes come out of here:
+// a one-line "here is the tile URL" call: the server names two style
+// documents and this fetches whichever the current scheme calls for.
 //
-//   - the vector style the instance points at, vendored under
-//     web/js/vendor/map-styles/ and served from our own origin;
-//   - a raster style synthesised from CARAVEL_TILE_URL, for an operator who
-//     has pinned a raster provider. The server decides which by leaving
-//     style_url empty when the tile URL is not the shipped default, so the
-//     choice lives with the person who configured it rather than being
-//     guessed from a string comparison in the browser.
+// Raster tiles are gone entirely as of Stage 30 Milestone 6, along with
+// CARAVEL_TILE_URL and its two companions. That setting existed only because
+// pre-rendered labels cannot follow a reader's language, and vector labels do
+// -- so keeping a second rendering path would have meant two sets of
+// documentation, two code paths, and a per-reader light/dark preference that
+// silently did nothing wherever an operator had pinned a provider.
 //
-// Memoised per style URL for the same reason loadTileConfig is: three mounts,
-// one answer, and re-parsing 25KB of JSON per map is waste.
+// Memoised per URL for the same reason loadMapConfig is: three mounts, two
+// styles, and re-parsing 25KB of JSON per map is waste.
 const styleCache = new Map();
 
-async function buildStyle(tiles, scheme) {
-  if (!tiles.style_url) return rasterStyle(tiles);
-  const url = scheme === "dark" ? darkStyleUrl(tiles.style_url) : tiles.style_url;
+async function buildStyle(config, scheme) {
+  const url = (scheme === "dark" ? config.dark_style_url : config.style_url) || config.style_url;
   if (!styleCache.has(url)) {
     styleCache.set(
       url,
@@ -72,24 +65,14 @@ async function buildStyle(tiles, scheme) {
     // tearing the first one down.
     return localiseLabels(structuredClone(await styleCache.get(url)), getLocale());
   } catch {
-    // A missing or malformed style should not leave a blank rectangle when
-    // there is still a tile URL to fall back to. Same reasoning as
-    // DEFAULT_TILE_CONFIG above: a working map from the shipped defaults
-    // beats an honest void.
     styleCache.delete(url);
     // A dark style that will not load falls back to the light one rather than
-    // to raster: the vendored pair are siblings, so a missing dark counterpart
-    // is much more likely than the whole vector setup being broken -- and an
-    // operator pointing style_url at a custom style is exactly the case where
-    // no dark sibling exists.
-    if (url !== tiles.style_url) return buildStyle(tiles, "light");
-    return rasterStyle(tiles);
+    // to nothing. The server already repeats the light URL when an operator
+    // named no dark counterpart, so reaching here means the document itself is
+    // broken - and one working cartography beats an empty rectangle.
+    if (url !== config.style_url) return buildStyle(config, "light");
+    return null;
   }
-}
-
-// positron.json -> dark.json, without assuming the directory or the extension.
-function darkStyleUrl(lightUrl) {
-  return lightUrl.replace(new RegExp(`${LIGHT_STYLE}(?=\\.json$|$)`), DARK_STYLE);
 }
 
 // Labels in the reader's own language, which is the thing raster tiles could
@@ -139,39 +122,6 @@ function readsAName(expr) {
     return true;
   }
   return expr.some((part) => readsAName(part));
-}
-
-// A raster provider expressed as a style document.
-//
-// Two of Leaflet's tile-layer conveniences have no MapLibre counterpart and
-// are handled here instead:
-//
-//   - {s}. MapLibre round-robins the `tiles` array, which is exactly what
-//     Leaflet's subdomains option did, so expanding the placeholder into three
-//     URLs reproduces it -- and reproduces it *correctly*, since the list is
-//     written out rather than inferred. The old "abcd" bug (a quarter of all
-//     tiles sent to d.tile.openstreetmap.org, a host that does not resolve)
-//     cannot recur in this shape.
-//   - {r}, the @2x retina suffix, which MapLibre does not substitute. Stripped
-//     rather than faked: a URL asking for @2x tiles still resolves without it,
-//     where leaving the literal "{r}" in would 404 every tile.
-function rasterStyle(tiles) {
-  const url = tiles.tile_url.replace("{r}", "");
-  const urls = url.includes("{s}")
-    ? ["a", "b", "c"].map((s) => url.replace("{s}", s))
-    : [url];
-  return {
-    version: 8,
-    sources: {
-      tiles: {
-        type: "raster",
-        tiles: urls,
-        tileSize: 256,
-        maxzoom: tiles.max_zoom,
-      },
-    },
-    layers: [{ id: "tiles", type: "raster", source: "tiles" }],
-  };
 }
 
 const CATEGORY_COLORS = {
@@ -681,7 +631,7 @@ class LeafletMap extends HTMLElement {
   // style.load.
   async restyle() {
     const map = this._map;
-    if (!map || !this._tiles) return;
+    if (!map || !this._mapConfig) return;
     // The map's own centre is the best coordinate the day/night mode can have:
     // better than a remembered fix when somebody is looking at somewhere they
     // are not, which on a trip-planning app is most of the time.
@@ -693,8 +643,11 @@ class LeafletMap extends HTMLElement {
     // rather than a network round trip later.
     this.dataset.scheme = next;
     const generation = this._generation;
-    const style = await buildStyle(this._tiles, next);
+    const style = await buildStyle(this._mapConfig, next);
     if (generation !== this._generation || this._map !== map) return;
+    // A style that will not load leaves the current one alone. Better a map in
+    // the wrong scheme than no map at all, and the reader can flip back.
+    if (!style) return;
     map.setStyle(style, { diff: false });
   }
 
@@ -859,9 +812,9 @@ class LeafletMap extends HTMLElement {
     // cost a round trip, and awaiting the config *after* constructing the map
     // would leave a constructed, tile-less map behind whenever this render is
     // superseded mid-fetch.
-    const [maplibre, tiles] = await Promise.all([
+    const [maplibre, mapConfig] = await Promise.all([
       import("../vendor/maplibre/maplibre-gl.mjs"),
-      loadTileConfig(),
+      loadMapConfig(),
     ]);
     if (generation !== this._generation) return;
     this._maplibre = maplibre;
@@ -869,11 +822,19 @@ class LeafletMap extends HTMLElement {
     // No map exists yet, so there is no viewport centre to offer the day/night
     // mode as a coordinate hint; it falls back to a remembered fix, or to the
     // app's own theme. Once the map is up, restyle() can do better.
-    this._tiles = tiles;
+    this._mapConfig = mapConfig;
     this._scheme = resolveMapTheme();
     this.dataset.scheme = this._scheme;
-    const style = await buildStyle(tiles, this._scheme);
+    const style = await buildStyle(mapConfig, this._scheme);
     if (generation !== this._generation) return;
+    // Nothing to draw: the configured style would not load and there is no
+    // fallback left. Say so rather than constructing a map with no cartography
+    // in it, which looks like a bug in the app instead of in the setting.
+    if (!style) {
+      this.showMapUnavailable(new Error("map style unavailable"));
+      this.setAttribute("data-ready", "");
+      return;
+    }
 
     const mapEl = this.shadowRoot.getElementById("map");
 
@@ -887,15 +848,16 @@ class LeafletMap extends HTMLElement {
         // and the coordinate-less picker settle on anyway.
         center: [0, 20],
         zoom: 2,
-        // The default attribution control credits MapLibre itself and hides
-        // behind a toggle under 640px. compact: false keeps the operator's
-        // configured credit visible, which is what every provider's terms
-        // actually ask for; customAttribution is how that credit gets in,
-        // since it no longer travels with a tile layer. It is rendered as
-        // markup - MapLibre strips <script>, on* and javascript:/data: URLs
-        // and leaves the rest - so the "attribution is HTML" contract that
-        // internal/httpapi/map.go documents survives the swap unchanged.
-        attributionControl: { compact: false, customAttribution: tiles.tile_attribution },
+        // compact: false keeps the credit visible rather than behind a toggle
+        // under 640px, which is what every provider's terms actually ask for.
+        //
+        // No customAttribution: a style carries its own credit, inline on its
+        // sources or in the TileJSON they point at, and MapLibre renders it.
+        // The old CARAVEL_TILE_ATTRIBUTION existed because a bare XYZ template
+        // carries no provenance at all, and it was a standing trap - change
+        // the URL, forget the credit, and the instance is out of compliance
+        // with a map that still looks right.
+        attributionControl: { compact: false },
         // The wheel is handled entirely in bindGestureGate below - see the
         // reasoning there. The library's own handler being off is what makes
         // the gesture deterministic: there is exactly one piece of code
@@ -1115,15 +1077,13 @@ class LeafletMap extends HTMLElement {
         (b, i) => b.extend([i.lng, i.lat]),
         new maplibre.LngLatBounds([visible[0].lng, visible[0].lat], [visible[0].lng, visible[0].lat])
       );
-      // maxZoom matters for a single marker (or several at the same spot):
-      // the bounds are then zero-size and fitBounds would zoom all the way to
-      // the tile layer's own maxZoom, past where most providers serve tiles
-      // at all - a grey rectangle with one dot on it. 14 is the same zoom the
-      // single-marker branch above picks deliberately.
-      // padding is a number here, not Leaflet's [x, y] pair. maxZoom still
-      // matters for a single marker (or several at the same spot): the bounds
-      // are then zero-size and an unbounded fit would zoom past where any
-      // provider serves anything.
+      // padding is a number here, not Leaflet's [x, y] pair.
+      //
+      // maxZoom matters for a single marker (or several at the same spot): the
+      // bounds are then zero-size, and an unbounded fit would zoom past the
+      // deepest zoom the style has data for - an empty rectangle with one dot
+      // on it. 14 is the same zoom the single-marker branch above picks
+      // deliberately.
       this._map.fitBounds(bounds, { padding: 32, maxZoom: SINGLE_MARKER_ZOOM, animate: false });
     } else {
       this._map.jumpTo({ center: [0, 20], zoom: 2 });

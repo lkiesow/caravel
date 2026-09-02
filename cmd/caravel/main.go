@@ -207,10 +207,9 @@ func serverOptions(cfg config.Config, opts httpapi.Options) httpapi.Options {
 	// above defaults the same way, which is what makes the two agree.
 	opts.AssistRateLimit = cfg.AssistRateLimit
 	opts.AssistMaxConcurrent = cfg.AssistMaxConcurrent
-	opts.Tiles = httpapi.TileSettings{
-		URL:         cfg.TileURL,
-		Attribution: cfg.TileAttribution,
-		MaxZoom:     cfg.TileMaxZoom,
+	opts.MapStyle = httpapi.MapStyleSettings{
+		URL:     cfg.MapStyleURL,
+		DarkURL: cfg.MapStyleDarkURL,
 	}
 	return opts
 }

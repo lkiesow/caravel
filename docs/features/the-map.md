@@ -8,12 +8,16 @@ Pins are coloured by category — site, stay, transport — and each category ca
 switched off, so "show me only where we are sleeping" is one click. The map
 frames itself to fit whatever is currently shown.
 
-Tiles come from OpenStreetMap, which labels places in the local script — a trip
-to Japan reads 東京 rather than Tokyo. That is a property of those tiles rather
-than a setting, so the provider is configurable: see [Map
-tiles](../configuration/map-tiles.md) for the ones that write latin script, or a
-language of your choosing. Clicking a pin opens the location, so the map doubles
-as a way of navigating the trip rather than only a way of looking at it.
+The map is drawn in your browser from OpenStreetMap data, which means the
+labels follow **your** language: the same trip reads Tokyo for an English
+reader and Tokio for a German one, at the same time on the same instance. It
+also comes in light and dark, independently of the rest of the app — including
+a day/night mode that follows the actual position of the sun rather than your
+operating system's idea of evening. Both live in **Settings → Appearance**; the
+provider itself is configurable too, see [Map
+style](../configuration/map-style.md). Clicking a pin opens the location, so
+the map doubles as a way of navigating the trip rather than only a way of
+looking at it.
 
 ## Getting coordinates onto a location
 

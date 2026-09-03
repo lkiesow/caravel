@@ -33,6 +33,28 @@ async function gotoTripMap(page) {
   await page.waitForFunction(() => document.querySelector("map-view")?._map, null, { timeout: 20000 });
 }
 
+// Clicks the first marker and waits for its popup. Markers live in the shadow
+// root and the library listens for mouse events rather than for .click(), so
+// this dispatches real ones - the same approach map.spec.js takes.
+async function openFirstPopup(page) {
+  await page.evaluate(() => {
+    const host = document.querySelector("map-view");
+    const sr = host.shadowRoot;
+    // Clicking a marker *toggles* its popup, so an already-open one would be
+    // closed by the click below rather than reopened. Restyling keeps popups
+    // (they are DOM), which is exactly when this bites.
+    host._markers?.forEach((m) => m.getPopup()?.remove());
+    const marker = sr.querySelector(".maplibregl-marker");
+    if (!marker) throw new Error("no markers on the trip map - does the seed still give the trip coordinates?");
+    for (const type of ["mousedown", "mouseup", "click"]) {
+      marker.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window, button: 0 }));
+    }
+  });
+  await page.waitForFunction(
+    () => document.querySelector("map-view").shadowRoot.querySelector(".maplibregl-popup-content a") !== null
+  );
+}
+
 // Two points the sun is unambiguously up over and down under, right now.
 //
 // Both tests below need "somewhere lit" and "somewhere dark" and used to use
@@ -171,6 +193,94 @@ test.describe("the map's own light and dark", () => {
     // one of the two being changed alone.
     expect(dark.legendDot, "the legend key must match its marker").toBe(dark.markerColor);
     expect(light.legendDot).toBe(light.markerColor);
+  });
+
+  // The popup a marker opens sits *on* the map, so it is the map's scheme it
+  // has to obey - not the app's, and certainly not MapLibre's stylesheet,
+  // which paints white paper and sets no text colour at all. On a dark map
+  // that produced an unreadable pane: the title inherited the app's light
+  // --color-text through the shadow boundary and disappeared into the white,
+  // and so did the close button. Asserted as contrast rather than as literal
+  // colours, so the palette can be retuned without rewriting the test.
+  test("a marker popup is dressed in the map's scheme", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+
+    // The interface is left dark throughout: the light map below therefore
+    // cannot be the popup borrowing app tokens, which is the actual bug.
+    await page.evaluate(async () => {
+      const { setTheme } = await import("/js/theme.js");
+      setTheme("dark");
+    });
+
+    const read = async () => {
+      await openFirstPopup(page);
+      return page.evaluate(() => {
+        const sr = document.querySelector("map-view").shadowRoot;
+        const content = sr.querySelector(".maplibregl-popup-content");
+        const cs = getComputedStyle(content);
+        const link = content.querySelector("a");
+        const tip = sr.querySelector(".maplibregl-popup-tip");
+        const tipStyle = getComputedStyle(tip);
+        // The tip is a bordered zero-size box: whichever side is painted is
+        // the arrow, and the other three are transparent or absent. Comparing
+        // only the painted sides is what makes this independent of the anchor
+        // MapLibre happened to pick.
+        const painted = ["Top", "Right", "Bottom", "Left"]
+          .filter((s) => parseFloat(tipStyle[`border${s}Width`]) > 0)
+          .map((s) => tipStyle[`border${s}Color`])
+          .filter((c) => c !== "rgba(0, 0, 0, 0)" && c !== "transparent");
+        return {
+          background: cs.backgroundColor,
+          text: cs.color,
+          link: link ? getComputedStyle(link).color : null,
+          tip: painted,
+        };
+      });
+    };
+
+    // Relative luminance and the WCAG ratio, on "rgb(r, g, b)" strings -
+    // computed here rather than in the page so a failure prints the numbers.
+    const lum = (css) => {
+      const [r, g, b] = css.match(/\d+/g).slice(0, 3).map(Number);
+      const c = [r, g, b].map((v) => {
+        const s = v / 255;
+        return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    };
+    const contrast = (a, b) => {
+      const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+      return (hi + 0.05) / (lo + 0.05);
+    };
+
+    const check = (state, scheme) => {
+      expect(contrast(state.text, state.background), `the ${scheme} popup title must be readable`).toBeGreaterThanOrEqual(4.5);
+      expect(state.link, `the ${scheme} popup should have a link to colour`).toBeTruthy();
+      expect(contrast(state.link, state.background), `the ${scheme} popup links must be readable`).toBeGreaterThanOrEqual(4.5);
+      // A white arrow under a dark box is the failure mode of styling the
+      // content and forgetting the tip, and it is the one that looks broken
+      // rather than merely low-contrast.
+      expect(state.tip.length, `the ${scheme} popup should paint exactly one arrow`).toBe(1);
+      expect(state.tip[0], `the ${scheme} popup arrow must match its box`).toBe(state.background);
+    };
+
+    await setMode(page, "dark");
+    await waitForScheme(page, "dark", DARK_BG);
+    const dark = await read();
+    check(dark, "dark");
+
+    await setMode(page, "light");
+    await waitForScheme(page, "light", LIGHT_BG);
+    const light = await read();
+    check(light, "light");
+
+    expect(light.background, "the two schemes must not share one popup colour").not.toBe(dark.background);
+    // The map is dark here and the app is dark too, so this is the assertion
+    // that the popup followed the map: dark paper under a dark interface is
+    // ambiguous, near-black paper under a *light* map is not.
+    expect(lum(dark.background), "a dark map wants dark paper").toBeLessThan(0.2);
+    expect(lum(light.background), "a light map wants light paper").toBeGreaterThan(0.7);
   });
 
   test("follow-app tracks the app, once chosen", async ({ page }) => {

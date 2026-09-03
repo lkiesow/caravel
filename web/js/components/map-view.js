@@ -292,6 +292,16 @@ const styles = `
     --marker-pick-fill: rgba(255, 255, 255, 0.85);
     --marker-here: ${HERE_MARKER_COLOR};
     --marker-ring: #fff;
+    /* The popup is dressed by the *map's* scheme, not the app's - same
+       reasoning as the marker ring above it. It is a box sitting on the
+       cartography, and MapLibre's own default (white paper, no colour set on
+       the text) turned into an unreadable pane on a dark map: the title
+       inherited the app's light --color-text through the shadow boundary and
+       vanished, and so did the close button. */
+    --popup-surface: #fff;
+    --popup-text: #18181b;
+    --popup-link: #1d4ed8;
+    --popup-hover: rgba(0, 0, 0, 0.05);
   }
   :host([data-scheme="dark"]) {
     --marker-site: #22c55e;
@@ -304,6 +314,13 @@ const styles = `
     /* The white ring that separates a marker from the map underneath has to
        become a dark one, or every marker wears a bright halo on a dark map. */
     --marker-ring: #18181b;
+    /* Near-black paper, the app's dark surface one step darker so the popup
+       reads as sitting *on* the map rather than being a piece of app chrome
+       that landed there. */
+    --popup-surface: #18181b;
+    --popup-text: #fafafa;
+    --popup-link: #60a5fa;
+    --popup-hover: rgba(255, 255, 255, 0.08);
   }
 
   /* A column flex box, not a plain block: the map fills the height and the
@@ -407,6 +424,48 @@ const styles = `
      tap-target height below has something to apply to. */
   .popup-link {
     display: block;
+  }
+  /* The popup itself, repainted from MapLibre's stylesheet in the map's own
+     scheme (see --popup-* above). Everything here overrides a vendor rule from
+     /js/vendor/maplibre/maplibre-gl.css, which the shadow root links *before*
+     this block - so equal specificity is enough and is what these selectors
+     deliberately match, tip included: each anchor variant paints its own
+     border side, and missing one leaves a white arrow under a dark box.
+
+     Colours are literals rather than --color-* tokens on purpose: the map's
+     scheme is resolved from day/night at the map's centre and is independent
+     of the app theme, so a popup borrowing app tokens would be light chrome on
+     a dark map exactly as often as it was right. */
+  .maplibregl-popup-content {
+    background: var(--popup-surface);
+    color: var(--popup-text);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+  .maplibregl-popup-content a,
+  .maplibregl-popup-content a:visited {
+    color: var(--popup-link);
+  }
+  .maplibregl-popup-close-button {
+    color: var(--popup-text);
+  }
+  .maplibregl-popup-close-button:hover {
+    background-color: var(--popup-hover);
+  }
+  .maplibregl-popup-anchor-top .maplibregl-popup-tip,
+  .maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+  .maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+    border-bottom-color: var(--popup-surface);
+  }
+  .maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+  .maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+  .maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+    border-top-color: var(--popup-surface);
+  }
+  .maplibregl-popup-anchor-left .maplibregl-popup-tip {
+    border-right-color: var(--popup-surface);
+  }
+  .maplibregl-popup-anchor-right .maplibregl-popup-tip {
+    border-left-color: var(--popup-surface);
   }
   /* The locate control, overlaid on the map like a map control should be.
      Bottom left: the zoom control sits top left, the legend top right and the

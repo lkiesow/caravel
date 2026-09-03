@@ -89,6 +89,11 @@ const styles = `
     color: var(--color-text-muted);
     font-size: 0.8rem;
   }
+  /* Wrapping stays on even though the row is meant to be one line: the fit
+     pass below decides which chips survive by asking the browser which ones
+     wrapped, so it needs them free to wrap in order to measure that. What the
+     reader sees is a single line, because everything past the first row gets
+     the hidden attribute. */
   .tags {
     display: flex;
     flex-wrap: wrap;
@@ -109,6 +114,9 @@ const styles = `
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .tag[hidden] {
+    display: none;
+  }
 `;
 
 class ItemCard extends HTMLElement {
@@ -121,6 +129,14 @@ class ItemCard extends HTMLElement {
     if (!this.hasAttribute("tabindex")) this.setAttribute("tabindex", "0");
     this.setAttribute("role", "button");
     this.render();
+    // Re-solve the tag row whenever the card changes width: rotating the phone,
+    // dragging a desktop window, or crossing the 641px breakpoint where the
+    // meta row stops stacking. Hiding a chip changes the card height but never
+    // its width, so this cannot feed itself.
+    if (typeof ResizeObserver === "function") {
+      this.fitObserver = new ResizeObserver(() => this.scheduleFit());
+      this.fitObserver.observe(this);
+    }
     this.addEventListener("click", () => this.open());
     this.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") {
@@ -128,6 +144,13 @@ class ItemCard extends HTMLElement {
         this.open();
       }
     });
+  }
+
+  disconnectedCallback() {
+    if (this.fitObserver) {
+      this.fitObserver.disconnect();
+      this.fitObserver = null;
+    }
   }
 
   open() {
@@ -157,11 +180,12 @@ class ItemCard extends HTMLElement {
     } catch {
       tags = [];
     }
-    // At most three, then a count. A card is a fixed-height row in a list, and
-    // one location with a dozen tags must not make its neighbours look
-    // different; the whole set is on the location page.
-    const shown = tags.slice(0, 3);
-    const overflow = tags.length - shown.length;
+    // Every tag is emitted, plus a hidden overflow badge; which of them the
+    // reader actually sees is decided after layout by fitTags(). A card is one
+    // row in a list and one location with a dozen tags must not make its
+    // neighbours look different -- but how many fit is a question about pixels,
+    // not about a count, so it cannot be answered here. The whole set is on
+    // the location page either way.
 
     // Same JSON-in-an-attribute treatment as the tags, and the same reason for
     // showing only the first: a location split across three separate stretches
@@ -186,9 +210,9 @@ class ItemCard extends HTMLElement {
         ? `<span class="dates">${escapeHtml(firstRange)}${moreRanges > 0 ? ` +${moreRanges}` : ""}</span>`
         : "",
       tags.length
-        ? `<span class="tags">${shown.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}${
-            overflow ? `<span class="tag">+${overflow}</span>` : ""
-          }</span>`
+        ? `<span class="tags">${tags
+            .map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`)
+            .join("")}<span class="tag tag--more" hidden></span></span>`
         : "",
     ].filter(Boolean);
     const meta = metaParts.length
@@ -206,6 +230,67 @@ class ItemCard extends HTMLElement {
         </div>
       </div>
     `;
+    this.scheduleFit();
+  }
+
+  /* Trim the tag row to a single line, once the browser has laid it out.
+
+     The old rule was a fixed slice(0, 3), which got it wrong in both
+     directions: on a wide card a fourth short tag fitted easily but was
+     replaced by a badge that took *more* room than the tag, and at 324px three
+     tags already filled the line, so the badge whose job is to keep the card
+     one row tall was the thing that added a second row. Whether a tag fits
+     depends on the card width and on how long the tag is, and neither is
+     visible from a count.
+
+     So: let them wrap, ask which ones did, and hide those. */
+  fitTags() {
+    const wrap = this.shadowRoot && this.shadowRoot.querySelector(".tags");
+    if (!wrap) return;
+    const chips = Array.from(wrap.querySelectorAll(".tag:not(.tag--more)"));
+    const badge = wrap.querySelector(".tag--more");
+    if (!chips.length || !badge) return;
+
+    // Start from everything-visible, or a previous pass's verdict becomes this
+    // pass's input and the row can only ever shrink -- a card widened back up
+    // would keep the tags it dropped while narrow.
+    for (const chip of chips) chip.hidden = false;
+    badge.hidden = true;
+
+    // All reads, then all writes. Interleaving them would force a reflow per
+    // chip, on every card in the list.
+    const tops = chips.map((chip) => chip.getBoundingClientRect().top);
+    const firstRow = Math.min(...tops);
+    // A tolerance rather than equality: these are subpixel numbers, and chips
+    // on one line can differ in the last fraction.
+    let fits = tops.filter((top) => top < firstRow + 1).length;
+    if (fits === chips.length) return; // nothing wrapped, so nothing to say
+
+    // One surviving chip pays for the badge, which is never wider than a chip.
+    // Keep at least one real tag: a lone "+4" tells the reader nothing.
+    fits = Math.max(1, fits - 1);
+    for (let i = fits; i < chips.length; i++) chips[i].hidden = true;
+    badge.textContent = `+${chips.length - fits}`;
+    badge.hidden = false;
+  }
+
+  /* Measuring text before the brand font has loaded measures the fallback, and
+     the fallback is narrower -- so an early pass keeps a chip that does not
+     actually fit. Wait for the font, then for a frame, so the chips we ask
+     about have been laid out with it. */
+  scheduleFit() {
+    if (this.fitPending) return;
+    this.fitPending = true;
+    const run = () =>
+      requestAnimationFrame(() => {
+        this.fitPending = false;
+        if (this.isConnected) this.fitTags();
+      });
+    if (document.fonts && document.fonts.status !== "loaded") {
+      document.fonts.ready.then(run, run);
+    } else {
+      run();
+    }
   }
 }
 

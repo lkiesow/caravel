@@ -55,6 +55,15 @@ purpose — do not reconstruct it from an older stage plan without asking.
   operating system rather than the map -- which is the other half of the reason
   the string should probably follow the platform.
 
+- **A card's overflow tag badge can still wrap, in one narrow case.** (Stage 30
+  follow-up.) `fitTags()` frees exactly one chip to make room for the `+N`
+  badge, on the reasoning that a badge is never wider than a chip. That holds
+  for every realistic tag, but a one-character tag (`x`) is narrower than `+2`,
+  so a row ending in one could still push the badge onto a second line. The fix
+  is to keep freeing chips until the badge stops wrapping, at the cost of a
+  layout read per iteration on every card; not worth it until somebody tags a
+  location with a single letter.
+
 ---
 
 ## Planned features

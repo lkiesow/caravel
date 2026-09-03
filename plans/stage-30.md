@@ -929,6 +929,54 @@ the sun 21.2 degrees above the horizon there, and draws the light map — the
 default reaching its answer from a real place rather than from the operating
 system.
 
+## Follow-up: the card tag row is measured, not counted
+
+*Noticed in a screenshot pair -- the same card, desktop and 324px, both wrong.*
+
+`location-card.js` had trimmed its tag row with a fixed `slice(0, 3)` plus a
+`+N` badge since Stage 26. A count cannot answer the question it was asked,
+and the two screenshots showed it failing in **both** directions at once: on a
+wide card a fourth short tag fitted with room to spare but was replaced by a
+badge that took *more* width than the tag would have; at 324px three tags
+already filled the line, so the badge whose entire job is keeping the card one
+row tall was the thing adding a second row. Whether a tag fits depends on the
+card width and on how long the tag is, and neither is visible from a count.
+
+So the card now renders **every** tag plus a hidden badge and decides after
+layout. `fitTags()` resets to everything-visible (or a previous verdict becomes
+this pass's input and a card that was once narrow stays trimmed), reads each
+chip's `getBoundingClientRect().top` in one batch before writing anything,
+and takes the chips sharing the topmost row as the ones that fit. If they all
+do, the badge stays hidden and nothing was hidden -- the desktop case. If not,
+one surviving chip pays for the badge (which is never wider than a chip), the
+rest get the `hidden` attribute, and the badge says how many. A single step
+rather than a loop: shrink-until-it-fits would mean a layout read per
+iteration, on every card in a list.
+
+Two pieces of timing matter. The pass waits for `document.fonts.ready` and
+then a frame, because measuring before Montserrat loads measures the narrower
+fallback and keeps a chip that does not actually fit. And a per-card
+`ResizeObserver` re-solves it on width changes -- rotating a phone, dragging a
+window, crossing the 641px breakpoint where the meta row stops stacking.
+Hiding a chip changes the card's height but never its width, so the observer
+cannot feed itself.
+
+**Done.** Verified by a new `locations.spec.js` test that reads the row as the
+reader sees it -- visible chip labels, whether the badge shows, and the row
+height in chip-heights. At 1280px all four tags show and there is no badge;
+narrowed to 324px the badge appears, the row is still exactly one chip tall,
+the count matches the number of chips dropped, and the survivors are the real
+tags in order; widened again, all four come back. Writing it found something
+worth recording: four *short* tags (`asakusa landmark shrine temple`) genuinely
+do fit on one line at 324px -- 234px of chips in 234px of row -- which is
+exactly the sort of thing the old count got wrong, so the fixture uses a long
+fourth tag to make the narrow case a real overflow rather than an assumption.
+The existing "tags reach the card" assertion now reads
+`.tag:not(.tag--more)` and ignores `hidden`, since what the DOM carries and
+what is shown are now two different questions. `make ci` green; `make test-ui`
+at 223 passed with only the two documented distance-filter flakes, which fail
+identically on a clean tree.
+
 ## Build order
 
 1 → 2 is hard (2 needs the vendored files). 3 introduces `_applyOverlays()`

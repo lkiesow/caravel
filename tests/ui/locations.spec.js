@@ -365,10 +365,13 @@ test.describe("the location editor, end to end", () => {
     ]);
 
     // The card in the list carries them too. The custom element keeps them in
-    // its shadow root, so this reads through it.
+    // its shadow root, so this reads through it. Every tag is in the DOM
+    // whatever the width -- which of them is *shown* is the fit pass's job and
+    // has its own test below, so this excludes the overflow badge and ignores
+    // the hidden attribute.
     await gotoRoute(page, `/trips/${tripId}/locations`);
     const cardTags = await page.locator("item-card").first().evaluate((el) =>
-      [...el.shadowRoot.querySelectorAll(".tag")].map((t) => t.textContent)
+      [...el.shadowRoot.querySelectorAll(".tag:not(.tag--more)")].map((t) => t.textContent)
     );
     expect(cardTags).toEqual(["Reykjavik", "church", "uncommitted"]);
 
@@ -387,6 +390,77 @@ test.describe("the location editor, end to end", () => {
     await page.locator(".tag-field__input").press("Enter");
     await expect(page.locator(".tag-field__chip")).toHaveText(["Reykjavik"]);
     await expect(page).toHaveURL(new RegExp(`/trips/${tripId}/locations/new$`));
+  });
+
+  // Stage 30 follow-up: the card's tag row is trimmed by measurement, not by a
+  // count. The old fixed slice(0, 3) was wrong in both directions -- it hid a
+  // fourth tag a wide card had room for, and at 324px its "+1" badge wrapped
+  // onto a second line, which is the exact thing the trimming exists to
+  // prevent. So the two assertions that matter are: nothing is hidden when
+  // everything fits, and the row is one line tall when it does not.
+  test("card tags are trimmed to one line by measurement, not by a count", async ({ page }) => {
+    const res = await page.request.post(`/api/trips/${tripId}/items`, {
+      // The server stores tags sorted, which is the order the card shows them in.
+      // Four short tags actually do fit on one line at 324px -- measured, which
+      // is the point -- so the fourth is a long one, to make the narrow case a
+      // genuine overflow rather than an assumption about counts.
+      data: {
+        title: "Tagged",
+        category: "site",
+        tags: ["asakusa", "landmark", "temple", "world-heritage"],
+      },
+    });
+    expect(res.status(), "create the tagged location").toBe(201);
+
+    // Reads the row as the reader sees it: the visible chip labels, whether the
+    // badge is showing, and how many chip-heights tall the row is.
+    const readRow = async () =>
+      page.locator("item-card").first().evaluate((el) => {
+        const wrap = el.shadowRoot.querySelector(".tags");
+        const chips = [...wrap.querySelectorAll(".tag:not(.tag--more)")].filter((c) => !c.hidden);
+        const badge = wrap.querySelector(".tag--more");
+        return {
+          shown: chips.map((c) => c.textContent),
+          badge: badge.hidden ? null : badge.textContent,
+          lines: Math.round(wrap.getBoundingClientRect().height / chips[0].getBoundingClientRect().height),
+        };
+      });
+
+    // Wide: four short tags fit easily, so all four show and there is no badge.
+    // A badge here would cost more width than the tag it replaced.
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await gotoRoute(page, `/trips/${tripId}/locations`);
+    await expect(page.locator("item-card")).toHaveCount(1);
+    await expect.poll(async () => (await readRow()).shown).toEqual([
+      "asakusa",
+      "landmark",
+      "temple",
+      "world-heritage",
+    ]);
+    expect((await readRow()).badge, "nothing wrapped, so no badge").toBeNull();
+
+    // Narrow: they cannot all fit, so the row drops what wrapped and says how
+    // many it dropped -- on the same single line, badge included.
+    await page.setViewportSize(MOBILE);
+    await expect.poll(async () => (await readRow()).badge).toMatch(/^\+\d+$/);
+    const narrow = await readRow();
+    expect(narrow.lines, "the trimmed row, badge and all, is one line").toBe(1);
+    expect(narrow.shown.length, "at least one real tag survives").toBeGreaterThanOrEqual(1);
+    expect(narrow.shown.length, "and some were dropped").toBeLessThan(4);
+    // The badge counts exactly what is missing, rather than being decorative.
+    expect(narrow.badge).toBe(`+${4 - narrow.shown.length}`);
+    // Every chip shown is still a real tag, in order, from the front.
+    expect(narrow.shown).toEqual(["asakusa", "landmark", "temple", "world-heritage"].slice(0, narrow.shown.length));
+
+    // ...and widening again restores them. The fit pass must start from
+    // everything-visible, or a card that was once narrow stays trimmed.
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await expect.poll(async () => (await readRow()).shown).toEqual([
+      "asakusa",
+      "landmark",
+      "temple",
+      "world-heritage",
+    ]);
   });
 
   // Stage 26 Milestone 3: the locations list carries the itinerary dates, so a

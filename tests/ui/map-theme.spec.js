@@ -303,14 +303,14 @@ test.describe("the map's own light and dark", () => {
 
   // Day/night is the default, so it has to work for a browser that has never
   // used the locate control -- which is most of them, and asking for a
-  // position merely to tint a map is out of the question. Without a fallback
-  // coordinate the mode would quietly resolve to the app's theme for those
-  // readers and the default would be a lie.
+  // position merely to tint a map is out of the question.
   //
-  // The fallback is the place the map is *showing*. Asserted by putting the
-  // app in light mode and pointing a single-marker map at somewhere the sun
-  // certainly is not, which no amount of following the app could produce.
-  test("day / night works with no stored position, from the place on screen", async ({ page }) => {
+  // The fallback is the device's own clock, read as a longitude: whatever the
+  // map is pointed at, the answer is the same, because the mode is about the
+  // light in the reader's room. This used to fall back to the place on screen,
+  // which lit a trip to Vienna and a trip to Japan differently at the same
+  // moment on the same sofa.
+  test("day / night ignores the place on screen and follows the device", async ({ page }) => {
     await login(page);
     await gotoTripMap(page);
 
@@ -345,35 +345,33 @@ test.describe("the map's own light and dark", () => {
         [lat, lng]
       );
 
-    // One point under the midday sun and one under the midnight one, worked
-    // out from the clock -- see sunProbes for why this is not a fixed pair.
+    // One point under the midday sun and one under the midnight one -- see
+    // sunProbes for why this is not a fixed pair. Both maps must come out the
+    // same, which is the whole assertion: the subject of the map is not an
+    // input any more.
     const { lit, dark } = sunProbes();
     const atLit = await schemeFor(...lit);
     const atDark = await schemeFor(...dark);
     expect(
-      [atLit, atDark].join(","),
-      `noon at ${lit[1]} and midnight at ${dark[1]} should be lit differently, from their own coordinates`
-    ).toBe("light,dark");
+      atLit,
+      `a map of noon at ${lit[1]} and one of midnight at ${dark[1]} must be lit the same way`
+    ).toBe(atDark);
 
-    // And each must agree with the arithmetic rather than merely differ.
-    const expected = await page.evaluate(
-      async ([l, d]) => {
-        const { isDaylight } = await import("/js/sun.js");
-        return {
-          atLit: isDaylight(...l) ? "light" : "dark",
-          atDark: isDaylight(...d) ? "light" : "dark",
-        };
-      },
-      [lit, dark]
-    );
-    expect(atLit, "the daylit point should follow the sun over it").toBe(expected.atLit);
-    expect(atDark, "the dark point should follow the sun over it").toBe(expected.atDark);
+    // And that one answer must be the sun over the *device*, which the module
+    // estimates from the browser's UTC offset.
+    const expected = await page.evaluate(async () => {
+      const { isDaylight } = await import("/js/sun.js");
+      const { observerPosition } = await import("/js/map-theme.js");
+      const where = observerPosition();
+      return isDaylight(where.lat, where.lng) ? "light" : "dark";
+    });
+    expect(atLit, "the map should follow the sun where the reader is").toBe(expected);
   });
 
   // The map is the only surface with a fourth mode, and this is why it exists:
   // the app's "auto" follows the operating system, which is a switch somebody
-  // set at home. Where the sun actually is is a fact about right now and about
-  // where the map is looking.
+  // set at home. Whether the sun is up where the reader is standing is a fact
+  // about right now.
   test("day / night follows the sun rather than the operating system", async ({ page }) => {
     await login(page);
     await gotoTripMap(page);

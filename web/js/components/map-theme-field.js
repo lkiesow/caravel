@@ -6,9 +6,10 @@ import { getMapTheme, setMapTheme } from "../map-theme.js";
 // Four choices where the interface has three, and the first is the default.
 //
 // "Day / night" leads because it is right more often than the alternative: it
-// follows the sun over the place on screen, where the app's own auto follows
-// the operating system -- a switch somebody set at home. Somebody travelling
-// has an OS that thinks it is evening and a sky that does not.
+// follows the sun where the reader is, where the app's own auto follows the
+// operating system -- a switch somebody set at home. The question the mode
+// answers is "is it light in this room", which is why it takes nothing from
+// the place the map happens to be showing.
 //
 // "Follow app" is second, and is what this used to default to. The remaining
 // two exist because the map is not interface -- it is the thing you look at

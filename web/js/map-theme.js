@@ -8,7 +8,8 @@ import { isDaylight, msUntilDaylightChanges } from "./sun.js";
 // four, because "follow the app" is itself one of the choices rather than the
 // only behaviour:
 //
-//   auto   - light while the sun is up, dark otherwise. The default.
+//   auto   - light while the sun is up where the *reader* is, dark
+//            otherwise. The default.
 //   app    - whatever the interface is doing.
 //   light  - always the light cartography.
 //   dark   - always the dark one.
@@ -17,8 +18,13 @@ import { isDaylight, msUntilDaylightChanges } from "./sun.js";
 // mistake: the map is the one thing on screen you look *at* rather than read,
 // and a bright map is easier to read terrain from even at night. "auto" exists
 // because the app's own auto follows the operating system, which is a setting
-// somebody chose once; where the sun actually is is a fact about right now,
-// and on a trip it is frequently not the same answer.
+// somebody chose once; whether it is light outside the window is a fact about
+// right now, and on a trip it is frequently not the same answer.
+//
+// "Where the reader is" is the only place that question can mean anything. It
+// used to fall back to the place the *map* was showing, which made a trip to
+// Vienna dark and a trip to Japan light at the same moment on the same sofa --
+// exactly backwards, since the point of the mode is the light in the room.
 //
 // Same storage shape as theme.js, including "the default is stored as the
 // absence of a key", so a browser that has never been told anything and one
@@ -29,13 +35,10 @@ export const MAP_THEMES = ["auto", "app", "light", "dark"];
 
 // Day/night rather than "follow the app", because it is the answer that is
 // right more often: the interface's own auto follows the operating system,
-// which is a switch somebody set at home, while where the sun actually is is a
-// fact about now and about the place on screen. On a trip those disagree
-// regularly, and the map is the surface where the difference shows.
-//
-// It degrades to the app's answer rather than to a guess whenever there is no
-// coordinate to work from, so the worst case is the behaviour this used to
-// default to. See resolveMapTheme.
+// which is a switch somebody set at home, while whether the sun is up where
+// the reader is sitting is a fact about now. On a trip those disagree
+// regularly, and the map -- the one surface you look at rather than read -- is
+// where the difference shows.
 const DEFAULT_MAP_THEME = "auto";
 
 // A remembered fix goes stale as a position but not as a *timezone*: somebody
@@ -72,7 +75,7 @@ export function rememberPosition({ lat, lng }) {
   try {
     localStorage.setItem(POSITION_KEY, JSON.stringify({ lat, lng, at: Date.now() }));
   } catch {
-    // Then "auto" falls back to the map's own centre. Not worth failing over.
+    // Then "auto" falls back to the clock's estimate. Not worth failing over.
   }
   announce();
 }
@@ -88,6 +91,30 @@ export function lastKnownPosition() {
   }
 }
 
+// Where the reader is, well enough to say whether the sun is up.
+//
+// A remembered fix is the good answer, and the locate control is what writes
+// one. Failing that, the device's clock: its UTC offset is a longitude, at
+// four minutes of offset per degree, and that is enough to place local noon
+// and local midnight within the hour. Latitude is genuinely unknown, and 0 is
+// the honest stand-in -- it costs the seasons, so the estimate says "light"
+// from about 06:00 to 18:00 local whatever the month, up to an hour and a half
+// out from a real sunset at European latitudes. Wrong by an hour twice a year
+// beats wrong by twelve hours because the map is pointed at Kyoto.
+//
+// Asking for the real position is still out of the question for something that
+// only tints a map; primeMapTheme() takes an already-granted one if there is
+// one, and that is as far as this goes.
+function deviceCoordinate() {
+  const offsetMinutes = new Date().getTimezoneOffset();
+  if (!Number.isFinite(offsetMinutes)) return null;
+  return { lat: 0, lng: -offsetMinutes / 4 };
+}
+
+export function observerPosition() {
+  return lastKnownPosition() || deviceCoordinate();
+}
+
 // "light" or "dark", never "app" or "auto".
 //
 // Synchronous on purpose: a map cannot be constructed without a style, so a
@@ -95,33 +122,14 @@ export function lastKnownPosition() {
 // the wrong cartography or one that waits on a permission prompt before it
 // draws. Everything asynchronous happens in primeMapTheme() below, out of
 // band, and announces itself if the answer turns out to have changed.
-//
-// `near` is the map's own viewport centre, offered by the caller as the last
-// coordinate guess before giving up. It is a surprisingly good one for this
-// app: somebody looking at a map of Patagonia is usually asking about
-// Patagonia.
-// How long until the day/night answer changes for a coordinate the caller
-// supplied, or null when there is nothing worth waking up for.
-//
-// This exists because the module's own timer can only schedule against a
-// *remembered* position, and the common case for a fresh browser is that there
-// is not one -- the map passes the place it is showing instead. Returns null
-// when a remembered fix exists, since scheduleNextTransition already covers
-// that and two timers would fight.
-export function msUntilMapThemeChanges({ near } = {}) {
-  if (getMapTheme() !== "auto") return null;
-  if (lastKnownPosition() || !near) return null;
-  return msUntilDaylightChanges(near.lat, near.lng) + 1000;
-}
-
-export function resolveMapTheme({ near } = {}) {
+export function resolveMapTheme() {
   const preference = getMapTheme();
   if (preference === "light" || preference === "dark") return preference;
   if (preference === "app") return resolveTheme();
 
-  const where = lastKnownPosition() || near;
-  // No idea where the reader is and no map to take a hint from - the app's own
-  // answer is better than picking one.
+  const where = observerPosition();
+  // Not even a clock to work from - the app's own answer is better than
+  // picking one.
   if (!where) return resolveTheme();
   return isDaylight(where.lat, where.lng) ? "light" : "dark";
 }
@@ -162,7 +170,7 @@ let transitionTimer = null;
 function scheduleNextTransition() {
   clearTimeout(transitionTimer);
   if (getMapTheme() !== "auto") return;
-  const where = lastKnownPosition();
+  const where = observerPosition();
   if (!where) return;
   // Plus a second, so the timer lands after the transition rather than on it.
   const ms = msUntilDaylightChanges(where.lat, where.lng) + 1000;

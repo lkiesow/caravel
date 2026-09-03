@@ -977,6 +977,52 @@ what is shown are now two different questions. `make ci` green; `make test-ui`
 at 223 passed with only the two documented distance-filter flakes, which fail
 identically on a clean tree.
 
+## Follow-up: day/night follows the reader, not the map
+
+*Reported after living with it: the same evening on the same sofa, a trip to
+Vienna drew a dark map and a trip to Japan a light one.*
+
+That was the coordinate-of-last-resort above working exactly as designed, and
+the design was wrong. The point of day/night is the light in the room --
+a bright map is easier to read outdoors, a dark one is easier at night -- so
+the only place the question can be asked about is where the **reader** is. The
+place on screen is a fact about the trip, not about the light, and using it
+made the mode answer a different question per trip.
+
+So the fallback chain is now "a remembered fix from the locate control, else
+the device's own clock". A browser's UTC offset is a longitude at four minutes
+per degree, which places local noon and local midnight within the hour;
+latitude is genuinely unknown and 0 is the honest stand-in. That costs the
+seasons -- the estimate says light from about 06:00 to 18:00 local whatever the
+month, up to about 90 minutes out from a real sunset at European latitudes --
+and is still the right trade against being twelve hours wrong because the map
+is pointed at Kyoto. Nothing new is ever *asked* for: `primeMapTheme()` still
+only takes an already-granted position.
+
+With the observer coordinate always available, `map-theme.js` can always arm
+its own transition timer, so `msUntilMapThemeChanges()`, the component's
+`scheduleSchemeCheck()` and `contentCoordinate()` (circular mean, spread
+guard and all) are gone -- `resolveMapTheme()` now takes no argument at all.
+The settings hint says "Lit by the sun where you are" in both locales.
+
+**One real bug fell out of it.** The reordering made a trip map resolve dark
+where it used to resolve light, which put two restyles in flight at once in the
+"follow-app tracks the app" spec (dark -> light -> dark) and it failed
+outright. `restyle()` set `this._scheme` and then awaited `buildStyle()`
+without re-checking it, so whichever fetch finished last won regardless of
+which preference was newer -- the map could end up in a cartography its own
+`data-scheme` denied. It now bails after the await if a newer restyle has moved
+on, which is the same generation-guard discipline the rest of the method
+already used.
+
+**Verified.** `make ci` green; `make test-ui` full run green. The
+no-stored-position spec was rewritten to assert the new contract: a map of the
+point under the midday sun and a map of its antipode must now come out
+**identically** lit, and that one answer must equal `isDaylight()` at
+`observerPosition()`. Checked live at 22:22 CEST with nothing remembered: the
+observer estimate is 0N 30E, the sun is below the horizon there, and the
+Iceland trip's map draws dark where it drew light before.
+
 ## Build order
 
 1 → 2 is hard (2 needs the vendored files). 3 introduces `_applyOverlays()`

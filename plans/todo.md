@@ -536,3 +536,12 @@ else runs this.
   `overrides/home.html` with no substitution. Use `og-card-cta.png` --
   `docs/assets/brand/README.md` explains why that is the right one of the two
   there and the plain card is the right one in the app.
+
+- **Day/night guesses a latitude of zero.** (Stage 30 follow-up, Sep 2026.)
+  With no remembered fix, `map-theme.js` derives the reader's longitude from
+  the browser's UTC offset and uses latitude 0, so the switch happens near
+  06:00 and 18:00 local in every season -- up to about 90 minutes off a real
+  sunset at European latitudes, and wrong about polar summer entirely. A
+  timezone-to-representative-coordinate table (`Intl` already gives the zone
+  name) would fix it for a few kilobytes; the locate control already fixes it
+  exactly for anyone who uses it once.

@@ -749,6 +749,45 @@ Ctrl-vs-Cmd hint string if still unfixed, screenshot flakiness).
 **Verify.** `grep -ri leaflet` returns only `plans/stage-*.md` history.
 `make ci`, `make test-ui`, `make check-screenshots` green.
 
+**Done.** `<leaflet-map>` is `<map-view>` and the file is
+`web/js/components/map-view.js`, across the three page modules, six spec files,
+`helpers/scenarios.js`, `scripts/gen_screenshots.mjs`, `base.css` and two Go
+comments. One substitution did both the element and the filename, since every
+reference spelled `leaflet-map` either way.
+
+Documentation screenshots regenerated: all fifteen, 3204K optimised down to
+896K. The map ones were the point — they had still been showing raster Leaflet
+tiles — and now show the vector cartography with the markers, the legend, and
+the "OpenFreeMap © OpenMapTiles Data from OpenStreetMap" credit that arrives
+from the style rather than from a setting.
+
+**One deliberate deviation from the plan's verification.** It asked that
+`grep -ri leaflet` return only `plans/`. It returns 35 more, and they should
+stay: every one is prose explaining *why* the current code is shaped as it is,
+in the terms of the thing it replaced — why 60 pixels is a zoom level
+(Leaflet's `wheelPxPerZoomLevel`), why `cooperativeGestures` rather than the
+obvious `dragPan: false`, why the wheel is hand-rolled, why `.map-wrap` still
+clips, why the canvas stands in for what used to be a tile pane. Deleting the
+comparison would leave arbitrary-looking constants and a rule with no recorded
+cause, which is the opposite of what this repo's comments are for. What *was*
+swept is anything that described the code as it stands today in Leaflet's
+terms, and that was a real list: `map.spec.js` claimed markers were divIcons,
+that a stock handler debounced our zoom, and that a marker drag had to be
+dispatched across the document "see START in the vendored leaflet.esm.js" — a
+file deleted in Milestone 2. `map.gesture.spec.js`'s header described the
+sibling assertions as reading "dragging off, touchZoom on", which stopped being
+true in Milestone 2. One test was named after the library it no longer uses.
+
+`plans/todo.md`'s vector-tiles entry — the **(soon)** one that opened this
+stage — is removed, along with its cost estimate ("rewriting all 717 lines").
+`scripts/i18n.py unused` reports no dead keys.
+
+Verified: `make ci`, `make check-screenshots`, `make check-env` and
+`make docs` (under `--strict`) all green; `make test-ui` at 221 passed with
+only the two documented distance-filter flakes; `make check-contrast` measured
+690 elements on the map route in both schemes with all of them at or above
+their own WCAG threshold, worst 3.59:1 on an unrelated brand link.
+
 ---
 
 ## Build order

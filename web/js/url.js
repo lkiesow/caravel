@@ -52,7 +52,7 @@ const MAPS_BIAS_ZOOM = 17;
 // times before Stage 29 Milestone 1 -- twice here in web/js and once in
 // internal/httpapi/map.go -- and the three had drifted apart: the Go copy
 // formatted coordinates with %f while both JS copies interpolated the raw
-// number. Worse, the two popups in leaflet-map.js disagreed about where the URL
+// number. Worse, the two popups in map-view.js disagreed about where the URL
 // even comes from, the trip-wide one reading a server-provided
 // item.google_maps_url while the single-marker one built its own. A change made
 // in two of the three places did not look wrong.

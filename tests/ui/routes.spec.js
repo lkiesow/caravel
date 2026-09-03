@@ -30,7 +30,7 @@ import { DEEP_DOM_SOURCE } from "./helpers/deep-dom.js";
 // "Back"/"Home" links at 22px, checkbox rows at 20px — so the constant locked in
 // the current state instead. Stage 09 Milestone 6 closed that gap in CSS
 // (base.css's max-width: 640px block, plus the map legend inside
-// leaflet-map.js's own shadow styles), so the constant now says what it should:
+// map-view.js's own shadow styles), so the constant now says what it should:
 // 2.75rem, the same value --tap-min carries.
 const MIN_TAP_TARGET_PX = 44;
 

@@ -2,7 +2,7 @@ import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
 import { navigate } from "../router.js";
 import { icon } from "../icon.js";
-import "../components/leaflet-map.js";
+import "../components/map-view.js";
 import { renderLoading } from "../components/loading.js";
 import { canEdit, isShared } from "../trip-role.js";
 import { renderFileList } from "../components/file-list.js";
@@ -27,10 +27,10 @@ const CATEGORY_COLORS = {
 };
 
 // Read-only detail view for an item: image, category badge, notes,
-// location as address text plus an embedded single-marker map (leaflet-map
+// location as address text plus an embedded single-marker map (map-view
 // in single-marker mode, driven by lat/lng attributes instead of a
 // trip-id, since there's exactly one point to plot here - see
-// leaflet-map.js), links, the days it is on in the itinerary as ranges
+// map-view.js), links, the days it is on in the itinerary as ranges
 // (Stage 25 - these are derived from the itinerary, not stored on the
 // location), and files with download
 // links. Nothing here is directly editable; one Edit button at the very
@@ -104,7 +104,7 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
           ${
             hasCoords
               ? `
-            <leaflet-map lat="${item.location.lat}" lng="${item.location.lng}" marker-title="${escapeAttr(item.title)}" marker-address="${escapeAttr(item.location.address ?? "")}" marker-category="${escapeAttr(item.category)}"></leaflet-map>
+            <map-view lat="${item.location.lat}" lng="${item.location.lng}" marker-title="${escapeAttr(item.title)}" marker-address="${escapeAttr(item.location.address ?? "")}" marker-category="${escapeAttr(item.category)}"></map-view>
             <div class="location-view__maps-links">
               <a class="location-view__maps-link" href="${escapeAttr(googleMapsUrl(item.location.lat, item.location.lng, item.title, item.location.address))}" target="_blank" rel="noopener" data-i18n="map.viewOnGoogleMaps"></a>
               ${

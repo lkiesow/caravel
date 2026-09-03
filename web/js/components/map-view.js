@@ -598,7 +598,7 @@ const styles = `
   }
 `;
 
-class LeafletMap extends HTMLElement {
+class MapView extends HTMLElement {
   static get observedAttributes() {
     return ["trip-id", "lat", "lng", "marker-title", "marker-address", "marker-category", "pick", "locate"];
   }
@@ -940,7 +940,7 @@ class LeafletMap extends HTMLElement {
     //
     // The router's own [data-link] interception cannot reach this. It is a
     // listener on `document` doing e.target.closest("[data-link]"), and a
-    // click inside a shadow root retargets e.target to the <leaflet-map>
+    // click inside a shadow root retargets e.target to the <map-view>
     // host, so the link would never be found and the click would fall
     // through to a full page load. Hence a listener on this side of the
     // boundary, dispatching the same "item-open" contract location-card.js
@@ -1474,4 +1474,4 @@ function escapeAttr(s) {
   return escapeHtml(s);
 }
 
-customElements.define("leaflet-map", LeafletMap);
+customElements.define("map-view", MapView);

@@ -17,7 +17,7 @@ func decodeMapConfig(t *testing.T, body []byte) mapConfigResponse {
 
 // An unconfigured instance has to answer with the styles Caravel shipped with,
 // because that answer is the frontend's only source for them: the map is no
-// longer a literal in leaflet-map.js.
+// longer a literal in map-view.js.
 func TestMapConfigDefaults(t *testing.T) {
 	ts := newTestServer(t)
 	cookie := ts.login("style-default")

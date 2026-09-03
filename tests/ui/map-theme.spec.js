@@ -25,7 +25,7 @@ async function gotoTripMap(page) {
   const route = routes.find((r) => r.label === "trip map");
   expect(route, "the sweep should know a trip map route").toBeTruthy();
   await gotoRoute(page, route.path);
-  await page.waitForFunction(() => document.querySelector("leaflet-map")?._map, null, { timeout: 20000 });
+  await page.waitForFunction(() => document.querySelector("map-view")?._map, null, { timeout: 20000 });
 }
 
 const setMode = async (page, mode) => {
@@ -37,7 +37,7 @@ const setMode = async (page, mode) => {
 
 const mapState = (page) =>
   page.evaluate(() => {
-    const host = document.querySelector("leaflet-map");
+    const host = document.querySelector("map-view");
     // getStyle() is undefined *during* a swap - MapLibre drops the old style
     // before the new one has parsed - so this has to survive being called mid
     // transition. It is polled until the map settles, and a null background is
@@ -94,7 +94,7 @@ test.describe("the map's own light and dark", () => {
     await gotoTripMap(page);
 
     await page.evaluate(() =>
-      document.querySelector("leaflet-map")._map.jumpTo({ center: [12.57, 55.68], zoom: 9 })
+      document.querySelector("map-view")._map.jumpTo({ center: [12.57, 55.68], zoom: 9 })
     );
     const before = await mapState(page);
     expect(before.markers, "the trip map should have markers to lose").toBeGreaterThan(0);
@@ -207,7 +207,7 @@ test.describe("the map's own light and dark", () => {
     // merely differing.
     const agrees = await page.evaluate(async () => {
       const { isDaylight } = await import("/js/sun.js");
-      const host = document.querySelector("leaflet-map");
+      const host = document.querySelector("map-view");
       return { expected: isDaylight(0, 180) ? "light" : "dark", actual: host.dataset.scheme };
     });
     expect(agrees.actual, "the map should be lit the way the sun says").toBe(agrees.expected);

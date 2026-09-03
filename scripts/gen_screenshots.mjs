@@ -128,7 +128,7 @@ async function shoot(page, name, opts = {}) {
     page
       .waitForFunction(
         () => {
-          const host = document.querySelector("leaflet-map");
+          const host = document.querySelector("map-view");
           if (!host?.shadowRoot) return true; // no map on this page
           const map = host._map;
           if (!map) return false;
@@ -144,7 +144,7 @@ async function shoot(page, name, opts = {}) {
     await page.waitForTimeout(1500);
     // triggerRepaint re-asks for anything that failed; there is no per-tile
     // handle to poke the way there was with an <img> src.
-    await page.evaluate(() => document.querySelector("leaflet-map")?._map?.triggerRepaint());
+    await page.evaluate(() => document.querySelector("map-view")?._map?.triggerRepaint());
     if (!(await mapSettled(15_000))) {
       console.log(`  WARNING: ${name} has tiles that would not load — expect grey patches`);
     }

@@ -279,12 +279,12 @@ export async function gotoRoute(page, path) {
   // condition above can be true while the library is still loading. Without
   // this the sweeps intermittently measured a half-built map and reported its
   // un-sized controls as content overflowing .map-wrap - a failure that only
-  // ever appeared under a full parallel run. leaflet-map.js sets data-ready on
+  // ever appeared under a full parallel run. map-view.js sets data-ready on
   // itself once the map has laid out - since Stage 30 on the map's own `load`
   // event, meaning the style is parsed and the first frame is drawn, which is
   // a stronger guarantee than the attribute used to carry.
   await page.waitForFunction(
-    () => [...document.querySelectorAll("leaflet-map")].every((el) => el.hasAttribute("data-ready")),
+    () => [...document.querySelectorAll("map-view")].every((el) => el.hasAttribute("data-ready")),
     undefined,
     { timeout: 15000 }
   );

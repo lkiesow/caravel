@@ -1,7 +1,7 @@
 import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
-import "../components/leaflet-map.js";
+import "../components/map-view.js";
 import { renderItemsTab } from "./locations-tab.js";
 import { renderItineraryTab } from "./itinerary-tab.js";
 import { renderFileList } from "../components/file-list.js";
@@ -128,8 +128,8 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
     if (tab === "locations") {
       renderItemsTab(content, trip);
     } else if (tab === "map") {
-      content.innerHTML = `<leaflet-map trip-id="${trip.id}" locate></leaflet-map>`;
-      // A marker popup's in-app link. leaflet-map.js can't let the router's
+      content.innerHTML = `<map-view trip-id="${trip.id}" locate></map-view>`;
+      // A marker popup's in-app link. map-view.js can't let the router's
       // [data-link] interception handle it - that listener sits on document
       // and a click inside a shadow root retargets to the host - so it
       // dispatches the same "item-open" event location-card.js does, and the

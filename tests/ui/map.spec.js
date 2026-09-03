@@ -1,5 +1,5 @@
 // The map's own behaviour, as opposed to the route sweeps that merely render
-// it. Stage 13's subject: leaflet-map.js had not changed shape since Stage 01
+// it. Stage 13's subject: map-view.js had not changed shape since Stage 01
 // and was strictly read-only, which is what several backlog entries were stuck
 // behind.
 //
@@ -52,17 +52,17 @@ async function gotoTripMap(page) {
   const mapRoute = routes.find((r) => r.label === "trip map");
   expect(mapRoute, "the route sweep should know a trip map route").toBeTruthy();
   await gotoRoute(page, mapRoute.path);
-  await page.waitForFunction(() => document.querySelector("leaflet-map")?._map);
+  await page.waitForFunction(() => document.querySelector("map-view")?._map);
   return mapRoute.path;
 }
 
-// Clicks the first marker and waits for its popup. Markers are Leaflet
-// divIcons inside the shadow root, so this goes through page.evaluate rather
-// than a locator - and dispatches a real MouseEvent, because Leaflet listens
-// for pointer/mouse events rather than for .click().
+// Clicks the first marker and waits for its popup. Markers are plain elements
+// inside the shadow root, so this goes through page.evaluate rather than a
+// locator - and dispatches a real MouseEvent, because the library listens for
+// pointer/mouse events rather than for .click().
 async function openFirstPopup(page) {
   await page.evaluate(() => {
-    const sr = document.querySelector("leaflet-map").shadowRoot;
+    const sr = document.querySelector("map-view").shadowRoot;
     const marker = sr.querySelector(".maplibregl-marker");
     if (!marker) throw new Error("no markers on the trip map - does the seed still give the `full` trip coordinates?");
     for (const type of ["mousedown", "mouseup", "click"]) {
@@ -70,7 +70,7 @@ async function openFirstPopup(page) {
     }
   });
   await page.waitForFunction(
-    () => document.querySelector("leaflet-map").shadowRoot.querySelector(".maplibregl-popup-content [data-item-id]") !== null
+    () => document.querySelector("map-view").shadowRoot.querySelector(".maplibregl-popup-content [data-item-id]") !== null
   );
 }
 
@@ -78,7 +78,7 @@ async function openFirstPopup(page) {
 // lives - the map element, the legend and the hint are all behind it.
 function readMap(page) {
   return page.evaluate(() => {
-    const host = document.querySelector("leaflet-map");
+    const host = document.querySelector("map-view");
     const sr = host.shadowRoot;
     const box = (el) => (el ? el.getBoundingClientRect().toJSON() : null);
     return {
@@ -162,7 +162,7 @@ test.describe("the trip map at phone width", () => {
 
       // 16rem and 20rem, i.e. what their own desktop rules already say.
       expect(
-        await heightOf(`/trips/${tripId}/locations/${itemId}`, "leaflet-map"),
+        await heightOf(`/trips/${tripId}/locations/${itemId}`, "map-view"),
         "a single-marker map on a location page"
       ).toBe(256);
       expect(
@@ -207,7 +207,7 @@ test.describe("the trip map at phone width", () => {
   });
 });
 
-// The map used to be a literal in leaflet-map.js, which is why it could only
+// The map used to be a literal in map-view.js, which is why it could only
 // ever speak one language: the old raster tiles labelled places in the local
 // script and no parameter on them changed that. It is configuration now, so
 // what is worth asserting is the wiring - that the map is built from whatever
@@ -233,7 +233,7 @@ test.describe("the map follows the server's configuration", () => {
 
     const { configured, sources } = await page.evaluate(async () => {
       const res = await fetch("/api/map/config", { credentials: "same-origin" });
-      const style = document.querySelector("leaflet-map")._map.getStyle();
+      const style = document.querySelector("map-view")._map.getStyle();
       return {
         configured: await res.json(),
         // Every source's endpoint, whichever shape it takes: a vector source
@@ -325,13 +325,12 @@ test.describe("the trip map with a mouse", () => {
   });
 
   // Stage 23 Milestone 6. Reported: "if you scroll down and the mouse cursor
-  // lands over the map, you start zooming into the map". Leaflet's wheel
-  // handler zooms on any wheel event, so a page scroll that crossed the map
-  // became a zoom -- and on a map that is most of the screen, that is most
-  // scrolls.
+  // lands over the map, you start zooming into the map". A stock wheel handler
+  // zooms on any wheel event, so a page scroll that crossed the map became a
+  // zoom -- and on a map that is most of the screen, that is most scrolls.
   async function wheelOverMap(page, { ctrl }) {
     return page.evaluate((withCtrl) => {
-      const host = document.querySelector("leaflet-map");
+      const host = document.querySelector("map-view");
       const mapEl = host.shadowRoot.getElementById("map");
       const before = host._map.getZoom();
       mapEl.dispatchEvent(
@@ -343,7 +342,7 @@ test.describe("the trip map with a mouse", () => {
 
   const zoomAndHint = (page) =>
     page.evaluate(() => {
-      const host = document.querySelector("leaflet-map");
+      const host = document.querySelector("map-view");
       const hint = host.shadowRoot.querySelector(".gesture-hint");
       return { zoom: host._map.getZoom(), hintShown: !!hint && !hint.hidden, hintText: hint?.textContent?.trim() };
     });
@@ -354,8 +353,8 @@ test.describe("the trip map with a mouse", () => {
 
     const before = await wheelOverMap(page, { ctrl: false });
 
-    // Leaflet debounces the zoom it would have performed, so give it more
-    // than wheelDebounceTime to prove the zoom never arrives.
+    // A stock handler would debounce the zoom rather than apply it at once, so
+    // wait past any such window to prove the zoom never arrives at all.
     await page.waitForTimeout(200);
     const after = await zoomAndHint(page);
     expect(after.zoom, "a plain wheel must not zoom the map").toBe(before);
@@ -374,11 +373,11 @@ test.describe("the trip map with a mouse", () => {
     expect((await zoomAndHint(page)).hintShown, "the hint is for the gesture that did not work").toBe(false);
   });
 
-  // Reported twice while testing Milestone 6, and the second report is why the
-  // wheel is now handled here rather than by Leaflet.
+  // Reported twice while testing Stage 23 Milestone 6, and the second report is
+  // why the wheel is handled in the component rather than by the map library.
   //
   // First: Ctrl + wheel zoomed the whole site in Firefox. That was ours -- we
-  // let the event through and relied on Leaflet's handler to cancel the
+  // let the event through and relied on the library's handler to cancel the
   // browser default, which makes cancelling a browser-level action depend on
   // somebody else's handler being reached.
   //
@@ -389,9 +388,9 @@ test.describe("the trip map with a mouse", () => {
   // *direction* of the wheel alone. These tests pin that down across the
   // event shapes real devices send.
   const wheelZoom = async (page, init) => {
-    const before = await page.evaluate(() => document.querySelector("leaflet-map")._map.getZoom());
+    const before = await page.evaluate(() => document.querySelector("map-view")._map.getZoom());
     const cancelled = await page.evaluate((i) => {
-      const host = document.querySelector("leaflet-map");
+      const host = document.querySelector("map-view");
       return !host.shadowRoot
         .getElementById("map")
         .dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, ...i }));
@@ -405,8 +404,8 @@ test.describe("the trip map with a mouse", () => {
     // wheel starts no animation at all, so this returns immediately for the
     // "left entirely alone" case below.
     await page.waitForTimeout(50);
-    await settleMap(page, "leaflet-map");
-    const after = await page.evaluate(() => document.querySelector("leaflet-map")._map.getZoom());
+    await settleMap(page, "map-view");
+    const after = await page.evaluate(() => document.querySelector("map-view")._map.getZoom());
     // Rounded, because since Stage 30 the starting zoom is fractional. Leaflet
     // snapped to whole levels, so `after - before` came out exactly 1;
     // MapLibre's fitBounds lands on values like 0.3289 and the same
@@ -471,10 +470,10 @@ test.describe("the trip map with a mouse", () => {
 
     try {
       await gotoRoute(page, `/trips/${tripId}/map`);
-      await page.waitForFunction(() => document.querySelector("leaflet-map")?._map);
+      await page.waitForFunction(() => document.querySelector("map-view")?._map);
 
       const state = await page.evaluate(() => {
-        const sr = document.querySelector("leaflet-map").shadowRoot;
+        const sr = document.querySelector("map-view").shadowRoot;
         const b = sr.getElementById("map").getBoundingClientRect();
         const el = sr.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2);
         return {
@@ -491,12 +490,12 @@ test.describe("the trip map with a mouse", () => {
 
       // And prove it by actually dragging.
       const box = await page.evaluate(() => {
-        const b = document.querySelector("leaflet-map").shadowRoot.getElementById("map").getBoundingClientRect();
+        const b = document.querySelector("map-view").shadowRoot.getElementById("map").getBoundingClientRect();
         return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
       });
       const centre = () =>
         page.evaluate(() => {
-          const c = document.querySelector("leaflet-map")._map.getCenter();
+          const c = document.querySelector("map-view")._map.getCenter();
           return `${c.lat.toFixed(4)},${c.lng.toFixed(4)}`;
         });
 
@@ -511,14 +510,14 @@ test.describe("the trip map with a mouse", () => {
     }
   });
 
-  test("Leaflet is not the one zooming, so it cannot swallow the gesture", async ({ page }) => {
+  test("the library is not the one zooming, so it cannot swallow the gesture", async ({ page }) => {
     await login(page);
     await gotoTripMap(page);
 
     const enabled = await page.evaluate(() =>
-      document.querySelector("leaflet-map")._map.scrollZoom.isEnabled()
+      document.querySelector("map-view")._map.scrollZoom.isEnabled()
     );
-    expect(enabled, "Leaflet's wheel handler must stay off; one piece of code owns the wheel").toBe(false);
+    expect(enabled, "the library's wheel handler must stay off; one piece of code owns the wheel").toBe(false);
   });
 
   test("the hint goes away on its own", async ({ page }) => {
@@ -556,7 +555,7 @@ test.describe("a marker popup links back into the app", () => {
 
     await openFirstPopup(page);
     const link = await page.evaluate(() => {
-      const a = document.querySelector("leaflet-map").shadowRoot.querySelector(".maplibregl-popup-content [data-item-id]");
+      const a = document.querySelector("map-view").shadowRoot.querySelector(".maplibregl-popup-content [data-item-id]");
       return { href: a.getAttribute("href"), text: a.textContent.trim(), itemId: a.dataset.itemId };
     });
 
@@ -567,7 +566,7 @@ test.describe("a marker popup links back into the app", () => {
     expect(link.text, "the in-app link should be labelled").toBeTruthy();
 
     await page.evaluate(() => {
-      document.querySelector("leaflet-map").shadowRoot.querySelector(".maplibregl-popup-content [data-item-id]").click();
+      document.querySelector("map-view").shadowRoot.querySelector(".maplibregl-popup-content [data-item-id]").click();
     });
     await page.waitForFunction((href) => window.location.pathname === href, link.href);
 
@@ -588,7 +587,7 @@ test.describe("a marker popup links back into the app", () => {
     // Ctrl-click means "new tab". The handler must not preventDefault it, or
     // the link loses every affordance it was kept an <a href> for.
     const defaultPrevented = await page.evaluate(() => {
-      const a = document.querySelector("leaflet-map").shadowRoot.querySelector(".maplibregl-popup-content [data-item-id]");
+      const a = document.querySelector("map-view").shadowRoot.querySelector(".maplibregl-popup-content [data-item-id]");
       const e = new MouseEvent("click", { bubbles: true, cancelable: true, view: window, button: 0, ctrlKey: true });
       a.dispatchEvent(e);
       return e.defaultPrevented;
@@ -607,7 +606,7 @@ test.describe("a marker popup links back into the app", () => {
     await openFirstPopup(page);
 
     const heights = await page.evaluate(() => {
-      const sr = document.querySelector("leaflet-map").shadowRoot;
+      const sr = document.querySelector("map-view").shadowRoot;
       return [...sr.querySelectorAll(".maplibregl-popup-content .popup-link")].map((a) => ({
         text: a.textContent.trim(),
         height: a.getBoundingClientRect().height,
@@ -621,7 +620,7 @@ test.describe("a marker popup links back into the app", () => {
 });
 
 
-// Milestone 3. Pick mode: the first time leaflet-map.js has been anything but
+// Milestone 3. Pick mode: the first time map-view.js has been anything but
 // read-only. No page mounts it yet (the location editor picks it up in
 // Milestone 4), so these tests mount one themselves.
 //
@@ -630,7 +629,7 @@ test.describe("a marker popup links back into the app", () => {
 async function mountPicker(page, attrs = {}) {
   await page.evaluate((attributes) => {
     document.querySelectorAll("[data-test-picker]").forEach((el) => el.remove());
-    const el = document.createElement("leaflet-map");
+    const el = document.createElement("map-view");
     el.setAttribute("pick", "");
     el.dataset.testPicker = "1";
     for (const [k, v] of Object.entries(attributes)) el.setAttribute(k, v);
@@ -642,12 +641,13 @@ async function mountPicker(page, attrs = {}) {
     el.addEventListener("location-picked", (e) => window.__picks.push(e.detail));
   }, attrs);
   await page.waitForFunction(() => document.querySelector("[data-test-picker]")?._map);
-  // Leaflet sizes itself from the container; give it the frame it needs.
+  // The map sizes itself from the container; give it the frame it needs.
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 }
 
-// A real DOM click at a point inside the map, which is what Leaflet turns into
-// a latlng. Going through map.fire("click") instead would test nothing.
+// A real DOM click at a point inside the map, which is what the library turns
+// into a coordinate. Going through map.fire("click") instead would test
+// nothing.
 // Waits for camera animation to finish. Anything reading a zoom or a centre
 // after a gesture needs this: the map eases rather than jumping.
 async function settleMap(page, selector) {
@@ -742,9 +742,10 @@ test.describe("pick mode", () => {
     await page.evaluate(() => {
       const host = document.querySelector("[data-test-picker]");
       window.__mapInstance = host._map;
-      // The canvas stands in for Leaflet's tile pane as the "was the shadow
-      // root rebuilt?" sentinel, and is a stronger one: a re-created canvas is
-      // literally a new WebGL context.
+      // The canvas is the "was the shadow root rebuilt?" sentinel, and a
+      // strong one: a re-created canvas is literally a new WebGL context.
+      // (It stands in for Leaflet's tile pane, which played the part until
+      // Stage 30.)
       window.__canvas = host.shadowRoot.querySelector(".maplibregl-canvas");
       window.__markerEl = host.shadowRoot.querySelector(".maplibregl-marker");
     });
@@ -773,23 +774,23 @@ test.describe("pick mode", () => {
         sameMarker: host.shadowRoot.querySelector(".maplibregl-marker") === window.__markerEl,
       };
     });
-    expect(survived.sameMap, "the Leaflet map was re-created").toBe(true);
+    expect(survived.sameMap, "the map was re-created").toBe(true);
     expect(survived.sameTilePane, "the shadow root was re-rendered").toBe(true);
     expect(survived.sameMarker, "the marker was torn down instead of moved").toBe(true);
   });
 
   test("dragging the marker reports the new coordinate", async ({ page }) => {
-    // The other half of "pick": a click places it, a drag adjusts it. Leaflet's
-    // Draggable binds mousedown on the marker and mousemove/mouseup on the
-    // document (see START in the vendored leaflet.esm.js), so the drag has to
-    // be dispatched across both.
+    // The other half of "pick": a click places it, a drag adjusts it. A
+    // draggable marker binds mousedown on the marker element and
+    // mousemove/mouseup further up, so the drag has to cross both -- which is
+    // why this drives real input below rather than dispatching at one node.
     await mountPicker(page, { lat: "64.9631", lng: "-19.0208" });
     await page.evaluate(() => {
       window.__picks = [];
     });
 
-    // Real input through page.mouse rather than dispatched MouseEvents:
-    // Leaflet's Draggable is picky about which synthetic events it accepts,
+    // Real input through page.mouse rather than dispatched MouseEvents: a
+    // marker's drag handler is picky about which synthetic events it accepts,
     // and a genuine drag is the thing being claimed anyway.
     const from = await page.evaluate(() => {
       const host = document.querySelector("[data-test-picker]");
@@ -799,8 +800,8 @@ test.describe("pick mode", () => {
     });
     await page.mouse.move(from.x, from.y);
     await page.mouse.down();
-    // Two steps: Leaflet ignores movement inside its click tolerance, and a
-    // single jump can be treated as one.
+    // Two steps: movement inside the library's click tolerance is ignored, and
+    // a single jump can be treated as one.
     await page.mouse.move(from.x + 20, from.y + 20);
     await page.mouse.move(from.x + 60, from.y + 40);
     await page.mouse.up();
@@ -1203,7 +1204,7 @@ const REYKJAVIK = { latitude: 64.1466, longitude: -21.9426, accuracy: 35 };
 // in-progress "Finding your location…" message satisfies that too, which made
 // the first version of the refusal test below pass on a request still in
 // flight.
-async function waitForLocateSettled(page, selector = "leaflet-map") {
+async function waitForLocateSettled(page, selector = "map-view") {
   await page.waitForFunction(
     (sel) => document.querySelector(sel).shadowRoot.querySelector('[data-action="locate"]').disabled === false,
     selector,
@@ -1218,11 +1219,11 @@ test.describe("the locate control", () => {
     await login(page);
     await gotoTripMap(page);
 
-    await page.evaluate(() => document.querySelector("leaflet-map").shadowRoot.querySelector('[data-action="locate"]').click());
+    await page.evaluate(() => document.querySelector("map-view").shadowRoot.querySelector('[data-action="locate"]').click());
     await waitForLocateSettled(page);
 
     const here = await page.evaluate(() => {
-      const el = document.querySelector("leaflet-map");
+      const el = document.querySelector("map-view");
       const p = el._hereMarker.getLngLat();
       const c = el._map.getCenter();
       // The ring is a GeoJSON source and two layers since Stage 30, not an
@@ -1282,18 +1283,18 @@ test.describe("the locate control", () => {
     await login(page);
     await gotoTripMap(page);
     await page.evaluate(() =>
-      document.querySelector("leaflet-map").shadowRoot.querySelector('[data-action="locate"]').click()
+      document.querySelector("map-view").shadowRoot.querySelector('[data-action="locate"]').click()
     );
     await waitForLocateSettled(page);
 
     const measure = async (zoom) => {
       await page.evaluate((z) => {
-        const m = document.querySelector("leaflet-map")._map;
+        const m = document.querySelector("map-view")._map;
         m.jumpTo({ center: m.getCenter(), zoom: z });
       }, zoom);
-      await settleMap(page, "leaflet-map");
+      await settleMap(page, "map-view");
       return page.evaluate(() => {
-        const el = document.querySelector("leaflet-map");
+        const el = document.querySelector("map-view");
         const ring = el._hereRing.geometry.coordinates[0];
         const lngs = ring.map((c) => c[0]);
         const lats = ring.map((c) => c[1]);
@@ -1342,12 +1343,12 @@ test.describe("the locate control", () => {
     await login(page);
     await gotoTripMap(page);
     await page.evaluate(() =>
-      document.querySelector("leaflet-map").shadowRoot.querySelector('[data-action="locate"]').click()
+      document.querySelector("map-view").shadowRoot.querySelector('[data-action="locate"]').click()
     );
     await waitForLocateSettled(page);
 
     const before = await page.evaluate(() => {
-      const el = document.querySelector("leaflet-map");
+      const el = document.querySelector("map-view");
       const c = el._map.getCenter();
       return {
         ring: Boolean(el._map.getSource("here-accuracy")),
@@ -1364,18 +1365,18 @@ test.describe("the locate control", () => {
     // The other vendored style, so this is the real operation Milestone 5 runs
     // rather than a re-application of the same document.
     await page.evaluate(async () => {
-      const el = document.querySelector("leaflet-map");
+      const el = document.querySelector("map-view");
       const style = await (await fetch("/js/vendor/map-styles/dark.json")).json();
       el._map.setStyle(style, { diff: false });
     });
     await page.waitForFunction(
-      () => document.querySelector("leaflet-map")._map.isStyleLoaded(),
+      () => document.querySelector("map-view")._map.isStyleLoaded(),
       null,
       { timeout: 20000 }
     );
 
     const after = await page.evaluate(() => {
-      const el = document.querySelector("leaflet-map");
+      const el = document.querySelector("map-view");
       const c = el._map.getCenter();
       return {
         ring: Boolean(el._map.getSource("here-accuracy")),
@@ -1435,12 +1436,12 @@ test.describe("the locate control when it cannot work", () => {
     await login(page);
     await gotoTripMap(page);
 
-    await page.evaluate(() => document.querySelector("leaflet-map").shadowRoot.querySelector('[data-action="locate"]').click());
+    await page.evaluate(() => document.querySelector("map-view").shadowRoot.querySelector('[data-action="locate"]').click());
 
     await waitForLocateSettled(page);
 
     const after = await page.evaluate(() => {
-      const el = document.querySelector("leaflet-map");
+      const el = document.querySelector("map-view");
       return {
         message: el.shadowRoot.querySelector(".locate-status").textContent.trim(),
         marker: Boolean(el._hereMarker),
@@ -1469,7 +1470,7 @@ test.describe("the locate control when it cannot work", () => {
     await gotoTripMap(page);
 
     const state = await page.evaluate(() => {
-      const el = document.querySelector("leaflet-map");
+      const el = document.querySelector("map-view");
       const status = el.shadowRoot.querySelector(".locate-status");
       return {
         disabled: el.shadowRoot.querySelector('[data-action="locate"]').disabled,
@@ -1490,7 +1491,7 @@ test.describe("the locate control when it cannot work", () => {
     const routes = await buildRoutes(page);
     await gotoRoute(page, routes.find((r) => r.label === "view location").path);
     const count = await page.evaluate(
-      () => document.querySelector("leaflet-map")?.shadowRoot.querySelectorAll('[data-action="locate"]').length ?? -1
+      () => document.querySelector("map-view")?.shadowRoot.querySelectorAll('[data-action="locate"]').length ?? -1
     );
     expect(count, "the view page's embed should not offer a locate button").toBe(0);
   });
@@ -1727,7 +1728,7 @@ async function assertFitsAndTappable(page, root) {
 test.describe("map labels follow the reader's language", () => {
   const labelChains = (page) =>
     page.evaluate(() => {
-      const layers = document.querySelector("leaflet-map")._map.getStyle().layers;
+      const layers = document.querySelector("map-view")._map.getStyle().layers;
       const withText = layers.filter((l) => l.layout?.["text-field"]);
       return {
         total: withText.length,
@@ -1799,7 +1800,7 @@ test.describe("map labels follow the reader's language", () => {
       await setLocale("de");
     });
     await page.waitForFunction(
-      () => document.querySelector("leaflet-map")?.hasAttribute("data-ready"),
+      () => document.querySelector("map-view")?.hasAttribute("data-ready"),
       null,
       { timeout: 20000 }
     );
@@ -1827,7 +1828,7 @@ test.describe("map labels follow the reader's language", () => {
       expect(route, `the sweep should know a ${label} route`).toBeTruthy();
       await gotoRoute(page, route.path);
       const chains = await page.evaluate(() => {
-        const host = document.querySelector("leaflet-map");
+        const host = document.querySelector("map-view");
         return host._map
           .getStyle()
           .layers.filter((l) => l.layout?.["text-field"]?.[0] === "coalesce")
@@ -1888,7 +1889,7 @@ test.describe("Stage 13's surfaces in German at 324px", () => {
     await login(page);
     await gotoTripMap(page);
     await page.evaluate((text) => {
-      const status = document.querySelector("leaflet-map").shadowRoot.querySelector(".locate-status");
+      const status = document.querySelector("map-view").shadowRoot.querySelector(".locate-status");
       status.hidden = false;
       status.textContent = text;
     }, LONGEST_LOCATE_MESSAGE_DE);
@@ -1943,7 +1944,7 @@ test.describe("the Google Maps link is built in one place", () => {
   // would link to itself. So this waits for the popup's only anchor instead.
   async function openSingleMarkerPopup(page) {
     await page.evaluate(() => {
-      const sr = document.querySelector("leaflet-map").shadowRoot;
+      const sr = document.querySelector("map-view").shadowRoot;
       const marker = sr.querySelector(".maplibregl-marker");
       if (!marker) throw new Error("the location page's map embed has no marker");
       for (const type of ["mousedown", "mouseup", "click"]) {
@@ -1951,7 +1952,7 @@ test.describe("the Google Maps link is built in one place", () => {
       }
     });
     return page.waitForFunction(() => {
-      const a = document.querySelector("leaflet-map").shadowRoot.querySelector(".maplibregl-popup-content a[target=_blank]");
+      const a = document.querySelector("map-view").shadowRoot.querySelector(".maplibregl-popup-content a[target=_blank]");
       return a ? a.getAttribute("href") : false;
     });
   }
@@ -1963,7 +1964,7 @@ test.describe("the Google Maps link is built in one place", () => {
 
     // The trip-wide popup: this href is the server's, verbatim.
     const fromTripMap = await page.evaluate(() => {
-      const sr = document.querySelector("leaflet-map").shadowRoot;
+      const sr = document.querySelector("map-view").shadowRoot;
       const links = [...sr.querySelectorAll(".maplibregl-popup-content a")];
       const google = links.find((a) => a.getAttribute("target") === "_blank");
       return { href: google?.getAttribute("href") ?? null, itemId: sr.querySelector("[data-item-id]").dataset.itemId };
@@ -1990,7 +1991,7 @@ test.describe("the Google Maps link is built in one place", () => {
     // Now the same location's own page, which renders the other two.
     const tripId = mapPath.split("/")[2];
     await gotoRoute(page, `/trips/${tripId}/locations/${fromTripMap.itemId}`);
-    await page.waitForFunction(() => document.querySelector("leaflet-map")?.hasAttribute("data-ready"));
+    await page.waitForFunction(() => document.querySelector("map-view")?.hasAttribute("data-ready"));
 
     // Not a bare .location-view__maps-link: Stage 29 Milestone 3 added an
     // OpenStreetMap link beside the Google one under the same class, which
@@ -2017,12 +2018,12 @@ test.describe("a place with no name falls back to the coordinate link", () => {
     await login(page);
     const routes = await buildRoutes(page);
     await gotoRoute(page, routes.find((r) => r.label === "trip map").path);
-    await page.waitForFunction(() => document.querySelector("leaflet-map")?.hasAttribute("data-ready"));
+    await page.waitForFunction(() => document.querySelector("map-view")?.hasAttribute("data-ready"));
 
     // Mount a single-marker embed with coordinates but no marker-title, which
     // is the state a location saved without a title would render.
     const href = await page.evaluate(async () => {
-      const el = document.createElement("leaflet-map");
+      const el = document.createElement("map-view");
       el.setAttribute("lat", "64.1");
       el.setAttribute("lng", "-21.9");
       el.dataset.testNoTitle = "1";

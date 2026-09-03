@@ -15,7 +15,7 @@ import (
 // tiles are pre-rendered images, so their labels are baked in before anyone
 // asks and an instance had one language for everybody. A vector style is drawn
 // in the browser, so every reader gets place names in their own language --
-// see localiseLabels in web/js/components/leaflet-map.js.
+// see localiseLabels in web/js/components/map-view.js.
 //
 // This replaced CARAVEL_TILE_URL and its two companions outright rather than
 // joining them. That setting existed *because* raster could not do the above;

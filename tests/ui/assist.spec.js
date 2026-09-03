@@ -130,7 +130,7 @@ test.describe("AI assistant", () => {
     await page.locator('[data-assist-field="coordinates"] .assist-suggestion')
       .getByRole("button", { name: "Accept" }).click();
     await expect(page.locator('.location-form [name="lat"]')).not.toHaveValue("");
-    await expect(page.locator("leaflet-map")).toHaveAttribute("lat", /\d/);
+    await expect(page.locator("map-view")).toHaveAttribute("lat", /\d/);
 
     // The cover: the one suggestion whose value cannot be judged as text, so
     // it shows the picture rather than a URL, with where it came from.

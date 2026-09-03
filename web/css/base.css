@@ -1328,7 +1328,7 @@ button {
    rise past the chrome above it - specifically the "More" dropdown, which
    hangs off the tab row into the panel below.
 
-   The map tab is what made this necessary. <leaflet-map>'s legend and locate
+   The map tab is what made this necessary. <map-view>'s legend and locate
    control both sit at z-index: 1000, the same level as .menu__dropdown, and a
    shadow root is not a stacking context - so they were competing with the
    dropdown in the *page* stacking context, where an equal z-index is settled

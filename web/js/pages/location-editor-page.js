@@ -10,7 +10,7 @@ import { confirmDialog } from "../components/dialog.js";
 import { renderLoading } from "../components/loading.js";
 import { renderNotFoundPage } from "./not-found-page.js";
 import { canEdit, isShared } from "../trip-role.js";
-import "../components/leaflet-map.js";
+import "../components/map-view.js";
 import { hasCapability } from "../session.js";
 import { renderAssistPanel } from "../components/assist-panel.js";
 import { formatDateRange } from "../format.js";
@@ -195,11 +195,11 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
               <ul class="location-search__results"></ul>
             </div>
             <p class="location-form__pick-hint" data-i18n="location.form.pickHint"></p>
-            <leaflet-map pick locate class="location-form__map"${
+            <map-view pick locate class="location-form__map"${
               item?.location?.lat != null && item?.location?.lng != null
                 ? ` lat="${escapeAttr(item.location.lat)}" lng="${escapeAttr(item.location.lng)}"`
                 : ""
-            }></leaflet-map>
+            }></map-view>
           </form>
         </div>
 
@@ -515,7 +515,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
 
     // Fields -> map. A blank field removes the attribute rather than setting
     // an empty one, because "no coordinate" and "the coordinate 0" have to
-    // stay distinguishable (leaflet-map.js's readCoordinate makes the same
+    // stay distinguishable (map-view.js's readCoordinate makes the same
     // distinction on the other side).
     const syncMapFromFields = () => {
       for (const name of ["lat", "lng"]) {

@@ -438,24 +438,6 @@ purpose — do not reconstruct it from an older stage plan without asking.
 Nothing here is needed to keep developing; all of it is needed before anyone
 else runs this.
 
-- **Vector tiles, for map labels in the user's own language.** **(soon)**
-  (Surfaced by the tile-source change of 2026-08-25.) `CARAVEL_TILE_URL` now
-  lets an operator pick a provider whose labels are latin script, or one
-  language chosen for the whole instance -- but not one that follows each user's
-  own preference, because raster tiles are drawn before anyone asks. The answer
-  is vector tiles: MapLibre GL against OpenFreeMap (no key, no request limits,
-  unmodified OpenMapTiles schema, which carries both `name:en` and `name:de` --
-  exactly the two locales `web/js/i18n.js` supports), with the label
-  `text-field` set to coalesce `name:<locale>`, `name:latin`, `name` and
-  re-applied on the `locale-changed` event the i18n module already dispatches.
-  The cost is what makes it a stage of its own rather than a follow-up:
-  vendoring MapLibre GL beside the Leaflet copy, rewriting all 717 lines of
-  `web/js/components/leaflet-map.js` (markers as symbol layers or DOM overlays,
-  popups, `fitBounds`, pick mode, the locate control), and reworking
-  `tests/ui/map.spec.js` and `map.gesture.spec.js`, including Stage 13's
-  two-finger gesture handling, which is expressed entirely in Leaflet handler
-  terms.
-
 - **Going offline during the first load after a deploy loses the code cache.**
   (Stage 23 Milestone 2.) The new worker's `activate` purges the previous
   cache, and the modules that load *during* that first post-deploy navigation

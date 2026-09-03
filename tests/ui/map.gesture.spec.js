@@ -1,8 +1,9 @@
 // The two map gestures, with actual fingers.
 //
 // map.spec.js asserts the same rule from the other side: it stubs
-// `(pointer: coarse)` through addInitScript and then reads Leaflet's handler
-// state — dragging off, touchZoom on. That is honest as far as it goes, and it
+// `(pointer: coarse)` through addInitScript and then reads the map's handler
+// state — cooperative gestures on, rotation off. That is honest as far as it
+// goes, and it
 // is all Firefox can do, because Playwright's `isMobile` (the option that flips
 // the media query and enables touch emulation) is Chromium-only and
 // `hasTouch: true` does not do it. But it proves the handlers are configured,
@@ -10,7 +11,7 @@
 //
 // So this file runs in the chromium-gestures project (see playwright.config.js)
 // and drives real touch input through CDP's Input.dispatchTouchEvent. Synthetic
-// TouchEvents dispatched from page.evaluate would not do: Leaflet would see
+// TouchEvents dispatched from page.evaluate would not do: the map would see
 // them, but the *browser* would not, and "one finger scrolls the page" is a
 // claim about the browser's own scrolling. Untrusted events never scroll.
 //
@@ -21,11 +22,11 @@ import { test, expect } from "@playwright/test";
 import { login, buildRoutes, gotoRoute } from "./helpers/scenarios.js";
 
 // One finger down, dragged, and lifted. Several small steps rather than one
-// jump, because both Leaflet and the browser's scroller work from deltas
+// jump, because both the map and the browser's scroller work from deltas
 // between moves.
 async function drag(cdp, points, dx, dy, steps = 10) {
   // Each finger needs its own id, or CDP treats the two points as one touch
-  // and Leaflet never sees a second finger at all.
+  // and the map never sees a second finger at all.
   const at = (i) =>
     points.map((p, id) => ({ id, x: p.x + (dx * i) / steps, y: p.y + (dy * i) / steps }));
   await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: at(0) });
@@ -45,14 +46,14 @@ async function drag(cdp, points, dx, dy, steps = 10) {
 // being touched is checked to be on screen.
 async function showMap(page) {
   await page.evaluate(() => {
-    document.querySelector("leaflet-map").scrollIntoView({ block: "center" });
+    document.querySelector("map-view").scrollIntoView({ block: "center" });
   });
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 }
 
 function mapState(page) {
   return page.evaluate(() => {
-    const host = document.querySelector("leaflet-map");
+    const host = document.querySelector("map-view");
     const c = host._map.getCenter();
     const box = host.shadowRoot.getElementById("map").getBoundingClientRect();
     return {
@@ -75,7 +76,7 @@ test.describe("map gestures on a real touch device", () => {
     const mapRoute = routes.find((r) => r.label === "trip map");
     expect(mapRoute, "the route sweep should know a trip map route").toBeTruthy();
     await gotoRoute(page, mapRoute.path);
-    await page.waitForFunction(() => document.querySelector("leaflet-map")?._map);
+    await page.waitForFunction(() => document.querySelector("map-view")?._map);
 
     // The premise of the whole file: this really is a coarse pointer, with no
     // stub involved. If Chromium ever stopped reporting it, both tests below
@@ -140,7 +141,7 @@ test.describe("map gestures on a real touch device", () => {
 
     const hintShown = () =>
       page.evaluate(() => {
-        const el = document.querySelector("leaflet-map").shadowRoot.querySelector(".gesture-hint");
+        const el = document.querySelector("map-view").shadowRoot.querySelector(".gesture-hint");
         return { shown: !!el && !el.hidden, text: el?.textContent?.trim() };
       });
 

@@ -2,84 +2,17 @@ package httpapi
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"sort"
 	"strings"
-	"unicode/utf8"
 
 	"caravel/internal/db"
 )
 
-// Tags are keywords on a location whose meaning the user chooses -- a kind of
-// site, a city, a region, whose idea it was. The app never interprets one; it
-// stores what was typed and offers it back.
-//
-// The rules below are about keeping the *set* honest, not about policing
-// vocabulary. Two tags differing only in case or in surrounding space are the
-// same tag to a reader, so they must not both survive on one location; beyond
-// that, anything goes.
-
-const (
-	// A tag is a keyword, not a sentence. Long enough for "national park" or
-	// a hyphenated place name, short enough that the chip stays a chip.
-	maxTagLength = 40
-	// Per location. Nothing needs this many, and without a cap one request
-	// can write an unbounded number of rows inside the save transaction --
-	// the same reasoning as maxItemDateSpan above.
-	maxTagsPerItem = 20
-)
-
-// normalizeTag trims and collapses inner whitespace. It does NOT change case:
-// what somebody typed is what the chip shows, and the editor suggests the
-// trip's existing tags so spellings converge by use rather than by a rule that
-// would have to pick a winner.
-func normalizeTag(tag string) string {
-	return strings.Join(strings.Fields(tag), " ")
-}
-
-// normalizeTags cleans a submitted set: each tag trimmed, empties dropped, and
-// duplicates removed case-insensitively, keeping the first spelling seen.
-//
-// Case-insensitive here and exact in SQL is deliberate and worth stating,
-// because it is the one place the two disagree. Within one location Museum and
-// museum are the same tag and only the first survives. Across two locations
-// both can exist, and the primary key on (item_id, tag) does not care. Making
-// them agree would mean either a case-folded column -- storing something the
-// user did not type -- or a trip-wide uniqueness rule that would have to
-// rewrite one location to save another.
-func normalizeTags(tags []string) []string {
-	out := make([]string, 0, len(tags))
-	seen := make(map[string]bool, len(tags))
-	for _, raw := range tags {
-		tag := normalizeTag(raw)
-		if tag == "" {
-			continue
-		}
-		key := strings.ToLower(tag)
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		out = append(out, tag)
-	}
-	return out
-}
-
-// validateTags checks an already-normalized set. Counting runes rather than
-// bytes, so a limit of 40 means 40 characters to the person typing them and
-// not 13 of anything outside ASCII.
-func validateTags(tags []string) error {
-	if len(tags) > maxTagsPerItem {
-		return fmt.Errorf("a location may carry at most %d tags", maxTagsPerItem)
-	}
-	for _, tag := range tags {
-		if utf8.RuneCountInString(tag) > maxTagLength {
-			return fmt.Errorf("a tag may be at most %d characters", maxTagLength)
-		}
-	}
-	return nil
-}
+// The tag rules themselves live in internal/tags, because the assistant applies
+// the same ones to what a model proposes and cannot import this package. What
+// stays here is the part that is about rows: writing a set, bucketing a listing
+// by location, and reducing one to a trip vocabulary.
 
 // writeItemTags replaces a location's tag set. Delete-then-insert rather than a
 // diff, because a tag row carries nothing worth preserving across the rewrite:
@@ -117,7 +50,7 @@ func tagsByItem(rows []db.ItemTag) map[string][]string {
 // rather than with every capitalised tag first.
 //
 // Two spellings of one word can both appear here, which is the visible
-// consequence of the case rule in normalizeTags. That is the point: seeing
+// consequence of the case rule in tags.Normalize. That is the point: seeing
 // Museum in the suggestions is what stops the next person typing museum.
 func distinctTags(rows []db.ItemTag) []string {
 	seen := make(map[string]bool, len(rows))

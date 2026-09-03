@@ -271,6 +271,16 @@ test.describe("AI assistant", () => {
     // enrichment.
     await expect(page.locator('[data-assist-field="title"] .assist-suggestion')).toHaveCount(0);
 
+    // Tags are the exception to the overwrite marking, because they are a set:
+    // the proposal is what is already there plus what the run found, so
+    // accepting it adds and never removes. Marked as an overwrite it would be
+    // claiming to replace a tag it in fact keeps.
+    const tagsSuggestion = page.locator('[data-assist-field="tags"] .assist-suggestion');
+    await expect(tagsSuggestion.locator(".assist-suggestion__value")).toHaveText(
+      "guesthouse, hostel, harbour, city centre",
+    );
+    await expect(tagsSuggestion).not.toHaveClass(/assist-suggestion--overwrite/);
+
     // Dismiss all applies nothing at all, and takes the sources with it: they
     // belong to a proposal nobody is looking at any more. The trace stays --
     // the run still happened, and "why was that useless?" is the likeliest

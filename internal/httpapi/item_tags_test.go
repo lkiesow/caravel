@@ -2,7 +2,9 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -240,5 +242,37 @@ func TestListItemsLoadsTagsInOneQuery(t *testing.T) {
 	}
 	if got := counter.byItem.Load(); got != 0 {
 		t.Errorf("per-location tag query ran %d times for a 5-location list; the list must not use it", got)
+	}
+}
+
+// The assistant gets a different projection of the same rows: most-used first
+// and capped, because the list reaches a prompt as an invitation to reuse and
+// a long one is also a long menu to add from.
+func TestAssistTagVocabularyIsRankedAndCapped(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login("demo")
+	tripID := ts.createTrip(cookie, "Iceland")
+
+	createTagged(ts, cookie, tripID, "Geysir", `["south","geothermal"]`)
+	createTagged(ts, cookie, tripID, "Strokkur", `["geothermal","south"]`)
+	createTagged(ts, cookie, tripID, "Gullfoss", `["geothermal","waterfall"]`)
+
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	got := ts.Server.tripTagVocabulary(r, tripID)
+	// geothermal three times, south twice, waterfall once; alphabetical only
+	// where the counts tie, which is what keeps it stable run to run.
+	if want := "geothermal,south,waterfall"; strings.Join(got, ",") != want {
+		t.Errorf("vocabulary = %q, want %q", strings.Join(got, ","), want)
+	}
+
+	for i := range assistMaxTagVocabulary + 5 {
+		createTagged(ts, cookie, tripID, fmt.Sprintf("Place %d", i), fmt.Sprintf(`["tag-%02d"]`, i))
+	}
+	got = ts.Server.tripTagVocabulary(r, tripID)
+	if len(got) != assistMaxTagVocabulary {
+		t.Fatalf("vocabulary of %d tags, want it capped at %d", len(got), assistMaxTagVocabulary)
+	}
+	if got[0] != "geothermal" {
+		t.Errorf("first tag = %q, want the most-used one to survive the cap", got[0])
 	}
 }

@@ -825,7 +825,10 @@ func (a *Agent) buildProposal(ctx context.Context, req Request, raw modelProposa
 	for _, f := range []struct{ name, current, proposed string }{
 		{"title", req.Current.Title, title},
 		{"category", req.Current.Category, category},
-		{"tags", req.Current.Tags, strings.TrimSpace(raw.Tags)},
+		// Tags are a set rather than a value, and the proposal is the set the
+		// user would end up with: theirs plus whatever this run found. Empty
+		// when the run found nothing new -- see proposeTags.
+		{fieldTags, req.Current.Tags, proposeTags(req.Current.Tags, raw.Tags, req.TagVocabulary)},
 		{"notes", req.Current.Notes, strings.TrimSpace(raw.Notes)},
 		{"address", req.Current.Address, strings.TrimSpace(raw.Address)},
 	} {
@@ -937,9 +940,11 @@ func (a *Agent) buildCandidates(ctx context.Context, req SuggestRequest, raw mod
 			Place: Location{
 				Title:    title,
 				Category: category,
-				Tags:     strings.TrimSpace(item.Tags),
-				Notes:    strings.TrimSpace(item.Notes),
-				Address:  strings.TrimSpace(item.Address),
+				// No merge here: a candidate is a place that does not exist
+				// yet, so there is nothing of the user's to preserve.
+				Tags:    joinTags(cleanProposedTags(item.Tags, req.TagVocabulary)),
+				Notes:   strings.TrimSpace(item.Notes),
+				Address: strings.TrimSpace(item.Address),
 			},
 		}
 		// Nothing is already on a candidate, so nothing is filtered as a

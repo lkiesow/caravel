@@ -57,16 +57,31 @@ func placeFields(vocabulary []string, locale string) string {
 	fmt.Fprintf(&b, "\nThe category must be exactly one of: %s.\n", strings.Join(validCategories, ", "))
 	b.WriteString("Use `stay` for accommodation, `transport` for a journey, station, airport or terminal, and `site` for anywhere to visit.\n")
 
-	// The vocabulary matters more than it looks. Tags are free text, so left to
-	// itself a model produces "hotel", "Hotel" and "hostel" for the same three
-	// stays, and the trip's tag filter fragments into near-duplicates. Asking
-	// it to reuse an existing value is far cheaper than normalising afterwards
-	// with a synonym table nobody wants to maintain.
+	// Three things about tags, and each is here because leaving it out showed.
+	//
+	// A number, because "a few" is not one: unbounded, a run answers with ten,
+	// and the only limit it ever met was tags.MaxPerItem rejecting the save.
+	//
+	// What a tag is *for*, because with no register stated the answers mix
+	// kinds, moods and adjectives, and a filter built from those does not
+	// filter. The negative example earns its place -- models follow one of
+	// those better than a prohibition.
+	//
+	// And the vocabulary, which matters more than it looks. Tags are free
+	// text, so left to itself a model produces "hotel", "Hotel" and "hostel"
+	// for the same three stays, and the trip's tag filter fragments into
+	// near-duplicates. Asking it to reuse an existing value is far cheaper
+	// than normalising afterwards with a synonym table nobody wants to
+	// maintain. Note that it is an invitation to reuse, never to reach: a long
+	// list of tags to choose from is also a long list of tags to add, which is
+	// why the vocabulary the caller sends is capped and led by the ones
+	// actually in use.
+	fmt.Fprintf(&b, "\nTags are short free-text keywords, comma-separated: at most %d, and fewer when fewer fit.\nA tag says what the place is, or something somebody would filter a list by: museum, hostel, ferry, unesco, free entry.\nNot adjectives, not how it feels, not a restatement of the category. A place with two right tags is better tagged than one with five.\n", maxProposedTags)
 	if len(vocabulary) > 0 {
-		fmt.Fprintf(&b, "\nTags are a few short free-text keywords, comma-separated. These are already in use on this trip: %s.\nReuse them exactly where they fit; only invent a new one if none does.\n",
+		fmt.Fprintf(&b, "These tags are already in use on this trip: %s.\nReuse one exactly, spelling and all, where it fits. Only invent a new one if none does, and do not add a tag merely because it appears in that list.\n",
 			strings.Join(vocabulary, ", "))
 	} else {
-		b.WriteString("\nTags are a few short lowercase free-text keywords, comma-separated, such as museum, hotel or ferry.\n")
+		b.WriteString("Write them in lower case.\n")
 	}
 
 	if locale := strings.TrimSpace(locale); locale != "" {

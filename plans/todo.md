@@ -266,6 +266,13 @@ purpose — do not reconstruct it from an older stage plan without asking.
 - **Federation between self-hosted instances.** (Stage 01.) Real sync-protocol
   design still needed; v1 only avoided the integer-PK and local-only-ID mistakes
   that would have made it harder later.
+- **Per-field review of a suggested candidate.** (Assist tag cleanup,
+  2026-09-03.) The location editor reviews an AI proposal field by field, with
+  its own accept and reject per field; `/suggest` shows a candidate whole and
+  takes its tags and notes wholesale on save (`web/js/pages/suggest-page.js`).
+  The tag normalisation now applies to both paths, so this is about control
+  rather than quality -- five candidates times five fields is a lot of UI for
+  a small gain, which is why it was left.
 
 ---
 

@@ -209,6 +209,10 @@ type Proposal struct {
 	Cover *Cover
 }
 
+// fieldTags names the one field with set semantics, which two places below
+// have to treat differently from the rest.
+const fieldTags = "tags"
+
 // Field is one proposed scalar change.
 type Field struct {
 	// Name is the location field this applies to: "title", "category",
@@ -226,7 +230,12 @@ type Field struct {
 // Overwrites reports whether accepting this field would replace existing
 // content, which is the case the UI must show as a before/after rather than as
 // a plain suggestion.
-func (f Field) Overwrites() bool { return f.Current != "" }
+//
+// Tags are the exception, and by construction rather than by kindness: a tags
+// proposal is the current set plus what the run found, so accepting one adds
+// and never removes. Badging that as an overwrite would be false, and a badge
+// that cries wolf is worse than no badge. See proposeTags.
+func (f Field) Overwrites() bool { return f.Name != fieldTags && f.Current != "" }
 
 // Source is a page the agent read.
 type Source struct {

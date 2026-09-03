@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 
 	"caravel/internal/assist"
@@ -406,12 +407,23 @@ func (s *Server) buildAssistRequest(r *http.Request, trip db.Trip, req assistLoc
 	return out, nil
 }
 
-// tripTagVocabulary collects the distinct tags already used on this trip, so
-// the model reuses one instead of inventing a near-duplicate.
+// assistMaxTagVocabulary caps what the prompt is told about. A tag used once
+// is not vocabulary, it is a one-off, and the list reaches the model as an
+// invitation to reuse -- so a long one is a long menu to pick from as much as
+// it is a guard against near-duplicates.
+const assistMaxTagVocabulary = 30
+
+// tripTagVocabulary collects the tags already used on this trip, most-used
+// first, so the model reuses one instead of inventing a near-duplicate.
+//
+// Most-used first rather than alphabetically, which is what the editor's own
+// suggestions use: the ones worth converging on are the ones already common,
+// and they are also the ones that survive the cap. distinctTags stays as it is
+// for the editor, where alphabetical is what somebody scanning a list wants.
 //
 // A failure here is not worth failing the run over: the worst case is a model
-// that invents "Hotel" alongside an existing "hotel", which the user can see
-// and reject in the review.
+// that invents "Hotel" alongside an existing "hotel", which cleanProposedTags
+// folds back and the user can see and reject in the review anyway.
 //
 // One query for the trip, the same one the locations list uses -- and it reads
 // the tag rows rather than the items, so it no longer needs to load every
@@ -421,7 +433,31 @@ func (s *Server) tripTagVocabulary(r *http.Request, tripID string) []string {
 	if err != nil {
 		return nil
 	}
-	return distinctTags(rows)
+
+	counts := make(map[string]int, len(rows))
+	order := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if counts[row.Tag] == 0 {
+			order = append(order, row.Tag)
+		}
+		counts[row.Tag]++
+	}
+	// Alphabetical within a count, so the list is stable run to run rather
+	// than reordering with whatever the rows happened to come back as.
+	sort.SliceStable(order, func(i, j int) bool {
+		if counts[order[i]] != counts[order[j]] {
+			return counts[order[i]] > counts[order[j]]
+		}
+		li, lj := strings.ToLower(order[i]), strings.ToLower(order[j])
+		if li != lj {
+			return li < lj
+		}
+		return order[i] < order[j]
+	})
+	if len(order) > assistMaxTagVocabulary {
+		order = order[:assistMaxTagVocabulary]
+	}
+	return order
 }
 
 // normaliseLocale keeps the locale to something that looks like a language

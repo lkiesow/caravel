@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"caravel/internal/db"
+	"caravel/internal/tags"
 )
 
 var validCategories = map[string]bool{"site": true, "stay": true, "transport": true}
@@ -239,7 +240,7 @@ func (req itemRequest) validate() error {
 	// because it repeats a tag or pads one with spaces is accepted and
 	// cleaned rather than refused.
 	if req.Tags != nil {
-		if err := validateTags(normalizeTags(*req.Tags)); err != nil {
+		if err := tags.Validate(tags.Normalize(*req.Tags)); err != nil {
 			return err
 		}
 	}
@@ -338,7 +339,7 @@ func writeItemNested(ctx context.Context, store db.Store, item db.Item, req item
 	}
 
 	if req.Tags != nil {
-		if err := writeItemTags(ctx, store, item.ID, normalizeTags(*req.Tags)); err != nil {
+		if err := writeItemTags(ctx, store, item.ID, tags.Normalize(*req.Tags)); err != nil {
 			return err
 		}
 	}

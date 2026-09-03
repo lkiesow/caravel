@@ -61,8 +61,8 @@ export function renderTagField(container, { tripId, tags = [] }) {
   const input = container.querySelector(".tag-field__input");
 
   // Trimmed and collapsed the same way the server does, and deduplicated
-  // case-insensitively keeping the first spelling. Mirroring normalizeTags in
-  // internal/httpapi/item_tags.go on purpose: a chip that disappears on save
+  // case-insensitively keeping the first spelling. Mirroring tags.Normalize in
+  // internal/tags/tags.go on purpose: a chip that disappears on save
   // because the server folded it away would look like data loss.
   function normalize(list) {
     const out = [];

@@ -78,7 +78,7 @@ var proposalSchema = json.RawMessage(`{
     },
     "tags": {
       "type": "string",
-      "description": "A few short free-text keywords describing the place, comma-separated, such as: museum, historic, city centre. Reuse the tags already in use on this trip where they fit. Empty if none apply."
+      "description": "At most 5 short free-text keywords, comma-separated, saying what the place is or what somebody would filter a list by, such as: museum, unesco, free entry. Not adjectives and not the category again. Reuse the tags already in use on this trip, exactly as spelled, where they fit. Empty if none apply."
     },
     "notes": {
       "type": "string",

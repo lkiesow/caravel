@@ -16,7 +16,7 @@
 // direction: no spec had ever pressed Save on this form and then looked at what
 // came back.
 import { test, expect } from "@playwright/test";
-import { login, gotoRoute, resolveScenarioTrips } from "./helpers/scenarios.js";
+import { login, gotoRoute } from "./helpers/scenarios.js";
 
 const MOBILE = { width: 324, height: 756 };
 
@@ -1305,6 +1305,29 @@ test.describe("creating a location is atomic", () => {
 // feature and shows no OSM link, which is why the absence case is asserted
 // rather than assumed.
 test.describe("the OpenStreetMap link on a location", () => {
+  // Its own trip, created and dropped per test, rather than the shared `full`
+  // seed these two used to write into. Both rows survived the run, and the
+  // Reykjavik one sits under a kilometre from the hotel map.spec.js centres
+  // its 5km distance filter on -- so whenever this file ran first, that filter
+  // matched two locations and the suite failed somewhere else entirely. The
+  // helper below already meant to own its rows; it just put them somewhere
+  // shared.
+  let tripId;
+
+  test.beforeEach(async ({ page }) => {
+    await login(page);
+    const res = await page.request.post("/api/trips", { data: { title: "UI suite: OSM link spec" } });
+    expect(res.status(), "create the spec's own trip").toBe(201);
+    tripId = (await res.json()).id;
+  });
+
+  test.afterEach(async ({ page }) => {
+    // Cascades to the locations. Runs even after a failure, so a red run
+    // leaves nothing behind for the next one.
+    if (tripId) await page.request.delete(`/api/trips/${tripId}`);
+    tripId = null;
+  });
+
   // Creates a location with whatever location block is given, and returns its
   // id, so each case owns its own row rather than depending on the seed
   // carrying an OSM identity.
@@ -1324,9 +1347,7 @@ test.describe("the OpenStreetMap link on a location", () => {
   }
 
   test("appears for a place with an OSM identity, and points at the feature page", async ({ page }) => {
-    await login(page);
-    const trips = await resolveScenarioTrips(page);
-    const itemId = await createLocation(page, trips.full, "Stage 29: Hallgrimskirkja", {
+    const itemId = await createLocation(page, tripId, "Stage 29: Hallgrimskirkja", {
       lat: 64.1417951,
       lng: -21.9267103,
       address: "Hallgrimstorg 1, 101 Reykjavik",
@@ -1334,7 +1355,7 @@ test.describe("the OpenStreetMap link on a location", () => {
       osm_id: "1234567890123",
     });
 
-    await gotoRoute(page, `/trips/${trips.full}/locations/${itemId}`);
+    await gotoRoute(page, `/trips/${tripId}/locations/${itemId}`);
 
     const links = page.locator(".location-view__maps-link");
     await expect(links).toHaveCount(2);
@@ -1349,14 +1370,12 @@ test.describe("the OpenStreetMap link on a location", () => {
   });
 
   test("is absent for a dropped pin, which has no OSM identity", async ({ page }) => {
-    await login(page);
-    const trips = await resolveScenarioTrips(page);
-    const itemId = await createLocation(page, trips.full, "Stage 29: just a pin", {
+    const itemId = await createLocation(page, tripId, "Stage 29: just a pin", {
       lat: 52.2799,
       lng: 8.0472,
     });
 
-    await gotoRoute(page, `/trips/${trips.full}/locations/${itemId}`);
+    await gotoRoute(page, `/trips/${tripId}/locations/${itemId}`);
 
     // The Google link is still there -- it needs no identity -- so this is
     // asserting one link rather than none.

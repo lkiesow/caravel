@@ -33,6 +33,29 @@ async function gotoTripMap(page) {
   await page.waitForFunction(() => document.querySelector("map-view")?._map, null, { timeout: 20000 });
 }
 
+// Two points the sun is unambiguously up over and down under, right now.
+//
+// Both tests below need "somewhere lit" and "somewhere dark" and used to use
+// the equator's antipodes, 0,0 and 0,180, on the reasoning that one of them is
+// always in daylight. That is false, and it failed the suite twice a day for a
+// window of about 48 minutes. At the equator the two altitudes are exact
+// negatives of each other, and sun.js thresholds at civil twilight rather than
+// at the horizon -- so whenever |altitude| is under 6 degrees, *both* points
+// are "daylight" and the test asserting they differ fails. Observed at 18:13Z:
+// -3.3 and +3.3 degrees, both light.
+//
+// Derived from the clock instead. The sun is overhead near longitude
+// (12 - UTC hours) * 15, so that point is at local noon and its antipode at
+// local midnight: altitudes near +83 and -83 whenever the suite runs, which is
+// the margin the fixed pair only had for part of the day. Latitude 0 keeps it
+// away from the polar cases, which have their own test.
+function sunProbes(now = new Date()) {
+  const hours = now.getUTCHours() + now.getUTCMinutes() / 60;
+  const wrap = (lng) => ((((lng + 180) % 360) + 360) % 360) - 180;
+  const noon = wrap((12 - hours) * 15);
+  return { lit: [0, noon], dark: [0, wrap(noon + 180)] };
+}
+
 const setMode = async (page, mode) => {
   await page.evaluate(async (m) => {
     const { setMapTheme } = await import("/js/map-theme.js");
@@ -212,23 +235,29 @@ test.describe("the map's own light and dark", () => {
         [lat, lng]
       );
 
-    // Two points half a world apart: whenever the suite runs, one is in
-    // daylight and the other is not, so this asserts a real difference without
-    // depending on the clock.
-    const atNull = await schemeFor(0, 0);
-    const atAnti = await schemeFor(0, 180);
+    // One point under the midday sun and one under the midnight one, worked
+    // out from the clock -- see sunProbes for why this is not a fixed pair.
+    const { lit, dark } = sunProbes();
+    const atLit = await schemeFor(...lit);
+    const atDark = await schemeFor(...dark);
     expect(
-      [atNull, atAnti].sort().join(","),
-      "the two antipodes should be lit differently, from their own coordinates"
-    ).toBe("dark,light");
+      [atLit, atDark].join(","),
+      `noon at ${lit[1]} and midnight at ${dark[1]} should be lit differently, from their own coordinates`
+    ).toBe("light,dark");
 
     // And each must agree with the arithmetic rather than merely differ.
-    const expected = await page.evaluate(async () => {
-      const { isDaylight } = await import("/js/sun.js");
-      return { atNull: isDaylight(0, 0) ? "light" : "dark", atAnti: isDaylight(0, 180) ? "light" : "dark" };
-    });
-    expect(atNull, "0,0 should follow the sun over 0,0").toBe(expected.atNull);
-    expect(atAnti, "0,180 should follow the sun over 0,180").toBe(expected.atAnti);
+    const expected = await page.evaluate(
+      async ([l, d]) => {
+        const { isDaylight } = await import("/js/sun.js");
+        return {
+          atLit: isDaylight(...l) ? "light" : "dark",
+          atDark: isDaylight(...d) ? "light" : "dark",
+        };
+      },
+      [lit, dark]
+    );
+    expect(atLit, "the daylit point should follow the sun over it").toBe(expected.atLit);
+    expect(atDark, "the dark point should follow the sun over it").toBe(expected.atDark);
   });
 
   // The map is the only surface with a fourth mode, and this is why it exists:
@@ -263,27 +292,28 @@ test.describe("the map's own light and dark", () => {
 
     await setMode(page, "auto");
 
-    // Two points on opposite sides of the planet: whatever the hour, one of
-    // them is in daylight and the other is not, so this asserts a real
-    // difference without depending on when the suite runs.
-    await place(0, 0);
-    const atNull = (await mapState(page)).scheme;
+    // One point under the midday sun and one under the midnight one, worked
+    // out from the clock -- see sunProbes for why this is not a fixed pair.
+    const { lit, dark } = sunProbes();
+    await place(...lit);
+    const atLit = (await mapState(page)).scheme;
+    expect(atLit, "the point the sun is overhead should be lit").toBe("light");
     await page.waitForTimeout(200);
-    await place(0, 180);
+    await place(...dark);
     await expect
       .poll(async () => (await mapState(page)).scheme, {
-        message: "the antipode should be lit the other way",
+        message: "the point on the night side should be lit the other way",
         timeout: 20000,
       })
-      .not.toBe(atNull);
+      .toBe("dark");
 
     // And it must agree with the module that does the arithmetic, rather than
     // merely differing.
-    const agrees = await page.evaluate(async () => {
+    const agrees = await page.evaluate(async (d) => {
       const { isDaylight } = await import("/js/sun.js");
       const host = document.querySelector("map-view");
-      return { expected: isDaylight(0, 180) ? "light" : "dark", actual: host.dataset.scheme };
-    });
+      return { expected: isDaylight(...d) ? "light" : "dark", actual: host.dataset.scheme };
+    }, dark);
     expect(agrees.actual, "the map should be lit the way the sun says").toBe(agrees.expected);
   });
 });

@@ -389,22 +389,38 @@ purpose — do not reconstruct it from an older stage plan without asking.
   being a fair trade the moment any hand-written module in this project is
   named `.mjs` -- at that point widen the `find` rather than renaming the file.
 
-- **The full UI suite fails two or three specs that pass in isolation.**
-  (Observed while landing the files-tab staging patch after Stage 29, on
-  `main` with no changes at all: `map.spec.js`'s two distance-filter tests, and
-  sometimes `itinerary-order.spec.js`'s move-an-entry test, fail in a
-  `make test-ui` run and pass when run alone. Stage 30 Milestone 4 added a
-  fourth to the list: `register.spec.js`'s "logs the newcomer straight in",
-  which failed once in a full run and passes alone -- so this is not confined
-  to specs that count rows, and the list should be read as "whichever specs
-  happen to collide", not as four known cases.) The failures are counts on the
-  seeded scenarios -- "expected 1 location within the radius, got 2" -- so the
-  cause is the shared seed plus four parallel workers: the specs that write
-  create locations and entries on trips other specs are counting. It is the
-  isolation problem the note at the top of `files.spec.js` describes, seen from
-  the other side. Options: give the counting specs their own trips the way
-  `files.spec.js` does, or assert on rows they created rather than on totals.
-  Worth fixing before it trains everyone to ignore a red run.
+- **A UI spec can still 500 on register in a full run.** (Stage 30 Milestone 4
+  first saw it; still open.) `register.spec.js`'s "logs the newcomer straight
+  in" answered 500 to `POST /api/auth/register` in one full `make test-ui` run
+  and passed alone, and passed in the immediately preceding full run. Not a
+  duplicate username, which is a 409 (`internal/httpapi/auth.go:126`), and not
+  the shared login rate limit, which the test checks for by name. SQLite runs
+  with WAL and a 5s busy timeout, so a plain lock storm is not the obvious
+  answer either. Undiagnosed: `scripts/with_server.sh` deletes its temp
+  directory with the server log on exit, so catching it means a run that keeps
+  the log.
+
+  This entry used to also cover `map.spec.js`'s two distance-filter tests and
+  `itinerary-order.spec.js`'s move-an-entry test as one shared-seed problem.
+  The distance-filter half turned out to be a single specific collision and is
+  fixed (2026-09-03): `locations.spec.js`'s OSM-link tests created two
+  locations on the shared `full` trip and never removed them, one of them under
+  a kilometre from the hotel the 5km filter centres on. They have their own
+  trip now. Whether the itinerary-order case has its own cause or is more of
+  the same is unknown -- it has not been seen since.
+
+- **Two map specs race the map itself under a full parallel run.** (Seen
+  2026-09-03, in the run that confirmed the distance-filter fix below.)
+  `map.spec.js`'s label-localisation test failed with `host._map is null`, and
+  `map-theme.spec.js`'s appearance-setting test with `page.reload: <unknown
+  error>`; both pass when the two files are run together on their own, and
+  neither is a count on the shared seed. `mapState` in `map-theme.spec.js`
+  already carries a guard for the sibling case -- `getStyle()` returning
+  undefined mid-swap, which its comment says showed up only under a full
+  parallel run -- so the shape is known: a map-view that exists before its
+  MapLibre instance does. The fix is probably to wait on `_map` the way
+  `gotoTripMap` does rather than to reach for it, wherever a spec touches the
+  map directly.
 
 - **The UI suite reaches the real Nominatim.** (Stage 21 Milestone 1.)
   `scripts/with_server.sh` sets `CARAVEL_LLM_URL=stub` and

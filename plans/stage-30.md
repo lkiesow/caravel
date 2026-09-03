@@ -872,6 +872,63 @@ background assertion now compares parsed colours rather than strings, since
 liberty writes `#f8f4f0` where dark writes `rgb(12,12,12)` and a string
 comparison would have broken on notation alone.
 
+## Follow-up: day/night becomes the default
+
+*Asked for after the contrast work. The reordering is one line; making it
+honest was not.*
+
+The map's four modes now lead with **day / night** rather than **follow app**,
+and the settings control lists them in that order. The reasoning is that
+day/night is right more often: the app's own auto follows the operating system,
+which is a switch somebody set at home, while where the sun is is a fact about
+now and about the place on screen. On a trip those disagree regularly, and the
+map is the surface where it shows.
+
+**The one-line version would have shipped a default that lied.** `render()`
+resolved the scheme with no coordinate, and day/night falls back to the app's
+theme whenever it has none. It prefers a remembered fix from the locate
+control, and asking for a position merely to tint a map is out of the question
+— so for every browser that had never used that control, which is most of
+them, "day / night" would have silently behaved exactly like "follow app".
+
+So the mode gained a coordinate of last resort: **the place the map is
+showing.** `contentCoordinate()` returns the point in single-marker mode, the
+point being placed in pick mode, or the middle of the trip's locations. It is
+computed before the map is constructed, so the first paint is already in the
+right scheme rather than flipping a moment later, and the component arms its
+own transition timer for that coordinate, since `map-theme.js` can only
+schedule against a *remembered* position.
+
+**Two bugs found in that fallback while checking it, both mine.**
+
+The first: the middle of a set of locations cannot be an arithmetic mean,
+because longitude is an angle. Two points either side of the antimeridian, at
++179 and -179, average to 0 — the Gulf of Guinea, half a world from either. It
+is now a circular mean of the unit vectors, which puts that pair at 180 where
+it belongs. Found against a dev database whose trip had picked up locations in
+both Kyoto and Iceland: their arithmetic mean is Mongolia.
+
+The second, visible only once the first was fixed: for a trip that genuinely
+spans half the planet, *no* single point answers "is the sun up there".
+Longitude is solar time, so 90 degrees is six hours; past that the trip is in
+day and night at once and any answer would be arbitrary. `contentCoordinate()`
+now declines above that spread and lets the mode fall back to the app's theme,
+which is what it already does whenever it has no coordinate it believes in.
+Verified across the cases that matter: an antimeridian pair is treated as
+clustered (spread 1 degree), Europe and a US coast-to-coast trip are accepted
+at 16 and 22 degrees, and the Kyoto-plus-Iceland set declines at 139.
+
+**Verified.** `make ci` and `make docs` (`--strict`) green; `make test-ui` at
+222 passed with only the two documented distance-filter flakes. The new spec
+was checked by breaking the code: with the content coordinate removed, both
+antipodes resolve to `light` — the app's theme leaking through — which is
+precisely the dishonest default the fallback exists to prevent. Against a
+freshly reset dev database, a browser with nothing stored resolves the
+preference to `auto`, derives 64.35N 22.6W from the seeded Iceland trip, finds
+the sun 21.2 degrees above the horizon there, and draws the light map — the
+default reaching its answer from a real place rather than from the operating
+system.
+
 ## Build order
 
 1 → 2 is hard (2 needs the vendored files). 3 introduces `_applyOverlays()`

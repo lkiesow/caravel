@@ -11,9 +11,11 @@ frames itself to fit whatever is currently shown.
 The map is drawn in your browser from OpenStreetMap data, which means the
 labels follow **your** language: the same trip reads Tokyo for an English
 reader and Tokio for a German one, at the same time on the same instance. It
-also comes in light and dark, independently of the rest of the app — including
-a day/night mode that follows the actual position of the sun rather than your
-operating system's idea of evening. Both live in **Settings → Appearance**; the
+also comes in light and dark, independently of the rest of the app. By default
+it follows the actual position of the sun over wherever the map is showing,
+rather than your operating system's idea of evening — so a map of Iceland in
+June stays light at 23:00, and one of Chile in the same session does not. Both
+live in **Settings → Appearance**; the
 provider itself is configurable too, see [Map
 style](../configuration/map-style.md). Clicking a pin opens the location, so
 the map doubles as a way of navigating the trip rather than only a way of

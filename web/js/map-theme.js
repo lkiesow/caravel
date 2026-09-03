@@ -8,8 +8,8 @@ import { isDaylight, msUntilDaylightChanges } from "./sun.js";
 // four, because "follow the app" is itself one of the choices rather than the
 // only behaviour:
 //
-//   app    - whatever the interface is doing. The default.
-//   auto   - light while the sun is up where you are, dark otherwise.
+//   auto   - light while the sun is up, dark otherwise. The default.
+//   app    - whatever the interface is doing.
 //   light  - always the light cartography.
 //   dark   - always the dark one.
 //
@@ -25,8 +25,18 @@ import { isDaylight, msUntilDaylightChanges } from "./sun.js";
 // told "follow the app" are the same state.
 const STORAGE_KEY = "caravel.mapTheme";
 const POSITION_KEY = "caravel.lastPosition";
-export const MAP_THEMES = ["app", "auto", "light", "dark"];
-const DEFAULT_MAP_THEME = "app";
+export const MAP_THEMES = ["auto", "app", "light", "dark"];
+
+// Day/night rather than "follow the app", because it is the answer that is
+// right more often: the interface's own auto follows the operating system,
+// which is a switch somebody set at home, while where the sun actually is is a
+// fact about now and about the place on screen. On a trip those disagree
+// regularly, and the map is the surface where the difference shows.
+//
+// It degrades to the app's answer rather than to a guess whenever there is no
+// coordinate to work from, so the worst case is the behaviour this used to
+// default to. See resolveMapTheme.
+const DEFAULT_MAP_THEME = "auto";
 
 // A remembered fix goes stale as a position but not as a *timezone*: somebody
 // who located themselves in Reykjavik a week ago is still much more likely to
@@ -90,6 +100,20 @@ export function lastKnownPosition() {
 // coordinate guess before giving up. It is a surprisingly good one for this
 // app: somebody looking at a map of Patagonia is usually asking about
 // Patagonia.
+// How long until the day/night answer changes for a coordinate the caller
+// supplied, or null when there is nothing worth waking up for.
+//
+// This exists because the module's own timer can only schedule against a
+// *remembered* position, and the common case for a fresh browser is that there
+// is not one -- the map passes the place it is showing instead. Returns null
+// when a remembered fix exists, since scheduleNextTransition already covers
+// that and two timers would fight.
+export function msUntilMapThemeChanges({ near } = {}) {
+  if (getMapTheme() !== "auto") return null;
+  if (lastKnownPosition() || !near) return null;
+  return msUntilDaylightChanges(near.lat, near.lng) + 1000;
+}
+
 export function resolveMapTheme({ near } = {}) {
   const preference = getMapTheme();
   if (preference === "light" || preference === "dark") return preference;

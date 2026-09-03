@@ -28,7 +28,7 @@
   "settings.theme.light": "Light",
   "settings.theme.dark": "Dark",
   "settings.mapTheme": "Map appearance",
-  "settings.mapThemeHint": "The map can be lit differently from the rest of the app.",
+  "settings.mapThemeHint": "Lit by the sun over the place on the map, or however you prefer.",
   "settings.mapTheme.app": "Follow app",
   "settings.mapTheme.auto": "Day / night",
   "settings.mapTheme.light": "Light",

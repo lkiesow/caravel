@@ -92,8 +92,10 @@ you go looking for a setting:
 
 - **Language.** Follows the reader's app language automatically.
 - **Light or dark.** A per-browser choice in **Settings → Appearance**, with
-  four options: follow the app, day/night by the actual position of the sun,
-  always light, always dark.
+  four options: day/night by the actual position of the sun (the default),
+  follow the app, always light, always dark. Day/night uses a position the
+  reader has already shared with the locate control, or failing that the place
+  the map is showing — it never asks for a location of its own.
 
 ## Upgrading from the tile variables
 

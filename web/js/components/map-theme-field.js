@@ -3,23 +3,23 @@ import { getMapTheme, setMapTheme } from "../map-theme.js";
 
 // The map's own light/dark, beside the app's on the settings screen.
 //
-// Four choices where the interface has three, and the extra one is the default:
-// "follow the app" is what the map has always effectively done, so it stays the
-// behaviour nobody has to choose. The other three exist because the map is not
-// interface -- it is the thing you look at rather than read, and wanting a
-// bright map inside a dark app (or the reverse) is a preference rather than a
-// mistake.
+// Four choices where the interface has three, and the first is the default.
 //
-// "Day / night" is the one that needs its hint: it follows the sun where the
-// reader is, which is not the same as the device's dark mode. Somebody
-// travelling has an operating system that switched at home and a sky that did
-// not.
+// "Day / night" leads because it is right more often than the alternative: it
+// follows the sun over the place on screen, where the app's own auto follows
+// the operating system -- a switch somebody set at home. Somebody travelling
+// has an OS that thinks it is evening and a sky that does not.
+//
+// "Follow app" is second, and is what this used to default to. The remaining
+// two exist because the map is not interface -- it is the thing you look at
+// rather than read, and wanting a bright map inside a dark app (or the
+// reverse) is a preference rather than a mistake.
 //
 // Radios, matching the theme control it sits under -- a fixed, small set. Four
-// wrap to two rows at 324px, which is fine and is asserted in map.spec.js.
+// wrap to two rows at 324px, which is fine and is asserted in map-theme.spec.js.
 const MAP_THEMES = [
-  { value: "app", labelKey: "settings.mapTheme.app" },
   { value: "auto", labelKey: "settings.mapTheme.auto" },
+  { value: "app", labelKey: "settings.mapTheme.app" },
   { value: "light", labelKey: "settings.mapTheme.light" },
   { value: "dark", labelKey: "settings.mapTheme.dark" },
 ];

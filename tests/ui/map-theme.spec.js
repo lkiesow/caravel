@@ -150,13 +150,10 @@ test.describe("the map's own light and dark", () => {
     expect(light.legendDot).toBe(light.markerColor);
   });
 
-  test("follow-app is the default, and it follows the app", async ({ page }) => {
+  test("follow-app tracks the app, once chosen", async ({ page }) => {
     await login(page);
     await gotoTripMap(page);
-
-    // Nothing stored: the default is the absence of a key, as theme.js does it.
-    const stored = await page.evaluate(() => localStorage.getItem("caravel.mapTheme"));
-    expect(stored, "the default should not be written to storage").toBeNull();
+    await setMode(page, "app");
 
     await page.evaluate(async () => {
       const { setTheme } = await import("/js/theme.js");
@@ -169,6 +166,69 @@ test.describe("the map's own light and dark", () => {
       setTheme("light");
     });
     await waitForScheme(page, "light", LIGHT_BG);
+  });
+
+  // Day/night is the default, so it has to work for a browser that has never
+  // used the locate control -- which is most of them, and asking for a
+  // position merely to tint a map is out of the question. Without a fallback
+  // coordinate the mode would quietly resolve to the app's theme for those
+  // readers and the default would be a lie.
+  //
+  // The fallback is the place the map is *showing*. Asserted by putting the
+  // app in light mode and pointing a single-marker map at somewhere the sun
+  // certainly is not, which no amount of following the app could produce.
+  test("day / night works with no stored position, from the place on screen", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+
+    // Light interface throughout, and nothing remembered: whatever happens
+    // below cannot be the app's theme leaking through.
+    await page.evaluate(async () => {
+      const { setTheme } = await import("/js/theme.js");
+      setTheme("light");
+      localStorage.removeItem("caravel.lastPosition");
+    });
+
+    // The route's own map goes first, so the probes below are the only
+    // <map-view> on the page and nothing races them.
+    await page.evaluate(() => document.querySelector("map-view")?.remove());
+
+    const schemeFor = async (lat, lng) =>
+      page.evaluate(
+        async ([la, ln]) => {
+          const el = document.createElement("map-view");
+          el.setAttribute("lat", String(la));
+          el.setAttribute("lng", String(ln));
+          el.setAttribute("marker-title", "probe");
+          document.body.appendChild(el);
+          await new Promise((r) => {
+            const check = () => (el.hasAttribute("data-ready") ? r() : requestAnimationFrame(check));
+            check();
+          });
+          const scheme = el.dataset.scheme;
+          el.remove();
+          return scheme;
+        },
+        [lat, lng]
+      );
+
+    // Two points half a world apart: whenever the suite runs, one is in
+    // daylight and the other is not, so this asserts a real difference without
+    // depending on the clock.
+    const atNull = await schemeFor(0, 0);
+    const atAnti = await schemeFor(0, 180);
+    expect(
+      [atNull, atAnti].sort().join(","),
+      "the two antipodes should be lit differently, from their own coordinates"
+    ).toBe("dark,light");
+
+    // And each must agree with the arithmetic rather than merely differ.
+    const expected = await page.evaluate(async () => {
+      const { isDaylight } = await import("/js/sun.js");
+      return { atNull: isDaylight(0, 0) ? "light" : "dark", atAnti: isDaylight(0, 180) ? "light" : "dark" };
+    });
+    expect(atNull, "0,0 should follow the sun over 0,0").toBe(expected.atNull);
+    expect(atAnti, "0,180 should follow the sun over 0,180").toBe(expected.atAnti);
   });
 
   // The map is the only surface with a fourth mode, and this is why it exists:
@@ -295,7 +355,10 @@ test.describe("the map appearance setting", () => {
 
     const choices = page.locator('.map-appearance-slot input[name="map-theme"]');
     await expect(choices).toHaveCount(4);
-    await expect(page.locator('.map-appearance-slot [name="map-theme"][value="app"]')).toBeChecked();
+    // Day/night is the default, and it is stored as the absence of a key the
+    // way theme.js does it.
+    await expect(page.locator('.map-appearance-slot [name="map-theme"][value="auto"]')).toBeChecked();
+    expect(await page.evaluate(() => localStorage.getItem("caravel.mapTheme"))).toBeNull();
 
     await page.locator('.map-appearance-slot [name="map-theme"][value="dark"]').check();
     expect(await page.evaluate(() => localStorage.getItem("caravel.mapTheme"))).toBe("dark");
@@ -304,10 +367,14 @@ test.describe("the map appearance setting", () => {
     await page.reload();
     await expect(page.locator('.map-appearance-slot [name="map-theme"][value="dark"]')).toBeChecked();
 
-    // Back to the default, which is stored as the absence of a key so that a
-    // browser told "follow the app" and one never told anything are the same
-    // state.
+    // "Follow app" is a real stored choice now that it is no longer the
+    // default...
     await page.locator('.map-appearance-slot [name="map-theme"][value="app"]').check();
+    expect(await page.evaluate(() => localStorage.getItem("caravel.mapTheme"))).toBe("app");
+
+    // ...and returning to the default clears the key, so a browser told
+    // "day / night" and one never told anything are the same state.
+    await page.locator('.map-appearance-slot [name="map-theme"][value="auto"]').check();
     expect(await page.evaluate(() => localStorage.getItem("caravel.mapTheme"))).toBeNull();
   });
 

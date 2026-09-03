@@ -4,7 +4,7 @@ import { icon } from "../icon.js";
 import { getCurrentPosition, locateErrorKey, locateUnavailableReason } from "../geolocation.js";
 import { googleMapsUrl } from "../url.js";
 import { eventBus } from "../eventbus.js";
-import { resolveMapTheme } from "../map-theme.js";
+import { resolveMapTheme, msUntilMapThemeChanges } from "../map-theme.js";
 
 // The map, as the instance has it configured. Defaults duplicated from
 // internal/httpapi/map.go on purpose: they are what the map falls back to when
@@ -167,6 +167,11 @@ const PICK_PRECISION = 1e6;
 // marker means something different from both, and the accuracy ring is the
 // same hue at low opacity so the two read as one thing.
 const HERE_MARKER_COLOR = "#0891b2";
+
+// How far a trip's locations may be spread, in degrees of longitude, before
+// their middle stops meaning anything for "is the sun up there". 90 degrees is
+// six hours of solar time.
+const MAX_CONTENT_LNG_SPREAD = 90;
 
 // The GeoJSON source and layer prefix for the accuracy ring.
 const ACCURACY_SOURCE = "here-accuracy";
@@ -630,6 +635,72 @@ class MapView extends HTMLElement {
     this.destroyMap();
   }
 
+  // A coordinate from whatever this map is showing: the point in single-marker
+  // mode, the point being placed in pick mode, or the middle of the trip's
+  // locations.
+  //
+  // This is what makes day/night usable as the default. The mode prefers a
+  // remembered fix from the locate control, but a browser that has never used
+  // it has none - and asking for one is out of the question for something that
+  // only tints a map. Without a fallback the mode would quietly resolve to the
+  // app's theme for most people, which would make the default a lie. The map's
+  // own subject is a good answer instead: somebody looking at Patagonia is
+  // usually asking about Patagonia.
+  contentCoordinate() {
+    if (this._singleMarker) {
+      return { lat: this._singleMarker.lat, lng: this._singleMarker.lng };
+    }
+    if (this._pick) {
+      const lat = readCoordinate(this, "lat");
+      const lng = readCoordinate(this, "lng");
+      return lat === null || lng === null ? null : { lat, lng };
+    }
+    const points = (this._items || []).filter(
+      (i) => Number.isFinite(i.lat) && Number.isFinite(i.lng)
+    );
+    if (!points.length) return null;
+
+    // Longitude is an angle, so it needs a *circular* mean - the average of
+    // the unit vectors - rather than an arithmetic one. The arithmetic version
+    // is not merely imprecise, it is wrong in a way that lands on the far side
+    // of the planet: two points either side of the antimeridian, at +179 and
+    // -179, average to 0 - the Gulf of Guinea. Found while checking the
+    // default against a dev database whose trip had picked up locations in
+    // both Kyoto and Iceland: their arithmetic mean is Mongolia.
+    const rad = Math.PI / 180;
+    const x = points.reduce((t, i) => t + Math.cos(i.lng * rad), 0) / points.length;
+    const y = points.reduce((t, i) => t + Math.sin(i.lng * rad), 0) / points.length;
+    const lng = Math.atan2(y, x) / rad;
+    const lat = points.reduce((t, i) => t + i.lat, 0) / points.length;
+
+    // ...and when the points are spread far enough round the world, no single
+    // one of them answers the question. Longitude is solar time: 90 degrees is
+    // six hours, so past that the trip genuinely spans day and night at once
+    // and any answer here would be arbitrary. Decline instead, and let the
+    // mode fall back to the app's own theme, which is what it does whenever it
+    // has no coordinate it believes in.
+    // Angular distance from the mean, the short way round: the modulo folds
+    // the +/-180 seam so a point at -179 is 2 degrees from one at 179 rather
+    // than 358.
+    const spread = Math.max(
+      ...points.map((i) => Math.abs(((i.lng - lng + 540) % 360) - 180))
+    );
+    if (spread > MAX_CONTENT_LNG_SPREAD) return null;
+
+    return { lat, lng };
+  }
+
+  // Sunrise and sunset are the only inputs to day/night that move on their
+  // own. map-theme.js arms a timer when it has a remembered position; when the
+  // answer came from this map's own subject instead, the map has to arm its
+  // own, or a tab left open across dusk would keep yesterday's answer.
+  scheduleSchemeCheck(near) {
+    clearTimeout(this._schemeTimer);
+    const ms = msUntilMapThemeChanges({ near });
+    if (ms == null) return;
+    this._schemeTimer = setTimeout(() => this.restyle(), ms);
+  }
+
   // Swap the cartography under a live map.
   //
   // setStyle rather than a rebuild, and that is the point of the whole
@@ -644,7 +715,11 @@ class MapView extends HTMLElement {
     // better than a remembered fix when somebody is looking at somewhere they
     // are not, which on a trip-planning app is most of the time.
     const centre = map.getCenter();
-    const next = resolveMapTheme({ near: { lat: centre.lat, lng: centre.lng } });
+    const near = { lat: centre.lat, lng: centre.lng };
+    const next = resolveMapTheme({ near });
+    // Re-armed from here too: the answer that just resolved has its own next
+    // transition, and the old timer was for the previous one.
+    this.scheduleSchemeCheck(near);
     if (next === this._scheme) return;
     this._scheme = next;
     // Set before the style is fetched, so the markers recolour immediately
@@ -660,6 +735,7 @@ class MapView extends HTMLElement {
   }
 
   destroyMap() {
+    clearTimeout(this._schemeTimer);
     if (this._onMapThemeChanged) {
       eventBus.removeEventListener("map-theme-changed", this._onMapThemeChanged);
       this._onMapThemeChanged = null;
@@ -831,8 +907,14 @@ class MapView extends HTMLElement {
     // mode as a coordinate hint; it falls back to a remembered fix, or to the
     // app's own theme. Once the map is up, restyle() can do better.
     this._mapConfig = mapConfig;
-    this._scheme = resolveMapTheme();
+    // The place this map is *about*, offered to the day/night mode as its
+    // coordinate of last resort. Worked out before the map exists rather than
+    // read back from it afterwards, so the first paint is already in the right
+    // scheme instead of flipping a moment later.
+    const near = this.contentCoordinate();
+    this._scheme = resolveMapTheme({ near });
     this.dataset.scheme = this._scheme;
+    this.scheduleSchemeCheck(near);
     const style = await buildStyle(mapConfig, this._scheme);
     if (generation !== this._generation) return;
     // Nothing to draw: the configured style would not load and there is no

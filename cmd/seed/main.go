@@ -588,6 +588,22 @@ func seedFull(s seedCtx) error {
 		"Contact lenses", "Camera charger"}); err != nil {
 		return err
 	}
+	// The trip notepad, with a heading, a list and inline emphasis, because the
+	// sweeps can only measure markup something renders -- and the rendered note
+	// is the only place in the app where goldmark output lands in a tab.
+	if _, err := s.store.UpsertTripNote(s.ctx, db.UpsertTripNoteParams{
+		TripID: trip.ID,
+		Body: "## Before we go\n\n" +
+			"- Ferry tickets are refundable until *14 days* before departure.\n" +
+			"- The rental car needs the paper licence, not just the card.\n\n" +
+			"## Ideas nobody has scheduled yet\n\n" +
+			"Hot spring on the way back, if the road is open. Ask Anna --\n" +
+			"she drove it last spring.\n",
+		UpdatedAt: time.Now().UTC(),
+		UpdatedBy: &s.ownerID,
+	}); err != nil {
+		return err
+	}
 	if err := s.addFile("full", trip.ID, nil, "trip-notes.txt", "Seeded trip-level file.\n", db.FileVisibilityTrip); err != nil {
 		return err
 	}

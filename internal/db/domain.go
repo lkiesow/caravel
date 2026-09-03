@@ -331,6 +331,26 @@ type ChecklistItem struct {
 	CreatedAt   time.Time
 }
 
+// TripNote is the trip's one free-text markdown document. Keyed by trip, not
+// by an id of its own: there is exactly one per trip, so the API addresses it
+// as /trips/{tripId}/notes and there is no note id to hand out.
+//
+// Body is the markdown as typed. It is rendered to HTML on read, by the same
+// internal/markdown call the item notes use, rather than stored rendered — one
+// source of truth, and no cached column that could drift from it.
+//
+// A trip with nothing written down has no row at all, rather than a row with
+// an empty body: clearing a note deletes it. Callers see that as ErrNotFound
+// from GetTripNote, which is not an error condition — it is a blank notepad.
+type TripNote struct {
+	TripID    string
+	Body      string
+	UpdatedAt time.Time
+	// UpdatedBy is who saved last. Nothing renders it yet; it is recorded from
+	// the first save because it cannot be backfilled later.
+	UpdatedBy *string
+}
+
 // ItineraryDay.Date is a "YYYY-MM-DD" string — see the note on
 // Trip.StartDate/EndDate above; the same reasoning applies here.
 type ItineraryDay struct {

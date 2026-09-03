@@ -347,6 +347,11 @@ func (s *Server) buildRouter() chi.Router {
 				r.Get("/itinerary", s.handleGetItinerary)
 				r.Put("/itinerary/days/{date}", s.handleSetItineraryDayNotes)
 
+				// The trip notepad. One document per trip, so there is no
+				// collection and no note id -- the trip is the key.
+				r.Get("/notes", s.handleGetTripNote)
+				r.Put("/notes", s.handleSetTripNote)
+
 				r.Put("/preview-image", s.handleSetTripPreviewImage)
 				r.Post("/media", s.handleUploadMedia)
 				r.Post("/media/url", s.handleCreateMediaURL)

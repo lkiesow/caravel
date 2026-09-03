@@ -168,6 +168,13 @@ type TripMember struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type TripNote struct {
+	TripID    string         `json:"trip_id"`
+	Body      string         `json:"body"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	UpdatedBy sql.NullString `json:"updated_by"`
+}
+
 type User struct {
 	ID          string         `json:"id"`
 	Username    string         `json:"username"`

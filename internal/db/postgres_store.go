@@ -1334,6 +1334,62 @@ func postgresChecklistItemToDomain(c postgresgen.ChecklistItem) ChecklistItem {
 	}
 }
 
+// The trip notepad. Update-then-insert for the same reason the SQLite store
+// does it that way; see the comment there.
+func (s *postgresStore) GetTripNote(ctx context.Context, tripID string) (TripNote, error) {
+	row, err := s.q.GetTripNote(ctx, tripID)
+	if err != nil {
+		return TripNote{}, mapNotFound(err)
+	}
+	return postgresTripNoteToDomain(row), nil
+}
+
+func (s *postgresStore) UpsertTripNote(ctx context.Context, p UpsertTripNoteParams) (TripNote, error) {
+	n, err := s.q.UpdateTripNote(ctx, postgresgen.UpdateTripNoteParams{
+		Body:      p.Body,
+		UpdatedAt: p.UpdatedAt,
+		UpdatedBy: nullString(p.UpdatedBy),
+		TripID:    p.TripID,
+	})
+	if err != nil {
+		return TripNote{}, err
+	}
+	if n > 0 {
+		row, err := s.q.GetTripNote(ctx, p.TripID)
+		if err != nil {
+			return TripNote{}, err
+		}
+		return postgresTripNoteToDomain(row), nil
+	}
+	row, err := s.q.InsertTripNote(ctx, postgresgen.InsertTripNoteParams{
+		TripID:    p.TripID,
+		Body:      p.Body,
+		UpdatedAt: p.UpdatedAt,
+		UpdatedBy: nullString(p.UpdatedBy),
+	})
+	if err != nil {
+		return TripNote{}, err
+	}
+	return postgresTripNoteToDomain(row), nil
+}
+
+func (s *postgresStore) DeleteTripNote(ctx context.Context, tripID string) (bool, error) {
+	n, err := s.q.DeleteTripNote(ctx, tripID)
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+func postgresTripNoteToDomain(n postgresgen.TripNote) TripNote {
+	return TripNote{
+		TripID:    n.TripID,
+		Body:      n.Body,
+		UpdatedAt: n.UpdatedAt,
+		UpdatedBy: strPtr(n.UpdatedBy),
+	}
+}
+
 func postgresFileToDomain(d postgresgen.File) File {
 	return File{
 		ID:          d.ID,

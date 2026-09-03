@@ -545,3 +545,11 @@ else runs this.
   timezone-to-representative-coordinate table (`Intl` already gives the zone
   name) would fix it for a few kilobytes; the locate control already fixes it
   exactly for anyone who uses it once.
+
+- **The trip note records who saved it, and nobody shows it.** (Stage 31
+  Milestone 1, Sep 2026.) `trip_notes.updated_by` and `updated_at` are written
+  on every save and `updated_at` reaches the client, but the Notes tab renders
+  no byline. Written from the first save on purpose -- a column added later
+  records only edits made after it exists -- so the data will be there whenever
+  "last edited by Anna, Tuesday" is wanted. Needs a display-name lookup in the
+  response, which the note payload deliberately does not do yet.

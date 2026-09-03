@@ -1152,6 +1152,65 @@ func sqliteChecklistItemToDomain(c sqlitegen.ChecklistItem) ChecklistItem {
 	}
 }
 
+// The trip notepad. UpsertTripNote is update-then-insert rather than an
+// ON CONFLICT upsert, following UpsertItineraryDayNotes above: sqlc does not
+// substitute named arguments inside ON CONFLICT ... DO UPDATE (see CLAUDE.md),
+// and two statements on a path taken once per save is not worth working around
+// that for.
+func (s *sqliteStore) GetTripNote(ctx context.Context, tripID string) (TripNote, error) {
+	row, err := s.q.GetTripNote(ctx, tripID)
+	if err != nil {
+		return TripNote{}, mapNotFound(err)
+	}
+	return sqliteTripNoteToDomain(row), nil
+}
+
+func (s *sqliteStore) UpsertTripNote(ctx context.Context, p UpsertTripNoteParams) (TripNote, error) {
+	n, err := s.q.UpdateTripNote(ctx, sqlitegen.UpdateTripNoteParams{
+		Body:      p.Body,
+		UpdatedAt: formatTime(p.UpdatedAt),
+		UpdatedBy: nullString(p.UpdatedBy),
+		TripID:    p.TripID,
+	})
+	if err != nil {
+		return TripNote{}, err
+	}
+	if n > 0 {
+		row, err := s.q.GetTripNote(ctx, p.TripID)
+		if err != nil {
+			return TripNote{}, err
+		}
+		return sqliteTripNoteToDomain(row), nil
+	}
+	row, err := s.q.InsertTripNote(ctx, sqlitegen.InsertTripNoteParams{
+		TripID:    p.TripID,
+		Body:      p.Body,
+		UpdatedAt: formatTime(p.UpdatedAt),
+		UpdatedBy: nullString(p.UpdatedBy),
+	})
+	if err != nil {
+		return TripNote{}, err
+	}
+	return sqliteTripNoteToDomain(row), nil
+}
+
+func (s *sqliteStore) DeleteTripNote(ctx context.Context, tripID string) (bool, error) {
+	n, err := s.q.DeleteTripNote(ctx, tripID)
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+func sqliteTripNoteToDomain(n sqlitegen.TripNote) TripNote {
+	return TripNote{
+		TripID:    n.TripID,
+		Body:      n.Body,
+		UpdatedAt: parseTime(n.UpdatedAt),
+		UpdatedBy: strPtr(n.UpdatedBy),
+	}
+}
+
 func sqliteFileToDomain(d sqlitegen.File) File {
 	return File{
 		ID:          d.ID,

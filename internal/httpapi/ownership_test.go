@@ -168,6 +168,10 @@ func TestChecklistRoutesRejectAnotherUser(t *testing.T) {
 	o.assertDenied(t, http.MethodDelete, list, "")
 	o.assertDenied(t, http.MethodPost, list+"/items", `{"text":"stolen"}`)
 
+	// The trip notepad hangs off the same trip, and is denied the same way.
+	o.assertDenied(t, http.MethodGet, "/api/trips/"+o.tripID+"/notes", "")
+	o.assertDenied(t, http.MethodPut, "/api/trips/"+o.tripID+"/notes", `{"body":"stolen"}`)
+
 	// An item on the owner's checklist, to test the per-item routes.
 	itemID := o.ts.mustCreate(http.MethodPost, list+"/items", o.owner, `{"text":"Passport"}`, http.StatusCreated)
 	o.assertDenied(t, http.MethodPatch, list+"/items/"+itemID, `{"checked":true}`)
@@ -242,6 +246,7 @@ func TestOwnedRoutesRequireAuth(t *testing.T) {
 		{http.MethodGet, "/api/trips/" + o.tripID},
 		{http.MethodGet, "/api/items/" + o.itemID},
 		{http.MethodGet, "/api/trips/" + o.tripID + "/checklists"},
+		{http.MethodGet, "/api/trips/" + o.tripID + "/notes"},
 		{http.MethodGet, "/api/trips/" + o.tripID + "/expenses"},
 		{http.MethodGet, "/api/files/" + o.fileID + "/download"},
 		{http.MethodGet, "/api/media/" + o.mediaID + "/file"},

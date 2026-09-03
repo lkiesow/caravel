@@ -126,6 +126,13 @@ type CreateChecklistParams struct {
 	OwnerUserID *string
 }
 
+type UpsertTripNoteParams struct {
+	TripID    string
+	Body      string
+	UpdatedAt time.Time
+	UpdatedBy *string
+}
+
 type CreateChecklistItemParams struct {
 	ID          string
 	ChecklistID string
@@ -404,6 +411,20 @@ type Store interface {
 	SetChecklistItemChecked(ctx context.Context, id, checklistID string, checked bool) (ChecklistItem, error)
 	UpdateChecklistItemText(ctx context.Context, id, checklistID, text string) (ChecklistItem, error)
 	DeleteChecklistItem(ctx context.Context, id, checklistID string) (bool, error)
+
+	// The trip notepad: one markdown document per trip.
+	//
+	// GetTripNote returns ErrNotFound for a trip nobody has written on, which
+	// the handler turns into an empty body rather than a 404 — see
+	// httpapi.handleGetTripNote for why the client is given one shape.
+	GetTripNote(ctx context.Context, tripID string) (TripNote, error)
+	// UpsertTripNote writes the note, creating the row on first save. Last
+	// write wins: it takes no expected version, matching how itinerary day
+	// notes already behave.
+	UpsertTripNote(ctx context.Context, p UpsertTripNoteParams) (TripNote, error)
+	// DeleteTripNote is how a cleared note goes away, so that "no note" has a
+	// single representation. Reports whether a row was actually removed.
+	DeleteTripNote(ctx context.Context, tripID string) (bool, error)
 
 	// Expenses. No reading user is threaded through any of these, unlike the
 	// file and checklist listings: every expense on a trip is visible to

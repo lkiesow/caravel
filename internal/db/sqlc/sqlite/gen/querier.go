@@ -61,6 +61,10 @@ type Querier interface {
 	// belt costs nothing and guards the most destructive call in the app.
 	DeleteTrip(ctx context.Context, arg DeleteTripParams) (int64, error)
 	DeleteTripMember(ctx context.Context, arg DeleteTripMemberParams) (int64, error)
+	// Clearing a note removes the row rather than storing an empty string, so
+	// there is one representation of a trip with nothing written down. The tab
+	// reads that as fresh and opens in the editor.
+	DeleteTripNote(ctx context.Context, tripID string) (int64, error)
 	DeleteUser(ctx context.Context, id string) (int64, error)
 	// Instance-wide settings an admin changes at runtime. See migration 0008 for
 	// why this is a key/value table rather than one column per setting, and why the
@@ -86,10 +90,12 @@ type Querier interface {
 	// every query here answers only "what does this *non-owner* have on this trip?"
 	// The owner's role is decided from trips.owner_id, by the caller.
 	GetTripMember(ctx context.Context, arg GetTripMemberParams) (TripMember, error)
+	GetTripNote(ctx context.Context, tripID string) (TripNote, error)
 	GetUserByID(ctx context.Context, id string) (User, error)
 	GetUserByUsername(ctx context.Context, username string) (User, error)
 	InsertItemLocation(ctx context.Context, arg InsertItemLocationParams) (ItemLocation, error)
 	InsertItineraryDay(ctx context.Context, arg InsertItineraryDayParams) (ItineraryDay, error)
+	InsertTripNote(ctx context.Context, arg InsertTripNoteParams) (TripNote, error)
 	ListChecklistItemsByChecklist(ctx context.Context, checklistID string) ([]ChecklistItem, error)
 	// A personal list belongs to whoever created it and never appears in anyone
 	// other listing. The same predicate guards loadChecklist, for the reason the
@@ -300,6 +306,7 @@ type Querier interface {
 	UpdateItemLocation(ctx context.Context, arg UpdateItemLocationParams) (int64, error)
 	UpdateItineraryDayNotes(ctx context.Context, arg UpdateItineraryDayNotesParams) (int64, error)
 	UpdateTrip(ctx context.Context, arg UpdateTripParams) (Trip, error)
+	UpdateTripNote(ctx context.Context, arg UpdateTripNoteParams) (int64, error)
 	// Username is deliberately not updatable. It is the handle people are added to
 	// trips by, so renaming one silently breaks the mental model of everyone who
 	// knows them by it, and there is no rename flow anywhere in the UI to make that

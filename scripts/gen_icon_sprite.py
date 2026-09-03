@@ -51,6 +51,7 @@ ICONS = [
     "sparkles",
     "check-check",
     "wallet",
+    "notebook-pen",
 ]
 
 

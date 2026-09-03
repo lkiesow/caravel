@@ -4,6 +4,7 @@ import { icon } from "../icon.js";
 import "../components/map-view.js";
 import { renderItemsTab } from "./locations-tab.js";
 import { renderItineraryTab } from "./itinerary-tab.js";
+import { renderNotesTab } from "./notes-tab.js";
 import { renderFileList } from "../components/file-list.js";
 import { renderChecklistList } from "../components/checklist-list.js";
 import { renderSettingsTab } from "./settings-tab.js";
@@ -139,6 +140,11 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
       });
     } else if (tab === "itinerary") {
       renderItineraryTab(content, trip);
+    } else if (tab === "notes") {
+      // The tab owns both modes, so a viewer is not a separate render path
+      // here the way it is for files and checklists — it simply never gets
+      // the Edit button. notes-tab.js asks canEdit() itself.
+      renderNotesTab(content, trip);
     } else if (tab === "files") {
       // file-list.js has had a documented read-only mode since Stage 11 (used
       // by the location view); a viewer is simply the second caller for it.

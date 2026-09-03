@@ -113,6 +113,7 @@
   "trip.tabs.itinerary": "Itinerary",
   "trip.tabs.files": "Files",
   "trip.tabs.checklists": "Checklists",
+  "trip.tabs.notes": "Notes",
   "trip.tabs.more": "More",
   "members.heading": "People on this trip",
   "members.hintOwner": "Everyone here can see the trip. Editors can change it; viewers can only read it.",
@@ -437,5 +438,11 @@
   "suggest.add": "Add {count} location",
   "suggest.add_plural": "Add {count} locations",
   "suggest.addFailed": "The locations could not be added. Nothing was saved — try again.",
-  "suggest.ask": "What to look for"
+  "suggest.ask": "What to look for",
+  "tripNotes.heading": "Trip notes",
+  "tripNotes.placeholder": "Anything that is not a place or a task. Markdown works.",
+  "tripNotes.edit": "Edit",
+  "tripNotes.empty": "Nothing written down yet.",
+  "tripNotes.saveFailed": "Could not save the note.",
+  "tripNotes.loadFailed": "Could not load the note."
 }

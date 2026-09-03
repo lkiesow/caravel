@@ -204,64 +204,95 @@ makes every future grep ambiguous. Keys: `tripNotes.edit`, `.save`,
 a list and saving renders them; reload lands in view mode; Edit shows the
 source back; clearing and saving returns to the editor.
 
+**Done.** Landed, and it absorbed the tab reshuffle that the plan had put in
+Milestone 3. That was not optional: `app.js` derives the route table from
+`TRIP_TABS`, so `/trips/{id}/notes` does not exist as a route until the array
+has the entry — the plan's line about the tab being "reachable by URL while
+still absent from the bar" was simply wrong about this codebase. Rather than
+add a throwaway route and delete it a milestone later, the array change came
+here, and with it the three hard-coded lists that assert tab order
+(`scenarios.js`, `menu.spec.js`'s `TAB_ORDER` and `OVERFLOW_LABELS`, and the
+`Makefile`'s `CONTRAST_ROUTES`), so no milestone ends with a red suite.
+Milestone 3 is correspondingly smaller: the notes-specific UI spec, docs and
+screenshots.
+
+What landed: `notebook-pen` added to the sprite (diffed — a pure addition, no
+upstream restyling of the 38 existing symbols); `web/js/pages/notes-tab.js`
+with the two modes; the dispatch arm in `trip-detail-page.js`; a `.trip-notes`
+block in `base.css`; nine `tripNotes.*` keys in both locales. Three
+course-corrections while building, all toward reusing what exists rather than
+adding beside it: the save uses `guardForm` rather than a hand-rolled listener,
+because `guard()` applies `preventDefault` *after* the busy check and would let
+the dropped half of a double-tap submit the form for real; the error paragraph
+joined the shared `.item-form__error, …` rule instead of getting a private one
+(`--color-danger` is a background token, not a text colour); and Save/Cancel
+reuse the existing `common.save`/`common.cancel` rather than adding
+near-duplicate keys.
+
+The reshuffle turned out to *relieve* the phone row rather than strain it.
+Measured at 324px in German, the longest remaining row label is "Reiseplan" at
+49.9px in a 58.4px cell, where the departing "Checklisten" was 59px — wider
+than its own cell, which is what the `hyphens: auto` rule was there to absorb.
+The comment at that grid rule quoted the old number and has been corrected;
+the hyphenation stays, since nothing guarantees the new slack lasts.
+
+Verified: `make ci` green; the full `make test-ui` suite green (226 passed),
+which is what actually pins the reshuffle — `menu.spec.js` asserts the phone
+row plus More menu reads in the desktop order in both locales, and
+`routes.spec.js` now sweeps `/notes` for overlap, tap targets and field sizes
+at every viewport and scheme. `make check-contrast` green with the new route
+(702 elements). Then driven by hand in Firefox at 1280×800 and 324×756: an
+unwritten trip opens in the editor with Save and no Cancel; saving
+`## Ferry / Book by *May*. / - passport / - paper licence / [road](…)` renders
+`H2, P, UL, P` with a real `<em>` and a real link and switches to the read
+view; reload lands in the read view; Edit returns the source verbatim and
+focuses the textarea, auto-grown to 272px; typing then Cancel discards the
+draft and keeps the saved note; clearing to whitespace and saving deletes the
+note and drops back to the editor, with the API confirming
+`{"body":"","updated_at":null}`. The phone row measured 5 equal 58.4px cells
+with no horizontal overflow, and the More menu reads Checklisten, Dateien,
+Ausgaben, Mitreisende, Einstellungen. A viewer was checked against the
+component directly, in both states: rendered note, no textarea, no buttons at
+all; and on an empty trip the muted empty line rather than an editor.
+
 ---
 
-## Milestone 3 — Tab order, tests, docs
+## Milestone 3 — The notes UI spec, docs, screenshots
 
-**The reshuffle** in [trip-tabs.js](web/js/trip-tabs.js): insert
-`{ key: "notes", icon: "notebook-pen" }` after itinerary and move
-`checklists` below it with `overflow: true`. The file's long header comment
-names the specific tabs that stay and go and is the reason the invariant has
-survived — rewrite it to match, including which four now stay and why
-Checklists was the one demoted. `app.js`'s route table and the bar rendering
-both derive from the array; nothing else in `web/js` needs touching.
+**Scope note.** The tab reshuffle and the three order-asserting lists moved
+into Milestone 2 (see its Done paragraph) because the route table derives from
+`TRIP_TABS`. What remains here is everything specific to the notes tab that
+the generic sweeps cannot cover.
 
-The mobile grid stays `repeat(5, …)` — still four primary tabs plus More.
-But the comment at [base.css:~3010](web/css/base.css) justifies the cell
-width against German's longest label, "Checklisten" at 59px, which is exactly
-the label leaving the row. Re-measure at 324px with the new set (likely
-"Reiseplan") and correct the number, or the next person tunes against a
-tab that is not there.
-
-**Hard-coded lists that will fail loudly, and must be updated together:**
-
-- `TRIP_TABS` in [tests/ui/helpers/scenarios.js:44](tests/ui/helpers/scenarios.js#L44)
-  — drives `routes.spec.js`'s per-viewport overlap and tap-target sweep, so
-  the new route gets that coverage for free once it is listed.
-- `TAB_ORDER` (en + de) and `OVERFLOW_LABELS` in
-  [tests/ui/menu.spec.js](tests/ui/menu.spec.js), plus the positional
-  assertion below them whose indices shift.
-- `CONTRAST_ROUTES` in the [Makefile](Makefile) — add
-  `--route /trips/{trip}/notes`.
-
-**New** `tests/ui/notes.spec.js`, assertion-led rather than screenshot-led:
+**New** `tests/ui/notes.spec.js`, assertion-led rather than screenshot-led,
+pinning what was verified by hand in Milestone 2 so it cannot regress quietly:
 a trip with no note shows a `textarea` and no Edit button; saving
 `## Heading\n\n- one\n- two` produces a real `h2` and two `li` in
 `.trip-notes__rendered`; a reload still shows them; Edit puts the original
-source back in the textarea; a viewer (the sharing scenario's second user)
-sees the rendered note and no Edit button. Check whether
-[sharing.spec.js](tests/ui/sharing.spec.js) enumerates what a viewer is not
+source back in the textarea; Cancel discards an unsaved draft; clearing the
+note returns to the editor; and a viewer sees the rendered note with no Edit
+button. Check whether `sharing.spec.js` enumerates what a viewer is not
 offered and add Notes if so.
 
-**Docs** — `docs/features/itinerary-and-lists.md` gains a Notes section;
-check `zensical.toml`'s nav if a new page is warranted instead. Run
-`make docs` (`--strict` catches dead links). Regenerate
-`docs/assets/screenshots/` via `make screenshots` only if an existing shot
-now shows the wrong tab bar — the reshuffle means several probably do, so
-budget for it; the tab captures need `scrollTo`.
+**Docs** — `docs/features/itinerary-and-lists.md` gains a Notes section; check
+`zensical.toml`'s nav if a new page is warranted instead. Run `make docs`
+(`--strict` catches dead links).
 
-**Verify.** `make ci`, `make test-ui`, `make check-contrast`, `make docs`.
+**Screenshots** — `docs/assets/screenshots/` is committed and several shots
+show the tab bar, which now reads differently. Check which are actually stale
+before regenerating; `make screenshots` needs `scrollTo` for tab captures.
 
----
+**Verify.** `make ci`, `make test-ui`, `make docs`.
 
 ## Build order
 
 1. Milestone 1 — schema through API, backend-only, independently testable
    with `curl`/`go test` before any UI exists.
-2. Milestone 2 — the tab, reachable at `/trips/{id}/notes` by URL while it
-   is still absent from the bar.
-3. Milestone 3 — the reshuffle and everything that asserts against tab order,
-   in one commit so the app and its tests never disagree.
+2. Milestone 2 — the tab, plus the reshuffle that gives it a route at all and
+   the lists that assert tab order, in one commit so the app and its tests
+   never disagree. (The plan originally split these; see the Done paragraph
+   for why they cannot be.)
+3. Milestone 3 — the notes-specific UI spec, docs and screenshots.
 
 ## Workflow
 

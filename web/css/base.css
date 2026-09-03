@@ -583,6 +583,7 @@ textarea {
 .checklist-item__error,
 .image-field__error,
 .assist__error,
+.trip-notes__error,
 .suggest-page__error {
   color: var(--color-text);
   font-size: 0.875rem;
@@ -2726,6 +2727,69 @@ button {
   font-size: 0.875rem;
 }
 
+/* The trip notepad (Stage 31). One document per trip, shown either as a
+   textarea or as the HTML the server rendered from it -- see notes-tab.js for
+   which mode you land in and why. The two take turns in the same column, so
+   the actions row sits in the same place either way and switching modes does
+   not move the buttons out from under the pointer. */
+.trip-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.trip-notes__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Width and resize are explicit for the same reason .itinerary-day__notes and
+   the location form's textarea set them: the UA default (resize: both) lets
+   the drag handle pull the box wider than the card holding it. Vertical
+   dragging still works, on top of the auto-grow in notes-tab.js. */
+.trip-notes__form textarea {
+  width: 100%;
+  min-height: 12rem;
+  resize: vertical;
+  font: inherit;
+}
+
+.trip-notes__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.trip-notes__empty {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+/* The rendered note. goldmark emits real headings, lists, code and quotes, so
+   without collapsing the outer margins the block sits in a box with a ragged
+   gap at each end -- the same treatment .notes-field__preview needs, and for
+   the same reason. No dashed border here, though: that one is a preview of
+   something still being edited, this is the note as it stands. */
+.trip-notes__rendered > :first-child {
+  margin-top: 0;
+}
+
+.trip-notes__rendered > :last-child {
+  margin-bottom: 0;
+}
+
+/* A long URL or an unbroken code span in a note must not widen the page. */
+.trip-notes__rendered {
+  overflow-wrap: break-word;
+}
+
+.trip-notes__rendered pre {
+  overflow-x: auto;
+}
+
+
 .checklist-card__header {
   display: flex;
   align-items: center;
@@ -3004,9 +3068,14 @@ button {
        and its active underline hugged the text while theirs spanned a full
        cell. Uniform cells make the spacing uniform by construction.
 
-       The cost is ~58px per cell against German's longest label
-       ("Checklisten", 59px at this size), which is what `hyphens: auto` below
-       is for. */
+       The cost is ~58px per cell. That used to be the tight constraint, because
+       German's longest row label was "Checklisten" at 59px -- wider than its own
+       cell, which is what `hyphens: auto` below is for. Stage 31 moved
+       Checklists into "More" to make room for Notes, so the longest label in the
+       row is now "Reiseplan" at 49.9px in a 58.4px cell (measured at 324px, the
+       narrowest viewport the suite covers). The hyphenation stays: it is the
+       thing that would absorb a longer label arriving in some other locale, and
+       nothing about the row guarantees the current slack lasts. */
     grid-template-columns: repeat(5, minmax(0, 1fr));
     overflow-x: visible;
     gap: 0;

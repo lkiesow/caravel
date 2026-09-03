@@ -24,8 +24,8 @@ const MOBILE = { width: 324, height: 756 };
 // Hard-coded rather than read from web/js/trip-tabs.js so a wrong *translation*
 // is a failure and not just a mirror of the source.
 const OVERFLOW_LABELS = {
-  en: { more: "More", items: ["Files", "Expenses", "Members", "Settings"] },
-  de: { more: "Mehr", items: ["Dateien", "Ausgaben", "Mitreisende", "Einstellungen"] },
+  en: { more: "More", items: ["Checklists", "Files", "Expenses", "Members", "Settings"] },
+  de: { more: "Mehr", items: ["Checklisten", "Dateien", "Ausgaben", "Mitreisende", "Einstellungen"] },
 };
 
 async function openTripLocations(page) {
@@ -325,8 +325,8 @@ for (const locale of ["en", "de"]) {
 // trip-tabs.js, for the reason this file spells out its labels: importing the
 // source cannot disagree with it.
 const TAB_ORDER = {
-  en: ["Locations", "Map", "Itinerary", "Checklists", "Files", "Expenses", "Members", "Settings"],
-  de: ["Orte", "Karte", "Reiseplan", "Checklisten", "Dateien", "Ausgaben", "Mitreisende", "Einstellungen"],
+  en: ["Locations", "Map", "Itinerary", "Notes", "Checklists", "Files", "Expenses", "Members", "Settings"],
+  de: ["Orte", "Karte", "Reiseplan", "Notizen", "Checklisten", "Dateien", "Ausgaben", "Mitreisende", "Einstellungen"],
 };
 
 for (const locale of ["en", "de"]) {
@@ -352,7 +352,12 @@ for (const locale of ["en", "de"]) {
       const mobileOrder = [...row, ...more].map((s) => s.trim());
       expect(mobileOrder, "phone row + More menu should read in the desktop order").toEqual(expected);
 
-      // And the part that was asked for by name: checklists before files.
+      // And the part that was asked for by name. This used to read "checklists
+      // before files"; Stage 31 inserted Notes after Itinerary and demoted
+      // Checklists to the More menu, which is exactly the arrangement the
+      // invariant in trip-tabs.js exists to protect -- a primary tab must not
+      // be able to fall behind an overflow one on the phone. Notes is index 3,
+      // last in the row; Checklists is index 4, first in More.
       expect(mobileOrder.indexOf(expected[3])).toBeLessThan(mobileOrder.indexOf(expected[4]));
     });
   });

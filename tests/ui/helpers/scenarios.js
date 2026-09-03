@@ -41,7 +41,7 @@ export const SCENARIO_TITLES = {
   cascade: "Demo: Delete Me (Cascade)",
 };
 
-export const TRIP_TABS = ["locations", "map", "itinerary", "checklists", "files", "expenses", "members", "settings"];
+export const TRIP_TABS = ["locations", "map", "itinerary", "notes", "checklists", "files", "expenses", "members", "settings"];
 
 export const VIEWPORTS = [
   { name: "desktop", width: 1280, height: 800 },

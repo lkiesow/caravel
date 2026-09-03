@@ -146,6 +146,7 @@ CONTRAST_ROUTES = \
 	--route /trips/{trip}/locations \
 	--route /trips/{trip}/map \
 	--route /trips/{trip}/itinerary \
+	--route /trips/{trip}/notes \
 	--route /trips/{trip}/expenses \
 	--route /trips/{trip}/checklists \
 	--route /trips/{trip}/files \

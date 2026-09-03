@@ -553,3 +553,13 @@ else runs this.
   records only edits made after it exists -- so the data will be there whenever
   "last edited by Anna, Tuesday" is wanted. Needs a display-name lookup in the
   response, which the note payload deliberately does not do yet.
+
+- **The notes tab has no preview while you type.** (Stage 31 Milestone 2, Sep
+  2026.) The location form's notes field has an Edit/Preview toggle
+  (`.notes-field__toggle`, backed by `POST /api/markdown/preview`); the trip
+  notepad deliberately does not, because there Save *is* the switch to the
+  rendered view. That is the right call for a short note and a doubtful one for
+  a long one, where you would rather check a table renders before committing to
+  it. If it is added, it must go through the same preview endpoint -- a second
+  client-side renderer would be a second sanitizer.
+

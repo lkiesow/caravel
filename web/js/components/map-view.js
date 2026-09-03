@@ -16,7 +16,7 @@ import { resolveMapTheme } from "../map-theme.js";
 // resolves them -- including repeating the light one when an operator named no
 // dark counterpart -- so there is no naming convention guessed at here.
 const DEFAULT_MAP_CONFIG = {
-  style_url: "/js/vendor/map-styles/positron.json",
+  style_url: "/js/vendor/map-styles/liberty.json",
   dark_style_url: "/js/vendor/map-styles/dark.json",
 };
 
@@ -260,11 +260,19 @@ const styles = `
 
      Two sets rather than one, because a colour chosen to read on near-white
      paper does not read on near-black. Measured against each cartography's own
-     background (positron rgb(242,243,240), dark rgb(12,12,12)): the light
-     values sit between 3.1:1 and 5.5:1 there, but "stay" and "transport" fall
-     to 3.4:1 and 3.8:1 on the dark map - above the 3:1 floor for a graphical
-     object, and visibly dimmer than their neighbours. The dark set is the same
-     hues two steps lighter, which puts all six between 7:1 and 11:1.
+     background (liberty rgb(248,244,240), dark rgb(12,12,12)): the light
+     values sit between 3.0:1 and 5.2:1 there, but "stay" and "transport" fall
+     to 3.4:1 and 3.8:1 on the unmodified dark map - above the 3:1 floor for a
+     graphical object, and visibly dimmer than their neighbours. The dark set
+     is the same hues two steps lighter, which puts all six between 7:1 and
+     11:1.
+
+     Re-checked against liberty when it replaced positron as the light style.
+     Its land is busier -- green parks, blue water -- so the tightest pairing
+     is now a green "site" pin over a park (2.6:1) or a blue "transport" pin
+     over water (2.8:1). Both stay legible because of the ring below rather
+     than the fill: perceptually they are 58 and 55 dE apart, which is not a
+     near miss. The ring is what does the work, and always was.
 
      The legend dots use these too. They sit on app chrome rather than on the
      map, so they could have followed the app's theme instead - but a legend

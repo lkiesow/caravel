@@ -790,6 +790,88 @@ their own WCAG threshold, worst 3.59:1 on an unrelated brand link.
 
 ---
 
+## Follow-up: a basemap you can actually read
+
+*Not planned. Raised after the stage landed -- "the contrast is rather low in
+both light and dark map mode" -- and the complaint was right in a way worth
+recording, because the cause was a category error rather than a bad colour
+choice.*
+
+**Positron and dark-matter are *overlay* basemaps.** They are deliberately
+desaturated so that data drawn on top of them stands out. Caravel was using
+them as maps in their own right, which is not what they are for. Measured
+against each style's own land colour:
+
+| | positron | dark |
+|---|---|---|
+| water vs land | dE 15.8 | **dE 6.7** |
+| place labels | 11-18.9:1 | **3.36:1** |
+| road labels | 5.16:1 | **2.37:1** |
+| forest / park | dE 3.8-7.0, grey | dE 1.2, grey |
+| buildings | dE 3.3 | 1.01:1, *darker* than land |
+| roads | 1.08-1.32:1 | 1.10-1.77:1 |
+
+Two separate faults fell out of that. The reported one was the light map's
+geography: forests and parks drawn as neutral grey rather than green, and
+`landcover_wood` only from zoom 10 up, so at trip-planning zooms there was no
+green anywhere. The one nobody had reported is that **the dark style failed
+WCAG AA for text** -- 3.36:1 place names against a 4.5 threshold, 2.37:1 road
+names -- which makes it a bug rather than a preference.
+
+**Light: liberty replaces positron.** The full-detail style from the same
+project. Parks and forests green, water blue (dE 43 rather than 16), buildings
+dE 9.6 with 3D extrusion above zoom 14, a readable road hierarchy, and labels
+no worse (every real label layer at or above 5.25:1). It dropped in with no
+code change: it references only `tiles.openfreemap.org`, and 20 of its 23 label
+layers localise with the remaining 3 being exactly the
+`["to-string",["get","ref"]]` road shields `readsAName()` already protects.
+
+**`bright` was the other candidate and lost on measurement.** Its forest green
+looks decisive in the style JSON -- `#6a4`, dE 67.6 raw -- but it is drawn at
+**0.1 alpha**, which composites to dE 6.8: no better than positron. Its
+buildings composite to dE 4.1. This corrected a number given during the
+investigation, where the first pass had ignored opacity throughout; the
+landcover figures above are all composited.
+
+**Dark: the vendored style is patched**, because it is the only dark style
+OpenFreeMap serves and there is no liberty-equivalent. 32 layers, substituted
+per layer rather than by a blanket transform -- the same literal means
+different things in different places, since `rgb(27,27,29)` is water in one
+layer and a footpath in another. Labels to 7.75:1 (roads 5.67:1, all 13 label
+layers now passing AA), water to dE 20 and blue, forest to dE 18 and green,
+buildings to dE 8.9 and *lighter* than the land they stand on, road casings to
+3.56:1. Water labels were black text with a dark grey halo -- invisible at any
+contrast -- and are now on-colour with a dark blue halo.
+
+**The trade-off taken deliberately:** liberty-light and dark-matter-dark are
+different cartographic families, colourful against monochrome. The alternative
+was deriving a dark variant from liberty, which means hand-tuning 111 layers
+and owning that cartography permanently. A reader picks one mode and never sees
+them side by side, and flatter dark maps are the convention.
+
+**One consequence worth stating:** `dark.json` is no longer byte-identical to
+upstream, which the vendor README previously promised for both styles. It now
+records the upstream hash, the committed hash, a table of what changed and why,
+and the warning that re-vendoring drops the patch. Liberty can be refetched
+freely.
+
+Marker colours were re-checked rather than assumed. Liberty's land is busier,
+so the tightest pairings are now a green "site" pin over a park (2.6:1) and a
+blue "transport" pin over water (2.8:1) -- but at 58 and 55 dE those are not
+near misses, and the white ring under each pin is what does the separating, as
+it always was. No palette change needed.
+
+**Verified.** `make ci`, `make docs` (`--strict`), `make check-screenshots` and
+`make check-env` green; `make test-ui` at 221 passed with only the two
+documented distance-filter flakes; `make check-contrast` at 690 elements, all
+above their own threshold, in both schemes. All fifteen documentation
+screenshots regenerated. By hand against a live `make dev` at zoom 13 over
+Reykjavik, in both modes: buildings, parks, water and the road hierarchy all
+legible, markers clearly on top, no console errors. The `map-theme.spec.js`
+background assertion now compares parsed colours rather than strings, since
+liberty writes `#f8f4f0` where dark writes `rgb(12,12,12)` and a string
+comparison would have broken on notation alone.
+
 ## Build order
 
 1 → 2 is hard (2 needs the vendored files). 3 introduces `_applyOverlays()`

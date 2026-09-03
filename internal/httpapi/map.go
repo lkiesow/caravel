@@ -26,7 +26,7 @@ import (
 // Two URLs because light and dark are a per-browser preference
 // (web/js/map-theme.js), so an instance has to be able to answer both.
 const (
-	DefaultMapStyleURL     = "/js/vendor/map-styles/positron.json"
+	DefaultMapStyleURL     = "/js/vendor/map-styles/liberty.json"
 	DefaultMapStyleDarkURL = "/js/vendor/map-styles/dark.json"
 )
 

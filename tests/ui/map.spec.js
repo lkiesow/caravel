@@ -1760,8 +1760,8 @@ test.describe("map labels follow the reader's language", () => {
     await gotoTripMap(page);
     const { untouched } = await labelChains(page);
 
-    // The trap in "rewrite every text-field layer": three layers in positron
-    // are motorway shields, whose text is ["to-string", ["get","ref"]]. A
+    // The trap in "rewrite every text-field layer": three layers in the light
+    // style are motorway shields, whose text is ["to-string", ["get","ref"]]. A
     // shield reads "A1" - not a name, with no translation - so localising it
     // would blank every shield on the map. They must be left exactly as they
     // came.

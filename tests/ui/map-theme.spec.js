@@ -17,8 +17,13 @@ const MOBILE = { width: 324, height: 756 };
 
 // The two vendored cartographies, by the one thing that tells them apart
 // without fetching anything: their background layer.
-const LIGHT_BG = "rgb(242,243,240)";
-const DARK_BG = "rgb(12,12,12)";
+//
+// Compared as parsed colours rather than as strings, because the two styles
+// write theirs differently -- liberty uses "#f8f4f0" and dark uses
+// "rgb(12,12,12)" -- and a string comparison would break on a restyle that
+// changed nothing but the notation.
+const LIGHT_BG = [248, 244, 240];
+const DARK_BG = [12, 12, 12];
 
 async function gotoTripMap(page) {
   const routes = await buildRoutes(page);
@@ -45,11 +50,20 @@ const mapState = (page) =>
     // helper throws instead of returning "not yet", which showed up only under
     // a full parallel run, where the window is wide enough to land in.
     const bg = host._map.getStyle()?.layers?.find((l) => l.type === "background");
+    // "#f8f4f0" or "rgb(12,12,12)" -> [r,g,b], so the assertion does not care
+    // which notation a style happens to use.
+    const rgb = (v) => {
+      if (typeof v !== "string") return null;
+      const hex = v.match(/^#([0-9a-f]{6})$/i);
+      if (hex) return [0, 2, 4].map((i) => parseInt(hex[1].slice(i, i + 2), 16));
+      const fn = v.match(/(\d+)\s*[ ,]\s*(\d+)\s*[ ,]\s*(\d+)/);
+      return fn ? [Number(fn[1]), Number(fn[2]), Number(fn[3])] : null;
+    };
     const marker = host.shadowRoot.querySelector(".maplibregl-marker");
     const centre = host._map.getCenter();
     return {
       scheme: host.dataset.scheme,
-      background: bg?.paint?.["background-color"] ?? null,
+      background: rgb(bg?.paint?.["background-color"]),
       markerColor: marker ? getComputedStyle(marker).backgroundColor : null,
       legendDot: (() => {
         const d = host.shadowRoot.querySelector(".legend .dot");

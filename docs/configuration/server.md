@@ -14,7 +14,7 @@ change when the defaults do not fit.
 | `CARAVEL_UPLOAD_DIR` | `uploads` | Where uploaded images and documents are stored |
 | `CARAVEL_WEB_DIR` | *(unset)* | Serve the frontend live from this directory instead of the copy embedded in the binary. A development setting — see `make dev` |
 | `CARAVEL_GEOCODER_URL` | OpenStreetMap Nominatim | Address-search endpoint — see [Address search](address-search.md) |
-| `CARAVEL_MAP_STYLE_URL` | the bundled Positron style | The vector map style the browser draws — see [Map style](map-style.md) |
+| `CARAVEL_MAP_STYLE_URL` | the bundled Liberty style | The vector map style the browser draws — see [Map style](map-style.md) |
 | `CARAVEL_MAP_STYLE_DARK_URL` | the bundled dark style | The same, for readers who chose a dark map |
 | `CARAVEL_TRUSTED_PROXIES` | the private ranges | Networks whose `X-Forwarded-For` is believed when attributing a request to a client address. A comma-separated list of CIDR ranges and addresses; `none` to trust nothing. Replaces the default rather than extending it — see [Behind a reverse proxy](../running/reverse-proxy.md) |
 | `CARAVEL_BASE_URL` | *(unset)* | The public origin the instance is reached under, scheme and host, no path — for example `https://caravel.example`. Used only to build the absolute URLs in the social preview tags. Unset derives it from each request, which is right behind an ordinary reverse proxy; set it if something in front rewrites `Host` |

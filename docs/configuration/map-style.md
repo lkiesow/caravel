@@ -7,7 +7,7 @@ style is served by Caravel itself and the data comes from
 
 | Variable | Default |
 |---|---|
-| `CARAVEL_MAP_STYLE_URL` | `/js/vendor/map-styles/positron.json` |
+| `CARAVEL_MAP_STYLE_URL` | `/js/vendor/map-styles/liberty.json` |
 | `CARAVEL_MAP_STYLE_DARK_URL` | `/js/vendor/map-styles/dark.json` |
 
 Both accept an absolute path or an `http(s)` URL; anything else stops the
@@ -61,7 +61,7 @@ OpenMapTiles schema from a downloaded extract.
 Point the style at your own server and the rest of Caravel is unchanged:
 
 ```sh
-CARAVEL_MAP_STYLE_URL='https://tiles.example.org/styles/positron.json'
+CARAVEL_MAP_STYLE_URL='https://tiles.example.org/styles/liberty.json'
 CARAVEL_MAP_STYLE_DARK_URL='https://tiles.example.org/styles/dark.json'
 ```
 

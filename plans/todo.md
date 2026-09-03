@@ -59,6 +59,18 @@ purpose — do not reconstruct it from an older stage plan without asking.
 
 ## Planned features
 
+- **The dark map is a patched vendored style, and a refetch would drop that.**
+  (Stage 30 follow-up.) `web/js/vendor/map-styles/dark.json` carries 32 colour
+  substitutions, because upstream it failed WCAG AA for text -- 3.36:1 place
+  names -- and drew water at dE 6.7 from land. It is the only dark style
+  OpenFreeMap serves, so there was nothing to switch to. The README records
+  the upstream hash, what changed and the warning, but nothing enforces it: a
+  future re-vendor that forgets would silently reintroduce an accessibility
+  failure. Worth turning into a small script that fetches upstream and applies
+  the substitutions, the way `gen_icon_sprite.py` does for icons, if the style
+  is ever refetched. The alternative is deriving a dark variant from liberty,
+  which means owning 111 layers of cartography.
+
 - **Panning across the terminator does not re-light the map.** (Stage 30
   Milestone 5.) The day/night mode takes its coordinate from a remembered fix
   first and the map's viewport centre only as a fallback, and it re-resolves

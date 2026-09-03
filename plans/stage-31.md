@@ -284,6 +284,48 @@ before regenerating; `make screenshots` needs `scrollTo` for tab captures.
 
 **Verify.** `make ci`, `make test-ui`, `make docs`.
 
+**Done.** Landed as scoped after Milestone 2 absorbed the reshuffle.
+
+`tests/ui/notes.spec.js` — four tests, owning their own trip like
+`checklists.spec.js` does, because the seeded `full` trip's note is read by the
+screenshot run. They cover the mode rule transition by transition (empty opens
+the editor with no Cancel; saving renders `h2`/`li`/`em` and switches to the
+read view; reload lands in the read view; Edit returns the source verbatim;
+Cancel discards a draft without resurrecting it; clearing to whitespace returns
+to the fresh-trip state) plus a viewer who reads the note and is offered no
+editor. `sharing.spec.js` gained the same viewer check in its per-tab sweep,
+including the promoted-to-editor half — and its fixture now writes a note for
+the reason its own comment already gives about locations and checklists: on a
+trip with *no* note everyone gets the editor, so an empty note would assert
+nothing.
+
+The specs were mutation-checked rather than merely observed passing: forcing
+`editing = false` in `notes-tab.js` fails exactly the two tests that own the
+mode rule, and the file was restored from a pre-mutation copy and diffed clean.
+
+Docs: the page is retitled "The itinerary, notes and lists" (nav label
+follows), with a Notes section between the itinerary and files. The home
+page's feature card needed no change — its copy is thematic and never named the
+page title.
+
+Screenshots regenerated, and this was not optional: every trip-tab capture
+shows the tab bar, which now reads differently. `notes.png` was added to
+`gen_screenshots.mjs` after the itinerary shot. The seeded note needed one fix
+found only by looking at the result — it had `--` where an em dash belonged,
+which is a habit from the SQL-comment rule in CLAUDE.md that does not apply to
+a Go string, and it was rendering literally on the project website.
+
+Verified: `make ci` green (16 screenshots, all shown by a page), `make test-ui`
+green at 230 passed — up from 226, the four new tests — and `make docs` green
+under `--strict`.
+
+One gap found and recorded in `todo.md`: `--strict` does **not** catch a
+missing image. `make docs` passed cleanly while the new page referenced
+`notes.png` before it existed, and a deliberate reference to a made-up filename
+also exits 0. Only `check_screenshots.py` looks at these, and it checks the
+other direction — that every committed file is used, not that every reference
+resolves.
+
 ## Build order
 
 1. Milestone 1 — schema through API, backend-only, independently testable

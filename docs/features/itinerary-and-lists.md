@@ -1,7 +1,8 @@
-# The itinerary, files and lists
+# The itinerary, notes and lists
 
-Locations answer *where*. The itinerary answers *when*, and the files and lists
-hold everything you need to have with you.
+Locations answer *where*. The itinerary answers *when*, the notes hold
+everything that is neither, and the files and lists hold what you need to have
+with you.
 
 ## The itinerary
 
@@ -26,6 +27,23 @@ two are one fact with two ways in — whichever you reach for, the other agrees.
 
 On a phone the day cards stack and the tab row collapses to icons — which is the
 form you actually read it in, standing outside somewhere at 9am.
+
+## Notes
+
+![Trip notes](../assets/screenshots/notes.png)
+
+One page per trip for everything that is not a place, a date or a task: why you
+ruled out the northern route, what the ferry office said on the phone, the thing
+somebody has to remember to ask about the rental car.
+
+It is written in [Markdown](https://commonmark.org/help/) — headings, lists,
+emphasis, links — and rendered when you save it. A trip with nothing written
+down opens straight into the editor; once there is something to read, the tab
+shows the note and puts the editor behind **Edit**.
+
+There is one note per trip and everyone on the trip can read it. Any editor can
+change it, and the last save wins, so it is a shared page rather than a private
+one — a viewer reads it and is offered no way to change it.
 
 ## Files
 

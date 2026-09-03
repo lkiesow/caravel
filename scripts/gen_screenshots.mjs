@@ -323,6 +323,12 @@ async function main() {
   await page.goto(`/trips/${full.id}/itinerary`);
   await shoot(page, "itinerary", { scrollTo: TABS });
 
+  // The seeder writes this trip a note already, and unlike most of the seeded
+  // content it needs no dressing: it is prose about a ferry and a rental car,
+  // which is what the tab is for.
+  await page.goto(`/trips/${full.id}/notes`);
+  await shoot(page, "notes", { scrollTo: TABS });
+
   await page.goto(`/trips/${full.id}/files`);
   await shoot(page, "files", { scrollTo: TABS });
 

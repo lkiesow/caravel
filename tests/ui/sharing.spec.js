@@ -66,6 +66,11 @@ for (const locale of ["en", "de"]) {
       const listId = (await list.json()).id;
       const listItem = await page.request.post(`/api/checklists/${listId}/items`, { data: { text: "something" } });
       expect(listItem.status()).toBe(201);
+      // And a trip note, for that same reason: the notes tab renders an editor
+      // for an editor and nothing but prose for a viewer, and on a trip with no
+      // note *everyone* gets the editor -- so an empty note would assert nothing.
+      const note = await page.request.put(`/api/trips/${tripId}/notes`, { data: { body: "## Ferry\n\nBook by May." } });
+      expect(note.status()).toBe(200);
     });
 
     test.afterEach(async ({ page }) => {
@@ -121,6 +126,11 @@ for (const locale of ["en", "de"]) {
         await expect(theirPage.locator(".checklist-item-form")).toHaveCount(0);
         await expect(theirPage.locator(".checklist-item input[type=checkbox]")).toBeDisabled();
 
+        await theirPage.goto(`/trips/${tripId}/notes`);
+        await expect(theirPage.locator(".trip-notes__rendered h2")).toHaveText("Ferry");
+        await expect(theirPage.locator(".trip-notes textarea")).toHaveCount(0);
+        await expect(theirPage.locator(".trip-notes__edit")).toHaveCount(0);
+
         await theirPage.goto(`/trips/${tripId}/files`);
         await expect(theirPage.locator(".file-drop")).toHaveCount(0);
 
@@ -141,6 +151,9 @@ for (const locale of ["en", "de"]) {
         await theirPage.goto(`/trips/${tripId}/checklists`);
         await expect(theirPage.locator(".checklist-new-form")).toHaveCount(1);
         await expect(theirPage.locator(".checklist-item input[type=checkbox]")).toBeEnabled();
+
+        await theirPage.goto(`/trips/${tripId}/notes`);
+        await expect(theirPage.locator(".trip-notes__edit")).toHaveCount(1);
 
         // --- and they can leave under their own steam ---
         await theirPage.goto(`/trips/${tripId}/members`);

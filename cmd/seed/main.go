@@ -597,7 +597,7 @@ func seedFull(s seedCtx) error {
 			"- Ferry tickets are refundable until *14 days* before departure.\n" +
 			"- The rental car needs the paper licence, not just the card.\n\n" +
 			"## Ideas nobody has scheduled yet\n\n" +
-			"Hot spring on the way back, if the road is open. Ask Anna --\n" +
+			"Hot spring on the way back, if the road is open. Ask Anna \u2014\n" +
 			"she drove it last spring.\n",
 		UpdatedAt: time.Now().UTC(),
 		UpdatedBy: &s.ownerID,

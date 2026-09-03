@@ -39,7 +39,7 @@ nav = [
   { Features = [
     { "Trips and locations" = "features/trips-and-locations.md" },
     { "The map" = "features/the-map.md" },
-    { "The itinerary, files and lists" = "features/itinerary-and-lists.md" },
+    { "The itinerary, notes and lists" = "features/itinerary-and-lists.md" },
     { "Sharing and expenses" = "features/sharing-and-expenses.md" },
     { "The assistant" = "features/the-assistant.md" },
   ] },

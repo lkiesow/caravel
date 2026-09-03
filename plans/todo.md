@@ -563,3 +563,14 @@ else runs this.
   it. If it is added, it must go through the same preview endpoint -- a second
   client-side renderer would be a second sanitizer.
 
+- **The docs build does not catch a missing image.** (Stage 31 Milestone 3, Sep
+  2026.) `zensical build --strict` fails on a dead *internal link* -- which is
+  the whole reason CLAUDE.md calls the flag load-bearing -- but an
+  `![alt](../assets/whatever.png)` pointing at a file that does not exist
+  builds clean and exits 0. Reproduced deliberately with a made-up filename,
+  and hit for real: `make docs` passed while the new Notes page referenced
+  `notes.png` before the screenshot run had created it. `check_screenshots.py`
+  covers only the other direction (every committed screenshot is shown by some
+  page). The missing half is cheap -- walk the image references in `docs/` and
+  assert each target exists -- and belongs next to that script in `make ci`.
+

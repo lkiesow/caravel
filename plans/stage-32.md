@@ -563,6 +563,68 @@ the converted total — assertions on text content, not screenshots. Plus
 a case asserting the picker is **absent** on a single-currency trip,
 which is the regression that would otherwise go unnoticed.
 
+**Done.** Landed as planned. The form's selected currency is held in a
+`formCurrency` variable rather than read off the select, because on a
+single-currency trip the select does not exist and the amount's exponent
+depends on it either way. It is reset to the trip's own at all three
+points where the form stops pointing at a particular expense — opening an
+editor sets it to that expense's currency, cancelling and saving put it
+back.
+
+`majorUnits` gained a currency parameter, which is what makes editing a
+foreign expense work: ¥12,000 types back as `12000`, not `120.00`. The
+picker itself is absent from the markup entirely when the trip has no
+additional currencies — not hidden, absent.
+
+Two things the plan did not anticipate, both found by looking rather than
+by a test failing. The live preview was synced against an empty field
+during setup, so **opening an edit on a foreign expense showed no
+converted figure until the amount was touched** — the one moment it is
+most worth seeing. Fixed with a `syncPreview()` after the prefill. And
+`.expenses__row-amount` had to become a flex column: at 324px the two
+amounts side by side are wider than the column, and the figure that would
+have had to truncate is the one saying what was actually paid. Stacked,
+the muted converted line sits under it; a single-currency row has one
+text node there and is unchanged.
+
+Verified in Firefox at 324×756 against `make dev`. A EUR trip with JPY at
+0.0058 and two expenses rendered `¥12,000` with `≈ €69.60` beneath,
+`€45.00` alone on the euro row, and a total of **€114.60**. Switching the
+picker to JPY moved the label to "Amount (JPY)" and the placeholder to
+`0` — no decimals, because yen have none — and typing 1200 previewed
+`≈ €6.96` before anything was sent. Submitting stored `1200 JPY` and the
+form reset to EUR. Reopening the ¥12,000 row prefilled `12000` in JPY
+with the preview already showing. On a single-currency trip: no picker,
+no converted spans, a one-line amount, no horizontal scroll anywhere.
+
+One flake, and it is not this stage's: a full `make test-ui` run came
+back 236 passed / 1 failed, the failure being
+`assist-suggest.spec.js`'s New-menu navigation timing out at 25.6s. It
+passes alone in ~10s and passed in the runs either side, nothing in it
+touches the currency work, and every CSS rule this stage added is scoped
+to `.expenses__*` or `.trip-currencies__*`. Checked rather than assumed,
+and logged in `plans/todo.md` rather than shrugged at.
+
+`tests/ui/trip-currencies.spec.js` grew from four tests to seven — the
+picker and dual row, the edit round trip, and the single-currency
+regression, which is the one that would otherwise go unnoticed. All seven
+pass, and the full `make test-ui` suite is green.
+
+`docs/features/sharing-and-expenses.md` gained a "More than one currency"
+section and lost the sentence telling people to convert by hand before
+typing, which this stage exists to make untrue. `make docs` builds clean
+in `--strict` — note that `zensical` was not installed on this machine
+either; 0.0.57 to match both workflow pins.
+
+The whole-stage checklist's last open item was also closed here, now
+that the UI makes it checkable end to end: on a shared trip, a single
+¥12,000 expense paid by one of two people settles as **€34.80 owed each
+way**, nets summing to zero, with the suggested transfer denominated in
+EUR. The ledger really does settle in one currency.
+
+Probe trips were deleted afterwards; the seven seeded scenarios are
+untouched.
+
 ---
 
 ## Build order
@@ -609,3 +671,18 @@ and a select. The exponent fold in Milestone 4 looks like the tricky
 part and is not — it is integer arithmetic with a round-trip test — but
 it *is* the part that will read as magic in six months, so its comment
 matters more than its code.
+
+**In hindsight, that was right about where the difficulty was and wrong
+about where the bugs were.** Milestone 3's arithmetic went in cleanly and
+never broke a test: converting into a copy of the ledger meant
+`payerTotals` and `computeBalances` did not change at all, and the
+shares-sum-to-the-whole property held first time. The exponent fold was
+likewise uneventful — 1092 round trips, all exact on the first run.
+
+The three defects this stage actually produced were all in the last two
+milestones and none were arithmetic: an unescaped attribute in the rate
+editor, a preview that stayed blank when an edit opened, and a remove
+button that wrapped to the wrong place. Two were found by reading the
+diff and one by measuring the layout, which is an argument for doing both
+rather than for trusting a green suite. The comments still matter more
+than the code, but the review matters more than either.

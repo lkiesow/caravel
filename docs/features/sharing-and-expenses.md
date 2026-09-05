@@ -25,9 +25,9 @@ else can see them.
 
 ![The expenses tab](../assets/screenshots/expenses.png)
 
-Each trip has one currency, chosen when you create it. Every amount is stored as
-a whole number of the currency's smallest unit — cents for EUR, whole yen for
-JPY — so nothing is ever a fraction of a cent out.
+Each trip has one **main currency**, chosen when you create it. Every amount is
+stored as a whole number of the currency's smallest unit — cents for EUR, whole
+yen for JPY — so nothing is ever a fraction of a cent out.
 
 An expense records what it was for, what it cost, **who paid** and **who it was
 for**. By default it splits evenly between everyone on the trip; untick "Split
@@ -51,5 +51,34 @@ recorded as having paid** is reported separately rather than split between peopl
 who may not owe it. And nothing here marks a debt as paid: the settle-up list is
 advice, not a record.
 
-Changing a trip's currency does not convert amounts already recorded, so a
-foreign-currency purchase is best entered as the converted amount.
+## More than one currency
+
+A trip through Japan on a Euro budget wants both numbers on the row: the receipt
+says ¥1,200 and the ledger says €7.60. So a trip can record expenses in
+currencies other than its main one.
+
+In **Settings → Other currencies**, add a currency and give it a rate — the form
+reads as you would look it up, `1 JPY = 0.0058 EUR`. Once a currency is
+configured, the expense form grows a picker beside the amount, and the field
+follows what you choose: pick JPY and it stops offering decimals, because yen
+have none.
+
+An expense is **stored in what you actually paid** and **counted in the main
+currency**. The row shows both — `¥12,000` with `≈ €69.60` under it — while the
+total, everyone's share and the whole settle-up summary stay in one currency,
+because a total in three currencies is not a total.
+
+Three things are worth knowing:
+
+- **Rates are live, not historical.** There is one rate per currency, and
+  editing it re-converts every expense recorded in that currency. A trip's rate
+  is "the rate we're using", not a record of the market on the day.
+- **A currency in use cannot be removed.** Caravel says how many expenses hold
+  it rather than leaving amounts it can no longer convert.
+- **Rates are entered against the main currency at the time.** Changing the main
+  currency later does not recalculate them, and does not convert amounts already
+  recorded either — the settings form warns you when you try, and the rates are
+  worth checking afterwards.
+
+A trip that never adds a second currency sees none of this: no picker, no second
+figure, exactly as before.

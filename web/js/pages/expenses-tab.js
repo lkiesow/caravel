@@ -6,7 +6,15 @@ import { confirmDialog } from "../components/dialog.js";
 import { renderMenu } from "../components/menu.js";
 import { renderLoading } from "../components/loading.js";
 import { getCurrentUser } from "../session.js";
-import { formatMoney, parseMoney, moneyPlaceholder, moneyExample, currencyExponent } from "../format.js";
+import {
+  formatMoney,
+  parseMoney,
+  moneyPlaceholder,
+  moneyExample,
+  currencyExponent,
+  convertMinor,
+  RATE_ONE,
+} from "../format.js";
 
 // A trip's expenses: the total, the rows grouped by the day they were spent,
 // and one form that both adds and edits.
@@ -72,6 +80,27 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
   let error = null;
 
   const currency = () => data.currency || trip.currency || "EUR";
+
+  // Which currency the form is currently in. Held here rather than read off the
+  // select, because the select does not exist on a single-currency trip and the
+  // amount's exponent depends on this either way. Reset to the trip's own
+  // whenever the form stops pointing at a particular expense -- opening an
+  // editor, cancelling one, and saving.
+  let formCurrency = currency();
+
+  // The trip's *additional* currencies, from the trip rather than the ledger:
+  // the expenses endpoint reports what each row was paid in, but the set on
+  // offer is a property of the trip. Empty is the common case, and it is what
+  // decides whether the form asks the question at all -- a trip with one
+  // currency must look exactly as it did before Stage 32.
+  const extraCurrencies = () => trip.currencies ?? [];
+  const rateFor = (code) =>
+    code === currency() ? RATE_ONE : (extraCurrencies().find((c) => c.code === code)?.rate_ppb ?? null);
+
+  // What one row was paid in. The server always populates this, so the
+  // empty-means-the-trip rule is never re-implemented here -- the fallback is
+  // for a response predating the field, not a rule.
+  const rowCurrency = (expense) => expense.currency || currency();
 
   function render() {
     container.innerHTML = `
@@ -361,7 +390,20 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
     // Assigned as text rather than interpolated, so a title containing markup
     // is a title containing markup.
     li.querySelector(".expenses__row-title").textContent = expense.title;
-    li.querySelector(".expenses__row-amount").textContent = formatMoney(expense.amount_minor, currency());
+    // Original first, converted after: what was handed over is the fact, and
+    // the converted figure is an approximation of it -- which is why it is
+    // muted, smaller, and prefixed with a tilde. A row in the trip's own
+    // currency renders exactly as it always did, with no second figure at all.
+    const amountEl = li.querySelector(".expenses__row-amount");
+    amountEl.textContent = formatMoney(expense.amount_minor, rowCurrency(expense));
+    if (rowCurrency(expense) !== currency()) {
+      const converted = document.createElement("span");
+      converted.className = "expenses__row-converted";
+      converted.textContent = t("expenses.converted", {
+        amount: formatMoney(expense.converted_minor, currency()),
+      });
+      amountEl.appendChild(converted);
+    }
     // A second line under the title rather than a fourth column: at 324px the
     // row already gives the amount and the menu fixed width, and a name is the
     // piece that would have had to truncate to nothing.
@@ -431,6 +473,9 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
         onSelect: async (action) => {
           if (action === "edit") {
             editing = expense;
+            // The form opens in the currency the expense was paid in, so the
+            // amount it prefills is the amount that was typed.
+            formCurrency = rowCurrency(expense);
             error = null;
             render();
             const card = container.querySelector(".expenses__form-card");
@@ -462,8 +507,22 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
           <!-- text with inputmode rather than type="number": the parsing is
                exact and separator-tolerant in format.js, and a numeric keypad
                is what inputmode is for. -->
-          <input type="text" name="amount" inputmode="decimal" required />
+          <div class="expenses__amount-row">
+            <input type="text" name="amount" inputmode="decimal" required />
+            ${
+              // Absent entirely on a single-currency trip, which is the common
+              // case: a select with one option is a question with one answer.
+              extraCurrencies().length
+                ? `<select name="currency" class="expenses__currency">
+                     ${[currency(), ...extraCurrencies().map((c) => c.code)]
+                       .map((code) => `<option value="${code}"${code === formCurrency ? " selected" : ""}>${code}</option>`)
+                       .join("")}
+                   </select>`
+                : ""
+            }
+          </div>
         </label>
+        <p class="expenses__converted-preview" hidden></p>
         <label>
           <span data-i18n="expenses.form.date"></span>
           <input type="date" name="spentOn" required />
@@ -523,13 +582,48 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
     `;
     translatePage(card);
 
-    // The amount label names the currency, so the field says what unit it wants
-    // without a second line of copy explaining it.
-    card.querySelector(".expenses__amount-label").textContent = t("expenses.form.amount", { currency: currency() });
-
     const form = card.querySelector("form");
-    form.elements.amount.placeholder = moneyPlaceholder(currency());
     const errorEl = card.querySelector(".item-form__error");
+    const previewEl = card.querySelector(".expenses__converted-preview");
+
+    // The label, the placeholder and the example all name the *selected*
+    // currency rather than the trip's, so switching the select re-answers
+    // "what unit does this field want" everywhere it was asked -- including
+    // the exponent, which is why a JPY row stops offering decimals.
+    function syncCurrency() {
+      card.querySelector(".expenses__amount-label").textContent = t("expenses.form.amount", {
+        currency: formCurrency,
+      });
+      form.elements.amount.placeholder = moneyPlaceholder(formCurrency);
+      syncPreview();
+    }
+
+    // The converted figure, live under the field. The server remains the
+    // authority -- every stored total comes back converted from it -- and this
+    // exists only so the number the user most wants confirmed does not need a
+    // round trip. Silent when the amount is unparseable: a preview is not the
+    // place to report a typo, the submit is.
+    function syncPreview() {
+      const rate = rateFor(formCurrency);
+      const minor = parseMoney(form.elements.amount.value, formCurrency);
+      if (formCurrency === currency() || rate === null || minor === null) {
+        previewEl.hidden = true;
+        return;
+      }
+      previewEl.textContent = t("expenses.converted", {
+        amount: formatMoney(convertMinor(minor, rate), currency()),
+      });
+      previewEl.hidden = false;
+    }
+
+    if (form.elements.currency) {
+      form.elements.currency.addEventListener("change", (e) => {
+        formCurrency = e.target.value;
+        syncCurrency();
+      });
+    }
+    form.elements.amount.addEventListener("input", syncPreview);
+    syncCurrency();
 
     // Option labels as text, not interpolated markup: a display name is
     // whatever somebody typed into their profile.
@@ -577,7 +671,11 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
 
     if (isEditing) {
       form.elements.title.value = editing.title;
-      form.elements.amount.value = majorUnits(editing.amount_minor);
+      form.elements.amount.value = majorUnits(editing.amount_minor, formCurrency);
+      // The preview was synced above against an empty field, so a foreign-
+      // currency expense would open showing no converted figure until the
+      // amount was touched -- which is the one moment it is most worth seeing.
+      syncPreview();
       form.elements.spentOn.value = editing.spent_on;
       // The expense's own payer, not the person editing. If they have since
       // left the trip they are not in the select at all, and the value falls
@@ -615,20 +713,23 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
 
     card.querySelector('[data-action="cancel"]')?.addEventListener("click", () => {
       editing = null;
+      // Back to an add form, which starts in the trip's own currency however
+      // the abandoned edit was denominated.
+      formCurrency = currency();
       error = null;
       render();
     });
 
     guardForm(form, async () => {
       const title = form.elements.title.value.trim();
-      const amountMinor = parseMoney(form.elements.amount.value, currency());
+      const amountMinor = parseMoney(form.elements.amount.value, formCurrency);
       const spentOn = form.elements.spentOn.value;
 
       // Reported here rather than sent to be refused: the server checks all
       // three too, but a message beside the field beats one that arrives as a
       // failed request. The amount is the one that needs local parsing anyway.
       if (!title) return fail(t("expenses.error.title"));
-      if (amountMinor === null) return fail(t("expenses.error.amount", { example: moneyExample(currency()) }));
+      if (amountMinor === null) return fail(t("expenses.error.amount", { example: moneyExample(formCurrency) }));
       if (!spentOn) return fail(t("expenses.error.date"));
       // Unticking everybody has no meaning -- an expense for nobody cannot be
       // split -- and the server would read an empty set as "everyone", so it
@@ -641,6 +742,10 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
       const body = {
         title,
         amount_minor: amountMinor,
+        // Always sent, even when it is the trip's own: the server accepts the
+        // main currency named explicitly and normalises it away, so there is no
+        // reason for this client to have two shapes of request.
+        currency: formCurrency,
         spent_on: spentOn,
         // Always sent explicitly: the server deliberately has no default (see
         // internal/httpapi/expenses.go), so "who paid" is this client's
@@ -663,6 +768,7 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
         return fail(err?.body?.error || t("common.error"));
       }
       editing = null;
+      formCurrency = currency();
       error = null;
       await reload();
     });
@@ -693,8 +799,11 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
 
   // Shown in the amount field when editing: minor units back to the plain
   // decimal a person types, with no currency symbol or grouping in the way.
-  function majorUnits(amountMinor) {
-    const exponent = currencyExponent(currency());
+  // The currency is a parameter rather than the trip's: an expense being edited
+  // is typed back in the currency it was paid in, and yen have no decimals to
+  // put back.
+  function majorUnits(amountMinor, code) {
+    const exponent = currencyExponent(code);
     if (exponent <= 0) return String(amountMinor);
     return (amountMinor / 10 ** exponent).toFixed(exponent);
   }

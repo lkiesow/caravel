@@ -136,4 +136,81 @@ test.describe("trip currencies", () => {
 
     expect(failures).toEqual([]);
   });
+
+  // The expenses tab's half of the feature: the picker, the dual row, and the
+  // promise that a single-currency trip is untouched by any of it.
+  test("records an expense in another currency and shows both figures", async ({ page }) => {
+    await page.request.put(`/api/trips/${tripId}/currencies`, {
+      data: { currencies: [{ code: "JPY", rate_ppb: 580000000 }] },
+    });
+    await page.request.post(`/api/trips/${tripId}/expenses`, {
+      data: { title: "Train", amount_minor: 4500, spent_on: "2026-08-20" },
+    });
+
+    await page.goto(`/trips/${tripId}/expenses`);
+    const form = page.locator(".expenses__form");
+
+    // The label and the placeholder follow the picker, exponent included: yen
+    // have no minor unit, so the field stops offering decimals.
+    await expect(page.locator(".expenses__amount-label")).toHaveText("Amount (EUR)");
+    await form.locator('[name="currency"]').selectOption("JPY");
+    await expect(page.locator(".expenses__amount-label")).toHaveText("Amount (JPY)");
+    await expect(form.locator('[name="amount"]')).toHaveAttribute("placeholder", "0");
+
+    // The live preview, before anything is saved.
+    await form.locator('[name="title"]').fill("Ryokan");
+    await form.locator('[name="amount"]').fill("12000");
+    await form.locator('[name="spentOn"]').fill("2026-08-19");
+    await expect(page.locator(".expenses__converted-preview")).toHaveText("≈ €69.60");
+
+    await form.getByRole("button", { name: /add expense/i }).click();
+
+    // Original first, converted after: what was paid is the fact, the
+    // conversion is an approximation of it.
+    const yenRow = page.locator(".expenses__row", { hasText: "Ryokan" });
+    await expect(yenRow.locator(".expenses__row-amount")).toContainText("¥12,000");
+    await expect(yenRow.locator(".expenses__row-converted")).toHaveText("≈ €69.60");
+
+    // The euro row keeps one figure, and the total is the converted sum.
+    const eurRow = page.locator(".expenses__row", { hasText: "Train" });
+    await expect(eurRow.locator(".expenses__row-converted")).toHaveCount(0);
+    await expect(page.locator(".expenses__total")).toHaveText("€114.60");
+  });
+
+  test("reopens a foreign expense in the currency it was paid in", async ({ page }) => {
+    await page.request.put(`/api/trips/${tripId}/currencies`, {
+      data: { currencies: [{ code: "JPY", rate_ppb: 580000000 }] },
+    });
+    await page.request.post(`/api/trips/${tripId}/expenses`, {
+      data: { title: "Ryokan", amount_minor: 12000, currency: "JPY", spent_on: "2026-08-19" },
+    });
+
+    await page.goto(`/trips/${tripId}/expenses`);
+    const row = page.locator(".expenses__row", { hasText: "Ryokan" });
+    await row.locator(".expenses__row-trigger").click();
+    await row.locator('button[data-value="edit"]').click();
+
+    const form = page.locator(".expenses__form");
+    // 12000, not 120.00: the amount is typed back in its own currency, whose
+    // exponent is zero.
+    await expect(form.locator('[name="amount"]')).toHaveValue("12000");
+    await expect(form.locator('[name="currency"]')).toHaveValue("JPY");
+    // And the preview is there on open, not only once the field is touched.
+    await expect(page.locator(".expenses__converted-preview")).toHaveText("≈ €69.60");
+  });
+
+  // The regression that would otherwise go unnoticed: every trip that has not
+  // asked for a second currency must look exactly as it did before Stage 32.
+  test("a single-currency trip is offered no picker at all", async ({ page }) => {
+    await page.request.post(`/api/trips/${tripId}/expenses`, {
+      data: { title: "Hostel", amount_minor: 4500, spent_on: "2026-08-18" },
+    });
+
+    await page.goto(`/trips/${tripId}/expenses`);
+    await expect(page.locator(".expenses__row")).toHaveCount(1);
+    await expect(page.locator('.expenses__form [name="currency"]')).toHaveCount(0);
+    await expect(page.locator(".expenses__row-converted")).toHaveCount(0);
+    await expect(page.locator(".expenses__converted-preview")).toBeHidden();
+    await expect(page.locator(".expenses__row-amount")).toHaveText("€45.00");
+  });
 });

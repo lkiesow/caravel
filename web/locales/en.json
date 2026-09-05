@@ -380,6 +380,7 @@
   "expenses.deleteConfirm": "Delete this expense? This cannot be undone.",
   "expenses.form.title": "What was it for",
   "expenses.form.amount": "Amount ({currency})",
+  "expenses.converted": "≈ {amount}",
   "expenses.form.date": "Date",
   "expenses.form.item": "Location (optional)",
   "expenses.form.itemNone": "No location",

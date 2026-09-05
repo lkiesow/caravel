@@ -2,7 +2,7 @@ import { api } from "../api.js";
 import { guardClick } from "../busy.js";
 import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
-import { CURRENCIES, parseRate, formatRate } from "../format.js";
+import { CURRENCIES, parseRate, formatRate, RATE_ONE } from "../format.js";
 
 // The extra currencies a trip records expenses in, and the rate for each.
 // Stage 32 Milestone 4.
@@ -128,7 +128,7 @@ export function renderTripCurrenciesField(container, trip, { onSaved } = {}) {
         if (ratePPB === null) {
           errorEl.textContent = t("trip.currencies.error.rate", {
             code: row.code,
-            example: formatRate(1_000_000_000, row.code, trip.currency),
+            example: formatRate(RATE_ONE, row.code, trip.currency),
           });
           errorEl.hidden = false;
           return;

@@ -149,6 +149,12 @@ export function moneyExample(currency) {
 // literal, because every calculation below is done on exponents.
 const RATE_SCALE = 9;
 
+// RATE_ONE is the rate of a currency against itself: the main currency's
+// implied rate, and the identity convertMinor preserves exactly. Mirrors
+// db.RateOne in internal/db/domain.go, the same deliberate duplication as
+// CURRENCIES above.
+export const RATE_ONE = 10 ** RATE_SCALE;
+
 // rateShift is how many powers of ten separate the typed rate from the stored
 // one: the billion, plus the difference between the two currencies' exponents.
 // JPY (0) into EUR (2) is 9 + 2 - 0 = 11, so 0.0058 becomes 58 * 10^7.

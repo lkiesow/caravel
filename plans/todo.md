@@ -336,6 +336,18 @@ purpose — do not reconstruct it from an older stage plan without asking.
   person's computer does, and someone reading a German UI may still want their
   own separators.
 
+- **`assist-suggest.spec.js`'s first test is flaky under parallel load.**
+  (Stage 32 Milestone 5.) "is reached from the New menu, and adds the ticked
+  places in one go" failed once in a full `make test-ui` run, on
+  `expect(page).toHaveURL(/\/suggest$/)` after 25.6s -- the New menu click did
+  not reach the suggest page in time. It passes alone in ~10s, and passed in
+  the two full runs either side of it, so this is contention rather than a real
+  regression: nothing in that spec touches the currency work, and the run it
+  failed in was otherwise 236 green. Worth a look because a test that fails
+  once every few full runs teaches people to re-run rather than to read. The
+  likely fix is an explicit wait on the menu being open before clicking the
+  row, rather than a longer timeout.
+
 ---
 
 - **`escapeAttr` promises attribute safety and delivers entity escaping.**

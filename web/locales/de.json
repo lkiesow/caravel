@@ -380,6 +380,7 @@
   "expenses.deleteConfirm": "Diese Ausgabe löschen? Das kann nicht rückgängig gemacht werden.",
   "expenses.form.title": "Wofür war es",
   "expenses.form.amount": "Betrag ({currency})",
+  "expenses.converted": "≈ {amount}",
   "expenses.form.date": "Datum",
   "expenses.form.item": "Ort (optional)",
   "expenses.form.itemNone": "Kein Ort",

@@ -5,6 +5,7 @@ import { navigate } from "../router.js";
 import { icon } from "../icon.js";
 import { renderTripForm } from "../components/trip-form.js";
 import { renderImageField } from "../components/image-field.js";
+import { renderTripCurrenciesField } from "../components/trip-currencies-field.js";
 import { confirmDialog } from "../components/dialog.js";
 
 // Renders the trip's own settings inline in the Settings tab - the same
@@ -33,6 +34,10 @@ export function renderSettingsTab(content, trip, { onTripUpdated, canEdit = true
       <div class="editor-card">
         <h2 data-i18n="trip.settings.image"></h2>
         <div class="image-field-slot"></div>
+      </div>
+      <div class="editor-card">
+        <h2 data-i18n="trip.currencies.heading"></h2>
+        <div class="trip-currencies-slot"></div>
       </div>`
           : `<div class="editor-card">
         <h2 data-i18n="trip.tabs.settings"></h2>
@@ -64,6 +69,13 @@ export function renderSettingsTab(content, trip, { onTripUpdated, canEdit = true
         searchSeed: () => trip.title ?? "",
         onChanged: (updated) => onTripUpdated(updated),
       });
+
+      // Saves in place rather than through onTripUpdated: the currencies are
+      // not part of the trip PATCH, and re-rendering the whole tab bar and
+      // header for a rate change would throw away the rows being edited. The
+      // component writes the new set back onto the trip object, which is what
+      // the expenses tab reads when it next renders.
+      renderTripCurrenciesField(content.querySelector(".trip-currencies-slot"), trip);
     }
 
     // The confirm is inside the guard: a second click while the dialog is open

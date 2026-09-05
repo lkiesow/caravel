@@ -3888,6 +3888,65 @@ button {
   font-size: 0.8125rem;
 }
 
+/* The exchange-rate editor in trip settings (Stage 32).
+
+   Each row reads as the sentence it is -- 1 JPY = 0.0058 EUR -- so the parts
+   sit on one line and the rate field is the only thing that grows. It wraps
+   rather than scrolls at narrow widths: the code select and the amount are
+   both meaningless without the other, so breaking the line is better than
+   pushing either off the edge. At 324px the sentence fits and the remove
+   button is what wraps; .icon-remove's own margin-left:auto then carries it to
+   the right edge, where it still reads as this row's trailing action rather
+   than as something adrift under it. */
+.trip-currencies__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  margin-bottom: 0.5rem;
+}
+
+.trip-currencies__rate {
+  /* Grows into the row, but never below a width that shows a rate like
+     0.0058 in full -- a field you have to scroll to read is worse than a
+     wrapped line. */
+  flex: 1 1 5rem;
+  min-width: 5rem;
+}
+
+.trip-currencies__code {
+  /* Intrinsic, so the select is as wide as a three-letter code and not a
+     third of the row. */
+  flex: 0 0 auto;
+  width: auto;
+}
+
+.trip-currencies__one,
+.trip-currencies__eq,
+.trip-currencies__main {
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.trip-currencies__empty {
+  margin: 0 0 0.75rem;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.trip-currencies__error {
+  margin: 0 0 0.75rem;
+  color: var(--color-danger-fg);
+  font-size: 0.875rem;
+}
+
+.trip-currencies__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
 /* Expenses (Stage 17).
 
    The total sits above the rows rather than after them: it is the number you

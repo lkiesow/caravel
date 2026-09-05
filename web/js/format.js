@@ -131,3 +131,86 @@ export function moneyPlaceholder(currency) {
 export function moneyExample(currency) {
   return currencyExponent(currency) > 0 ? "12.50" : "1200";
 }
+
+// Exchange rates. Stage 32.
+//
+// A trip stores one rate per additional currency, as an integer in parts per
+// billion converting the *minor unit* of that currency into the *minor unit*
+// of the trip's main currency. Nobody types that number, and nobody should
+// have to read it: the pair below is what stands between it and the field.
+//
+// The server deliberately has no idea how many decimal places a currency has
+// -- that knowledge is here, from Intl, and is the reason the stored rate is
+// minor-to-minor at all. So folding the two exponents in is this file's job.
+// One yen, which has no minor unit, is 0.58 cents: type "0.0058" for JPY on a
+// EUR trip and 580000000 is stored.
+//
+// RATE_SCALE is the "per billion" part, as a power of ten rather than a
+// literal, because every calculation below is done on exponents.
+const RATE_SCALE = 9;
+
+// rateShift is how many powers of ten separate the typed rate from the stored
+// one: the billion, plus the difference between the two currencies' exponents.
+// JPY (0) into EUR (2) is 9 + 2 - 0 = 11, so 0.0058 becomes 58 * 10^7.
+function rateShift(foreign, main) {
+  return RATE_SCALE + currencyExponent(main) - currencyExponent(foreign);
+}
+
+// parseRate turns a typed rate into the integer to store, or null if it is not
+// a usable one. ("0.0058", "JPY", "EUR") is 580000000.
+//
+// Done on the string rather than through parseFloat, exactly as parseMoney is
+// and for exactly the same reason: 0.0058 * 1e11 is not 580000000 in binary
+// floating point, and a rate is the multiplier under every amount on the trip.
+// Splitting the digits from the decimal point and shifting by a power of ten is
+// exact by construction.
+export function parseRate(text, foreign, main) {
+  const trimmed = String(text).trim().replace(",", ".");
+  if (trimmed === "") return null;
+  // No sign, and no exponent notation: the server refuses a rate of zero or
+  // less, and "1e-3" in a currency field is far more likely a typo than intent.
+  const match = /^(\d*)(?:\.(\d+))?$/.exec(trimmed);
+  if (!match) return null;
+  const [, whole = "", fraction = ""] = match;
+  if (whole === "" && fraction === "") return null;
+
+  const shift = rateShift(foreign, main) - fraction.length;
+  // More decimals than the shift can absorb would need a fraction of a part
+  // per billion. Reported rather than silently rounded, the same call
+  // parseMoney makes about an over-precise amount.
+  if (shift < 0) return null;
+
+  const digits = (whole + fraction).replace(/^0+/, "");
+  if (digits === "") return null;
+  const ppb = Number(digits + "0".repeat(shift));
+  if (!Number.isSafeInteger(ppb) || ppb <= 0) return null;
+  return ppb;
+}
+
+// formatRate is parseRate inverted: the string to put back in the field for a
+// stored rate. (580000000, "JPY", "EUR") is "0.0058".
+//
+// Also integer-only. The digits are padded and a decimal point is inserted
+// rather than dividing, so what comes back is exactly what was typed -- a
+// round trip through the form must not drift the rate it is displaying.
+export function formatRate(ratePPB, foreign, main) {
+  const shift = rateShift(foreign, main);
+  const digits = String(ratePPB).padStart(shift + 1, "0");
+  const whole = digits.slice(0, digits.length - shift);
+  // Trailing zeros are noise in a rate: 0.00580000 says nothing 0.0058 does
+  // not, and the field is easier to correct without them.
+  const fraction = digits.slice(digits.length - shift).replace(/0+$/, "");
+  return fraction === "" ? whole : `${whole}.${fraction}`;
+}
+
+// convertMinor mirrors the server's own conversion, for the live preview under
+// the amount field. The server remains the authority -- every stored total and
+// balance comes back converted from it -- and this exists only so the number
+// the user most wants confirmed does not need a round trip.
+//
+// Number is exact to 2^53, and an amount times a rate stays far inside that for
+// any real expense; Math.round then matches the server's half-away-from-zero
+// for the positive amounts the column allows.
+export function convertMinor(amountMinor, ratePPB) {
+  return Math.round((amountMinor * ratePPB) / 10 ** RATE_SCALE);
+}

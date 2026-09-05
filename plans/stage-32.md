@@ -459,6 +459,73 @@ configure JPY on the seeded trip, reload, assert the stored rate renders
 back as typed; assert removing a currency in use surfaces the server's
 message; assert the German locale's copy is present.
 
+**Done.** Landed as planned, in a component of its own —
+`web/js/components/trip-currencies-field.js`, mounted as a third
+`editor-card` in the settings tab. A component rather than fields inside
+`settings-tab.js` for the same reason the plan kept it out of
+`trip-form.js`: it owns its own working copy and its own save.
+
+The rows keep their state in a JS array rather than being read back off
+the DOM at save time, so adding or removing a row does not discard what
+was typed in the others. A code can be chosen once — each select offers
+the unused codes plus its own current one, or it could not display what
+it holds — and the trip's main currency is never offered at all. Save
+adopts the server's response, which comes back ordered by code, so the
+rows do not reshuffle on the next load. The "add" button disables itself
+when every supported currency is spoken for.
+
+`parseRate`/`formatRate` landed in `format.js` as planned, both
+integer-only and string-based, for the reason `parseMoney` already is:
+`0.0058 * 1e11` is not `580000000` in binary floating point, and a rate
+is the multiplier under every amount on the trip. `convertMinor` came
+along too, for Milestone 5's live preview.
+
+One bug found reviewing the diff before committing, worth recording
+because it is the kind that ships: the typed rate goes back into an
+attribute `value="..."` on every re-render, and a code change re-renders
+the whole group -- so an unescaped quote in the field was an injection
+into the app's own markup. Self-inflicted only, but a real hole. Fixed
+with a local `escapeHtml`, which is the house convention here: ten
+modules carry their own copy and the app has no shared DOM helper, so
+introducing one for a single call would have been a change of a
+different kind.
+
+Two small deviations. The error example is
+`formatRate(RateOne, code, main)` rather than a written-in string, so a
+JPY row is told "for example 0.01" and a EUR-into-JPY row would be told
+something else — derived from the pair, the same call `moneyExample`
+makes. And the remove button is `.icon-remove`, the class the itinerary
+already uses for exactly this, rather than the `.btn-icon` first
+drafted: `.btn-icon` is a bare padding rule that nothing else in the app
+uses, and inventing a second convention for a row action would have been
+the wrong kind of new.
+
+Verified in Firefox at 324×756 against `make dev`, by assertion
+throughout. Typed `0.0058` for JPY on a EUR trip → the server stored
+**580000000** → a fresh page load redisplayed **`0.0058`**. EUR absent
+from the select's options. An unparseable rate refused locally with
+"Enter a rate for JPY, for example 0.01." and nothing sent. Removing a
+currency in use surfaced the server's own
+`JPY cannot be removed: 1 expense(s) are recorded in it` verbatim. German
+renders throughout, accessible names included ("JPY entfernen",
+"1 JPY in EUR"). Layout: the sentence `1 JPY = 0.0058 EUR` holds one line
+at 324px with the remove button wrapping beneath it — first draft left it
+adrift at the left, fixed by letting `.icon-remove`'s own
+`margin-left: auto` stand, so it now sits flush right at 291px, the row's
+own right edge. No horizontal page scroll at any point.
+
+Committed coverage: `tests/ui/trip-currencies.spec.js`, four tests on its
+own throwaway trip. Three cover the flows above; the fourth is the one
+the plan asked to test hardest and no Go test can reach — **every
+ordered pair of the 13 supported currencies × 7 rates, typed → stored →
+redisplayed, asserted identical**, run inside the browser that actually
+performs the fold. 156 pairs, 1092 round trips, all exact. That is where
+an off-by-one in the exponent arithmetic would hide, since the shift
+depends on *both* currencies' exponents.
+
+`make ci` green, 454 keys in sync, and the full `make test-ui` run green.
+Probe data on the seeded trip was cleared afterwards.
+
 ---
 
 ## Milestone 5 — The picker, the dual row, and the docs

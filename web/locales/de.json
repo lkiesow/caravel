@@ -388,6 +388,7 @@
   "expenses.error.date": "Wähle den Tag der Ausgabe.",
   "trip.form.currency": "Währung",
   "trip.form.currencyHint": "Alle Ausgaben dieser Reise werden in dieser Währung erfasst. Eine Änderung rechnet bereits erfasste Beträge nicht um.",
+  "trip.form.currencySwitchWarning": "Für diese Reise sind Wechselkurse für {codes} hinterlegt. Sie wurden als Umrechnung in {previous} eingegeben und werden beim Wechsel der Hauptwährung nicht neu berechnet — bitte prüfe sie nach dem Speichern.",
   "expenses.whoPaid": "Wer bezahlt hat",
   "expenses.paidBy": "Bezahlt von {name}",
   "expenses.payer.none": "Niemand auf der Reise",

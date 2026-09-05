@@ -336,21 +336,6 @@ purpose — do not reconstruct it from an older stage plan without asking.
   person's computer does, and someone reading a German UI may still want their
   own separators.
 
-- **Changing a trip's main currency silently reinterprets its exchange rates.**
-  (Stage 32 Milestone 3.) A rate stored in `trip_currencies` converts its code
-  into *the trip's main currency*, but nothing records which main currency it
-  was entered against. So a EUR trip with JPY at 0.0058 that is later switched
-  to USD keeps that number and now reads it as JPY-to-USD -- a plausible-looking
-  figure that is simply wrong, and nothing says so. Two things already soften
-  it: the main currency cannot be changed to one that is already configured
-  (that is refused with a 409), and `trip.form.currencyHint` has warned since
-  Stage 17 that changing the currency does not convert amounts already
-  recorded. Neither covers this case. The cheap fix is to make the settings UI
-  say so at the moment of the change; the thorough one is to refuse the switch
-  outright while any additional currency is configured, and make the user clear
-  them first. Deliberately deferred: it needs a decision about which, and the
-  stage was already changing how every total is computed.
-
 ---
 
 - **`escapeAttr` promises attribute safety and delivers entity escaping.**

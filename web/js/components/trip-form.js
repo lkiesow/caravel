@@ -42,6 +42,7 @@ export function renderTripForm(container, trip, { onSaved, onCancel, showActions
         </select>
       </label>
       <p class="trip-form__hint" data-i18n="trip.form.currencyHint"></p>
+      <p class="trip-form__warning" role="status" hidden></p>
       ${
         showActions
           ? `
@@ -69,6 +70,37 @@ export function renderTripForm(container, trip, { onSaved, onCancel, showActions
     // twice is how they drift.
     form.currency.value = trip.currency || CURRENCIES[0];
   }
+
+  // A rate in trip_currencies converts its code into *the trip's main
+  // currency*, but nothing records which main currency it was entered
+  // against -- so switching the main currency leaves every rate reading as a
+  // conversion into the new one. The number stays plausible and becomes wrong,
+  // which is the kind of error nothing else in the app would ever surface.
+  //
+  // A warning at the moment of the change rather than a refusal: the switch is
+  // legitimate (a trip really can be re-denominated), and the person making it
+  // is the only one who knows whether the rates still mean anything. It names
+  // the codes, because "check your rates" is advice and "check JPY and USD" is
+  // an instruction.
+  //
+  // Shown only while the select differs from what was saved, so returning it to
+  // the original value takes the warning away again.
+  const currencyWarning = container.querySelector(".trip-form__warning");
+  const savedCurrency = trip?.currency ?? null;
+  const syncCurrencyWarning = () => {
+    const codes = (trip?.currencies ?? []).map((c) => c.code);
+    if (!codes.length || form.currency.value === savedCurrency) {
+      currencyWarning.hidden = true;
+      return;
+    }
+    currencyWarning.textContent = t("trip.form.currencySwitchWarning", {
+      codes: codes.join(", "),
+      previous: savedCurrency,
+    });
+    currencyWarning.hidden = false;
+  };
+  syncCurrencyWarning();
+  form.currency.addEventListener("change", syncCurrencyWarning);
 
   // Keep the end-date picker from offering days before the start date at
   // all - prevention beats the error message below, which only fires once

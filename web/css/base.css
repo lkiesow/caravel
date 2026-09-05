@@ -3870,6 +3870,24 @@ button {
   color: var(--color-text-muted);
 }
 
+/* A warning under the currency field, shown only while the main currency is
+   being changed on a trip that has exchange rates configured. Louder than the
+   hint above it because it reports a consequence the person cannot see:
+   the rates stay as typed and silently start meaning something else.
+
+   Tinted rather than plain muted text, and role="status" rather than "alert" -
+   it appears in response to a deliberate change, so it should be noticed on the
+   way past rather than interrupt. */
+.trip-form__warning {
+  margin: -0.25rem 0 0;
+  padding: 0.5rem 0.625rem;
+  border-left: 3px solid var(--color-danger-fg);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: var(--color-danger-tint);
+  color: var(--color-text);
+  font-size: 0.8125rem;
+}
+
 /* Expenses (Stage 17).
 
    The total sits above the rows rather than after them: it is the number you

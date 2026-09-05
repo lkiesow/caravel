@@ -385,6 +385,37 @@ it. It needs a decision — warn, or refuse the switch while currencies are
 configured — and this milestone was already changing how every total is
 computed.
 
+**Follow-up: warn when the main currency is switched.** Raised at the
+Milestone 3 checkpoint — the deferred `todo.md` entry got its decision
+straight away, and it was the cheap half: warn, do not refuse. Refusing
+would be wrong anyway. Re-denominating a trip is a legitimate thing to
+do, and the person doing it is the only one who knows whether the rates
+still mean anything.
+
+`trip-form.js` gains a warning paragraph under the currency select,
+shown only while the select differs from the saved value **and** the trip
+has rates configured — so returning the select to its original value
+takes the warning away again, and a single-currency trip never sees it.
+It names the codes and the previous main currency, because "check your
+rates" is advice and "check JPY, USD — they were entered as conversions
+into EUR" is an instruction. New `trip.form.currencySwitchWarning` in
+both locales, and a `.trip-form__warning` rule using the existing
+`--color-danger-tint`/`-fg` tokens: `role="status"` rather than `alert`,
+since it answers a deliberate change rather than interrupting.
+
+Verified in Firefox at 324×756 against `make dev`, by assertion rather
+than screenshot: hidden on load; after switching EUR→GBP it is visible
+with the full text naming `JPY, USD` and `EUR`, a 3px `rgb(220,38,38)`
+left border and the tinted background, 258px wide in a 324px viewport
+with no overflow; switching back to EUR hides it again; on a trip with no
+configured currencies changing the select leaves it hidden; and in German
+it renders the German copy. `make ci` green, 447 keys in sync, 0 console
+errors.
+
+Not covered by this, deliberately, and no longer tracked anywhere: the
+API still permits the switch silently. The warning is a UI affordance,
+not an invariant. That was the decision.
+
 ---
 
 ## Milestone 4 — The rate editor in trip settings

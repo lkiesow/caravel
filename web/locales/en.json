@@ -388,6 +388,7 @@
   "expenses.error.date": "Pick the day it was spent.",
   "trip.form.currency": "Currency",
   "trip.form.currencyHint": "Every expense on this trip is recorded in this currency. Changing it does not convert amounts already recorded.",
+  "trip.form.currencySwitchWarning": "This trip has exchange rates set for {codes}. They were entered as conversions into {previous}, and changing the main currency does not recalculate them — check them after saving.",
   "expenses.whoPaid": "Who paid",
   "expenses.paidBy": "Paid by {name}",
   "expenses.payer.none": "Nobody on the trip",

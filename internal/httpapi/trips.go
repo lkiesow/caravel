@@ -49,6 +49,15 @@ type tripResponse struct {
 	// in. Always sent, so the client never has to assume one to format an
 	// amount.
 	Currency string `json:"currency"`
+	// Currencies are the *additional* currencies this trip may record expenses
+	// in, each with its rate into Currency above. Omitted when there are none,
+	// which is the common case and is what tells the client not to offer a
+	// picker at all.
+	//
+	// Sent on a single-trip response only. The trips list never formats a
+	// foreign amount, and populating it there would cost a query per row to
+	// answer a question nothing on that screen asks.
+	Currencies []tripCurrencyResponse `json:"currencies,omitempty"`
 }
 
 func (s *Server) tripToResponse(ctx context.Context, t db.Trip, role db.TripRole) tripResponse {
@@ -65,6 +74,14 @@ func (s *Server) tripToResponse(ctx context.Context, t db.Trip, role db.TripRole
 		Currency:       t.Currency,
 	}
 	resp.PreviewImageURL = s.resolveImageURL(ctx, t.PreviewImageID)
+	// A failure leaves this nil, the same shrug as the member count below, and
+	// it is safe for the same reason: nil hides the currency picker rather than
+	// mispricing anything. No amount is converted from this field -- the
+	// expenses endpoint does its own load and converts server-side, so a rate
+	// that failed to load there fails that request loudly instead.
+	if currencies, err := s.tripCurrencies(ctx, t.ID); err == nil {
+		resp.Currencies = currencies
+	}
 	// One extra count on a single-trip response. A failure leaves it at zero,
 	// which renders as a solo trip — the visibility control disappears rather
 	// than the page failing, and the server would refuse a bad value anyway.
@@ -248,6 +265,24 @@ func (s *Server) handleUpdateTrip(w http.ResponseWriter, r *http.Request) {
 	if err := req.validate(); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+
+	// Changing the main currency to one already configured as an additional
+	// currency would leave the trip converting a currency to itself at a rate
+	// nobody chose. Checked only when the request actually names a different
+	// currency, so an ordinary title edit costs no query.
+	if req.Currency != nil && *req.Currency != trip.Currency {
+		currencies, err := s.tripCurrencies(r.Context(), trip.ID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "could not check the trip currencies")
+			return
+		}
+		for _, c := range currencies {
+			if c.Code == *req.Currency {
+				writeError(w, http.StatusConflict, errMainCurrencyConfigured.Error())
+				return
+			}
+		}
 	}
 
 	updated, err := s.Store.UpdateTrip(r.Context(), db.UpdateTripParams{

@@ -186,6 +186,7 @@ func roleRoutes() []route {
 		{http.MethodGet, trip("/files"), lit(""), db.RoleViewer},
 		{http.MethodGet, trip("/checklists"), lit(""), db.RoleViewer},
 		{http.MethodGet, trip("/notes"), lit(""), db.RoleViewer},
+		{http.MethodGet, trip("/currencies"), lit(""), db.RoleViewer},
 		{http.MethodGet, trip("/expenses"), lit(""), db.RoleViewer},
 		{http.MethodGet, item(""), lit(""), db.RoleViewer},
 		{http.MethodGet, item("/files"), lit(""), db.RoleViewer},
@@ -199,6 +200,7 @@ func roleRoutes() []route {
 		{http.MethodPost, trip("/items"), lit(`{"title":"new","category":"site","tags":["landmark"]}`), db.RoleEditor},
 		{http.MethodPost, trip("/checklists"), lit(`{"title":"new list"}`), db.RoleEditor},
 		{http.MethodPut, trip("/notes"), lit(`{"body":"# plans"}`), db.RoleEditor},
+		{http.MethodPut, trip("/currencies"), lit(`{"currencies":[{"code":"JPY","rate_ppb":580000000}]}`), db.RoleEditor},
 		{http.MethodPost, trip("/expenses"), lit(`{"title":"new expense","amount_minor":250,"spent_on":"2026-08-21"}`), db.RoleEditor},
 		{http.MethodPut, trip("/itinerary/days/2026-08-21"), lit(`{"notes":"n"}`), db.RoleEditor},
 		// The dates block rides along on the item PATCH since Stage 25, where it

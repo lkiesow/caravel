@@ -196,6 +196,66 @@ converts to itself at a rate nobody chose.
 each validation message, the in-use refusal (and that it *succeeds* once
 the expense is deleted), the main-currency collision, and cascade.
 
+**Done.** Landed as planned, plus one route the plan did not name.
+Alongside `PUT /trips/{tripId}/currencies` there is now a
+`GET /trips/{tripId}/currencies` (viewer). The plan reasoned that the
+trip response makes a separate GET unnecessary, and for the client that
+is still true — nothing fetches it. It exists because the PUT needed a
+read-back path in its own tests that did not go through the whole trip
+response, and a write-only sub-resource is a strange thing to leave in a
+router. Cheap, symmetric, and in both authz tables.
+
+The trip response field is `currencies`, **`omitempty`** rather than
+always-present. A trip with no additional currencies omits it entirely,
+which is what tells the client not to offer a picker — and it is also
+what keeps the trips *list* honest, since that endpoint builds its rows
+inline and never loads rates. Absent and empty mean the same thing to a
+reader, so nothing is lost. The cost is one extra `ListTripCurrencies`
+per single-trip response; it is shrugged off on error like the member
+count beside it, which is safe here only because no amount is converted
+from this field — the expenses endpoint does its own load in Milestone 3
+and fails loudly instead.
+
+Validation landed as five refusals, each with a message naming the
+actual problem, since they are rendered next to the row that caused
+them: unsupported code, duplicate code, non-positive rate, implausible
+rate (a new `maxRatePPB`, a factor of one million — far past any real
+pair, there so a typo cannot store a number that makes every total
+meaningless), and the trip's own main currency. The in-use guard answers
+`409` naming the code and the count. `PATCH /trips/{id}` adopting a
+configured currency as its main one is also `409`, and costs no query
+unless the request actually names a different currency.
+
+Verified: `make ci` green. New `trip_currencies_test.go`, 5 tests
+(7 subtests) — the round trip including the `ORDER BY code` promise and
+the omitted-when-empty contract, wholesale replace including clearing to
+empty, every refusal *and* that a refused PUT wrote nothing, the in-use
+guard in all three directions (refused, re-rating still allowed, allowed
+once the expense is gone), and the main-currency collision including
+that the field stays writable to an unconfigured code. Both authz tables
+gained the two routes.
+
+Then end to end against the running dev server on seeded data, which is
+what actually proves the wiring: configured JPY+USD and watched them
+come back ordered by code on the trip itself; drew all five refusals
+with their real messages; inserted a JPY expense directly into
+`data/caravel.db` and watched the removal turn into
+`JPY cannot be removed: 1 expense(s) are recorded in it` while
+re-rating the same currency still returned 200; deleted the row and
+watched the removal succeed. `make dev-restart MARKER=handleSetTripCurrencies`
+first, so this was demonstrably the new binary and not a stale one.
+
+`make test-postgres` deliberately **not** re-run here: this milestone
+adds no SQL, only handler logic over the queries Milestone 1 already
+proved on both dialects. Milestone 3 changes the arithmetic and gets it
+again.
+
+The one thing the plan assumed and got wrong: the in-use guard's test
+cannot create its foreign expense through the API, because
+`expenseRequest` does not accept `currency` until Milestone 3 and
+`readJSON` refuses unknown fields. That test writes the row through the
+store instead, and says so.
+
 ---
 
 ## Milestone 3 — Expenses in a foreign currency, and what the totals mean

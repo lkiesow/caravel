@@ -172,6 +172,11 @@ func TestChecklistRoutesRejectAnotherUser(t *testing.T) {
 	o.assertDenied(t, http.MethodGet, "/api/trips/"+o.tripID+"/notes", "")
 	o.assertDenied(t, http.MethodPut, "/api/trips/"+o.tripID+"/notes", `{"body":"stolen"}`)
 
+	// The trip's currencies and their rates hang off the same trip too.
+	o.assertDenied(t, http.MethodGet, "/api/trips/"+o.tripID+"/currencies", "")
+	o.assertDenied(t, http.MethodPut, "/api/trips/"+o.tripID+"/currencies",
+		`{"currencies":[{"code":"JPY","rate_ppb":580000000}]}`)
+
 	// An item on the owner's checklist, to test the per-item routes.
 	itemID := o.ts.mustCreate(http.MethodPost, list+"/items", o.owner, `{"text":"Passport"}`, http.StatusCreated)
 	o.assertDenied(t, http.MethodPatch, list+"/items/"+itemID, `{"checked":true}`)
@@ -247,6 +252,7 @@ func TestOwnedRoutesRequireAuth(t *testing.T) {
 		{http.MethodGet, "/api/items/" + o.itemID},
 		{http.MethodGet, "/api/trips/" + o.tripID + "/checklists"},
 		{http.MethodGet, "/api/trips/" + o.tripID + "/notes"},
+		{http.MethodGet, "/api/trips/" + o.tripID + "/currencies"},
 		{http.MethodGet, "/api/trips/" + o.tripID + "/expenses"},
 		{http.MethodGet, "/api/files/" + o.fileID + "/download"},
 		{http.MethodGet, "/api/media/" + o.mediaID + "/file"},

@@ -352,6 +352,14 @@ func (s *Server) buildRouter() chi.Router {
 				r.Get("/notes", s.handleGetTripNote)
 				r.Put("/notes", s.handleSetTripNote)
 
+				// The trip's additional currencies and their rates. Reading
+				// needs only viewer, like the ledger itself: a viewer has to
+				// be able to format an amount they are allowed to see.
+				// Writing needs editor, matching PATCH /trips/{tripId} --
+				// this is a trip setting, not a membership decision.
+				r.Get("/currencies", s.handleGetTripCurrencies)
+				r.Put("/currencies", s.handleSetTripCurrencies)
+
 				r.Put("/preview-image", s.handleSetTripPreviewImage)
 				r.Post("/media", s.handleUploadMedia)
 				r.Post("/media/url", s.handleCreateMediaURL)

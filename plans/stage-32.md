@@ -251,10 +251,11 @@ proved on both dialects. Milestone 3 changes the arithmetic and gets it
 again.
 
 The one thing the plan assumed and got wrong: the in-use guard's test
-cannot create its foreign expense through the API, because
-`expenseRequest` does not accept `currency` until Milestone 3 and
-`readJSON` refuses unknown fields. That test writes the row through the
-store instead, and says so.
+could not create its foreign expense through the API, because
+`expenseRequest` did not accept `currency` until Milestone 3 and
+`readJSON` refuses unknown fields. It wrote the row through the store
+instead. *(Milestone 3 gave the API that field and the test now goes
+through it, as it should.)*
 
 ---
 
@@ -318,6 +319,71 @@ the next read. Unit tests for `convertMinor` in
 `expense_convert_test.go`: rounding at the half, the identity rate, the
 clamp, and an amount large enough that `int64` arithmetic would have
 overflowed.
+
+**Done.** Landed as planned. The shape that carries it is one the plan
+did not spell out: `convertedExpenses` returns a **copy** of the ledger
+with `AmountMinor` restated in the main currency, and `payerTotals` and
+`computeBalances` are then handed that copy unchanged. Neither of them
+learned what a currency is, and there is exactly one place in the
+codebase where a rate is applied. Conversion happens once per expense
+before anything is split, totalled or balanced — which is what preserves
+`expense_split_test.go`'s property, and there is now a test asserting
+that directly across a grid of amounts and rates.
+
+`convertMinor` goes through `math/big` as planned: 1e15 minor units
+against a rate near 1e9 is 1e24 and `int64` stops at 9.2e18. Rounds half
+away from zero **in both directions** — amounts are positive today, but a
+rounding helper that is only right for positive input is a trap for
+whoever lifts that `CHECK` — and never returns less than 1, so a recorded
+expense cannot round away to nothing. The identity rate short-circuits
+and returns its input untouched, which is what keeps every
+single-currency trip bit-for-bit what it was.
+
+`SumExpensesByTrip` is gone from the queries, both `gen/` packages, the
+store interface and both implementations. The hand-deletion trap in
+`CLAUDE.md` did **not** apply: it bites when a whole `queries/*.sql` file
+is removed, and `expenses.sql` still exists, so regeneration rewrote it
+minus the query. Verified by grep rather than assumed. Its store-level
+test lost the sum half and was renamed `TestListExpensesByTrip`, with a
+comment saying where that coverage went; the ordering half stays, since
+that is still the query's own promise.
+
+An expense in a currency the trip has no rate for is a hard error, not a
+1:1 fallback — repricing it silently would report a confidently wrong
+total. Unreachable through the API (Milestone 2's guard), reachable by
+hand-editing the database, which is exactly when you want it loud.
+
+Verified: `make ci` green and **`make test-postgres` green**, the second
+run the plan asked for. 17 new tests. `expense_convert_test.go` covers
+the arithmetic — the worked JPY example, the identity rate, four
+rounding cases at and around the half, the clamp, symmetry across zero,
+an amount whose product overflows `int64`, the shares-sum-to-the-whole
+property, and the unrated-currency refusal. `expenses_test.go` covers the
+wiring: a foreign expense reporting both figures, the main currency named
+explicitly and normalised away, totals *and* per-payer rows *and* nets
+built from converted amounts (including that the nets still sum to zero,
+the property conversion could most plausibly have broken), a live
+re-rating moving the total while what was paid stays put, three refusals,
+editing an expense between currencies in both directions, and a
+single-currency trip proven unchanged — including the empty-trip zero
+that used to be the `COALESCE`.
+
+Then end to end against the dev server, after
+`make dev-restart MARKER=convertedExpenses`: ¥12,000 at 0.0058 came back
+as 6960 EUR minor — the plan's own worked example, €69.60. Alongside a
+€45.00 expense the total read 11460; re-rating the yen to 0.0070 moved
+that row to 8400 and the total to 12900 while the euro row did not budge;
+`USD` was refused with *"USD is not one of this trip's currencies"*. The
+probe rows were then deleted and the currencies cleared, so the seeded
+scenarios `make test-ui` depends on are back at baseline.
+
+Surfaced and deferred to `plans/todo.md`: changing a trip's *main*
+currency silently reinterprets every configured rate, because a rate does
+not record which main currency it was entered against. The Milestone 2
+collision guard and the Stage 17 hint copy each soften it; neither covers
+it. It needs a decision — warn, or refuse the switch while currencies are
+configured — and this milestone was already changing how every total is
+computed.
 
 ---
 

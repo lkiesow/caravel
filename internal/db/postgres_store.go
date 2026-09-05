@@ -694,10 +694,6 @@ func (s *postgresStore) ListExpensesByTrip(ctx context.Context, tripID string) (
 	return expenses, nil
 }
 
-func (s *postgresStore) SumExpensesByTrip(ctx context.Context, tripID string) (int64, error) {
-	return s.q.SumExpensesByTrip(ctx, tripID)
-}
-
 func (s *postgresStore) UpdateExpense(ctx context.Context, p UpdateExpenseParams) (Expense, error) {
 	spentOn, err := time.Parse(dateLayout, p.SpentOn)
 	if err != nil {

@@ -224,27 +224,6 @@ func (q *Queries) ListExpensesByTrip(ctx context.Context, tripID string) ([]Expe
 	return items, nil
 }
 
-const sumExpensesByTrip = `-- name: SumExpensesByTrip :one
-SELECT CAST(COALESCE(SUM(amount_minor), 0) AS BIGINT) AS total_minor FROM expenses
-WHERE trip_id = ?1
-`
-
-// The total the trip has spent, in minor units. Answered by the database
-// rather than by summing the list in Go, so a client showing a page of rows
-// still gets the whole total. COALESCE because SUM over no rows is NULL.
-//
-// The CAST is not decoration. Without it sqlc cannot type the expression and
-// generates a method returning interface{} in both dialects, which compiles
-// and then needs a type assertion at every call site -- and the underlying
-// type differs per dialect, so the assertion would be right in one and panic
-// in the other. Same trick as the role column in ListTripsForUser.
-func (q *Queries) SumExpensesByTrip(ctx context.Context, tripID string) (int64, error) {
-	row := q.db.QueryRowContext(ctx, sumExpensesByTrip, tripID)
-	var total_minor int64
-	err := row.Scan(&total_minor)
-	return total_minor, err
-}
-
 const updateExpense = `-- name: UpdateExpense :one
 UPDATE expenses
 SET title = ?1,

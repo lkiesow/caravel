@@ -17,19 +17,6 @@ SELECT * FROM expenses
 WHERE trip_id = sqlc.arg(trip_id)
 ORDER BY spent_on DESC, created_at DESC;
 
--- The total the trip has spent, in minor units. Answered by the database
--- rather than by summing the list in Go, so a client showing a page of rows
--- still gets the whole total. COALESCE because SUM over no rows is NULL.
---
--- The CAST is not decoration. Without it sqlc cannot type the expression and
--- generates a method returning interface{} in both dialects, which compiles
--- and then needs a type assertion at every call site -- and the underlying
--- type differs per dialect, so the assertion would be right in one and panic
--- in the other. Same trick as the role column in ListTripsForUser.
--- name: SumExpensesByTrip :one
-SELECT CAST(COALESCE(SUM(amount_minor), 0) AS BIGINT) AS total_minor FROM expenses
-WHERE trip_id = sqlc.arg(trip_id);
-
 -- The trip_id predicate is not redundant with the id: it is what stops an
 -- expense id from one trip being edited through another trip authorization.
 -- The same belt as DeleteChecklist and DeleteExpense below.

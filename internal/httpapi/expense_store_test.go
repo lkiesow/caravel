@@ -162,20 +162,16 @@ func TestDeletingPayerLeavesExpense(t *testing.T) {
 	}
 }
 
-func TestListAndSumExpensesByTrip(t *testing.T) {
+// The trip total was a SUM in SQL until Stage 32, and this test asserted it
+// here. It cannot be a query any more -- a trip may hold more than one
+// currency and the database cannot add two of them together -- so the total is
+// summed in the handler over converted rows, and its coverage moved with it to
+// expenses_test.go. What is left here is the ordering, which is still the
+// query's own promise.
+func TestListExpensesByTrip(t *testing.T) {
 	ts := newTestServer(t)
 	ctx := context.Background()
 	userID, tripID := seedExpenseTrip(t, ts)
-
-	// An empty trip totals zero rather than failing: SUM over no rows is NULL,
-	// which is what the COALESCE in the query is for.
-	total, err := ts.Store.SumExpensesByTrip(ctx, tripID)
-	if err != nil {
-		t.Fatalf("sum empty trip: %v", err)
-	}
-	if total != 0 {
-		t.Errorf("empty trip total: got %d, want 0", total)
-	}
 
 	for _, e := range []struct {
 		title   string
@@ -212,14 +208,6 @@ func TestListAndSumExpensesByTrip(t *testing.T) {
 		if list[i].Title != want {
 			t.Errorf("list[%d]: got %q, want %q", i, list[i].Title, want)
 		}
-	}
-
-	total, err = ts.Store.SumExpensesByTrip(ctx, tripID)
-	if err != nil {
-		t.Fatalf("sum: %v", err)
-	}
-	if total != 8450 {
-		t.Errorf("total: got %d, want 8450", total)
 	}
 }
 

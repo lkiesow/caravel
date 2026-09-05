@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"sort"
@@ -28,11 +29,27 @@ type expenseResponse struct {
 	ID     string `json:"id"`
 	TripID string `json:"trip_id"`
 	Title  string `json:"title"`
-	// AmountMinor is an integer in the trip's currency's minor unit, never a
-	// formatted string: formatting is the client's job, and the exponent
-	// differs per currency (see web/js/format.js, which reads it from Intl).
-	AmountMinor int64  `json:"amount_minor"`
-	SpentOn     string `json:"spent_on"`
+	// AmountMinor is an integer in the minor unit of Currency below -- what was
+	// actually paid -- never a formatted string: formatting is the client's
+	// job, and the exponent differs per currency (see web/js/format.js, which
+	// reads it from Intl).
+	AmountMinor int64 `json:"amount_minor"`
+	// Currency is the effective code this expense was recorded in: its own
+	// where it has one, and the trip's main currency otherwise. Always
+	// populated, so the client never re-implements the empty-means-the-trip
+	// rule and cannot disagree with the server about it -- the same reasoning
+	// as ShareUserIDs below.
+	Currency string `json:"currency"`
+	// ConvertedMinor is the same expense in the trip's *main* currency, which
+	// is what every total, share and balance is denominated in. Equal to
+	// AmountMinor for an expense recorded in the main currency, so a client can
+	// read it unconditionally.
+	//
+	// Computed on read from the trip's current rate rather than stored: the
+	// rate is live, so editing it reprices the ledger, and a stored copy would
+	// be a second source of truth that went stale at that moment.
+	ConvertedMinor int64  `json:"converted_minor"`
+	SpentOn        string `json:"spent_on"`
 	// PayerUserID is null when the payer's account has been deleted. The row
 	// stays visible and still counts toward the total; it is the balances view
 	// that has to say it cannot attribute it.
@@ -48,8 +65,9 @@ type expenseResponse struct {
 	// empty-means-everyone rule, and cannot disagree with the server about it.
 	ShareUserIDs []string `json:"share_user_ids"`
 	// ShareMinor is what one of those people owes for this expense, from
-	// splitAmount -- the reading user's own share when they are among them, and
-	// absent when they are not. The whole map is not sent: the client shows
+	// splitAmount over ConvertedMinor -- so it is in the trip's main currency,
+	// like every other figure the client adds up. The reading user's own share
+	// when they are among them, and absent when they are not. The whole map is not sent: the client shows
 	// "your share", and the balances endpoint is where the full picture lives.
 	ShareMinor *int64 `json:"share_minor"`
 	// ItemID is the location this expense was for, or null -- which most
@@ -83,9 +101,15 @@ type payerTotalResponse struct {
 
 // expenseListResponse carries the currency, the total and the per-person totals
 // alongside the rows. All three are on the envelope rather than left to the
-// client: the total is summed by the database, so it stays right even for a
-// client showing part of the list, and a currency sent explicitly is one the
-// client never has to infer.
+// client: the total is summed server-side over every row on the trip, so it
+// stays right even for a client showing part of the list, and a currency sent
+// explicitly is one the client never has to infer.
+//
+// Every amount on this envelope -- the total, each payer's paid_minor, and
+// every figure under balances -- is in Currency, the trip's *main* currency,
+// whatever the individual rows were paid in. That is the whole point of the
+// design: which currency a number is in is never a question the client has to
+// ask.
 type expenseListResponse struct {
 	Currency   string            `json:"currency"`
 	TotalMinor int64             `json:"total_minor"`
@@ -161,12 +185,18 @@ func (p *expenseNamer) itemTitle(ctx context.Context, itemID *string) *string {
 
 // toResponse builds one row. shareIDs is the effective share set, already
 // resolved by the caller, and readerID is whose share to report.
-func (p *expenseNamer) toResponse(ctx context.Context, e db.Expense, shareIDs []string, readerID string) expenseResponse {
+//
+// e is the expense as stored -- what was paid, in the currency it was paid in.
+// convertedMinor is that amount in the trip's main currency, converted once by
+// the caller, and it is what the share is split from.
+func (p *expenseNamer) toResponse(ctx context.Context, e db.Expense, convertedMinor int64, mainCurrency string, shareIDs []string, readerID string) expenseResponse {
 	resp := expenseResponse{
 		ID:               e.ID,
 		TripID:           e.TripID,
 		Title:            e.Title,
 		AmountMinor:      e.AmountMinor,
+		Currency:         expenseCurrency(e, mainCurrency),
+		ConvertedMinor:   convertedMinor,
 		SpentOn:          e.SpentOn,
 		PayerUserID:      e.PayerUserID,
 		PayerDisplayName: p.name(ctx, e.PayerUserID),
@@ -175,7 +205,7 @@ func (p *expenseNamer) toResponse(ctx context.Context, e db.Expense, shareIDs []
 		ItemTitle:        p.itemTitle(ctx, e.ItemID),
 		CreatedAt:        e.CreatedAt.UTC().Format(time.RFC3339),
 	}
-	if share, ok := splitAmount(e.AmountMinor, shareIDs)[readerID]; ok {
+	if share, ok := splitAmount(convertedMinor, shareIDs)[readerID]; ok {
 		resp.ShareMinor = &share
 	}
 	return resp
@@ -220,6 +250,17 @@ type expenseRequest struct {
 	// The id must name a location on this trip, which is checked rather than
 	// trusted: items carry their own trip_id, so the column cannot express it.
 	ItemID *string `json:"item_id"`
+	// Currency is what this expense was paid in. Absent or null means the
+	// trip's main currency, which is the common case and what every expense
+	// meant before Stage 32. Anything else must be one of the additional
+	// currencies the trip has configured; the main currency named explicitly
+	// is accepted and normalised away, so a client that always sends the field
+	// is not punished for it.
+	//
+	// Checked against the trip rather than only the allowlist: a code that is
+	// a real currency but has no rate on this trip cannot be converted, and
+	// storing it would leave a row no total could account for.
+	Currency *string `json:"currency"`
 }
 
 func (req expenseRequest) validate() error {
@@ -242,6 +283,32 @@ func (req expenseRequest) validate() error {
 		return errors.New("dates must be in YYYY-MM-DD format")
 	}
 	return nil
+}
+
+// resolveCurrency turns the requested currency into what to store: nil for the
+// trip's main currency, a code otherwise. Writes the error response itself, as
+// resolveShares does, and for the same reason -- the caller is authorized, the
+// request is what is wrong, so this is a 400 rather than a 403.
+func (s *Server) resolveCurrency(w http.ResponseWriter, r *http.Request, trip db.Trip, requested *string) (*string, bool) {
+	// The overwhelmingly common case, and the one that must cost nothing: no
+	// currency named means the trip's own, and no query to find that out.
+	if requested == nil || *requested == trip.Currency {
+		return nil, true
+	}
+	currencies, err := s.tripCurrencies(r.Context(), trip.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load the trip currencies")
+		return nil, false
+	}
+	for _, c := range currencies {
+		if c.Code == *requested {
+			code := c.Code
+			return &code, true
+		}
+	}
+	writeError(w, http.StatusBadRequest, fmt.Sprintf(
+		"%s is not one of this trip's currencies", *requested))
+	return nil, false
 }
 
 // payerTotals groups expenses by who paid, in a stable order: most paid first,
@@ -381,9 +448,19 @@ func (s *Server) handleListExpenses(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not list expenses")
 		return
 	}
-	total, err := s.Store.SumExpensesByTrip(r.Context(), trip.ID)
+	currencies, err := s.tripCurrencies(r.Context(), trip.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not list expenses")
+		// Loud rather than quiet, unlike the same load on the trip response: a
+		// missing rate here does not hide a control, it reprices the ledger.
+		writeError(w, http.StatusInternalServerError, "could not load the trip currencies")
+		return
+	}
+	rates := rateIndex(trip.Currency, currencies)
+	// Converted once, here, and everything below reads the converted rows --
+	// the split, the per-payer totals and the balances all stay currency-blind.
+	converted, err := convertedExpenses(expenses, rates, trip.Currency)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not convert an expense to the trip currency")
 		return
 	}
 	// Every share on the trip in one query, then grouped here: asking per
@@ -406,8 +483,16 @@ func (s *Server) handleListExpenses(w http.ResponseWriter, r *http.Request) {
 	me, _ := auth.UserFromContext(r.Context())
 	namer := s.newExpenseNamer()
 	rows := make([]expenseResponse, len(expenses))
+	// The total is summed here rather than by the database, which cannot add
+	// two currencies together. Pushing the rate into SQL would put a second
+	// rounding rule in a second language, and the reason the sum was ever a
+	// query still holds: this adds up every row on the trip, not the page a
+	// client happens to be showing, because ListExpensesByTrip is unpaginated.
+	var total int64
 	for i, e := range expenses {
-		rows[i] = namer.toResponse(r.Context(), e, effectiveShares(byExpense[e.ID], participants), me.ID)
+		rows[i] = namer.toResponse(r.Context(), e, converted[i].AmountMinor, trip.Currency,
+			effectiveShares(byExpense[e.ID], participants), me.ID)
+		total += converted[i].AmountMinor
 	}
 	// The effective share set per expense, which is what the balance arithmetic
 	// needs and what the rows above were already built from.
@@ -423,8 +508,8 @@ func (s *Server) handleListExpenses(w http.ResponseWriter, r *http.Request) {
 		// The same namer throughout, so the per-person rows and the balances
 		// cost no extra lookups: every payer was resolved building the rows
 		// above, and the balance names come from the same cache.
-		Payers: payerTotals(r.Context(), expenses, namer),
-		Balances: computeBalances(expenses, effective, participants, func(id string) *string {
+		Payers: payerTotals(r.Context(), converted, namer),
+		Balances: computeBalances(converted, effective, participants, func(id string) *string {
 			return namer.name(r.Context(), &id)
 		}),
 	})
@@ -456,6 +541,10 @@ func (s *Server) handleCreateExpense(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	currency, ok := s.resolveCurrency(w, r, trip, req.Currency)
+	if !ok {
+		return
+	}
 
 	// One transaction for the expense and its shares. A create that half
 	// succeeded would leave an expense split between the wrong people, which
@@ -467,6 +556,7 @@ func (s *Server) handleCreateExpense(w http.ResponseWriter, r *http.Request) {
 			TripID:      trip.ID,
 			Title:       strings.TrimSpace(req.Title),
 			AmountMinor: *req.AmountMinor,
+			Currency:    currency,
 			SpentOn:     req.SpentOn,
 			PayerUserID: req.PayerUserID,
 			ItemID:      req.ItemID,
@@ -515,6 +605,10 @@ func (s *Server) handleUpdateExpense(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	currency, ok := s.resolveCurrency(w, r, trip, req.Currency)
+	if !ok {
+		return
+	}
 
 	var updated db.Expense
 	err = s.Store.WithTx(r.Context(), func(store db.Store) error {
@@ -523,6 +617,7 @@ func (s *Server) handleUpdateExpense(w http.ResponseWriter, r *http.Request) {
 			TripID:      expense.TripID,
 			Title:       strings.TrimSpace(req.Title),
 			AmountMinor: *req.AmountMinor,
+			Currency:    currency,
 			SpentOn:     req.SpentOn,
 			PayerUserID: req.PayerUserID,
 			ItemID:      req.ItemID,
@@ -560,8 +655,22 @@ func (s *Server) writeExpense(w http.ResponseWriter, r *http.Request, trip db.Tr
 		writeError(w, http.StatusInternalServerError, "could not load trip members")
 		return
 	}
+	// One expense, so one rate lookup: the row has to come back converted, and
+	// the client must not be the thing that multiplies it.
+	currencies, err := s.tripCurrencies(r.Context(), trip.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load the trip currencies")
+		return
+	}
+	rate, ok := rateIndex(trip.Currency, currencies)[expenseCurrency(e, trip.Currency)]
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "could not convert the expense to the trip currency")
+		return
+	}
 	me, _ := auth.UserFromContext(r.Context())
-	writeJSON(w, status, s.newExpenseNamer().toResponse(r.Context(), e, effectiveShares(stored, participants), me.ID))
+	writeJSON(w, status, s.newExpenseNamer().toResponse(r.Context(), e,
+		convertMinor(e.AmountMinor, rate), trip.Currency,
+		effectiveShares(stored, participants), me.ID))
 }
 
 func (s *Server) handleDeleteExpense(w http.ResponseWriter, r *http.Request) {

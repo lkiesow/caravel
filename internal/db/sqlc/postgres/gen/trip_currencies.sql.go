@@ -28,8 +28,11 @@ type CountExpensesByCurrencyRow struct {
 // currency store NULL and are not counted here: that code cannot be removed
 // through this table anyway.
 //
-// The CAST is the same necessity as in SumExpensesByTrip: without it sqlc
-// types the count as interface{} and the underlying type differs per dialect.
+// The CAST is not decoration. Without it sqlc cannot type the aggregate and
+// generates a method returning interface{} in both dialects, which compiles
+// and then needs a type assertion at every call site -- and the underlying
+// type differs per dialect, so the assertion would be right in one and panic
+// in the other. Same trick as the role column in ListTripsForUser.
 func (q *Queries) CountExpensesByCurrency(ctx context.Context, tripID string) ([]CountExpensesByCurrencyRow, error) {
 	rows, err := q.db.QueryContext(ctx, countExpensesByCurrency, tripID)
 	if err != nil {

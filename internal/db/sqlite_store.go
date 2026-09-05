@@ -1349,10 +1349,6 @@ func (s *sqliteStore) ListExpensesByTrip(ctx context.Context, tripID string) ([]
 	return expenses, nil
 }
 
-func (s *sqliteStore) SumExpensesByTrip(ctx context.Context, tripID string) (int64, error) {
-	return s.q.SumExpensesByTrip(ctx, tripID)
-}
-
 func (s *sqliteStore) UpdateExpense(ctx context.Context, p UpdateExpenseParams) (Expense, error) {
 	row, err := s.q.UpdateExpense(ctx, sqlitegen.UpdateExpenseParams{
 		ID:          p.ID,

@@ -470,9 +470,6 @@ type Store interface {
 	CreateExpense(ctx context.Context, p CreateExpenseParams) (Expense, error)
 	GetExpenseByID(ctx context.Context, id string) (Expense, error)
 	ListExpensesByTrip(ctx context.Context, tripID string) ([]Expense, error)
-	// SumExpensesByTrip totals the trip in minor units, answered by the
-	// database rather than by summing what a caller happens to be listing.
-	SumExpensesByTrip(ctx context.Context, tripID string) (int64, error)
 	UpdateExpense(ctx context.Context, p UpdateExpenseParams) (Expense, error)
 	// DeleteExpense reports whether a matching (id, tripID) expense was deleted.
 	DeleteExpense(ctx context.Context, id, tripID string) (bool, error)

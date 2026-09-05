@@ -1,16 +1,10 @@
 package httpapi
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
-
-	"caravel/internal/db"
-
-	"github.com/google/uuid"
 )
 
 // HTTP-level coverage for the trip currency configuration added in Stage 32
@@ -156,22 +150,8 @@ func TestTripCurrencyInUseCannotBeRemoved(t *testing.T) {
 		`{"currencies":[{"code":"JPY","rate_ppb":580000000}]}`); w.Code != http.StatusOK {
 		t.Fatalf("seed currencies: got %d, body %s", w.Code, w.Body.String())
 	}
-	// Written through the store rather than the API: recording an expense *in*
-	// a currency is Milestone 3, and this guard is Milestone 2. What is under
-	// test here is the refusal, which reads the column either way.
-	jpy := "JPY"
-	expense, err := ts.Store.CreateExpense(context.Background(), db.CreateExpenseParams{
-		ID:          uuid.NewString(),
-		TripID:      tripID,
-		Title:       "Ramen",
-		AmountMinor: 1200,
-		Currency:    &jpy,
-		SpentOn:     "2026-08-19",
-		CreatedAt:   time.Now().UTC(),
-	})
-	if err != nil {
-		t.Fatalf("create expense: %v", err)
-	}
+	expenseID := ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/expenses", cookie,
+		`{"title":"Ramen","amount_minor":1200,"currency":"JPY","spent_on":"2026-08-19"}`, http.StatusCreated)
 
 	w := ts.setCurrencies(cookie, tripID, `{"currencies":[]}`)
 	if w.Code != http.StatusConflict {
@@ -191,7 +171,7 @@ func TestTripCurrencyInUseCannotBeRemoved(t *testing.T) {
 	}
 
 	// And once the expense is gone, so is the objection.
-	if w := ts.do(http.MethodDelete, "/api/expenses/"+expense.ID, cookie, ""); w.Code != http.StatusNoContent {
+	if w := ts.do(http.MethodDelete, "/api/expenses/"+expenseID, cookie, ""); w.Code != http.StatusNoContent {
 		t.Fatalf("delete expense: got %d", w.Code)
 	}
 	if w := ts.setCurrencies(cookie, tripID, `{"currencies":[]}`); w.Code != http.StatusOK {

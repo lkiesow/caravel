@@ -28,6 +28,8 @@ type expenseList struct {
 		ID               string   `json:"id"`
 		Title            string   `json:"title"`
 		AmountMinor      int64    `json:"amount_minor"`
+		Currency         string   `json:"currency"`
+		ConvertedMinor   int64    `json:"converted_minor"`
 		SpentOn          string   `json:"spent_on"`
 		PayerUserID      *string  `json:"payer_user_id"`
 		PayerDisplayName *string  `json:"payer_display_name"`
@@ -885,5 +887,277 @@ func TestBalancesOnASoloTrip(t *testing.T) {
 	}
 	if len(b.Transfers) != 0 {
 		t.Errorf("nothing to settle on a solo trip, got %+v", b.Transfers)
+	}
+}
+
+// Expenses in a currency other than the trip's own. Stage 32 Milestone 3.
+//
+// The arithmetic itself is covered in expense_convert_test.go; what these
+// cover is that the converted figure is what every aggregate is built from,
+// and that a single-currency trip is untouched by any of it.
+
+// seedYenTrip makes a EUR trip with JPY configured at 1 JPY = 0.0058 EUR.
+func seedYenTrip(t *testing.T, ts *testServer, cookie *http.Cookie) string {
+	t.Helper()
+	tripID := ts.mustCreate(http.MethodPost, "/api/trips", cookie,
+		`{"title":"Tokyo","currency":"EUR"}`, http.StatusCreated)
+	if w := ts.do(http.MethodPut, "/api/trips/"+tripID+"/currencies", cookie,
+		`{"currencies":[{"code":"JPY","rate_ppb":580000000}]}`); w.Code != http.StatusOK {
+		t.Fatalf("configure JPY: got %d, body %s", w.Code, w.Body.String())
+	}
+	return tripID
+}
+
+func TestExpenseInAnotherCurrency(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login("owner")
+	tripID := seedYenTrip(t, ts, cookie)
+
+	// 1200 yen at 0.58 cents a yen is 696 cents.
+	created := decode[map[string]any](t, ts.do(http.MethodPost, "/api/trips/"+tripID+"/expenses", cookie,
+		`{"title":"Ramen","amount_minor":1200,"currency":"JPY","spent_on":"2026-08-19"}`))
+	if got := created["amount_minor"]; got != float64(1200) {
+		t.Errorf("amount stays what was paid: got %v, want 1200", got)
+	}
+	if got := created["currency"]; got != "JPY" {
+		t.Errorf("currency: got %v, want JPY", got)
+	}
+	if got := created["converted_minor"]; got != float64(696) {
+		t.Errorf("converted: got %v, want 696", got)
+	}
+
+	list := ts.listExpenses(cookie, tripID)
+	if list.Currency != "EUR" {
+		t.Errorf("envelope currency: got %q, want EUR — the main currency, whatever the rows hold", list.Currency)
+	}
+	if len(list.Expenses) != 1 {
+		t.Fatalf("got %d expenses, want 1", len(list.Expenses))
+	}
+	row := list.Expenses[0]
+	if row.AmountMinor != 1200 || row.Currency != "JPY" || row.ConvertedMinor != 696 {
+		t.Errorf("row: got %d %s (converted %d), want 1200 JPY (converted 696)",
+			row.AmountMinor, row.Currency, row.ConvertedMinor)
+	}
+	// The total is in the main currency, which is the whole point.
+	if list.TotalMinor != 696 {
+		t.Errorf("total: got %d, want 696", list.TotalMinor)
+	}
+}
+
+// An expense recorded in the main currency must report that currency
+// explicitly rather than an empty string, so the client never has to work out
+// what "no currency" means.
+func TestExpenseInTheMainCurrencyStillNamesIt(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login("owner")
+	tripID := seedYenTrip(t, ts, cookie)
+
+	for _, body := range []string{
+		`{"title":"Hostel","amount_minor":4500,"spent_on":"2026-08-19"}`,
+		// The main currency named explicitly is accepted and normalised away,
+		// so a client that always sends the field is not punished for it.
+		`{"title":"Bus","amount_minor":750,"currency":"EUR","spent_on":"2026-08-19"}`,
+	} {
+		ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/expenses", cookie, body, http.StatusCreated)
+	}
+
+	for _, e := range ts.listExpenses(cookie, tripID).Expenses {
+		if e.Currency != "EUR" {
+			t.Errorf("%s: currency %q, want EUR", e.Title, e.Currency)
+		}
+		if e.ConvertedMinor != e.AmountMinor {
+			t.Errorf("%s: converted %d but paid %d — the main currency must convert to itself exactly",
+				e.Title, e.ConvertedMinor, e.AmountMinor)
+		}
+	}
+}
+
+// The total, the per-payer rows and the balances are all in the main currency,
+// summed from converted amounts rather than from what was handed over.
+func TestTotalsAndBalancesConvertBeforeTheyAdd(t *testing.T) {
+	ts := newTestServer(t)
+	owner := ts.login("owner")
+	ts.login("friend")
+	tripID := seedYenTrip(t, ts, owner)
+
+	friend, err := ts.Store.GetUserByUsername(context.Background(), "friend")
+	if err != nil {
+		t.Fatalf("look up friend: %v", err)
+	}
+	if _, err := ts.Store.UpsertTripMember(context.Background(), tripID, friend.ID, db.RoleEditor, time.Now().UTC()); err != nil {
+		t.Fatalf("add member: %v", err)
+	}
+	me, err := ts.Store.GetUserByUsername(context.Background(), "owner")
+	if err != nil {
+		t.Fatalf("look up owner: %v", err)
+	}
+
+	// The owner pays 1200 yen (= 696 cents); the friend pays 300 cents.
+	ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/expenses", owner,
+		`{"title":"Ramen","amount_minor":1200,"currency":"JPY","spent_on":"2026-08-19","payer_user_id":"`+me.ID+`"}`,
+		http.StatusCreated)
+	ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/expenses", owner,
+		`{"title":"Coffee","amount_minor":300,"spent_on":"2026-08-19","payer_user_id":"`+friend.ID+`"}`,
+		http.StatusCreated)
+
+	list := ts.listExpenses(owner, tripID)
+	if list.TotalMinor != 996 {
+		t.Errorf("total: got %d, want 996 (696 + 300)", list.TotalMinor)
+	}
+	paid := map[string]int64{}
+	for _, p := range list.Payers {
+		if p.UserID != nil {
+			paid[*p.UserID] = p.PaidMinor
+		}
+	}
+	if paid[me.ID] != 696 {
+		t.Errorf("owner paid: got %d, want 696 — converted, not the 1200 yen", paid[me.ID])
+	}
+	if paid[friend.ID] != 300 {
+		t.Errorf("friend paid: got %d, want 300", paid[friend.ID])
+	}
+
+	// Split evenly between two, each owes 498. The owner is 198 up.
+	nets := map[string]int64{}
+	for _, p := range list.Balances.People {
+		nets[p.UserID] = p.NetMinor
+	}
+	if nets[me.ID] != 198 || nets[friend.ID] != -198 {
+		t.Errorf("nets: owner %d, friend %d — want +198 / -198", nets[me.ID], nets[friend.ID])
+	}
+	// The nets must still sum to zero, which is the property conversion could
+	// most plausibly have broken.
+	var sum int64
+	for _, n := range nets {
+		sum += n
+	}
+	if sum != 0 {
+		t.Errorf("nets sum to %d, want 0", sum)
+	}
+	if len(list.Balances.Transfers) != 1 || list.Balances.Transfers[0].AmountMinor != 198 {
+		t.Errorf("transfers: got %+v, want one of 198", list.Balances.Transfers)
+	}
+}
+
+// The rate is live, so editing it reprices the whole ledger on the next read.
+// That is the design, and it is what makes a stored converted amount wrong.
+func TestEditingARateRepricesTheLedger(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login("owner")
+	tripID := seedYenTrip(t, ts, cookie)
+
+	ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/expenses", cookie,
+		`{"title":"Ramen","amount_minor":1200,"currency":"JPY","spent_on":"2026-08-19"}`, http.StatusCreated)
+	if got := ts.listExpenses(cookie, tripID).TotalMinor; got != 696 {
+		t.Fatalf("total before: got %d, want 696", got)
+	}
+
+	// The yen strengthens: 1 JPY = 0.0070 EUR.
+	if w := ts.do(http.MethodPut, "/api/trips/"+tripID+"/currencies", cookie,
+		`{"currencies":[{"code":"JPY","rate_ppb":700000000}]}`); w.Code != http.StatusOK {
+		t.Fatalf("re-rate: got %d, body %s", w.Code, w.Body.String())
+	}
+
+	list := ts.listExpenses(cookie, tripID)
+	if list.TotalMinor != 840 {
+		t.Errorf("total after re-rating: got %d, want 840", list.TotalMinor)
+	}
+	if list.Expenses[0].AmountMinor != 1200 {
+		t.Errorf("what was paid must not move: got %d, want 1200", list.Expenses[0].AmountMinor)
+	}
+	if list.Expenses[0].ConvertedMinor != 840 {
+		t.Errorf("converted after re-rating: got %d, want 840", list.Expenses[0].ConvertedMinor)
+	}
+}
+
+func TestExpenseCurrencyMustBeConfiguredOnTheTrip(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login("owner")
+	tripID := seedYenTrip(t, ts, cookie)
+
+	for _, tc := range []struct{ name, currency string }{
+		// A real currency, but this trip has no rate for it -- so an expense in
+		// it could not be converted and no total could account for it.
+		{"a real currency with no rate here", "USD"},
+		{"not a currency at all", "XYZ"},
+		{"the right code in the wrong case", "jpy"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := ts.do(http.MethodPost, "/api/trips/"+tripID+"/expenses", cookie,
+				`{"title":"Ramen","amount_minor":1200,"currency":"`+tc.currency+`","spent_on":"2026-08-19"}`)
+			if w.Code != http.StatusBadRequest {
+				t.Fatalf("got %d, want 400 — body %s", w.Code, w.Body.String())
+			}
+		})
+	}
+	if list := ts.listExpenses(cookie, tripID); len(list.Expenses) != 0 {
+		t.Errorf("a refused create still wrote something: %+v", list.Expenses)
+	}
+}
+
+// An expense is edited as a whole, so a PATCH moves it between currencies in
+// both directions -- and the total follows.
+func TestExpenseCurrencyCanBeEdited(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login("owner")
+	tripID := seedYenTrip(t, ts, cookie)
+
+	id := ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/expenses", cookie,
+		`{"title":"Ramen","amount_minor":1200,"currency":"JPY","spent_on":"2026-08-19"}`, http.StatusCreated)
+
+	// Into the main currency: an omitted currency means the trip's own, so the
+	// 1200 is now 1200 cents rather than 1200 yen.
+	w := ts.do(http.MethodPatch, "/api/expenses/"+id, cookie,
+		`{"title":"Ramen","amount_minor":1200,"spent_on":"2026-08-19"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("patch to the main currency: got %d, body %s", w.Code, w.Body.String())
+	}
+	if got := decode[map[string]any](t, w)["currency"]; got != "EUR" {
+		t.Errorf("currency after clearing: got %v, want EUR", got)
+	}
+	if got := ts.listExpenses(cookie, tripID).TotalMinor; got != 1200 {
+		t.Errorf("total after clearing: got %d, want 1200", got)
+	}
+
+	// And back out again.
+	w = ts.do(http.MethodPatch, "/api/expenses/"+id, cookie,
+		`{"title":"Ramen","amount_minor":1200,"currency":"JPY","spent_on":"2026-08-19"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("patch back to JPY: got %d, body %s", w.Code, w.Body.String())
+	}
+	if got := ts.listExpenses(cookie, tripID).TotalMinor; got != 696 {
+		t.Errorf("total after returning to JPY: got %d, want 696", got)
+	}
+}
+
+// A trip with no additional currencies must behave exactly as it did before
+// this stage: every row in the main currency, converted equal to paid, and no
+// extra question for the client to answer.
+func TestSingleCurrencyTripIsUnchanged(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login("owner")
+	tripID := ts.createTrip(cookie, "Iceland")
+
+	ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/expenses", cookie,
+		`{"title":"Hostel","amount_minor":4500,"spent_on":"2026-08-18"}`, http.StatusCreated)
+	ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/expenses", cookie,
+		`{"title":"Bus","amount_minor":750,"spent_on":"2026-08-19"}`, http.StatusCreated)
+
+	list := ts.listExpenses(cookie, tripID)
+	if list.TotalMinor != 5250 {
+		t.Errorf("total: got %d, want 5250", list.TotalMinor)
+	}
+	for _, e := range list.Expenses {
+		if e.Currency != db.DefaultCurrency || e.ConvertedMinor != e.AmountMinor {
+			t.Errorf("%s: got %d %s converted %d, want the amount unchanged in %s",
+				e.Title, e.AmountMinor, e.Currency, e.ConvertedMinor, db.DefaultCurrency)
+		}
+	}
+
+	// An empty trip totals zero rather than failing -- this used to be the
+	// COALESCE in SumExpensesByTrip, and is now the Go sum's business.
+	empty := ts.createTrip(cookie, "Nothing yet")
+	if got := ts.listExpenses(cookie, empty).TotalMinor; got != 0 {
+		t.Errorf("empty trip total: got %d, want 0", got)
 	}
 }

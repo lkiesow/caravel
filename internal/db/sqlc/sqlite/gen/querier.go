@@ -19,8 +19,11 @@ type Querier interface {
 	// currency store NULL and are not counted here: that code cannot be removed
 	// through this table anyway.
 	//
-	// The CAST is the same necessity as in SumExpensesByTrip: without it sqlc
-	// types the count as interface{} and the underlying type differs per dialect.
+	// The CAST is not decoration. Without it sqlc cannot type the aggregate and
+	// generates a method returning interface{} in both dialects, which compiles
+	// and then needs a type assertion at every call site -- and the underlying
+	// type differs per dialect, so the assertion would be right in one and panic
+	// in the other. Same trick as the role column in ListTripsForUser.
 	CountExpensesByCurrency(ctx context.Context, tripID string) ([]CountExpensesByCurrencyRow, error)
 	CountTripMembers(ctx context.Context, tripID string) (int64, error)
 	// Used for exactly one decision, in two places: whether this is the first
@@ -293,16 +296,6 @@ type Querier interface {
 	// renumbering an entry that belongs to a different day.
 	SetItineraryEntrySortOrder(ctx context.Context, arg SetItineraryEntrySortOrderParams) (int64, error)
 	SetTripPreviewImage(ctx context.Context, arg SetTripPreviewImageParams) (Trip, error)
-	// The total the trip has spent, in minor units. Answered by the database
-	// rather than by summing the list in Go, so a client showing a page of rows
-	// still gets the whole total. COALESCE because SUM over no rows is NULL.
-	//
-	// The CAST is not decoration. Without it sqlc cannot type the expression and
-	// generates a method returning interface{} in both dialects, which compiles
-	// and then needs a type assertion at every call site -- and the underlying
-	// type differs per dialect, so the assertion would be right in one and panic
-	// in the other. Same trick as the role column in ListTripsForUser.
-	SumExpensesByTrip(ctx context.Context, tripID string) (int64, error)
 	TouchSession(ctx context.Context, arg TouchSessionParams) error
 	UpdateAuthIdentityPassword(ctx context.Context, arg UpdateAuthIdentityPasswordParams) error
 	// Editing an item after the fact. Write-once was the wrong lifetime here too,

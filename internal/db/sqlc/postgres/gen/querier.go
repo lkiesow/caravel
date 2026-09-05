@@ -15,6 +15,14 @@ type Querier interface {
 	// come from the store layer, which is the only place that knows which dialect
 	// it is talking to.
 	CountAdmins(ctx context.Context, flag bool) (int64, error)
+	// How many expenses on this trip are recorded in each currency, for the guard
+	// that refuses to remove a currency still in use. Rows in the trip main
+	// currency store NULL and are not counted here: that code cannot be removed
+	// through this table anyway.
+	//
+	// The CAST is the same necessity as in SumExpensesByTrip: without it sqlc
+	// types the count as interface{} and the underlying type differs per dialect.
+	CountExpensesByCurrency(ctx context.Context, tripID string) ([]CountExpensesByCurrencyRow, error)
 	CountTripMembers(ctx context.Context, tripID string) (int64, error)
 	// Used for exactly one decision, in two places: whether this is the first
 	// account on the instance, which both makes it an admin and is the one case
@@ -33,6 +41,7 @@ type Querier interface {
 	CreateMediaAsset(ctx context.Context, arg CreateMediaAssetParams) (MediaAsset, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateTrip(ctx context.Context, arg CreateTripParams) (Trip, error)
+	CreateTripCurrency(ctx context.Context, arg CreateTripCurrencyParams) (TripCurrency, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteChecklist(ctx context.Context, arg DeleteChecklistParams) (int64, error)
 	DeleteChecklistItem(ctx context.Context, arg DeleteChecklistItemParams) (int64, error)
@@ -61,6 +70,12 @@ type Querier interface {
 	// theirs: the role required to delete a trip is exactly 'owner', so the second
 	// belt costs nothing and guards the most destructive call in the app.
 	DeleteTrip(ctx context.Context, arg DeleteTripParams) (int64, error)
+	// The set is replaced as a whole rather than patched code by code, so a save
+	// deletes and reinserts inside one transaction -- the same shape as
+	// DeleteExpenseSharesByExpense above it in expenses.sql, and for the same
+	// reason. Two people editing the rates then produce one set or the other,
+	// never a mixture.
+	DeleteTripCurrenciesByTrip(ctx context.Context, tripID string) error
 	DeleteTripMember(ctx context.Context, arg DeleteTripMemberParams) (int64, error)
 	// Clearing a note removes the row rather than storing an empty string, so
 	// there is one representation of a trip with nothing written down. The tab
@@ -184,6 +199,10 @@ type Querier interface {
 	// stop being a member. The rows are found first so their blobs can be deleted
 	// too: a row removed without its blob leaks bytes nobody can reach.
 	ListPersonalFilesForUser(ctx context.Context, arg ListPersonalFilesForUserParams) ([]File, error)
+	// The extra currencies configured on one trip, each with its rate into the
+	// trip main currency. Ordered by code so the settings form and the expense
+	// picker list them the same way every time.
+	ListTripCurrencies(ctx context.Context, tripID string) ([]TripCurrency, error)
 	// Every file on the trip, including those attached to a location: each row
 	// carries the trip's id regardless of item_id (see uploadFile), so no join
 	// is needed to find them - only to name the location for display. LEFT, not

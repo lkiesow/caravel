@@ -51,6 +51,7 @@ type Expense struct {
 	PayerUserID sql.NullString `json:"payer_user_id"`
 	CreatedAt   time.Time      `json:"created_at"`
 	ItemID      sql.NullString `json:"item_id"`
+	Currency    sql.NullString `json:"currency"`
 }
 
 type ExpenseShare struct {
@@ -159,6 +160,13 @@ type Trip struct {
 	UpdatedAt      time.Time      `json:"updated_at"`
 	Subtitle       sql.NullString `json:"subtitle"`
 	Currency       string         `json:"currency"`
+}
+
+type TripCurrency struct {
+	TripID    string    `json:"trip_id"`
+	Code      string    `json:"code"`
+	RatePpb   int64     `json:"rate_ppb"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type TripMember struct {

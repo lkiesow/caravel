@@ -87,6 +87,33 @@ func ValidCurrency(code string) bool {
 // and matches the column default in migration 0011.
 const DefaultCurrency = "EUR"
 
+// TripCurrency is one additional currency a trip may record expenses in,
+// alongside the single main currency in Trip.Currency. Totals, shares and
+// balances stay denominated in the main currency; this is only about what was
+// handed over at the till.
+//
+// RatePPB is the exchange rate as an integer in parts per billion, converting
+// the *minor unit* of Code into the *minor unit* of the trip's main currency.
+// Minor unit to minor unit rather than the human-readable rate, because the
+// server deliberately does not know how many decimal places a currency has --
+// that lives in the client, which asks Intl (see web/js/format.js). So the
+// browser folds both exponents in before sending: one yen, which has no minor
+// unit at all, is 0.58 cents, and the stored value is 580000000. The server
+// only ever multiplies integers. See migration 0009.
+//
+// One live rate per currency, not a snapshot per expense: editing a rate
+// reconverts every expense recorded in that currency.
+type TripCurrency struct {
+	TripID    string
+	Code      string
+	RatePPB   int64
+	CreatedAt time.Time
+}
+
+// RateOne is RatePPB for a currency that converts to itself: the main
+// currency's implied rate, and the identity convertMinor is built to preserve.
+const RateOne int64 = 1_000_000_000
+
 // Expense is one thing that was paid for on a trip.
 //
 // AmountMinor is an integer in the minor unit of the trip's currency — cents
@@ -105,6 +132,16 @@ type Expense struct {
 	TripID      string
 	Title       string
 	AmountMinor int64
+	// Currency is what this expense was actually paid in, and nil means the
+	// trip's main currency -- which is what every expense meant before Stage 32
+	// and what most still mean. When it is set it is one of the codes the trip
+	// configured in TripCurrency below, and AmountMinor is in *that* currency's
+	// minor unit rather than the trip's.
+	//
+	// The converted figure is computed on read and never stored: a stored copy
+	// would be a second source of truth that goes stale the moment a rate is
+	// edited.
+	Currency    *string
 	SpentOn     string
 	PayerUserID *string
 	// ItemID is the location this expense was for, or nil. Nil is the common

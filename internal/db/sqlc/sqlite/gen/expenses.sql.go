@@ -11,9 +11,9 @@ import (
 )
 
 const createExpense = `-- name: CreateExpense :one
-INSERT INTO expenses (id, trip_id, title, amount_minor, spent_on, payer_user_id, item_id, created_at)
-VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-RETURNING id, trip_id, title, amount_minor, spent_on, payer_user_id, created_at, item_id
+INSERT INTO expenses (id, trip_id, title, amount_minor, currency, spent_on, payer_user_id, item_id, created_at)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+RETURNING id, trip_id, title, amount_minor, spent_on, payer_user_id, created_at, item_id, currency
 `
 
 type CreateExpenseParams struct {
@@ -21,6 +21,7 @@ type CreateExpenseParams struct {
 	TripID      string         `json:"trip_id"`
 	Title       string         `json:"title"`
 	AmountMinor int64          `json:"amount_minor"`
+	Currency    sql.NullString `json:"currency"`
 	SpentOn     string         `json:"spent_on"`
 	PayerUserID sql.NullString `json:"payer_user_id"`
 	ItemID      sql.NullString `json:"item_id"`
@@ -33,6 +34,7 @@ func (q *Queries) CreateExpense(ctx context.Context, arg CreateExpenseParams) (E
 		arg.TripID,
 		arg.Title,
 		arg.AmountMinor,
+		arg.Currency,
 		arg.SpentOn,
 		arg.PayerUserID,
 		arg.ItemID,
@@ -48,6 +50,7 @@ func (q *Queries) CreateExpense(ctx context.Context, arg CreateExpenseParams) (E
 		&i.PayerUserID,
 		&i.CreatedAt,
 		&i.ItemID,
+		&i.Currency,
 	)
 	return i, err
 }
@@ -97,7 +100,7 @@ func (q *Queries) DeleteExpenseSharesByExpense(ctx context.Context, expenseID st
 }
 
 const getExpenseByID = `-- name: GetExpenseByID :one
-SELECT id, trip_id, title, amount_minor, spent_on, payer_user_id, created_at, item_id FROM expenses WHERE id = ?1
+SELECT id, trip_id, title, amount_minor, spent_on, payer_user_id, created_at, item_id, currency FROM expenses WHERE id = ?1
 `
 
 func (q *Queries) GetExpenseByID(ctx context.Context, id string) (Expense, error) {
@@ -112,6 +115,7 @@ func (q *Queries) GetExpenseByID(ctx context.Context, id string) (Expense, error
 		&i.PayerUserID,
 		&i.CreatedAt,
 		&i.ItemID,
+		&i.Currency,
 	)
 	return i, err
 }
@@ -176,7 +180,7 @@ func (q *Queries) ListExpenseSharesByTrip(ctx context.Context, tripID string) ([
 }
 
 const listExpensesByTrip = `-- name: ListExpensesByTrip :many
-SELECT id, trip_id, title, amount_minor, spent_on, payer_user_id, created_at, item_id FROM expenses
+SELECT id, trip_id, title, amount_minor, spent_on, payer_user_id, created_at, item_id, currency FROM expenses
 WHERE trip_id = ?1
 ORDER BY spent_on DESC, created_at DESC
 `
@@ -205,6 +209,7 @@ func (q *Queries) ListExpensesByTrip(ctx context.Context, tripID string) ([]Expe
 			&i.PayerUserID,
 			&i.CreatedAt,
 			&i.ItemID,
+			&i.Currency,
 		); err != nil {
 			return nil, err
 		}
@@ -244,16 +249,18 @@ const updateExpense = `-- name: UpdateExpense :one
 UPDATE expenses
 SET title = ?1,
     amount_minor = ?2,
-    spent_on = ?3,
-    payer_user_id = ?4,
-    item_id = ?5
-WHERE id = ?6 AND trip_id = ?7
-RETURNING id, trip_id, title, amount_minor, spent_on, payer_user_id, created_at, item_id
+    currency = ?3,
+    spent_on = ?4,
+    payer_user_id = ?5,
+    item_id = ?6
+WHERE id = ?7 AND trip_id = ?8
+RETURNING id, trip_id, title, amount_minor, spent_on, payer_user_id, created_at, item_id, currency
 `
 
 type UpdateExpenseParams struct {
 	Title       string         `json:"title"`
 	AmountMinor int64          `json:"amount_minor"`
+	Currency    sql.NullString `json:"currency"`
 	SpentOn     string         `json:"spent_on"`
 	PayerUserID sql.NullString `json:"payer_user_id"`
 	ItemID      sql.NullString `json:"item_id"`
@@ -268,6 +275,7 @@ func (q *Queries) UpdateExpense(ctx context.Context, arg UpdateExpenseParams) (E
 	row := q.db.QueryRowContext(ctx, updateExpense,
 		arg.Title,
 		arg.AmountMinor,
+		arg.Currency,
 		arg.SpentOn,
 		arg.PayerUserID,
 		arg.ItemID,
@@ -284,6 +292,7 @@ func (q *Queries) UpdateExpense(ctx context.Context, arg UpdateExpenseParams) (E
 		&i.PayerUserID,
 		&i.CreatedAt,
 		&i.ItemID,
+		&i.Currency,
 	)
 	return i, err
 }

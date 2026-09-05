@@ -93,6 +93,10 @@ type CreateExpenseParams struct {
 	TripID      string
 	Title       string
 	AmountMinor int64
+	// Currency is nil for the trip's main currency, which is the common case.
+	// Anything else must be a code the trip has configured, which the caller
+	// checks: the column cannot express it.
+	Currency    *string
 	SpentOn     string
 	PayerUserID *string
 	// ItemID must name a location on the same trip, which the caller checks --
@@ -109,6 +113,9 @@ type UpdateExpenseParams struct {
 	TripID      string
 	Title       string
 	AmountMinor int64
+	// Currency, like ItemID below, is edited as a whole: nil means the trip's
+	// main currency, not "leave it alone".
+	Currency    *string
 	SpentOn     string
 	PayerUserID *string
 	// Absent means "no location", not "leave it alone": an expense is edited as
@@ -124,6 +131,23 @@ type CreateChecklistParams struct {
 	CreatedAt   time.Time
 	Visibility  ChecklistVisibility
 	OwnerUserID *string
+}
+
+// CreateTripCurrencyParams adds one additional currency to a trip. Code must
+// pass ValidCurrency and must not equal the trip's main currency, both checked
+// by the caller: the table can express neither.
+type CreateTripCurrencyParams struct {
+	TripID    string
+	Code      string
+	RatePPB   int64
+	CreatedAt time.Time
+}
+
+// CurrencyUsage is how many expenses on a trip are recorded in one currency,
+// which is what the guard against removing a currency still in use reads.
+type CurrencyUsage struct {
+	Code         string
+	ExpenseCount int64
 }
 
 type UpsertTripNoteParams struct {
@@ -425,6 +449,20 @@ type Store interface {
 	// DeleteTripNote is how a cleared note goes away, so that "no note" has a
 	// single representation. Reports whether a row was actually removed.
 	DeleteTripNote(ctx context.Context, tripID string) (bool, error)
+
+	// Trip currencies: the extra codes a trip may record expenses in, each
+	// with its rate into the trip's main currency.
+	//
+	// The set is replaced wholesale rather than patched, the same shape as the
+	// expense shares below: callers run DeleteTripCurrenciesByTrip and then
+	// CreateTripCurrency inside one WithTx, so two people saving the rates
+	// produce one set or the other and never a mixture.
+	ListTripCurrencies(ctx context.Context, tripID string) ([]TripCurrency, error)
+	CreateTripCurrency(ctx context.Context, p CreateTripCurrencyParams) (TripCurrency, error)
+	DeleteTripCurrenciesByTrip(ctx context.Context, tripID string) error
+	// CountExpensesByCurrency reports, per non-nil currency, how many expenses
+	// on the trip hold it. Currencies with no expenses are simply absent.
+	CountExpensesByCurrency(ctx context.Context, tripID string) ([]CurrencyUsage, error)
 
 	// Expenses. No reading user is threaded through any of these, unlike the
 	// file and checklist listings: every expense on a trip is visible to

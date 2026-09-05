@@ -1,0 +1,387 @@
+# Stage 32 — More than one currency: rates, and what a total means
+
+## Context
+
+A trip has exactly one currency today, and the schema says so on purpose
+— [0001_init.up.sql:70-78](internal/db/migrations/sqlite/0001_init.up.sql#L70-L78):
+
+> One currency per trip, not per expense. A trip is normally spent in one
+> currency, and making it per-expense makes every total and every balance
+> per-currency too -- so the common case would pay for the rare one. A
+> purchase in another currency is entered as the converted amount.
+
+That reasoning still holds for *totals*, and this stage does not overturn
+it. What it overturns is the last sentence. Converting by hand before
+typing is the part that does not survive contact with a real trip: the
+receipt says ¥1,200, the ledger says €7.60, and a month later nobody can
+reconcile the two. A trip through Japan on a Euro budget wants both
+numbers on the row.
+
+So: the trip keeps **one main currency**, and every total, every share
+and every balance stays denominated in it. A trip may additionally
+configure **extra currencies, each with one exchange rate into the main
+currency**. An expense may be recorded in any of them; it is *stored* in
+what was paid, and *counted* in the main currency.
+
+Decisions taken up front:
+
+- **One live rate per currency, not a snapshot per expense.** Editing a
+  rate re-converts every expense in that currency. One source of truth,
+  no per-expense rate column, no historical-rate UI. A trip's rate is
+  "the rate we're using", not a market record.
+- **The rate is a minor-unit → minor-unit factor, stored as an integer
+  in parts per billion.** The server deliberately knows nothing about
+  decimal exponents — `formatMoney` asks `Intl`, and
+  [format.js:52-54](web/js/format.js#L52-L54) says why. A human-readable
+  "1 JPY = 0.0058 EUR" would force an exponent table into Go, a third
+  hand-maintained copy of what the platform already knows. Instead the
+  browser folds the exponents in: 1 yen (exponent 0) → 0.58 cents
+  (exponent 2) → `rate_ppb = 580_000_000`. The settings form converts
+  back the same way for display. The server multiplies integers and
+  never asks what a decimal place is.
+- **A currency in use cannot be removed.** Refused with a message naming
+  how many expenses hold it, rather than silently orphaning amounts or
+  freezing a last-known rate somewhere.
+- **The rate editor lives in the trip settings tab only**, not in the
+  create form — rates are rarely known before the trip exists.
+- **Rows read original-first**: `¥1,200 (≈ €7.60)`. What was paid stays
+  primary; the converted figure is visibly an approximation.
+- **Everything else is out of scope**, deliberately: no rate lookup
+  service, no negative amounts, no per-currency subtotals, no export
+  changes, no touching the browser-locale `Intl` question already parked
+  in [todo.md:315-337](plans/todo.md#L315-L337).
+
+---
+
+## Milestone 1 — The schema and the store
+
+**Migration.** `internal/db/migrations/{sqlite,postgres}/0009_trip_currencies.{up,down}.sql`
+(0008 is the current head). Two changes:
+
+```sql
+CREATE TABLE trip_currencies (
+    trip_id  TEXT NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    code     TEXT NOT NULL,
+    rate_ppb INTEGER NOT NULL CHECK (rate_ppb > 0),
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (trip_id, code)
+);
+
+ALTER TABLE expenses ADD COLUMN currency TEXT;
+```
+
+`expenses.currency` is **nullable, and NULL means the trip's main
+currency** — which is exactly today's semantics, so there is no backfill
+and no behaviour change for any existing row. A non-NULL value is always
+an additional currency configured on that trip.
+
+`rate_ppb` is documented in the migration in the terms above: minor unit
+of `code` → minor unit of the trip's main currency, ×10⁹. Parts per
+*billion* rather than million so a weak currency added to
+`db.Currencies` later still has resolution to spare.
+
+Postgres twin: `BIGINT` for `rate_ppb`, `TIMESTAMPTZ` for `created_at`,
+matching `0001_init`'s dialect conventions rather than copying the SQLite
+text. `scripts/check_migrations.py` enforces the pairing in `make ci`.
+No `CHECK` on `code`: same reasoning as `trips.currency` — the allowlist
+lives in `db.Currencies`.
+
+**Queries.** New `internal/db/sqlc/queries/trip_currencies.sql`:
+`ListTripCurrencies`, `UpsertTripCurrency` (`ON CONFLICT ... DO UPDATE SET
+rate_ppb = excluded.rate_ppb` — named args are *not* substituted inside
+`DO UPDATE`, per `CLAUDE.md`), `DeleteTripCurrenciesNotIn`, and
+`CountExpensesByCurrency` (`GROUP BY currency` over one trip, for the
+in-use guard). `expenses.sql` gains `currency` in `CreateExpense` and
+`UpdateExpense`; the `SELECT *` queries pick it up for free.
+
+Keep all comment prose in these `.sql` files plain — no backticks, no
+double quotes, no apostrophes. That trap has cost this project time
+twice. Run `sqlc generate` by hand from `internal/db/sqlc/` for **both**
+dialects and read the generated files, not just the diff.
+
+**Domain and store.** `internal/db/domain.go` gains
+`type TripCurrency struct { TripID, Code string; RatePPB int64; CreatedAt time.Time }`
+and `Expense.Currency *string`, both with doc comments carrying the
+reasoning above. `internal/db/store.go` gains the four store methods,
+implemented in `sqlite_store.go` and `postgres_store.go`;
+`Create/UpdateExpenseParams` gain `Currency *string`.
+
+**Verify.** New `internal/httpapi/trip_currency_store_test.go` in the
+existing store-test style: round-trip, upsert overwrites the rate,
+cascade on trip delete, expense currency round-trips as NULL and as a
+code. Plus `make test-postgres` — this milestone is squarely in
+`internal/db`, which is the case CLAUDE.md says to run it for.
+
+**Done.** Landed as planned, with one deliberate deviation in the
+queries. The plan called for `UpsertTripCurrency` plus
+`DeleteTripCurrenciesNotIn`; what landed is `CreateTripCurrency` plus
+`DeleteTripCurrenciesByTrip` — delete-all-then-reinsert, the same
+wholesale-replace shape `DeleteExpenseSharesByExpense` already uses two
+queries further up the same file. The reason is `sqlc.slice()`, which a
+`NOT IN` would have needed and whose SQLite support is not something to
+bet a dialect on. The replace is a transaction either way, so the
+concurrency property the plan wanted is unchanged.
+
+Otherwise as written: `0009_trip_currencies.{up,down}.sql` in both
+dialects (`BIGINT`/`TIMESTAMPTZ` in the Postgres twin), the new
+`trip_currencies` table, `expenses.currency` nullable with no backfill,
+`db.TripCurrency` + `db.RateOne` + `Expense.Currency` in
+[domain.go](internal/db/domain.go), four store methods on the interface
+and both implementations, and `Currency *string` on the two expense
+param structs.
+
+Verified: `make ci` green (`check_migrations.py` reports 9 per dialect,
+both agree, chain intact) and **`make test-postgres` green** — which is
+the run that mattered here, because `sqlc.narg(currency)` is exactly the
+construct Stage 18 Milestone 3 found Postgres refusing without a `CAST`.
+It does not need one in `INSERT`/`SET` position, where the column type
+is known, and the 8 new tests passing on that dialect is the evidence.
+The generated files were read rather than diffed: all params substituted
+(`?1`/`$1`), `sql.NullString` for the nullable column, no `interface{}`
+from the `COUNT` thanks to its `CAST`.
+
+New: `internal/httpapi/trip_currency_store_test.go`, 8 tests —
+round-trip naming every field, wholesale replace and the `ORDER BY code`
+promise, cascade on trip delete, expense currency round-tripping as
+**both** NULL and a code through create/get/list, an update moving a row
+into a currency and back out, and `CountExpensesByCurrency` proving the
+NULL rows are excluded.
+
+One environment note for whoever runs this next: `sqlc` was not
+installed on this machine, and `GOPATH` here is `/home/lars/dev/go`, so
+the binary lands at `/home/lars/dev/go/bin/sqlc` rather than
+`~/go/bin/sqlc`. Installed v1.31.1 to match the version stamped in the
+generated files — regenerating with a different one would rewrite every
+file in both `gen/` directories.
+
+---
+
+## Milestone 2 — Configuring currencies over the API
+
+**Read.** `tripResponse` in [trips.go](internal/httpapi/trips.go) gains
+
+```json
+"currencies": [{ "code": "JPY", "rate_ppb": 580000000 }]
+```
+
+Always an array, empty for a single-currency trip. On the trip rather
+than behind its own GET: both the settings tab and the expenses tab
+already load the trip, and neither should need a second request to know
+whether to show a picker at all.
+
+**Write.** A new route beside the existing trip routes in
+[router.go:371](internal/httpapi/router.go#L371):
+`PUT /trips/{tripId}/currencies`, body `{"currencies": [...]}`,
+**replace-all** semantics — it mirrors a form with repeatable rows and
+one Save button, and makes "remove this row" need no second verb. Same
+role requirement as `PATCH /trips/{tripId}` (read it off the router
+rather than assuming); added to the `roles_test.go` and
+`ownership_test.go` tables, which every new route must appear in.
+
+Validation, each with its own message:
+
+- every `code` passes `db.ValidCurrency`;
+- no `code` equals the trip's main currency;
+- no duplicate codes in the body;
+- `rate_ppb > 0`;
+- **any code being removed that expenses still hold** → `409`, message
+  naming the code and the count, from `CountExpensesByCurrency`.
+
+**Main-currency collision.** `handleUpdateTrip` must also refuse a
+`PATCH` that sets the main currency to one already configured as an
+additional currency — otherwise a trip ends up with a currency that
+converts to itself at a rate nobody chose.
+
+**Verify.** `internal/httpapi/trip_currencies_test.go`: the round-trip,
+each validation message, the in-use refusal (and that it *succeeds* once
+the expense is deleted), the main-currency collision, and cascade.
+
+---
+
+## Milestone 3 — Expenses in a foreign currency, and what the totals mean
+
+This is the milestone that changes arithmetic, and it is the one to
+review most carefully.
+
+**Request.** `expenseRequest` gains `Currency *string`. Absent or `null`
+means the main currency and stores NULL. A value must be one of the
+trip's configured additional currencies — the main currency sent
+explicitly is accepted and normalised to NULL, so a client that always
+sends the field is not punished for it.
+
+**Conversion.** One new file, `internal/httpapi/expense_convert.go`,
+holding one function:
+
+```go
+func convertMinor(amountMinor int64, ratePPB int64) int64
+```
+
+`amountMinor × ratePPB / 1e9`, rounded half away from zero, computed
+through `math/big` rather than `int64` — `1e15 × 1e9` overflows an
+`int64` and a ledger is not the place to find that out. Clamped to a
+minimum of 1, so a real expense never converts to nothing. Rate 1e9 (the
+main currency) returns the input unchanged, by construction.
+
+**Where it applies.** Conversion happens **once, per expense, before
+anything else** — the converted integer is then what `splitAmount`,
+`payerTotals` and `computeBalances` all consume. That ordering is not
+incidental: it is what preserves the property
+`expense_split_test.go` exists to protect, that shares sum to exactly
+the amount. Converting after splitting would break it.
+
+**The total moves from SQL into Go.** `SumExpensesByTrip` cannot sum
+mixed currencies, and pushing the multiply into SQL would put a second
+rounding rule in a second language. The handler sums the converted rows
+it has already built. The envelope comment at
+[expenses.go:84-88](internal/httpapi/expenses.go#L84-L88) justifies the
+DB sum by "a client showing part of the list" — that still holds, since
+`ListExpensesByTrip` is unpaginated and the server sums the full set;
+the comment gets rewritten to say so. The now-unused query and its
+generated code are deleted **by hand in both dialect packages** —
+`sqlc generate` never deletes, and CLAUDE.md records that exact trap.
+
+**Response.** `expenseResponse` gains `currency` (always populated with
+the *effective* code — the main currency where the column is NULL, so
+the client never re-implements the rule) and `converted_minor` (equal to
+`amount_minor` for main-currency rows). `share_minor` is already in the
+main currency and stays as it is. `total_minor`, `payers[].paid_minor`
+and every figure under `balances` are main-currency throughout, as they
+are today — the point of the whole design is that this is not a new
+question the client has to ask.
+
+**Verify.** New cases in `expenses_test.go`: a JPY expense on a EUR trip
+comes back with both amounts and the right conversion; the total of one
+EUR and one JPY expense is the converted sum; a balance between two
+people with expenses in different currencies settles in EUR; an unknown
+or unconfigured currency is a 400; editing the rate changes the total on
+the next read. Unit tests for `convertMinor` in
+`expense_convert_test.go`: rounding at the half, the identity rate, the
+clamp, and an amount large enough that `int64` arithmetic would have
+overflowed.
+
+---
+
+## Milestone 4 — The rate editor in trip settings
+
+A section below the existing trip form in
+[settings-tab.js](web/js/pages/settings-tab.js), not inside
+[trip-form.js](web/js/components/trip-form.js) — the trip form is shared
+with the create page, and rates are not a create-time concern.
+
+Repeatable rows, each a currency `<select>` (the `CURRENCIES` list from
+`format.js`, minus the main currency and minus codes already chosen) and
+a rate field, an "add currency" button, a remove button per row, one
+Save. Read as `1 <code> = [____] <main>`, which is the direction the
+number is looked up in.
+
+**The exponent fold, in `format.js`**, beside the existing money
+helpers, as two mirrored functions:
+
+- `parseRate(text, foreign, main)` → `rate_ppb`. Parses the typed
+  decimal into an integer and a decimal-place count **on the string**,
+  exactly as `parseMoney` does and for the same stated reason, then
+  scales by `10 ** (9 - places + exponent(main) - exponent(foreign))`.
+  `"0.0058"`, JPY→EUR: 58, 4 places → `58 × 10^(9-4+2-0)` =
+  `580_000_000`. Integer throughout; `null` on anything unparseable or
+  on a result that is not a safe integer.
+- `formatRate(ratePPB, foreign, main)` → the string to put back in the
+  field, the same arithmetic inverted.
+
+Round-tripping these two is the thing to test hardest: every currency
+pair in `CURRENCIES` × a handful of rates, typed → stored → redisplayed
+→ identical.
+
+**i18n.** New keys under `trip.currencies.*` (the namespace matching
+`trip.form.currency`, since this is a trip property) in **both**
+`en.json` and `de.json` — heading, hint, add/remove labels, the
+`1 {code} = ... {main}` row label, and the error strings including the
+in-use refusal. `scripts/check_i18n.py` gates parity in `make ci`.
+
+**Verify.** `make ci`, plus Playwright against `make dev` at 324×756:
+configure JPY on the seeded trip, reload, assert the stored rate renders
+back as typed; assert removing a currency in use surfaces the server's
+message; assert the German locale's copy is present.
+
+---
+
+## Milestone 5 — The picker, the dual row, and the docs
+
+All in [expenses-tab.js](web/js/pages/expenses-tab.js).
+
+**The form.** A currency `<select>` beside the amount field, populated
+from `trip.currencies` plus the main currency, defaulting to the main
+currency — and **absent entirely when the trip has no additional
+currencies**, which is the common case and must look exactly as it does
+today. Switching it re-derives the amount field's placeholder and the
+`parseMoney` exponent (`moneyPlaceholder`, `moneyExample` already take a
+currency; they just need the selected one rather than `currency()`). The
+`expenses.form.amount` label's `{currency}` interpolation follows the
+selection. A live "≈ €7.60" preview under the field as the amount is
+typed, using a small `convertMinor` mirror in `format.js` — the server
+remains the authority, this only spares a round trip for the number the
+user most wants to see confirmed.
+
+**The rows.** A row whose `currency` differs from the trip's renders
+`formatMoney(amount_minor, row.currency)` followed by
+`≈ formatMoney(converted_minor, main)` in a muted span. Main-currency
+rows are untouched. The total, the payer rows and the balances block all
+already read main-currency integers and need no change — the point of
+Milestone 3.
+
+**Docs.** `docs/features/sharing-and-expenses.md` gains the multi-currency
+section: how to configure a rate, that rates are live rather than
+historical, and that totals and balances are always in the main
+currency.
+
+**Verify.** `make ci`; `tests/ui/expenses.spec.js` gains a case that
+adds a JPY expense to a EUR trip and asserts both figures on the row and
+the converted total — assertions on text content, not screenshots. Plus
+a case asserting the picker is **absent** on a single-currency trip,
+which is the regression that would otherwise go unnoticed.
+
+---
+
+## Build order
+
+1. **Schema and store** first: everything else needs the column and the
+   table to exist, and it is the only milestone that must be checked on
+   both dialects.
+2. **Configuration API** before the conversion, so there is a way to
+   create the rate a conversion test needs.
+3. **Conversion** before any UI, so the arithmetic is settled and tested
+   in Go while it is the only thing in the diff.
+4. **Settings UI** before the expense UI, because the expense picker has
+   nothing to offer until a rate can be entered through the app.
+5. **Expense UI and docs** last.
+
+## Workflow
+
+Per `CLAUDE.md`, for each milestone in order: implement → verify
+(`make ci` green plus a real behavioural check, assertions preferred
+over screenshots) → add a **Done.** paragraph to `plans/stage-32.md`
+recording what actually landed and any deviation → reconcile
+`plans/todo.md` in both directions → one commit describing what, why and
+exactly how it was verified → make sure `make dev` is up → **stop and
+hand back control**, and wait before starting the next milestone.
+
+## Verification (whole stage)
+
+- `make ci` green at every milestone.
+- `make test-postgres` after Milestone 1, and again after Milestone 3 —
+  the two that touch `internal/db` and its queries.
+- End to end against `make dev-seed` + `make dev`: set the demo trip to
+  EUR, add JPY at `1 JPY = 0.0058 EUR`, record `¥12,000`, and confirm
+  the row reads `¥12,000 (≈ €69.60)`, the total includes €69.60, and the
+  balances settle in Euro. Then edit the rate and confirm the row and
+  the total both move.
+- Confirm a single-currency trip is byte-for-byte the experience it is
+  today: no picker, no second figure, no extra request.
+
+## How complex is this, really
+
+The risk is concentrated in Milestone 3 and in one place inside it: the
+order of conversion and splitting. Everything else is a table, a form
+and a select. The exponent fold in Milestone 4 looks like the tricky
+part and is not — it is integer arithmetic with a round-trip test — but
+it *is* the part that will read as magic in six months, so its comment
+matters more than its code.

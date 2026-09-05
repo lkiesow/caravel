@@ -1317,6 +1317,7 @@ func (s *sqliteStore) CreateExpense(ctx context.Context, p CreateExpenseParams) 
 		TripID:      p.TripID,
 		Title:       p.Title,
 		AmountMinor: p.AmountMinor,
+		Currency:    nullString(p.Currency),
 		SpentOn:     p.SpentOn,
 		PayerUserID: nullString(p.PayerUserID),
 		ItemID:      nullString(p.ItemID),
@@ -1358,6 +1359,7 @@ func (s *sqliteStore) UpdateExpense(ctx context.Context, p UpdateExpenseParams) 
 		TripID:      p.TripID,
 		Title:       p.Title,
 		AmountMinor: p.AmountMinor,
+		Currency:    nullString(p.Currency),
 		SpentOn:     p.SpentOn,
 		PayerUserID: nullString(p.PayerUserID),
 		ItemID:      nullString(p.ItemID),
@@ -1400,12 +1402,69 @@ func (s *sqliteStore) ListExpenseSharesByTrip(ctx context.Context, tripID string
 	return shares, nil
 }
 
+func (s *sqliteStore) ListTripCurrencies(ctx context.Context, tripID string) ([]TripCurrency, error) {
+	rows, err := s.q.ListTripCurrencies(ctx, tripID)
+	if err != nil {
+		return nil, err
+	}
+	currencies := make([]TripCurrency, len(rows))
+	for i, row := range rows {
+		currencies[i] = sqliteTripCurrencyToDomain(row)
+	}
+	return currencies, nil
+}
+
+func (s *sqliteStore) CreateTripCurrency(ctx context.Context, p CreateTripCurrencyParams) (TripCurrency, error) {
+	row, err := s.q.CreateTripCurrency(ctx, sqlitegen.CreateTripCurrencyParams{
+		TripID:    p.TripID,
+		Code:      p.Code,
+		RatePpb:   p.RatePPB,
+		CreatedAt: formatTime(p.CreatedAt),
+	})
+	if err != nil {
+		return TripCurrency{}, err
+	}
+	return sqliteTripCurrencyToDomain(row), nil
+}
+
+func (s *sqliteStore) DeleteTripCurrenciesByTrip(ctx context.Context, tripID string) error {
+	return s.q.DeleteTripCurrenciesByTrip(ctx, tripID)
+}
+
+func (s *sqliteStore) CountExpensesByCurrency(ctx context.Context, tripID string) ([]CurrencyUsage, error) {
+	rows, err := s.q.CountExpensesByCurrency(ctx, tripID)
+	if err != nil {
+		return nil, err
+	}
+	usage := make([]CurrencyUsage, 0, len(rows))
+	for _, row := range rows {
+		// The query already excludes NULL, so a row without a code cannot
+		// happen; skipping rather than dereferencing keeps it that way if the
+		// predicate is ever loosened.
+		if !row.Currency.Valid {
+			continue
+		}
+		usage = append(usage, CurrencyUsage{Code: row.Currency.String, ExpenseCount: row.ExpenseCount})
+	}
+	return usage, nil
+}
+
+func sqliteTripCurrencyToDomain(c sqlitegen.TripCurrency) TripCurrency {
+	return TripCurrency{
+		TripID:    c.TripID,
+		Code:      c.Code,
+		RatePPB:   c.RatePpb,
+		CreatedAt: parseTime(c.CreatedAt),
+	}
+}
+
 func sqliteExpenseToDomain(e sqlitegen.Expense) Expense {
 	return Expense{
 		ID:          e.ID,
 		TripID:      e.TripID,
 		Title:       e.Title,
 		AmountMinor: e.AmountMinor,
+		Currency:    strPtr(e.Currency),
 		SpentOn:     e.SpentOn,
 		PayerUserID: strPtr(e.PayerUserID),
 		ItemID:      strPtr(e.ItemID),

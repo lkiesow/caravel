@@ -662,6 +662,7 @@ func (s *postgresStore) CreateExpense(ctx context.Context, p CreateExpenseParams
 		TripID:      p.TripID,
 		Title:       p.Title,
 		AmountMinor: p.AmountMinor,
+		Currency:    nullString(p.Currency),
 		SpentOn:     spentOn,
 		PayerUserID: nullString(p.PayerUserID),
 		ItemID:      nullString(p.ItemID),
@@ -707,6 +708,7 @@ func (s *postgresStore) UpdateExpense(ctx context.Context, p UpdateExpenseParams
 		TripID:      p.TripID,
 		Title:       p.Title,
 		AmountMinor: p.AmountMinor,
+		Currency:    nullString(p.Currency),
 		SpentOn:     spentOn,
 		PayerUserID: nullString(p.PayerUserID),
 		ItemID:      nullString(p.ItemID),
@@ -752,12 +754,67 @@ func (s *postgresStore) ListExpenseSharesByTrip(ctx context.Context, tripID stri
 	return shares, nil
 }
 
+func (s *postgresStore) ListTripCurrencies(ctx context.Context, tripID string) ([]TripCurrency, error) {
+	rows, err := s.q.ListTripCurrencies(ctx, tripID)
+	if err != nil {
+		return nil, err
+	}
+	currencies := make([]TripCurrency, len(rows))
+	for i, row := range rows {
+		currencies[i] = postgresTripCurrencyToDomain(row)
+	}
+	return currencies, nil
+}
+
+func (s *postgresStore) CreateTripCurrency(ctx context.Context, p CreateTripCurrencyParams) (TripCurrency, error) {
+	row, err := s.q.CreateTripCurrency(ctx, postgresgen.CreateTripCurrencyParams{
+		TripID:    p.TripID,
+		Code:      p.Code,
+		RatePpb:   p.RatePPB,
+		CreatedAt: p.CreatedAt.UTC(),
+	})
+	if err != nil {
+		return TripCurrency{}, err
+	}
+	return postgresTripCurrencyToDomain(row), nil
+}
+
+func (s *postgresStore) DeleteTripCurrenciesByTrip(ctx context.Context, tripID string) error {
+	return s.q.DeleteTripCurrenciesByTrip(ctx, tripID)
+}
+
+func (s *postgresStore) CountExpensesByCurrency(ctx context.Context, tripID string) ([]CurrencyUsage, error) {
+	rows, err := s.q.CountExpensesByCurrency(ctx, tripID)
+	if err != nil {
+		return nil, err
+	}
+	usage := make([]CurrencyUsage, 0, len(rows))
+	for _, row := range rows {
+		// The query already excludes NULL; see the SQLite twin.
+		if !row.Currency.Valid {
+			continue
+		}
+		usage = append(usage, CurrencyUsage{Code: row.Currency.String, ExpenseCount: row.ExpenseCount})
+	}
+	return usage, nil
+}
+
+func postgresTripCurrencyToDomain(c postgresgen.TripCurrency) TripCurrency {
+	return TripCurrency{
+		TripID:    c.TripID,
+		Code:      c.Code,
+		RatePPB:   c.RatePpb,
+		CreatedAt: c.CreatedAt,
+	}
+}
+
 func postgresExpenseToDomain(e postgresgen.Expense) Expense {
 	return Expense{
 		ID:          e.ID,
 		TripID:      e.TripID,
 		Title:       e.Title,
 		AmountMinor: e.AmountMinor,
+		Currency:    strPtr(e.Currency),
 		SpentOn:     e.SpentOn.Format(dateLayout),
 		PayerUserID: strPtr(e.PayerUserID),
 		ItemID:      strPtr(e.ItemID),

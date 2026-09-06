@@ -73,6 +73,77 @@ type Result struct {
 	// on a search result".
 	OSMType string `json:"osm_type,omitempty"`
 	OSMID   string `json:"osm_id,omitempty"`
+
+	// Class, Kind and AddressType say what *sort* of thing was matched, from
+	// Nominatim jsonv2's `category`, `type` and `addresstype`. They were read
+	// and discarded until Stage 33, which is the whole reason the assistant
+	// could put a pin on the street outside a hotel and look entirely correct
+	// doing it: the payload says "this is a road" and nothing looked.
+	//
+	// Kept as they arrive rather than reduced to a boolean here, because the
+	// question "is this precise enough" has one answer for a pin and might
+	// have another for something else later. Precise() is that answer for the
+	// only caller there is today.
+	//
+	// Empty for a result that did not come from a search -- the map-link
+	// resolver again, and any future provider that reports no such thing.
+	Class       string `json:"class,omitempty"`
+	Kind        string `json:"kind,omitempty"`
+	AddressType string `json:"address_type,omitempty"`
+}
+
+// preciseClasses are the OSM top-level classes whose elements are the *thing*
+// rather than the area or the line it sits on. A match in one of these is a
+// building, a business, a monument -- a point somebody deliberately placed.
+//
+// Listed rather than inferred, because there is no rule in the data that
+// separates them: OSM classes are a flat vocabulary and the split is editorial.
+// These are the ones a trip is made of.
+var preciseClasses = map[string]bool{
+	"amenity":    true, // restaurants, bars, places of worship, pharmacies
+	"tourism":    true, // hotels, hostels, museums, viewpoints, attractions
+	"shop":       true,
+	"leisure":    true, // parks, pools, sports centres
+	"historic":   true, // monuments, ruins, memorials
+	"office":     true,
+	"craft":      true,
+	"healthcare": true,
+	"building":   true,
+	"aeroway":    true, // terminals, aerodromes
+	"railway":    true, // stations and halts
+	"natural":    true, // a named waterfall or peak is a destination
+	"man_made":   true, // lighthouses, towers, piers
+}
+
+// preciseAddressTypes catch what the class alone misses: a match on a specific
+// building or house number is precise whatever class it carries. Nominatim
+// reports this separately, and for an address search it is usually the more
+// informative of the two.
+var preciseAddressTypes = map[string]bool{
+	"building":     true,
+	"house":        true,
+	"house_number": true,
+}
+
+// Precise reports whether this match is the place itself rather than something
+// it is merely near.
+//
+// The distinction the assistant needs, and the one that makes an address
+// search a bad way to position a named place: a postal address usually
+// resolves to a `highway`/`road` way or an interpolated point along it, which
+// is the correct answer to the question asked and 150m from the door. A search
+// for the name usually resolves to the element somebody mapped.
+//
+// Deliberately conservative. An unknown class is *not* precise, so a provider
+// that starts reporting something new errs towards "check this" rather than
+// towards a confident wrong pin. That is the right way round: the cost of a
+// false "coarse" is that a second source gets asked, and the cost of a false
+// "precise" is the bug this stage exists to fix.
+func (r Result) Precise() bool {
+	if preciseAddressTypes[r.AddressType] {
+		return true
+	}
+	return preciseClasses[r.Class]
 }
 
 // Client searches one upstream endpoint.
@@ -299,6 +370,14 @@ type nominatimResult struct {
 	// float64, which for a large way id would be a silent precision loss.
 	OSMType string      `json:"osm_type"`
 	OSMID   json.Number `json:"osm_id"`
+	// jsonv2 calls the OSM class `category`; the `json` format calls it
+	// `class`. Both are read so that an operator pointing at a
+	// Nominatim-compatible service that answers in the other shape still gets
+	// a usable answer rather than a silently coarse one.
+	Category    string `json:"category"`
+	Class       string `json:"class"`
+	Kind        string `json:"type"`
+	AddressType string `json:"addresstype"`
 }
 
 // toResult parses one upstream row, reporting false for a row that cannot be
@@ -309,13 +388,31 @@ func (n nominatimResult) toResult() (Result, bool) {
 	if latErr != nil || lngErr != nil || n.DisplayName == "" {
 		return Result{}, false
 	}
-	r := Result{DisplayName: n.DisplayName, Lat: lat, Lng: lng}
+	r := Result{
+		DisplayName: n.DisplayName,
+		Lat:         lat,
+		Lng:         lng,
+		Class:       firstNonEmpty(n.Category, n.Class),
+		Kind:        n.Kind,
+		AddressType: n.AddressType,
+	}
 	// Both or neither: an element type without an id, or the reverse, cannot
 	// build a URL, and half an identity stored is worse than none.
 	if isOSMType(n.OSMType) && isOSMID(n.OSMID.String()) {
 		r.OSMType, r.OSMID = n.OSMType, n.OSMID.String()
 	}
 	return r, true
+}
+
+// firstNonEmpty returns the first of its arguments that is not empty. One line,
+// but it names why there are two: see nominatimResult.Category.
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // The three element types OpenStreetMap has. Anything else is not an OSM

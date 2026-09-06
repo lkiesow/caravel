@@ -157,6 +157,16 @@ purpose — do not reconstruct it from an older stage plan without asking.
   shows the days it is on but does not link to them, so the way to see a
   location in context is to go back to the trip and pick the tab.
 
+- **The address search could say when a result is only street-accurate.**
+  (Stage 33 Milestone 2.) `/api/geocode` now reports `class`, `kind` and
+  `address_type` for every result, and `geocode.Result.Precise()` reduces them
+  to the one question that matters -- is this the building or the road outside
+  it. The assistant reads it; the editor's own address search does not, and it
+  is the surface where a person picks a result by hand from a list where a
+  street and a building look identical. A badge on the coarse ones, or sorting
+  precise matches first, would use what is already on the wire. Left out
+  because Stage 33 is about the assistant and the editor was working as it was.
+
 - **A location's OpenStreetMap identity, for places that predate it.** (Stage
   29 Milestone 3.) `osm_type`/`osm_id` are captured from the address search from
   that milestone onward, so the OpenStreetMap feature link appears only on

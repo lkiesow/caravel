@@ -169,10 +169,10 @@ type Candidate struct {
 	Place Location
 	// Links that survived the liveness check, exactly as on a Proposal.
 	Links []Link
-	// Coordinates resolved by internal/geocode from the proposed address, and
-	// never values the model produced. Nil when nothing resolved.
-	Lat *float64
-	Lng *float64
+	// Position is where the place is, resolved by the geocoder from what the
+	// model proposed and never a value the model produced. Nil when nothing
+	// resolved. See assist.Position and locate.go.
+	Position *Position
 	// Cover is a proposed cover photograph, or nil when none was found.
 	Cover *Cover
 }
@@ -193,11 +193,14 @@ type Proposal struct {
 	// authoritative until clicked.
 	Links []Link
 
-	// Coordinates resolved from the proposed address by internal/geocode --
-	// never values the model produced. Nil when the address could not be
+	// Position is where the place is, resolved by the geocoder from what the
+	// model proposed -- never a value the model produced. Nil when nothing
 	// resolved, or when no geocoder is configured.
-	Lat *float64
-	Lng *float64
+	//
+	// A struct rather than a coordinate pair since Stage 33: the pair alone
+	// was never enough to review, and what the user needs in order to judge a
+	// pin is what was matched. See assist.Position.
+	Position *Position
 
 	// Sources the agent actually consulted, shown with the proposal so a
 	// person can judge it. Stored nowhere: once the proposal is accepted it is

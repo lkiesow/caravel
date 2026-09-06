@@ -341,3 +341,97 @@ func TestSearchCapturesOSMIdentity(t *testing.T) {
 		}
 	}
 }
+
+// Precision: which matches are the place, and which are something near it.
+//
+// The payloads below are the shapes Nominatim really sends, trimmed to the
+// fields this package reads. They are the evidence for Stage 33's premise --
+// that the difference between "the hotel" and "the street outside the hotel"
+// was in the response all along.
+
+func TestPreciseSeparatesThePlaceFromWhatItIsNear(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		row  string
+		want bool
+	}{
+		{
+			name: "a hostel, as an amenity node",
+			row:  `{"display_name":"Kex Hostel","lat":"64.1","lon":"-21.9","category":"tourism","type":"hostel","addresstype":"hostel","osm_type":"node","osm_id":1}`,
+			want: true,
+		},
+		{
+			name: "a church",
+			row:  `{"display_name":"Hallgrimskirkja","lat":"64.1","lon":"-21.9","category":"amenity","type":"place_of_worship","addresstype":"place_of_worship","osm_type":"way","osm_id":2}`,
+			want: true,
+		},
+		{
+			name: "a house number, which is precise whatever its class",
+			row:  `{"display_name":"28 Skulagata","lat":"64.1","lon":"-21.9","category":"place","type":"house","addresstype":"house_number","osm_type":"node","osm_id":3}`,
+			want: true,
+		},
+		{
+			name: "the street a place stands on -- the pin that lands 150m out",
+			row:  `{"display_name":"Skulagata","lat":"64.1","lon":"-21.9","category":"highway","type":"residential","addresstype":"road","osm_type":"way","osm_id":4}`,
+			want: false,
+		},
+		{
+			name: "a whole city",
+			row:  `{"display_name":"Reykjavik","lat":"64.1","lon":"-21.9","category":"place","type":"city","addresstype":"city","osm_type":"relation","osm_id":5}`,
+			want: false,
+		},
+		{
+			name: "a postcode",
+			row:  `{"display_name":"101","lat":"64.1","lon":"-21.9","category":"place","type":"postcode","addresstype":"postcode"}`,
+			want: false,
+		},
+		{
+			name: "a class nobody here has heard of errs towards coarse",
+			row:  `{"display_name":"Something","lat":"64.1","lon":"-21.9","category":"invented","type":"invented","addresstype":"invented"}`,
+			want: false,
+		},
+		{
+			name: "a result with no class at all, as the map-link resolver produces",
+			row:  `{"display_name":"Somewhere","lat":"64.1","lon":"-21.9"}`,
+			want: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprint(w, "["+tc.row+"]")
+			}))
+			defer srv.Close()
+
+			got, err := New(srv.URL).Search(context.Background(), "q", "")
+			if err != nil {
+				t.Fatalf("Search: %v", err)
+			}
+			if len(got) != 1 {
+				t.Fatalf("Search returned %d results, want one", len(got))
+			}
+			if got[0].Precise() != tc.want {
+				t.Errorf("Precise() = %v, want %v (class %q, type %q, addresstype %q)",
+					got[0].Precise(), tc.want, got[0].Class, got[0].Kind, got[0].AddressType)
+			}
+		})
+	}
+}
+
+// The `json` format calls the class `class` and jsonv2 calls it `category`.
+// Caravel asks for jsonv2, but an operator can point CARAVEL_GEOCODER_URL at
+// anything Nominatim-compatible, and one answering in the older shape should
+// not silently lose its precision signal.
+func TestClassIsReadUnderEitherName(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `[{"display_name":"Somewhere","lat":"1","lon":"2","class":"tourism","type":"museum"}]`)
+	}))
+	defer srv.Close()
+
+	got, err := New(srv.URL).Search(context.Background(), "q", "")
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if got[0].Class != "tourism" || !got[0].Precise() {
+		t.Errorf("class = %q, precise = %v — the `class` spelling was not read", got[0].Class, got[0].Precise())
+	}
+}

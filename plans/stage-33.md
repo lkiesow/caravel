@@ -215,6 +215,56 @@ the address, and falls back when the name misses. Then a **live check**
 against `make dev` with the real Nominatim: enrich a location whose
 address resolves to a street and confirm the pin moves onto the building.
 
+**Done.** `geocode.Result` now keeps `Class`, `Kind` and `AddressType`
+(jsonv2's `category`, `type`, `addresstype`) and answers `Precise()` from
+them. Two deviations from the plan, both small: the class is read under
+*either* spelling — jsonv2 calls it `category` and the older `json`
+format calls it `class`, and an operator pointing
+`CARAVEL_GEOCODER_URL` at a compatible service answering in the other
+shape should not silently lose its precision signal. And the lists grew
+past the plan's: `natural` and `man_made` are in, because a named
+waterfall or a lighthouse is a destination, and `house_number` joined the
+address types. `Precise()` is deliberately conservative — an unknown
+class is **not** precise, so the cost of being wrong is a second opinion
+rather than a confident wrong pin. The three fields are additive on
+`/api/geocode` too, `omitempty`, with no consumer yet.
+
+`resolvePosition` in the new `internal/assist/locate.go` replaces the two
+near-identical copies in `buildProposal` and `locate`, and asks in the
+order **place name, then address**. `Position` — coordinates, the matched
+label, the source, `Precise`, which query answered, and the OSM identity
+— replaces the bare `*float64` pair on `Proposal` and `Candidate`. The
+wire is unchanged this milestone: `toAssistProposalResponse` fills
+`lat`/`lng` from the position and drops the rest, because a client that
+would ignore it is not worth sending it to. That is Milestone 4.
+
+**The pins moved, and by how much was measured.** Against a
+stub-configured server, the same suggestion run that Milestone 1 recorded
+returning `64.14243,-21.92722` for Hallgrímskirkja and
+`64.14793,-21.92341` for Kex Hostel — the square and the street — now
+returns `64.1419,-21.9265` and `64.14659,-21.92535`: the church and the
+hostel. 69 m and 176 m, both onto the building. The third candidate,
+which proposes neither a name nor an address, still resolves to nothing
+and still costs no request.
+
+Verified: `make ci` green. New Go tests — eight rows through `Precise()`
+against real Nominatim payload shapes (hostel, church, house number,
+road, city, postcode, an invented class, and a result with no class at
+all), the `class`/`category` spelling, and three resolver tests driving
+the fixture geocoder directly: the name wins over an address that would
+*also* have resolved (which is exactly what made the old order look
+correct), the address is the fallback when the name misses, and nothing
+configured / nothing to ask / a miss all give nil rather than a guess.
+The existing agent and suggest tests were rewritten rather than patched,
+since the thing they asserted — address first — is the thing that
+changed. `make test-ui` green across all 17 assist and address-search
+specs.
+
+No live Nominatim check was needed in the end: the fixture reproduces the
+exact failure the stage exists to fix (a place whose name and whose
+postal address both resolve, to points 176 m apart), which is a stronger
+and repeatable version of the manual check the plan asked for.
+
 ---
 
 ## Milestone 3 — Serper Places as a second opinion

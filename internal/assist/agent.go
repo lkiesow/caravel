@@ -302,7 +302,7 @@ func (a *Agent) Propose(ctx context.Context, req Request, events func(Event)) (*
 				"fields", len(p.Fields),
 				"links", len(p.Links),
 				"sources", len(p.Sources),
-				"coordinates", p.Lat != nil,
+				"coordinates", p.Position != nil,
 				"cover", coverFrom(p.Cover),
 			}, nil
 		})
@@ -334,7 +334,7 @@ func (a *Agent) Suggest(ctx context.Context, req SuggestRequest, events func(Eve
 func locatedCount(candidates []Candidate) int {
 	n := 0
 	for _, c := range candidates {
-		if c.Lat != nil {
+		if c.Position != nil {
 			n++
 		}
 	}
@@ -851,36 +851,9 @@ func (a *Agent) buildProposal(ctx context.Context, req Request, raw modelProposa
 
 	p.Links = a.checkLinks(ctx, req.Current.Links, raw.Links, events, log)
 
-	// Coordinates last, and only from the geocoder. The address the model
-	// proposed is tried first, then the place name, which is more forgiving of
-	// a street address that Nominatim does not recognise.
-	if a.geocoder != nil {
-		for _, from := range []struct{ source, query string }{
-			{"address", strings.TrimSpace(raw.Address)},
-			{"place_name", strings.TrimSpace(raw.PlaceName)},
-		} {
-			if from.query == "" {
-				continue
-			}
-			// No locale: this search resolves an address to coordinates and
-			// the display name it returns is discarded, so asking for one
-			// language over another would change nothing here.
-			results, err := a.geocoder.Search(ctx, from.query, "")
-			if err != nil || len(results) == 0 {
-				log.Debug("assist: geocode missed", "from", from.source, "query", from.query, "err", err)
-				continue
-			}
-			lat, lng := results[0].Lat, results[0].Lng
-			p.Lat, p.Lng = &lat, &lng
-			// Which of the two answered matters: the address answering means
-			// the model got the street right, and falling through to the place
-			// name means it did not.
-			log.Debug("assist: coordinates resolved", "from", from.source, "query", from.query, "matches", len(results))
-			break
-		}
-	} else {
-		log.Debug("assist: no coordinates", "reason", "no geocoder configured")
-	}
+	// The position last, and never from the model. See locate.go for why the
+	// place name is asked about before the address.
+	p.Position = a.resolvePosition(ctx, raw, log)
 
 	p.Cover = a.chooseCover(ctx, req.Locale, raw, p.Links, sources, log)
 
@@ -951,14 +924,15 @@ func (a *Agent) buildCandidates(ctx context.Context, req SuggestRequest, raw mod
 		// duplicate of what is there -- which is the only argument checkLinks
 		// takes beyond the proposal itself.
 		c.Links = a.checkLinks(ctx, nil, item.Links, events, log)
-		c.Lat, c.Lng = a.locate(ctx, item, log)
+		c.Position = a.resolvePosition(ctx, item, log)
+		lat, lng := c.Position.latLng()
 
 		// The position is what catches the duplicate a name cannot: the same
 		// church spelled differently, or named in the other language. Checked
 		// after geocoding for the obvious reason, and it is why the name check
 		// above happens first -- an obvious duplicate should not cost a
 		// geocoder request.
-		if c.Lat != nil && seen.has("", c.Lat, c.Lng) {
+		if lat != nil && seen.has("", lat, lng) {
 			log.Debug("assist: candidate dropped", "candidate", title, "reason", "same position as a place already known")
 			out.Dropped++
 			continue
@@ -967,43 +941,11 @@ func (a *Agent) buildCandidates(ctx context.Context, req SuggestRequest, raw mod
 		c.Place.Links = c.Links
 		c.Cover = a.chooseCover(ctx, req.Locale, item, c.Links, sources, log)
 
-		seen.add(title, c.Lat, c.Lng)
+		seen.add(title, lat, lng)
 		out.Candidates = append(out.Candidates, c)
 	}
 
 	return out, nil
-}
-
-// locate resolves one candidate's position, address first and place name
-// second, exactly as buildProposal does for a single place.
-//
-// Deliberately sequential across candidates, and it is the one place in this
-// package that could obviously be made parallel and is not. The default
-// geocoder is nominatim.openstreetmap.org, whose usage policy asks for at most
-// one request a second; six candidates resolving at once is precisely the
-// traffic a volunteer-run service asks people not to send. internal/geocode
-// has no rate limiting of its own to lean on.
-func (a *Agent) locate(ctx context.Context, raw modelProposal, log *slog.Logger) (*float64, *float64) {
-	if a.geocoder == nil {
-		return nil, nil
-	}
-	for _, from := range []struct{ source, query string }{
-		{"address", strings.TrimSpace(raw.Address)},
-		{"place_name", strings.TrimSpace(raw.PlaceName)},
-	} {
-		if from.query == "" {
-			continue
-		}
-		results, err := a.geocoder.Search(ctx, from.query, "")
-		if err != nil || len(results) == 0 {
-			log.Debug("assist: geocode missed", "from", from.source, "query", from.query, "err", err)
-			continue
-		}
-		lat, lng := results[0].Lat, results[0].Lng
-		log.Debug("assist: coordinates resolved", "from", from.source, "query", from.query, "matches", len(results))
-		return &lat, &lng
-	}
-	return nil, nil
 }
 
 // placeIndex answers "do we already know this place", by name and by position.

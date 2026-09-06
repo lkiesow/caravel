@@ -618,8 +618,14 @@ func toAssistProposalResponse(p *assist.Proposal) assistProposalResponse {
 		Fields:  make([]assistFieldResponse, 0, len(p.Fields)),
 		Links:   make([]assistLinkResponse, 0, len(p.Links)),
 		Sources: make([]assistSourceResponse, 0, len(p.Sources)),
-		Lat:     p.Lat,
-		Lng:     p.Lng,
+	}
+	// The wire still carries a bare coordinate pair. Stage 33 Milestone 2
+	// changed only where it comes from -- the resolver now knows what it
+	// matched and how good the match is, and Milestone 4 is where the client
+	// starts being told. Until then the extra is deliberately dropped here
+	// rather than sent to a client that would ignore it.
+	if p.Position != nil {
+		out.Lat, out.Lng = &p.Position.Lat, &p.Position.Lng
 	}
 	for _, f := range p.Fields {
 		out.Fields = append(out.Fields, assistFieldResponse{
@@ -664,8 +670,9 @@ func toAssistSuggestionsResponse(out *assist.Suggestions) assistSuggestionsRespo
 			Notes:    c.Place.Notes,
 			Address:  c.Place.Address,
 			Links:    make([]assistLinkResponse, 0, len(c.Links)),
-			Lat:      c.Lat,
-			Lng:      c.Lng,
+		}
+		if c.Position != nil {
+			item.Lat, item.Lng = &c.Position.Lat, &c.Position.Lng
 		}
 		for _, l := range c.Links {
 			item.Links = append(item.Links, assistLinkResponse{URL: l.URL, Label: l.Label})

@@ -180,8 +180,8 @@ func TestSuggestDropsAPlaceAtTheSamePosition(t *testing.T) {
 	if out.Dropped != 1 {
 		t.Errorf("dropped = %d, want 1", out.Dropped)
 	}
-	if out.Candidates[0].Lat == nil || *out.Candidates[0].Lat != 64.1417 {
-		t.Errorf("coordinates = %v, want the geocoder's", out.Candidates[0].Lat)
+	if out.Candidates[0].Position == nil || out.Candidates[0].Position.Lat != 64.1417 {
+		t.Errorf("position = %v, want the geocoder's", out.Candidates[0].Position)
 	}
 }
 
@@ -192,7 +192,7 @@ func TestSuggestResolvesEachCandidateThroughTheGeocoder(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query().Get("q")
 		asked = append(asked, q)
-		if strings.Contains(q, "Nowhere") {
+		if strings.Contains(q, "Unfindable") {
 			fmt.Fprint(w, `[]`)
 			return
 		}
@@ -203,7 +203,9 @@ func TestSuggestResolvesEachCandidateThroughTheGeocoder(t *testing.T) {
 	a := agentWith(
 		stubTurn{Content: "done"},
 		stubTurn{Content: suggestionsJSON(t,
-			modelProposal{Title: "One", Category: "site", Address: "12 Nowhere Street", PlaceName: "One, Reykjavik"},
+			// The name misses and the address answers, which is the fallback
+			// path -- reversed from what it was before Stage 33.
+			modelProposal{Title: "One", Category: "site", Address: "12 Somewhere Street", PlaceName: "One Unfindable, Reykjavik"},
 			modelProposal{Title: "Two", Category: "site"},
 		)},
 	)
@@ -216,16 +218,16 @@ func TestSuggestResolvesEachCandidateThroughTheGeocoder(t *testing.T) {
 	if len(out.Candidates) != 2 {
 		t.Fatalf("candidates = %d, want 2", len(out.Candidates))
 	}
-	if out.Candidates[0].Lat == nil {
-		t.Error("the first candidate did not resolve through the place-name fallback")
+	if out.Candidates[0].Position == nil {
+		t.Error("the first candidate did not resolve through the address fallback")
 	}
 	// The second names no address and no place, so it must not have cost a
 	// request at all.
-	if out.Candidates[1].Lat != nil {
+	if out.Candidates[1].Position != nil {
 		t.Error("the second candidate has coordinates it could not have got honestly")
 	}
-	if len(asked) != 2 || asked[0] != "12 Nowhere Street" || asked[1] != "One, Reykjavik" {
-		t.Errorf("geocoder queries = %v, want the address then the place name, and nothing for the second candidate", asked)
+	if len(asked) != 2 || asked[0] != "One Unfindable, Reykjavik" || asked[1] != "12 Somewhere Street" {
+		t.Errorf("geocoder queries = %v, want the place name then the address, and nothing for the second candidate", asked)
 	}
 }
 

@@ -115,36 +115,38 @@ func TestCoordinatesComeFromTheGeocoderNotTheModel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Propose: %v", err)
 	}
-	if p.Lat == nil || p.Lng == nil {
+	if p.Position == nil {
 		t.Fatal("no coordinates resolved")
 	}
-	if *p.Lat != 64.1466 || *p.Lng != -21.9426 {
-		t.Errorf("coordinates = %v,%v want the geocoder's", *p.Lat, *p.Lng)
+	if p.Position.Lat != 64.1466 || p.Position.Lng != -21.9426 {
+		t.Errorf("coordinates = %v,%v want the geocoder's", p.Position.Lat, p.Position.Lng)
 	}
-	if len(asked) == 0 || asked[0] != "Skulagata 28, 101 Reykjavik" {
-		t.Errorf("geocoder queries = %v, want the proposed address first", asked)
+	if len(asked) == 0 || asked[0] != "Kex Hostel, Reykjavik" {
+		t.Errorf("geocoder queries = %v, want the proposed place name first", asked)
 	}
 }
 
-// The address is tried first and the place name is the fallback, because a
-// street address Nominatim does not recognise is common and a named place is
-// more forgiving.
-func TestCoordinatesFallBackToThePlaceName(t *testing.T) {
+// The place name is tried first and the address is the fallback, reversed in
+// Stage 33. A postal address resolves to the street or an interpolated point
+// along it, which is a pin outside the building; the name finds the element
+// somebody mapped. The address still earns its place as the fallback -- it is
+// what positions a rented flat with no findable name.
+func TestCoordinatesFallBackToTheAddress(t *testing.T) {
 	var asked []string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query().Get("q")
 		asked = append(asked, q)
-		if strings.Contains(q, "Nowhere") {
+		if strings.Contains(q, "Unfindable") {
 			fmt.Fprint(w, `[]`)
 			return
 		}
-		fmt.Fprint(w, `[{"display_name":"Kex Hostel","lat":"64.1","lon":"-21.9"}]`)
+		fmt.Fprint(w, `[{"display_name":"12 Somewhere Street","lat":"64.1","lon":"-21.9","category":"place","type":"house","addresstype":"house_number"}]`)
 	}))
 	defer upstream.Close()
 
 	a := agentWith(
 		stubTurn{Content: "done"},
-		stubTurn{Content: answerJSON(t, modelProposal{Category: "stay", Address: "12 Nowhere Street", PlaceName: "Kex Hostel, Reykjavik"})},
+		stubTurn{Content: answerJSON(t, modelProposal{Category: "stay", Address: "12 Somewhere Street", PlaceName: "Unfindable Guesthouse"})},
 	)
 	a.geocoder = geocode.New(upstream.URL)
 
@@ -152,11 +154,70 @@ func TestCoordinatesFallBackToThePlaceName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Propose: %v", err)
 	}
-	if p.Lat == nil {
+	if p.Position == nil {
 		t.Fatal("no coordinates after the fallback")
 	}
 	if len(asked) != 2 {
-		t.Errorf("geocoder queries = %v, want the address then the place name", asked)
+		t.Fatalf("geocoder queries = %v, want the place name then the address", asked)
+	}
+	if asked[0] != "Unfindable Guesthouse" || asked[1] != "12 Somewhere Street" {
+		t.Errorf("geocoder queries = %v, want the place name first", asked)
+	}
+	// Which query answered is recorded, because "the name found nothing" is
+	// the interesting half of a badly positioned run.
+	if p.Position.From != "address" {
+		t.Errorf("Position.From = %q, want \"address\"", p.Position.From)
+	}
+}
+
+// What the match *is* now reaches the proposal, which is the whole point of
+// the milestone: a pin on the street is not a pin on the hotel, and until
+// Stage 33 nothing downstream could tell the difference.
+func TestAPositionRecordsWhetherTheMatchWasPrecise(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		row     string
+		precise bool
+	}{
+		{"the hotel itself", `{"display_name":"Kex Hostel, Skulagata 28","lat":"64.1465","lon":"-21.9253","category":"tourism","type":"hostel","osm_type":"node","osm_id":7}`, true},
+		{"the street outside it", `{"display_name":"Skulagata, Reykjavik","lat":"64.1479","lon":"-21.9234","category":"highway","type":"residential","addresstype":"road","osm_type":"way","osm_id":8}`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprint(w, "["+tc.row+"]")
+			}))
+			defer upstream.Close()
+
+			a := agentWith(
+				stubTurn{Content: "done"},
+				stubTurn{Content: answerJSON(t, modelProposal{Category: "stay", PlaceName: "Kex Hostel, Reykjavik"})},
+			)
+			a.geocoder = geocode.New(upstream.URL)
+
+			p, err := a.Propose(context.Background(), enrichRequest(), nil)
+			if err != nil {
+				t.Fatalf("Propose: %v", err)
+			}
+			if p.Position == nil {
+				t.Fatal("no position resolved")
+			}
+			if p.Position.Precise != tc.precise {
+				t.Errorf("Precise = %v, want %v", p.Position.Precise, tc.precise)
+			}
+			// The label is what the user is shown instead of six decimal
+			// places, so it has to survive the trip.
+			if p.Position.Label == "" {
+				t.Error("the matched name was dropped")
+			}
+			if p.Position.Source != SourceOSM {
+				t.Errorf("Source = %q, want %q", p.Position.Source, SourceOSM)
+			}
+			// And the OSM identity, so accepting the position gives the
+			// location the same feature link an address search would.
+			if p.Position.OSMType == "" || p.Position.OSMID == "" {
+				t.Errorf("OSM identity = %q/%q, want the matched element", p.Position.OSMType, p.Position.OSMID)
+			}
+		})
 	}
 }
 
@@ -171,7 +232,7 @@ func TestNoCoordinatesWithoutAGeocoder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Propose: %v", err)
 	}
-	if p.Lat != nil || p.Lng != nil {
+	if p.Position != nil {
 		t.Error("coordinates appeared with no geocoder configured")
 	}
 	if _, ok := fieldNamed(p, "address"); !ok {

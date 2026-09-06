@@ -1058,12 +1058,15 @@ test.describe("the location editor's coordinate picker", () => {
 
 // Milestone 5. Address search in the location editor.
 //
-// /api/geocode is stubbed at the network boundary throughout: the dev server
-// is configured with the real Nominatim URL, so an unstubbed test here would
-// send live traffic to OpenStreetMap every run. The proxy itself - request
-// shape, User-Agent, mapping, timeouts, rate limiting, the disabled case - is
-// covered by Go tests in internal/httpapi/geocode_test.go, which never leave
-// the process either.
+// /api/geocode is stubbed at the network boundary throughout. That began as a
+// way of keeping live traffic off OpenStreetMap; since Stage 33 Milestone 1 the
+// suite runs against the in-process stub geocoder anyway, and the interception
+// stays because these tests are about the *client* -- two results, a choice
+// between them, what each fills in -- and a two-row canned answer says that
+// more directly than a fixture shared with three other specs. The proxy itself
+// - request shape, User-Agent, mapping, timeouts, rate limiting, the disabled
+// case - is covered by Go tests in internal/httpapi/geocode_test.go, which
+// never leave the process either.
 const GEOCODE_RESULTS = [
   { display_name: "Reykjavík, Höfuðborgarsvæðið, Iceland", lat: 64.1466, lng: -21.9426 },
   { display_name: "Reykjavík Airport, Iceland", lat: 64.13, lng: -21.9406 },
@@ -1844,6 +1847,17 @@ test.describe("Stage 13's surfaces in German at 324px", () => {
   test.use({ locale: "de-DE", viewport: MOBILE });
 
   test("the location editor: picker, address search and its results", async ({ page }) => {
+    await login(page);
+    // *After* login(), and that is not a style choice. login() installs
+    // blockExternalRequests(), whose catch-all `**/*` route continues every
+    // same-origin request -- and Playwright runs handlers in reverse
+    // registration order, so a route registered before login() is shadowed by
+    // it and never fires. This one was, for the whole of its life: the request
+    // went to the server and the assertion below was answered by whatever the
+    // server proxied to, which until Stage 33 Milestone 1 was the public
+    // Nominatim. It happened to return exactly two results for "Kirkjufell",
+    // so nothing ever looked wrong. Pointing the suite at the stub geocoder is
+    // what surfaced it.
     await page.route("**/api/geocode?*", (route) =>
       route.fulfill({
         status: 200,
@@ -1855,7 +1869,6 @@ test.describe("Stage 13's surfaces in German at 324px", () => {
         ]),
       })
     );
-    await login(page);
     const res = await page.request.post("/api/trips", { data: { title: "UI suite: de sweep" } });
     const tripId = (await res.json()).id;
     try {

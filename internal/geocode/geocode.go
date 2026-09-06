@@ -88,8 +88,16 @@ type Client struct {
 // bool. Same shape as assist.New. Search on a nil client returns
 // ErrNotConfigured rather than panicking, so a missed check fails legibly.
 func New(endpoint string) *Client {
+	endpoint = strings.TrimSpace(endpoint)
 	if endpoint == "" {
 		return nil
+	}
+	// The sentinel starts an in-process fixture geocoder and pins this client
+	// to it. Everything below this line then behaves exactly as it does
+	// against a real instance, including the reverse-endpoint derivation --
+	// see stub.go for why that matters.
+	if endpoint == StubURL {
+		endpoint = startStubFixture()
 	}
 	return &Client{
 		url:  endpoint,

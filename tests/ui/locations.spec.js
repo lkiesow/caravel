@@ -841,14 +841,15 @@ test.describe("the location editor, end to end", () => {
 // Milestone 5).
 //
 // Every test here intercepts **Caravel's own** /api/geocode/reverse rather than
-// letting the request through. That is not a convenience: `with_server.sh`
-// stubs the LLM and the search backend but leaves CARAVEL_GEOCODER_URL at its
-// default, which is OpenStreetMap's public Nominatim (see todo.md, "The UI
-// suite reaches the real Nominatim"). Asserting this end to end for real would
-// widen that dependency, so the client is driven against a canned answer and
-// the server half is owned by Go tests -- internal/geocode/geocode_test.go for
-// the URL derivation and the mapping, internal/httpapi/geocode_test.go for the
-// statuses.
+// letting the request through, and keeps doing so now that the suite runs
+// against the stub geocoder (Stage 33 Milestone 1, CARAVEL_GEOCODER_URL=stub).
+// What is being asserted is client behaviour -- the button state, what gets
+// overwritten and when -- and driving it from a canned answer is what lets one
+// spec ask for an address and the next for a failure without a fixture that
+// knows about either. The server half is owned by Go tests:
+// internal/geocode/geocode_test.go for the URL derivation and the mapping,
+// internal/geocode/stub_test.go for the fixture, and
+// internal/httpapi/geocode_test.go for the statuses.
 test.describe("looking up an address for a point", () => {
   test.use({ viewport: MOBILE });
 

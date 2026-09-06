@@ -92,6 +92,11 @@ export CARAVEL_WEB_DIR=web
 export CARAVEL_LLM_URL=stub
 export CARAVEL_LLM_MODEL=stub
 export CARAVEL_SEARCH_PROVIDER=stub
+# The geocoder, likewise. Without this the suite asks the public Nominatim --
+# a volunteer-run service -- for the same handful of coordinates on every run,
+# and a trip-level suggestion run is six serialised lookups on its own. See
+# internal/geocode/stub.go.
+export CARAVEL_GEOCODER_URL=stub
 # The assistant's own limiter is per client address, and every Playwright
 # worker is 127.0.0.1 -- so the whole suite shares one budget. The default of
 # six runs a minute was enough while assist.spec.js was the only spec making

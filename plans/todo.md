@@ -336,17 +336,42 @@ purpose — do not reconstruct it from an older stage plan without asking.
   person's computer does, and someone reading a German UI may still want their
   own separators.
 
-- **`assist-suggest.spec.js`'s first test is flaky under parallel load.**
-  (Stage 32 Milestone 5.) "is reached from the New menu, and adds the ticked
-  places in one go" failed once in a full `make test-ui` run, on
-  `expect(page).toHaveURL(/\/suggest$/)` after 25.6s -- the New menu click did
-  not reach the suggest page in time. It passes alone in ~10s, and passed in
-  the two full runs either side of it, so this is contention rather than a real
-  regression: nothing in that spec touches the currency work, and the run it
-  failed in was otherwise 236 green. Worth a look because a test that fails
-  once every few full runs teaches people to re-run rather than to read. The
-  likely fix is an explicit wait on the menu being open before clicking the
-  row, rather than a longer timeout.
+- **A route registered before `login()` is silently shadowed.** (Stage 33
+  Milestone 1.) `login()` installs `blockExternalRequests()`, a catch-all
+  `page.route("**/*")` that continues every same-origin request, and Playwright
+  runs handlers in reverse registration order -- so any `page.route` registered
+  earlier in the same test never fires, with no warning and no failure. One
+  spec had been in that state since Stage 13 and only surfaced when the suite
+  stopped talking to the real Nominatim, because the un-intercepted request was
+  being answered correctly by accident. Every spec was checked and that was the
+  only one, so this is a note rather than a bug: the ordering is a real trap and
+  the next person to add an interception will not know about it. A guard is
+  possible -- `blockExternalRequests` could refuse to install over an existing
+  handler, or `login` could take the routes a test wants -- but both are more
+  machinery than one comment, and the comment is now in `map.spec.js`.
+
+- **`assist-suggest.spec.js`'s first test is flaky under parallel load, and it
+  is getting worse.** (Stage 32 Milestone 5; revisited in Stage 33 Milestone 1.)
+  "is reached from the New menu, and adds the ticked places in one go" failed
+  once at Stage 32, on `expect(page).toHaveURL(/\/suggest$/)` after 25.6s -- the
+  New menu click did not reach the suggest page in time. It failed in *both*
+  full runs during Stage 33 Milestone 1, and in a second place: the batch add
+  came back an error, so the page stayed on `/suggest` showing "The locations
+  could not be added". It passes alone in ~8s every time.
+
+  Not a regression from the stub geocoder, and that was checked rather than
+  assumed: the whole flow was driven through the API against a stub-configured
+  server -- suggest, then `POST /items/batch` with the exact candidates and the
+  exact fixture coordinates -- and answered 200 and 201. `items/batch` has no
+  rate limiter. So this is contention, and two different symptoms of it.
+
+  What it needs next is the thing neither run captured: the *status and body*
+  of the failed batch request. `suggest-page.js` logs it to the console and
+  nothing collects that, so the failure arrives as a translated sentence with
+  no cause attached. Capturing the response in the spec, or asserting on it,
+  would turn one of the two symptoms into a real diagnosis. The menu half
+  probably still wants an explicit wait on the menu being open before the row
+  is clicked, rather than a longer timeout.
 
 ---
 
@@ -433,34 +458,6 @@ purpose — do not reconstruct it from an older stage plan without asking.
   MapLibre instance does. The fix is probably to wait on `_map` the way
   `gotoTripMap` does rather than to reach for it, wherever a spec touches the
   map directly.
-
-- **The UI suite reaches the real Nominatim.** (Stage 21 Milestone 1.)
-  `scripts/with_server.sh` sets `CARAVEL_LLM_URL=stub` and
-  `CARAVEL_SEARCH_PROVIDER=stub` but leaves `CARAVEL_GEOCODER_URL` at its
-  default, which is `nominatim.openstreetmap.org`. So the coordinates
-  suggestion in `assist.spec.js` -- and the address search in
-  `locations.spec.js` -- depend on a live call to a third party, on a service
-  with its own rate limits and its own opinion about automated traffic. The
-  assist spec's own header says CI has no network budget, which is true of
-  everything except this. Nobody has been bitten yet, and it is a real
-  dependency all the same: the fix is a stub geocoder behind the same sentinel
-  the LLM and search providers already use, so the suite stops asking a
-  volunteer-run service for the same three coordinates on every run.
-
-  Stage 22 Milestone 5 worked *around* this rather than fixing it: the reverse
-  geocoding specs intercept Caravel's own `/api/geocode/reverse` and answer it
-  from the spec, so the new tests add nothing to the outbound traffic. That is
-  the right move for a client-side assertion and no move at all for the two
-  older specs, which still call out.
-
-  **Stage 27 Milestone 3 made this materially worse and is the reason to fix
-  it.** A trip-level suggestion run geocodes *every* candidate it proposes --
-  up to six lookups for one run, against the same volunteer-run service, and
-  serialised precisely because of that service's one-request-per-second policy.
-  One assist spec asking for three coordinates was arguable; a suggest spec is
-  six on its own, and the serialisation means they also make the run slower to
-  no purpose in a test. The stub geocoder is now the cheapest of the three
-  fixes.
 
 - **The suite waits on injected plumbing, not on the app's own state.** Stage 09
   Milestone 5 gave every route a `common.loading` line, which fixes the

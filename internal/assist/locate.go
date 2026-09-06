@@ -32,6 +32,23 @@ import (
 // answer to either is recorded as coarse rather than passed off as a position
 // somebody can trust.
 //
+// # Two sources, and what to do when they disagree
+//
+// Stage 33 Milestone 3 asks a second service as well, when one is configured:
+// Serper's /places, which is Google Maps data. The two are good at different
+// things. OpenStreetMap is better for landmarks, museums, churches and
+// stations, and it is the only one that carries a feature identity worth
+// linking to; Google is far better on the restaurants, cafes, bars, shops and
+// hotels a trip is actually made of, and its pin is the business own position
+// rather than an address interpolation.
+//
+// Both are asked for every place, rather than escalating to the second only
+// when the first disappoints. That costs a paid call per location -- up to six
+// in a trip-suggestion run -- and buys the one thing a single source can never
+// give: disagreement. Two services putting a place kilometres apart is not a
+// pin to show with confidence, it is a question, and the only way to know is
+// to have asked twice.
+//
 // # One resolver, not two
 //
 // buildProposal and buildCandidates used to carry the same loop twice, with
@@ -75,6 +92,24 @@ type Position struct {
 	// would have (Stage 29).
 	OSMType string
 	OSMID   string
+
+	// Alternatives are the other sources answers, when they are far enough
+	// away that both cannot be describing the same place. Empty in the
+	// ordinary case, which is the two services agreeing to within a street.
+	//
+	// Non-empty means "do not accept this without looking": it is the signal
+	// the UI turns into a question, and the one case where Accept all must
+	// not decide on somebody behalf. An alternative never carries
+	// alternatives of its own.
+	Alternatives []Position
+}
+
+// Ambiguous reports that the sources disagreed and a person has to choose.
+//
+// Nil-safe, because "there is no position" and "the position is not in doubt"
+// are both false here and every caller wants that.
+func (p *Position) Ambiguous() bool {
+	return p != nil && len(p.Alternatives) > 0
 }
 
 // latLng exposes the pair placeIndex and the transport still work in, or two
@@ -92,7 +127,29 @@ func (p *Position) latLng() (*float64, *float64) {
 const (
 	// SourceOSM is OpenStreetMap, through internal/geocode.
 	SourceOSM = "osm"
+	// SourceGoogle is Google Maps data, through a PlaceLocator backend.
+	// Named for the data rather than for Serper, because the reseller is not
+	// what a person reading a badge cares about and is not what would change
+	// if the reseller did.
+	SourceGoogle = "google"
 )
+
+// ambiguousMetres is how far apart two sources have to put a place before the
+// answer is a question rather than a position.
+//
+// 2km separates the two failures worth telling apart. Below it are the
+// ordinary disagreements: one service on the building and the other on the
+// street, opposite ends of a station, a hotel entrance versus its car park --
+// all of them the same place, and all of them fine. Above it the two are
+// describing different things: a second branch, a similarly-named place in the
+// next town, a match on the wrong city entirely.
+//
+// It deliberately does not catch two genuine franchises 1km apart. That case
+// is real and this threshold would have to be tiny to catch it, which would
+// make every ordinary run a question. What covers it instead is showing the
+// matched name, so a person can see that the pin says "Cafe Loki, Skolavordustigur"
+// when they meant the other one.
+const ambiguousMetres = 2000
 
 // resolvePosition finds where a proposed place is, or returns nil.
 //
@@ -102,16 +159,44 @@ const (
 // upstream that is down -- ends the same way, because the user-visible
 // consequence is the same and a proposal without a pin is still worth having.
 func (a *Agent) resolvePosition(ctx context.Context, raw modelProposal, log *slog.Logger) *Position {
-	if a.geocoder == nil {
-		log.Debug("assist: no coordinates", "reason", "no geocoder configured")
+	name := strings.TrimSpace(raw.PlaceName)
+	address := strings.TrimSpace(raw.Address)
+	if name == "" && address == "" {
+		// Nothing to ask about, so nothing is asked. The stub script includes
+		// a candidate like this on purpose: sparse is the common case, and it
+		// must not cost a request to either service.
 		return nil
 	}
 
-	// Name before address. See the file comment for why that order is the
-	// whole point of Stage 33.
+	// The two lookups run at once, because they are different services and
+	// neither is waiting on the other. Note what is *not* parallelised: the
+	// loop over candidates in buildCandidates stays sequential, because
+	// nominatim.openstreetmap.org asks for at most one request a second and
+	// six candidates resolving together is exactly the traffic it asks people
+	// not to send.
+	type answer struct{ pos *Position }
+	osmCh := make(chan answer, 1)
+	googleCh := make(chan answer, 1)
+
+	go func() { osmCh <- answer{a.locateViaOSM(ctx, name, address, log)} }()
+	go func() { googleCh <- answer{a.locateViaPlaces(ctx, name, address, log)} }()
+
+	osm, google := (<-osmCh).pos, (<-googleCh).pos
+	return choosePosition(osm, google, log)
+}
+
+// locateViaOSM asks the geocoder, place name first and postal address second.
+//
+// The order is the point of this stage. See the file comment: an address
+// resolves to the street, a name resolves to the building.
+func (a *Agent) locateViaOSM(ctx context.Context, name, address string, log *slog.Logger) *Position {
+	if a.geocoder == nil {
+		log.Debug("assist: no osm lookup", "reason", "no geocoder configured")
+		return nil
+	}
 	for _, from := range []struct{ source, query string }{
-		{"place_name", strings.TrimSpace(raw.PlaceName)},
-		{"address", strings.TrimSpace(raw.Address)},
+		{"place_name", name},
+		{"address", address},
 	} {
 		if from.query == "" {
 			continue
@@ -124,9 +209,11 @@ func (a *Agent) resolvePosition(ctx context.Context, raw modelProposal, log *slo
 			log.Debug("assist: geocode missed", "from", from.source, "query", from.query, "err", err)
 			continue
 		}
-
 		best := results[0]
-		pos := &Position{
+		log.Debug("assist: osm resolved",
+			"from", from.source, "query", from.query, "matches", len(results),
+			"class", best.Class, "type", best.Kind, "precise", best.Precise())
+		return &Position{
 			Lat:     best.Lat,
 			Lng:     best.Lng,
 			Label:   best.DisplayName,
@@ -136,15 +223,132 @@ func (a *Agent) resolvePosition(ctx context.Context, raw modelProposal, log *slo
 			OSMType: best.OSMType,
 			OSMID:   best.OSMID,
 		}
-		// Which query answered and how good the match is are the two things
-		// that explain a bad pin afterwards, so both are logged. `precise` in
-		// particular: a coarse match is not a failure, and it is also not a
-		// position anybody should be told to trust.
-		log.Debug("assist: coordinates resolved",
-			"from", from.source, "query", from.query, "matches", len(results),
-			"class", best.Class, "type", best.Kind, "precise", pos.Precise)
-		return pos
+	}
+	return nil
+}
+
+// locateViaPlaces asks the maps-style backend, when the configured search
+// provider has one.
+//
+// The same two-query ladder as the OSM half, and for the same reason: name
+// first, address as the fallback. The schema already asks the model to put the
+// city in the place name ("Kex Hostel, Reykjavik"), which is exactly the query
+// a maps search wants.
+//
+// The first version of this concatenated the two into one query, on the
+// reasoning that a maps search is happy to be given more than it strictly
+// needs. Measured against the live API, that is false and expensively so:
+// "Hotel Rangá, Hella, Suðurlandsvegur, 851 Hella, Iceland" found nothing,
+// where the name alone finds the hotel. Over-specifying makes a search engine
+// miss. The second query costs a second credit and is only reached when the
+// first found nothing, which is the case where the alternative is no answer at
+// all.
+//
+// A place found this way is always treated as precise. That is not a claim
+// about accuracy so much as about kind: a maps API answers with businesses and
+// landmarks, never with "the street this is on", so there is no coarse case
+// for it to report.
+func (a *Agent) locateViaPlaces(ctx context.Context, name, address string, log *slog.Logger) *Position {
+	if a.search == nil {
+		return nil
+	}
+	locator, ok := a.search.(PlaceLocator)
+	if !ok {
+		// ddgs, Ollama Cloud, and any future backend without a maps endpoint.
+		// Silent rather than logged: it is a property of the configuration,
+		// not an event, and it would otherwise be logged once per place.
+		return nil
 	}
 
+	for _, from := range []struct{ source, query string }{
+		{"place_name", name},
+		{"address", address},
+	} {
+		if from.query == "" {
+			continue
+		}
+		results, err := locator.SearchPlaces(ctx, from.query)
+		if err != nil || len(results) == 0 {
+			log.Debug("assist: places missed", "from", from.source, "query", from.query, "err", err)
+			continue
+		}
+		best := results[0]
+		log.Debug("assist: places resolved",
+			"from", from.source, "query", from.query, "matches", len(results), "category", best.Category)
+		return &Position{
+			Lat:     best.Lat,
+			Lng:     best.Lng,
+			Label:   placeLabel(best),
+			Source:  SourceGoogle,
+			Precise: true,
+			From:    from.source,
+		}
+	}
 	return nil
+}
+
+// placeLabel is what the user is shown as evidence for a Google-sourced pin:
+// the same thing a geocoder display name gives them, assembled from the two
+// fields this API reports separately.
+func placeLabel(p PlaceResult) string {
+	switch {
+	case p.Title != "" && p.Address != "":
+		return p.Title + ", " + p.Address
+	case p.Title != "":
+		return p.Title
+	default:
+		return p.Address
+	}
+}
+
+// choosePosition decides between the two answers.
+//
+// The rules, in the order they are applied:
+//
+//  1. Only one answered -- that one, nothing to weigh.
+//  2. They disagree by more than ambiguousMetres -- neither is trusted. The
+//     better-placed one leads and the other is kept as an alternative, so the
+//     UI can ask rather than guess. This is checked *first*, because a precise
+//     OSM match 40km from Google's is not made right by being precise.
+//  3. The OSM match is precise -- OSM. It is the element somebody mapped, and
+//     it is the only one of the two that carries a feature identity.
+//  4. Otherwise -- Google. Which is to say: OSM answered with a street or a
+//     district, and a maps API has a business at a real address. That is the
+//     case this whole milestone exists for.
+func choosePosition(osm, google *Position, log *slog.Logger) *Position {
+	switch {
+	case osm == nil && google == nil:
+		log.Debug("assist: no coordinates", "reason", "neither source found the place")
+		return nil
+	case google == nil:
+		return osm
+	case osm == nil:
+		return google
+	}
+
+	apart := metresBetween(osm.Lat, osm.Lng, google.Lat, google.Lng)
+	if apart > ambiguousMetres {
+		// Which one leads still matters -- it is what a person sees first --
+		// so the same preference applies, and the loser is kept whole rather
+		// than reduced to a coordinate, because the label is how anybody
+		// tells the two apart.
+		lead, other := google, osm
+		if osm.Precise {
+			lead, other = osm, google
+		}
+		log.Debug("assist: sources disagree",
+			"metres", int(apart), "osm", osm.Label, "google", google.Label, "leading", lead.Source)
+		chosen := *lead
+		alt := *other
+		alt.Alternatives = nil
+		chosen.Alternatives = []Position{alt}
+		return &chosen
+	}
+
+	if osm.Precise {
+		log.Debug("assist: sources agree", "metres", int(apart), "chose", SourceOSM, "reason", "precise match")
+		return osm
+	}
+	log.Debug("assist: sources agree", "metres", int(apart), "chose", SourceGoogle, "reason", "the osm match was coarse")
+	return google
 }

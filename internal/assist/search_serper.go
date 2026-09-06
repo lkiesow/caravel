@@ -25,12 +25,14 @@ const serperSearchURL = "https://google.serper.dev/search"
 
 type serperSearcher struct {
 	url string
-	// imageURL is the /images sibling of url. Derived rather than configured,
-	// so an operator pointing CARAVEL_SEARCH_URL at a proxy gets both
-	// endpoints from the one setting.
-	imageURL string
-	key      string
-	client   *http.Client
+	// imageURL and placesURL are the /images and /places siblings of url.
+	// Derived rather than configured, so an operator pointing
+	// CARAVEL_SEARCH_URL at a proxy gets all three endpoints from the one
+	// setting.
+	imageURL  string
+	placesURL string
+	key       string
+	client    *http.Client
 }
 
 func newSerperSearcher(key, overrideURL string) *serperSearcher {
@@ -38,11 +40,13 @@ func newSerperSearcher(key, overrideURL string) *serperSearcher {
 	if strings.TrimSpace(overrideURL) != "" {
 		endpoint = strings.TrimSpace(overrideURL)
 	}
+	base := strings.TrimSuffix(endpoint, "/search")
 	return &serperSearcher{
-		url:      endpoint,
-		imageURL: strings.TrimSuffix(endpoint, "/search") + "/images",
-		key:      key,
-		client:   &http.Client{Timeout: searchTimeout},
+		url:       endpoint,
+		imageURL:  base + "/images",
+		placesURL: base + "/places",
+		key:       key,
+		client:    &http.Client{Timeout: searchTimeout},
 	}
 }
 
@@ -185,6 +189,105 @@ func (s *serperSearcher) SearchImages(ctx context.Context, query string) ([]Imag
 			Width:     r.ImageWidth,
 			Height:    r.ImageHeight,
 			SourceURL: strings.TrimSpace(r.Link),
+		})
+	}
+	return out, nil
+}
+
+// SearchPlaces implements PlaceLocator.
+//
+// POST /places, same key and same shape as the other two endpoints, answering
+// a `places` array. Taken from live responses rather than from documentation,
+// exactly as the image endpoint above was, and the two samples disagreed with
+// each other in ways worth writing down:
+//
+//	{"position":1,"title":"KEX Hostel and Hotel Reykjavik","address":"Skúlagata 28",
+//	 "latitude":64.14547,"longitude":-21.919407,"rating":4.3,"ratingCount":2700,
+//	 "category":"Hostel","cid":"6391271468677959927"}
+//
+//	{"position":1,"title":"Brauð & Co","address":"Frakkastígur 16, 101 Reykjavík, Iceland",
+//	 "latitude":64.14408,"longitude":-21.925978,"phoneNumber":"...","website":"...","cid":"..."}
+//
+// Three things that shape the code below:
+//
+//   - The coordinates are JSON *numbers*, unlike Nominatim, which sends them
+//     as strings. They are decoded into pointers all the same, so that a row
+//     with no position is distinguishable from one at 0,0 -- which is a real
+//     point in the Gulf of Guinea and the classic way this kind of bug hides.
+//   - `category` is not always present. The first sample has it and the second
+//     has no such key at all, so nothing may depend on it.
+//   - `address` is sometimes the whole formatted address and sometimes a bare
+//     street and number. It is shown to the user as evidence, never parsed.
+//
+// The response also carries `credits`, which is 1 per call. That is the price
+// of the second opinion, and it is why this is only reached when the operator
+// has chosen `serper`.
+func (s *serperSearcher) SearchPlaces(ctx context.Context, query string) ([]PlaceResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, searchTimeout)
+	defer cancel()
+
+	body, err := json.Marshal(map[string]any{"q": query, "num": placeSearchMaxResults})
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.placesURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-API-KEY", s.key)
+	req.Header.Set("User-Agent", assistUserAgent())
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("the places service could not be reached: %w", err)
+	}
+	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		switch resp.StatusCode {
+		case http.StatusUnauthorized, http.StatusForbidden:
+			return nil, fmt.Errorf("the places service rejected the API key (status %d)", resp.StatusCode)
+		case http.StatusPaymentRequired:
+			return nil, fmt.Errorf("the places service reports the account is out of credit (status 402)")
+		}
+		return nil, fmt.Errorf("the places service responded with status %d", resp.StatusCode)
+	}
+
+	var decoded struct {
+		Places []struct {
+			Title    string   `json:"title"`
+			Address  string   `json:"address"`
+			Lat      *float64 `json:"latitude"`
+			Lng      *float64 `json:"longitude"`
+			Category string   `json:"category"`
+		} `json:"places"`
+	}
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return nil, fmt.Errorf("the places service returned a response that could not be read: %w", err)
+	}
+
+	out := make([]PlaceResult, 0, len(decoded.Places))
+	for _, r := range decoded.Places {
+		// A row with no position is not a second opinion about anything, and
+		// a row with no name cannot be shown as evidence for one. Skipped
+		// rather than failing the lookup: one unusable row should not cost the
+		// others, which is how the geocoder treats the same case.
+		if r.Lat == nil || r.Lng == nil || strings.TrimSpace(r.Title) == "" {
+			continue
+		}
+		out = append(out, PlaceResult{
+			Title:    collapseWhitespace(r.Title),
+			Address:  collapseWhitespace(r.Address),
+			Lat:      *r.Lat,
+			Lng:      *r.Lng,
+			Category: collapseWhitespace(r.Category),
 		})
 	}
 	return out, nil

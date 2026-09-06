@@ -122,6 +122,22 @@ var stubPlaces = []stubPlace{
 		osmID:       "23553642",
 	},
 	{
+		// The disagreement case. The stub places backend (internal/assist,
+		// search.go) answers "Harpa" with a point 3.4km east of this one, so a
+		// resolver asking both sources has to notice that they cannot both be
+		// right. Nothing in this file needs to know that; it just has to be a
+		// real place with a real position, and this is Harpa's.
+		queries:     []string{"harpa, reykjavik", "harpa concert hall, reykjavik", "harpa"},
+		name:        "Harpa, 2, Austurbakki, Reykjavik, 101, Iceland",
+		lat:         64.150470,
+		lng:         -21.932100,
+		class:       "amenity",
+		kind:        "arts_centre",
+		addressType: "arts_centre",
+		osmType:     "way",
+		osmID:       "23553646",
+	},
+	{
 		queries:     []string{"hallgrimstorg 1, 101 reykjavik, iceland", "hallgrimstorg 1"},
 		name:        "Hallgrimstorg, Reykjavik, 101, Iceland",
 		lat:         64.142430,

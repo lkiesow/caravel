@@ -227,3 +227,146 @@ func TestNewSearcherKnowsEveryProvider(t *testing.T) {
 		})
 	}
 }
+
+// The places endpoint, against the two responses the live API actually sent
+// when Stage 33 Milestone 3 asked it. Recorded verbatim rather than composed,
+// because the whole reason this milestone made a live call first is that the
+// documented shape and the real one have already differed once in this file.
+//
+// The two samples disagree with each other, which is the useful part: the
+// first has `category`, `rating` and `ratingCount`; the second has none of
+// those and has `phoneNumber` and `website` instead. Nothing may depend on a
+// field being present.
+const serperPlacesKexResponse = `{
+  "searchParameters": {"q": "Kex Hostel Reykjavik", "type": "places"},
+  "places": [
+    {"position": 1, "title": "KEX Hostel and Hotel Reykjavik", "address": "Skúlagata 28",
+     "latitude": 64.14547, "longitude": -21.919407, "rating": 4.3, "ratingCount": 2700,
+     "category": "Hostel", "cid": "6391271468677959927"}
+  ],
+  "credits": 1
+}`
+
+const serperPlacesBraudResponse = `{
+  "searchParameters": {"q": "Brauð & Co", "type": "places"},
+  "places": [
+    {"position": 1, "title": "Brauð & Co", "address": "Frakkastígur 16, 101 Reykjavík, Iceland",
+     "latitude": 64.14408, "longitude": -21.925978, "phoneNumber": "+354 000 0000",
+     "website": "https://example.invalid/", "cid": "1"}
+  ],
+  "credits": 1
+}`
+
+func TestSerperPlacesReadsBothRecordedResponses(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		body     string
+		title    string
+		address  string
+		lat, lng float64
+		category string
+	}{
+		{
+			name: "with a category, and a bare street for an address",
+			body: serperPlacesKexResponse, title: "KEX Hostel and Hotel Reykjavik",
+			address: "Skúlagata 28", lat: 64.14547, lng: -21.919407, category: "Hostel",
+		},
+		{
+			name: "with no category at all, and a full formatted address",
+			body: serperPlacesBraudResponse, title: "Brauð & Co",
+			address: "Frakkastígur 16, 101 Reykjavík, Iceland", lat: 64.14408, lng: -21.925978,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var asked map[string]any
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = json.NewDecoder(r.Body).Decode(&asked)
+				if r.Header.Get("X-API-KEY") != "k" {
+					t.Errorf("the API key did not reach the places endpoint")
+				}
+				fmt.Fprint(w, tc.body)
+			}))
+			defer srv.Close()
+
+			got, err := newSerperSearcher("k", srv.URL+"/search").SearchPlaces(context.Background(), "q")
+			if err != nil {
+				t.Fatalf("SearchPlaces: %v", err)
+			}
+			if len(got) != 1 {
+				t.Fatalf("places = %d, want one", len(got))
+			}
+			if got[0].Title != tc.title || got[0].Address != tc.address {
+				t.Errorf("title/address = %q / %q, want %q / %q", got[0].Title, got[0].Address, tc.title, tc.address)
+			}
+			if got[0].Lat != tc.lat || got[0].Lng != tc.lng {
+				t.Errorf("position = %v,%v want %v,%v", got[0].Lat, got[0].Lng, tc.lat, tc.lng)
+			}
+			if got[0].Category != tc.category {
+				t.Errorf("category = %q, want %q", got[0].Category, tc.category)
+			}
+		})
+	}
+}
+
+// The endpoint is derived from the configured one, so an operator pointing
+// CARAVEL_SEARCH_URL at a proxy gets all three from the single setting.
+func TestSerperDerivesItsSiblingEndpoints(t *testing.T) {
+	s := newSerperSearcher("k", "https://proxy.example/search")
+	if s.imageURL != "https://proxy.example/images" {
+		t.Errorf("imageURL = %q", s.imageURL)
+	}
+	if s.placesURL != "https://proxy.example/places" {
+		t.Errorf("placesURL = %q", s.placesURL)
+	}
+	if hosted := newSerperSearcher("k", ""); hosted.placesURL != "https://google.serper.dev/places" {
+		t.Errorf("the hosted default derived %q", hosted.placesURL)
+	}
+}
+
+// A row with no coordinates is not a second opinion about anything, and 0,0 is
+// a real point in the Gulf of Guinea -- so absence has to be distinguishable
+// from zero, which is why the decode uses pointers.
+func TestSerperPlacesSkipsRowsItCannotUse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"places":[
+		  {"position":1,"title":"No position","address":"Somewhere"},
+		  {"position":2,"title":"","latitude":64.1,"longitude":-21.9},
+		  {"position":3,"title":"Fine","address":"A street","latitude":64.1,"longitude":-21.9},
+		  {"position":4,"title":"Null Island","address":"Nowhere","latitude":0,"longitude":0}
+		]}`)
+	}))
+	defer srv.Close()
+
+	got, err := newSerperSearcher("k", srv.URL+"/search").SearchPlaces(context.Background(), "q")
+	if err != nil {
+		t.Fatalf("SearchPlaces: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("places = %d, want the usable two", len(got))
+	}
+	if got[0].Title != "Fine" {
+		t.Errorf("first usable place = %q", got[0].Title)
+	}
+	// 0,0 is a position somebody could genuinely be told about; it is only
+	// *absence* that is dropped.
+	if got[1].Title != "Null Island" {
+		t.Errorf("a row at 0,0 was dropped as if it had no position: %+v", got)
+	}
+}
+
+// A Serper backend is a PlaceLocator and the others are not, which is what the
+// resolver type-asserts on.
+func TestOnlySerperOffersPlaces(t *testing.T) {
+	if _, ok := any(newSerperSearcher("k", "")).(PlaceLocator); !ok {
+		t.Error("serper should offer places")
+	}
+	if _, ok := any(&stubSearcher{}).(PlaceLocator); !ok {
+		t.Error("the stub should offer places, or the browser suite cannot reach the two-source path")
+	}
+	if _, ok := any(newDDGSSearcher("http://example.invalid")).(PlaceLocator); ok {
+		t.Error("ddgs has no places endpoint and should not claim one")
+	}
+	if _, ok := any(newOllamaSearcher("k", "")).(PlaceLocator); ok {
+		t.Error("Ollama Cloud has no places endpoint and should not claim one")
+	}
+}

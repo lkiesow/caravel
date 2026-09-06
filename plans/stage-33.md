@@ -324,6 +324,75 @@ and a hotel that OSM does not map, and confirm the pin lands on the
 business. Record the observed `/places` response shape in the milestone's
 **Done.** paragraph, since nothing in CI will ever see it again.
 
+**Done.** `PlaceLocator` is an optional capability discovered by type
+assertion, exactly as `ImageSearcher` is. Serper implements it via
+`POST /places`, derived from the configured URL alongside `/images`; the
+stub implements it too, so the two-source path runs in `go test` and in
+the browser suite without a key.
+
+**The live `/places` shape, recorded because nothing in CI will see it
+again.** Two calls, one credit each:
+
+```json
+{"position":1,"title":"KEX Hostel and Hotel Reykjavik","address":"Skúlagata 28",
+ "latitude":64.14547,"longitude":-21.919407,"rating":4.3,"ratingCount":2700,
+ "category":"Hostel","cid":"6391271468677959927"}
+
+{"position":1,"title":"Brauð & Co","address":"Frakkastígur 16, 101 Reykjavík, Iceland",
+ "latitude":64.14408,"longitude":-21.925978,"phoneNumber":"…","website":"…","cid":"1"}
+```
+
+Three things the documentation would not have told us. The coordinates
+are JSON **numbers**, unlike Nominatim's strings — decoded into pointers
+so that a row with no position is distinguishable from one at 0,0, which
+is a real point in the Gulf of Guinea. `category` is present in the first
+sample and **absent entirely** from the second, so nothing may depend on
+it. And `address` is sometimes the whole formatted address and sometimes
+a bare street and number. The top level also carries `credits: 1`, which
+prices the second opinion. Both payloads are checked into
+`search_backends_test.go` verbatim as the fixtures for the parser.
+
+**The live run found a bug in this milestone's own design, which is what
+it was for.** The first version concatenated the name and the address
+into one maps query, on the reasoning that a maps search is happy to be
+given more than it needs. Measured, that is false: `"Hotel Rangá, Hella,
+Suðurlandsvegur, 851 Hella, Iceland"` found **nothing**, and the failure
+was silent — the resolver fell back to what OSM had said, which for that
+hotel was a `highway`/`trunk` way **9.3 km away on the ring road**.
+`locateViaPlaces` is now the same two-query ladder as the OSM half, name
+first and address as the fallback, and the second query costs a second
+credit only when the first found nothing. Re-run afterwards: OSM misses
+both queries, Google finds the hotel on the name alone at
+63.78026,-20.301113 — a place that had no correct pin available from
+either source before this milestone. `TestPlacesIsAskedTheNameAloneFirst`
+pins the correction.
+
+**A measurement that questions a decision taken up front.** Five live
+enrichments produced separations of 12 m, 14 m, 34 m, **1116 m**, and one
+where only Google answered. `ambiguousMetres` is 2000, so the 1116 m pair
+— an OSM `amenity`/`restaurant` and a Google seafood restaurant on
+Geirsgata, in a city centre small enough that 1.1 km is a different
+neighbourhood — was recorded as *agreement* and resolved silently to the
+OSM answer. The gap in this sample between "plainly the same place" and
+"plainly not" sits between 34 m and 1116 m, which is evidence that 2 km
+is too generous. Left at 2000 for this milestone because the threshold is
+a user-facing decision about how often the UI asks a question, it was
+agreed up front, and Milestone 5 is where it becomes visible. Raised at
+the checkpoint rather than changed quietly.
+
+Verified: `make ci` green. New Go tests — a seven-row table over
+`choosePosition` covering every branch of the matrix including both
+disagreement cases, a check that choosing does not mutate its inputs (the
+ambiguous branch copies, and getting that wrong would be invisible), the
+resolver end to end against both fixtures for the three interesting
+outcomes (OSM wins and keeps its identity; only Google knows the bakery;
+Harpa comes back ambiguous), a backend that is deliberately *not* a
+`PlaceLocator` falling back to OSM alone, both recorded payloads through
+the parser, rows with no coordinates skipped while 0,0 is kept, the
+sibling-endpoint derivation, and which backends offer places at all.
+`make test-ui` green across all 12 assist specs with the stub places
+backend now in the path.
+
 ---
 
 ## Milestone 4 — Provenance on the wire and in the panel

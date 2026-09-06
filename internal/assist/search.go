@@ -77,6 +77,54 @@ type ImageSearcher interface {
 	SearchImages(ctx context.Context, query string) ([]ImageResult, error)
 }
 
+// PlaceResult is one place from a maps-style lookup: a business or a landmark
+// with a position the provider is confident about.
+//
+// Deliberately narrower than what such an API returns. Serper's /places also
+// carries a rating, a review count, a phone number, opening hours and a Google
+// place id -- all real, none of them this feature's business. What is wanted
+// here is a *second opinion on where something is*, and every extra field is
+// something a caller could start depending on without anybody deciding it
+// should.
+type PlaceResult struct {
+	// Title and Address are how the provider names the place. Shown to the
+	// user as evidence about the pin, exactly as a geocoder display name is.
+	Title   string
+	Address string
+	Lat     float64
+	Lng     float64
+	// Category is the provider's own word for what the place is -- "Hostel",
+	// "Coffee shop". Not mapped onto Caravel's categories: it is a different
+	// vocabulary with a different purpose, and guessing between them is how a
+	// bar becomes a museum.
+	Category string
+}
+
+// PlaceLocator is an *optional* capability a Searcher may also implement,
+// discovered by type assertion rather than by a second provider registry --
+// the same arrangement as ImageSearcher above, for the same reason.
+//
+// Only Serper has one today: /places is Google Maps data, which is why it is
+// worth asking at all. OpenStreetMap is better than Google for landmarks,
+// museums, churches and stations, and considerably thinner on the restaurants,
+// cafes, bars, shops and hotels a trip is actually made of -- and for those,
+// Google's pin is the business's own position rather than an address
+// interpolation. ddgs and Ollama Cloud have no such endpoint, an unconfigured
+// instance has no backend at all, and all of them keep working: the resolver
+// falls back to OpenStreetMap alone.
+//
+// Note what implementing this costs the operator, because it is not nothing: a
+// paid API call per location, up to six for one trip-suggestion run. That is a
+// deliberate trade, made once in the config by choosing `serper`.
+type PlaceLocator interface {
+	SearchPlaces(ctx context.Context, query string) ([]PlaceResult, error)
+}
+
+// placeSearchMaxResults is what a places backend is asked for. Small: the
+// resolver takes the first match and the rest exist only so that "it found
+// several" is distinguishable from "it found one", which nothing uses yet.
+const placeSearchMaxResults = 3
+
 // imageSearchMaxResults is what an image-search backend is asked for. Larger
 // than searchMaxResults because these are thumbnails in a grid being judged by
 // eye, not text being read by a model.
@@ -161,6 +209,59 @@ func (*stubSearcher) Search(_ context.Context, query string) ([]SearchResult, er
 			Snippet: "Practical information for visitors to Reykjavik, including accommodation listings.",
 		},
 	}, nil
+}
+
+// SearchPlaces makes the stub a PlaceLocator, so the two-source resolution
+// path runs in `go test` and in the browser suite without a Serper key and
+// without spending anybody's money.
+//
+// Three answers, each reachable by name, covering what the resolver has to
+// tell apart:
+//
+//   - "Kex Hostel" -- a place OpenStreetMap also knows precisely. Google
+//     agrees to within a few metres, which is the ordinary case and the one
+//     where OSM should win, because only OSM carries a feature identity.
+//   - "Braud and Co" -- a bakery the fixture geocoder does *not* know, which
+//     is the case this whole milestone exists for: a small commercial place
+//     that OSM misses and Google has.
+//   - "Harpa" -- deliberately 3km from where the fixture geocoder puts it.
+//     Two services disagreeing about a place is not a pin to show with
+//     confidence, and Milestone 5 needs a way to reach that state.
+func (*stubSearcher) SearchPlaces(_ context.Context, query string) ([]PlaceResult, error) {
+	switch key := strings.ToLower(strings.TrimSpace(query)); {
+	case strings.Contains(key, "kex hostel"):
+		// The same building the fixture geocoder returns, give or take the
+		// few metres two surveys of one doorway differ by.
+		return []PlaceResult{{
+			Title:    "Kex Hostel",
+			Address:  "Skulagata 28, 101 Reykjavik, Iceland",
+			Lat:      64.146620,
+			Lng:      -21.925280,
+			Category: "Hostel",
+		}}, nil
+	case strings.Contains(key, "braud"):
+		return []PlaceResult{{
+			Title:    "Braud and Co",
+			Address:  "Frakkastigur 16, 101 Reykjavik, Iceland",
+			Lat:      64.143920,
+			Lng:      -21.925610,
+			Category: "Bakery",
+		}}, nil
+	case strings.Contains(key, "harpa"):
+		// Roughly 3km east of the fixture geocoder's answer: past the
+		// disagreement threshold, so the resolver has to treat it as a
+		// question rather than a position.
+		return []PlaceResult{{
+			Title:    "Harpa Concert Hall",
+			Address:  "Austurbakki 2, 101 Reykjavik, Iceland",
+			Lat:      64.150500,
+			Lng:      -21.862000,
+			Category: "Concert hall",
+		}}, nil
+	}
+	// Everything else: searched, found nothing. Non-nil so that "asked and got
+	// none" is the same shape as a real backend's.
+	return []PlaceResult{}, nil
 }
 
 // SearchImages makes the stub an ImageSearcher, which is what puts a second,

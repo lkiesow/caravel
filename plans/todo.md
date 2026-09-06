@@ -157,6 +157,23 @@ purpose — do not reconstruct it from an older stage plan without asking.
   shows the days it is on but does not link to them, so the way to see a
   location in context is to go back to the trip and pick the tab.
 
+- **Serper reports a website and a phone number for every place it finds.**
+  (Stage 33 Milestone 3.) `/places` carries `website` and `phoneNumber`
+  alongside the position, and `PlaceResult` deliberately drops both. An
+  official site found this way needs no liveness check and no model to have
+  proposed it, which makes it a better link than most of what the run
+  currently offers -- but it is a different feature from positioning a place,
+  and folding it in would mean a link nobody asked for arriving from a source
+  the sources list does not mention.
+
+- **The maps lookup is not offered to the model as a tool.** (Stage 33
+  Milestone 3.) `toolGeocode` still describes OpenStreetMap only, so a model
+  trying to confirm that a restaurant exists gets the source that is worst at
+  restaurants. Left alone because the coordinates that reach a proposal never
+  come from the model's tool use anyway -- it is a verification aid -- and
+  because every tool call the model can make is a paid call it can make
+  repeatedly.
+
 - **The address search could say when a result is only street-accurate.**
   (Stage 33 Milestone 2.) `/api/geocode` now reports `class`, `kind` and
   `address_type` for every result, and `geocode.Result.Precise()` reduces them

@@ -620,6 +620,80 @@ test.describe("a marker popup links back into the app", () => {
 });
 
 
+// Stage 34. The popup shows the location's own photo, in the same 16/9 crop
+// .location-view__image gives it on the location page - so a marker is
+// recognisable as the place, not just as its name. Places without a photo get
+// no image and no placeholder box.
+test.describe("a marker popup shows the location photo", () => {
+  // The seeded trip has one located item with a cover and others without, and
+  // the marker order is the payload order, so this walks them rather than
+  // assuming which one is first.
+  async function popupsByMarker(page) {
+    return page.evaluate(async () => {
+      const sr = document.querySelector("map-view").shadowRoot;
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+      const fire = (el) => {
+        for (const type of ["mousedown", "mouseup", "click"]) {
+          el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window, button: 0 }));
+        }
+      };
+      const out = [];
+      for (const marker of [...sr.querySelectorAll(".maplibregl-marker")]) {
+        fire(marker);
+        await wait(300);
+        const popup = sr.querySelector(".maplibregl-popup-content");
+        const img = popup?.querySelector(".popup-image");
+        if (img && !img.complete) await img.decode().catch(() => {});
+        const rect = img?.getBoundingClientRect();
+        out.push({
+          title: popup?.querySelector("strong")?.textContent ?? null,
+          hasImage: !!img,
+          // naturalWidth is the proof the file was actually served - a broken
+          // src still has a box, and the box is what the ratio is read from.
+          naturalWidth: img?.naturalWidth ?? 0,
+          ratio: rect && rect.height ? rect.width / rect.height : null,
+          objectFit: img ? getComputedStyle(img).objectFit : null,
+          alt: img?.getAttribute("alt") ?? null,
+          loading: img?.getAttribute("loading") ?? null,
+        });
+        fire(marker);
+        await wait(100);
+      }
+      return out;
+    });
+  }
+
+  test("crops it to 16/9, and renders nothing for a place without one", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+
+    const popups = await popupsByMarker(page);
+    const withPhoto = popups.filter((p) => p.hasImage);
+    const withoutPhoto = popups.filter((p) => !p.hasImage);
+
+    expect(
+      withPhoto.length,
+      "no marker popup showed a photo - does the seeded trip still give a located item a cover image?"
+    ).toBeGreaterThan(0);
+    expect(
+      withoutPhoto.length,
+      "every seeded marker has a photo, so the no-photo case is untested here"
+    ).toBeGreaterThan(0);
+
+    for (const p of withPhoto) {
+      expect(p.naturalWidth, `"${p.title}" rendered an image that never loaded`).toBeGreaterThan(0);
+      // The seeded cover is not 16/9, so this is the CSS cropping it rather
+      // than the file happening to have the right shape.
+      expect(p.ratio, `"${p.title}" is ${p.ratio?.toFixed(3)}, want 16/9`).toBeCloseTo(16 / 9, 2);
+      expect(p.objectFit, "a cropped box needs object-fit, or the photo is squashed").toBe("cover");
+      // Decorative: the title is right above it.
+      expect(p.alt).toBe("");
+      expect(p.loading).toBe("lazy");
+    }
+  });
+});
+
+
 // Milestone 3. Pick mode: the first time map-view.js has been anything but
 // read-only. No page mounts it yet (the location editor picks it up in
 // Milestone 4), so these tests mount one themselves.

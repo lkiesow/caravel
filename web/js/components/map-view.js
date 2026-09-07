@@ -420,6 +420,21 @@ const styles = `
   .popup-link {
     display: block;
   }
+  /* The location's photo, when it has one (Stage 34). Deliberately the same
+     shape .location-view__image gets in base.css - 16/9 with object-fit
+     cropping to it - so the picture of a place reads the same in the popup as
+     it does on its own page, whatever aspect the upload happens to be.
+     Width is the popup content box rather than a fixed pixel size: MapLibre's
+     own maxWidth (240px) is what bounds it, and full-bleeding it past the
+     content padding would put the close button on top of the picture. */
+  .popup-image {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    border-radius: 0.25rem;
+    margin: 0.375rem 0 0.25rem;
+  }
   /* The popup itself, repainted from MapLibre's stylesheet in the map's own
      scheme (see --popup-* above). Everything here overrides a vendor rule from
      /js/vendor/maplibre/maplibre-gl.css, which the shadow root links *before*
@@ -1135,6 +1150,13 @@ class MapView extends HTMLElement {
         .setPopup(
           this.popup(
             `<strong>${escapeHtml(item.title)}</strong>` +
+              // alt="" on purpose: the title is right above it, so the photo
+              // carries nothing a screen reader has not already been told.
+              // loading="lazy" because setHTML builds the content up front for
+              // every marker while only the opened popup is ever in the DOM.
+              (item.image_url
+                ? `<img class="popup-image" src="${escapeAttr(item.image_url)}" alt="" loading="lazy" />`
+                : "") +
               `<a class="popup-link" data-item-id="${escapeAttr(item.id)}" href="${escapeAttr(`/trips/${tripId}/locations/${item.id}`)}">${t("map.openLocation")}</a>` +
               `<a class="popup-link" href="${escapeAttr(item.google_maps_url)}" target="_blank" rel="noopener">${t("map.viewOnGoogleMaps")}</a>`
           )

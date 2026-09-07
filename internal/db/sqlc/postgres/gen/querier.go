@@ -194,6 +194,10 @@ type Querier interface {
 	// place rather than dropping a pin at a coordinate (Stage 29). A popup that
 	// linked to a coordinate while the same location page linked to the named
 	// place would be the inconsistency Milestone 1 just removed.
+	//
+	// image_id is selected so the popup can show the same photo the location page
+	// shows. It is the id, not a URL -- media assets are resolved through
+	// resolveImageURL in the API layer, the way the itinerary list does it.
 	ListMapItemsByTrip(ctx context.Context, tripID string) ([]ListMapItemsByTripRow, error)
 	// Every personal list belonging to one user on one trip, for the moment they
 	// stop being a member. Same treatment as their personal files.

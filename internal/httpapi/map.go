@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
@@ -92,6 +93,9 @@ type mapItemResponse struct {
 	Lat           float64 `json:"lat"`
 	Lng           float64 `json:"lng"`
 	GoogleMapsURL string  `json:"google_maps_url"`
+	// Nil for a place with no photo, in which case the popup renders no image
+	// at all -- deliberately no placeholder box, matching the location page.
+	ImageURL *string `json:"image_url"`
 }
 
 // The zoom the coordinate bias is applied at. 17 is street level -- close
@@ -223,7 +227,10 @@ func looksLikeCoordinate(s string) bool {
 	}) < 0
 }
 
-func mapItemToResponse(i db.MapItem) mapItemResponse {
+// A method rather than a function since Stage 34: resolving the image needs the
+// store, one lookup per item with a photo. The same shape the itinerary list
+// has -- a map is a page-sized payload, and only located items are in it.
+func (s *Server) mapItemToResponse(ctx context.Context, i db.MapItem) mapItemResponse {
 	return mapItemResponse{
 		ID:            i.ID,
 		Title:         i.Title,
@@ -231,6 +238,7 @@ func mapItemToResponse(i db.MapItem) mapItemResponse {
 		Lat:           i.Lat,
 		Lng:           i.Lng,
 		GoogleMapsURL: googleMapsURL(i.Lat, i.Lng, i.Title, i.Address),
+		ImageURL:      s.resolveImageURL(ctx, i.ImageID),
 	}
 }
 
@@ -248,7 +256,7 @@ func (s *Server) handleGetTripMap(w http.ResponseWriter, r *http.Request) {
 
 	resp := make([]mapItemResponse, len(items))
 	for i, it := range items {
-		resp[i] = mapItemToResponse(it)
+		resp[i] = s.mapItemToResponse(r.Context(), it)
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

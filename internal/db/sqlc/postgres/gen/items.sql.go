@@ -195,7 +195,7 @@ func (q *Queries) ListItemsByTrip(ctx context.Context, arg ListItemsByTripParams
 }
 
 const listMapItemsByTrip = `-- name: ListMapItemsByTrip :many
-SELECT i.id, i.category, i.title, i.show_on_map, l.lat, l.lng, l.address
+SELECT i.id, i.category, i.title, i.show_on_map, i.image_id, l.lat, l.lng, l.address
 FROM items i
 INNER JOIN item_locations l ON l.item_id = i.id
 WHERE i.trip_id = $1 AND l.lat IS NOT NULL AND l.lng IS NOT NULL
@@ -206,6 +206,7 @@ type ListMapItemsByTripRow struct {
 	Category  string          `json:"category"`
 	Title     string          `json:"title"`
 	ShowOnMap bool            `json:"show_on_map"`
+	ImageID   sql.NullString  `json:"image_id"`
 	Lat       sql.NullFloat64 `json:"lat"`
 	Lng       sql.NullFloat64 `json:"lng"`
 	Address   sql.NullString  `json:"address"`
@@ -218,6 +219,10 @@ type ListMapItemsByTripRow struct {
 // place rather than dropping a pin at a coordinate (Stage 29). A popup that
 // linked to a coordinate while the same location page linked to the named
 // place would be the inconsistency Milestone 1 just removed.
+//
+// image_id is selected so the popup can show the same photo the location page
+// shows. It is the id, not a URL -- media assets are resolved through
+// resolveImageURL in the API layer, the way the itinerary list does it.
 func (q *Queries) ListMapItemsByTrip(ctx context.Context, tripID string) ([]ListMapItemsByTripRow, error) {
 	rows, err := q.db.QueryContext(ctx, listMapItemsByTrip, tripID)
 	if err != nil {
@@ -232,6 +237,7 @@ func (q *Queries) ListMapItemsByTrip(ctx context.Context, tripID string) ([]List
 			&i.Category,
 			&i.Title,
 			&i.ShowOnMap,
+			&i.ImageID,
 			&i.Lat,
 			&i.Lng,
 			&i.Address,

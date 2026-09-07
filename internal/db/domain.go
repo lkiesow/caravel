@@ -255,6 +255,9 @@ type TripForUser struct {
 // Maps link, which names the place instead of dropping a pin on a coordinate
 // (Stage 29) -- a title alone already gets a place card, and the address is
 // what keeps a chain from resolving to the wrong branch.
+//
+// ImageID is nil for a place with no photo, and is an id rather than a URL for
+// the same reason Item carries one: media assets are resolved in the API layer.
 type MapItem struct {
 	ID       string
 	Category string
@@ -262,6 +265,7 @@ type MapItem struct {
 	Lat      float64
 	Lng      float64
 	Address  *string
+	ImageID  *string
 }
 
 // ItemCoordinate is one item's position, for callers that need coordinates

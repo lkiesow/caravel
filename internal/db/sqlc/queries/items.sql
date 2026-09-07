@@ -61,8 +61,12 @@ WHERE i.trip_id = sqlc.arg(trip_id) AND l.lat IS NOT NULL AND l.lng IS NOT NULL;
 -- place rather than dropping a pin at a coordinate (Stage 29). A popup that
 -- linked to a coordinate while the same location page linked to the named
 -- place would be the inconsistency Milestone 1 just removed.
+--
+-- image_id is selected so the popup can show the same photo the location page
+-- shows. It is the id, not a URL -- media assets are resolved through
+-- resolveImageURL in the API layer, the way the itinerary list does it.
 -- name: ListMapItemsByTrip :many
-SELECT i.id, i.category, i.title, i.show_on_map, l.lat, l.lng, l.address
+SELECT i.id, i.category, i.title, i.show_on_map, i.image_id, l.lat, l.lng, l.address
 FROM items i
 INNER JOIN item_locations l ON l.item_id = i.id
 WHERE i.trip_id = sqlc.arg(trip_id) AND l.lat IS NOT NULL AND l.lng IS NOT NULL;

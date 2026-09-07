@@ -425,20 +425,20 @@ const styles = `
      upload is cropped rather than allowed to set the popup's height.
      The ratio is 21/9 rather than that rule's 16/9 on purpose: a popup is a
      hover-sized card, not a page banner, and the letterbox keeps the picture
-     from pushing the two links below the fold of a short map. At the 200px
-     content width below that is a 200x86 strip.
-     200px flat rather than width: 100%, which is not the same thing here: a
+     from pushing the two links below the fold of a short map. At the 180px
+     content width below that is a 180x77 strip.
+     180px flat rather than width: 100%, which is not the same thing here: a
      popup is shrink-to-fit, so a percentage width follows the longest line of
-     text and gave a 190px picture next to a short title and a 200px one next
-     to a long one. A fixed width makes it the widest thing in the box instead,
-     so every photo is the same size whatever the place is called - and with
-     popup()'s 220px maxWidth (10px of vendor padding a side) it is exactly the
-     content width, not an inset picture with a gutter beside full-width links.
-     max-width keeps it honest if that padding ever changes. Full-bleeding it
-     past the padding would put the close button on top of the picture. */
+     text and gave a picture that changed size with the length of the place's
+     name. A fixed width makes it the widest thing in the box instead, so every
+     photo is identical - and with popup()'s 200px maxWidth (10px of vendor
+     padding a side) it is exactly the content width, not an inset picture with
+     a gutter beside full-width links. max-width keeps it honest if that
+     padding ever changes. Full-bleeding it past the padding would put the
+     close button on top of the picture. */
   .popup-image {
     display: block;
-    width: 200px;
+    width: 180px;
     max-width: 100%;
     aspect-ratio: 21 / 9;
     object-fit: cover;
@@ -1201,14 +1201,14 @@ class MapView extends HTMLElement {
   // and escapeAttr at the call sites remain the only escaping, exactly as they
   // were under Leaflet's bindPopup.
   //
-  // maxWidth is 220px against MapLibre's own 240: the vendor rule pads the
+  // maxWidth is 200px against MapLibre's own 240: the vendor rule pads the
   // content box by 10px a side, so this is the ceiling that lets .popup-image
-  // be exactly 200px wide without the box growing past it. A cap, not a width
+  // be exactly 180px wide without the box growing past it. A cap, not a width
   // - a popup with no photo and a short title still shrinks to its text. The
   // single-marker embed shares this and has no image; a long enough title
   // there is now wrapped 20px earlier than it used to be.
   popup(html) {
-    return new this._maplibre.Popup({ offset: 12, focusAfterOpen: false, maxWidth: "220px" }).setHTML(html);
+    return new this._maplibre.Popup({ offset: 12, focusAfterOpen: false, maxWidth: "200px" }).setHTML(html);
   }
 
   // Pick mode's one marker. Deliberately not part of plotMarkers' other two

@@ -665,7 +665,7 @@ test.describe("a marker popup shows the location photo", () => {
     });
   }
 
-  test("crops it to 21/9 at 200px, and renders nothing for a place without one", async ({ page }) => {
+  test("crops it to 21/9 at 180px, and renders nothing for a place without one", async ({ page }) => {
     await login(page);
     await gotoTripMap(page);
 
@@ -684,11 +684,12 @@ test.describe("a marker popup shows the location photo", () => {
 
     for (const p of withPhoto) {
       expect(p.naturalWidth, `"${p.title}" rendered an image that never loaded`).toBeGreaterThan(0);
-      // 200 exactly, for every photo regardless of how long the place's name
+      // 180 exactly, for every photo regardless of how long the place's name
       // is. The ratio alone would not catch this: a percentage width follows
       // the popup's shrink-to-fit text, which is what made one seeded popup's
-      // picture 190px before .popup-image was pinned.
-      expect(p.width, `"${p.title}" is ${p.width?.toFixed(1)}px wide, want 200`).toBeCloseTo(200, 0);
+      // picture 10px narrower than its neighbour before .popup-image was
+      // pinned to a flat width.
+      expect(p.width, `"${p.title}" is ${p.width?.toFixed(1)}px wide, want 180`).toBeCloseTo(180, 0);
       // No seeded cover is 21/9, so this is the CSS cropping it rather than
       // the file happening to have the right shape.
       expect(p.ratio, `"${p.title}" is ${p.ratio?.toFixed(3)}, want 21/9`).toBeCloseTo(21 / 9, 2);

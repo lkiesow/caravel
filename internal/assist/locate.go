@@ -137,19 +137,31 @@ const (
 // ambiguousMetres is how far apart two sources have to put a place before the
 // answer is a question rather than a position.
 //
-// 2km separates the two failures worth telling apart. Below it are the
-// ordinary disagreements: one service on the building and the other on the
-// street, opposite ends of a station, a hotel entrance versus its car park --
-// all of them the same place, and all of them fine. Above it the two are
-// describing different things: a second branch, a similarly-named place in the
-// next town, a match on the wrong city entirely.
+// 150m, which is deliberately tight, and chosen against measurement rather
+// than intuition. Five live enrichments during Stage 33 Milestone 3 separated
+// the two services by 12m, 14m, 34m and 1116m. The first draft of this
+// constant was 2000, on the reasoning that two services can legitimately pin
+// opposite ends of one complex -- which is true, and let the 1116m pair
+// through as "agreement" in a city centre where 1.1km is a different
+// neighbourhood. A kilometre in a dense city is not a rounding error; it is
+// being lost.
 //
-// It deliberately does not catch two genuine franchises 1km apart. That case
-// is real and this threshold would have to be tiny to catch it, which would
-// make every ordinary run a question. What covers it instead is showing the
-// matched name, so a person can see that the pin says "Cafe Loki, Skolavordustigur"
-// when they meant the other one.
-const ambiguousMetres = 2000
+// So the threshold is set where the evidence puts the boundary: everything
+// that plainly agreed was under 40m, and everything above it is worth a look.
+// The cost of being too tight is a question the user did not need, which is
+// visible and cheap; the cost of being too loose is a wrong pin nobody was
+// asked about, which is the bug this stage exists to fix. Wrong in the
+// direction that shows itself.
+//
+// Expected to move. It is one number and the thing to do with it is watch how
+// often the question actually fires in use, then raise it if the answer is
+// "constantly". plans/todo.md carries that as an open item.
+//
+// Note it happens to equal samePlaceMetres in agent.go, and the two are not
+// related: that one asks whether two *candidates* are the same place, this one
+// asks whether two *sources* are describing the same one. Changing either
+// should not drag the other along.
+const ambiguousMetres = 150
 
 // resolvePosition finds where a proposed place is, or returns nil.
 //

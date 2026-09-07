@@ -96,11 +96,13 @@ func TestResolvePositionIsNilRatherThanAGuess(t *testing.T) {
 // nothing else -- the plumbing that reaches it has its own tests below.
 
 func TestChoosePosition(t *testing.T) {
-	// Two points about 900m apart, which is the ordinary disagreement: same
-	// place, different survey.
+	// Two points about 30m apart, which is what genuine agreement measured
+	// like against the live services: a building and its doorway, two surveys
+	// of the same thing. All five live enrichments that plainly agreed were
+	// under 40m.
 	const nearLat, nearLng = 64.1466, -21.9253
-	const alsoNearLat, alsoNearLng = 64.1479, -21.9234
-	// And one 3.4km away, which is a different place.
+	const alsoNearLat, alsoNearLng = 64.14684, -21.92512
+	// And one 3.4km away, which is plainly a different place.
 	const farLat, farLng = 64.1505, -21.8620
 
 	osm := func(precise bool, lat, lng float64) *Position {

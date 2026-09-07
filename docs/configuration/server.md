@@ -146,3 +146,4 @@ are listed so that seeing one in a shell history is not a mystery.
 |---|---|
 | `CARAVEL_TEST_DB_DRIVER` | Set to `postgres` to run `go test ./...` against Postgres instead of SQLite — see `make test-postgres` |
 | `CARAVEL_TEST_DB_DSN` | The Postgres server those tests create a schema in, per test |
+| `CARAVEL_LIVE_PROBE` | Set to `1` — together with a real `CARAVEL_SEARCH_KEY` — to run the hand-driven probe in `internal/assist/locate_live_test.go`, which asks the real OpenStreetMap and the real Serper where a list of places is and reports how often they disagree. It makes paid, outbound calls, so it needs both variables and skips silently without them |

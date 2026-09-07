@@ -367,18 +367,13 @@ both queries, Google finds the hotel on the name alone at
 either source before this milestone. `TestPlacesIsAskedTheNameAloneFirst`
 pins the correction.
 
-**A measurement that questions a decision taken up front.** Five live
-enrichments produced separations of 12 m, 14 m, 34 m, **1116 m**, and one
-where only Google answered. `ambiguousMetres` is 2000, so the 1116 m pair
-— an OSM `amenity`/`restaurant` and a Google seafood restaurant on
-Geirsgata, in a city centre small enough that 1.1 km is a different
-neighbourhood — was recorded as *agreement* and resolved silently to the
-OSM answer. The gap in this sample between "plainly the same place" and
-"plainly not" sits between 34 m and 1116 m, which is evidence that 2 km
-is too generous. Left at 2000 for this milestone because the threshold is
-a user-facing decision about how often the UI asks a question, it was
-agreed up front, and Milestone 5 is where it becomes visible. Raised at
-the checkpoint rather than changed quietly.
+**A measurement that questioned a decision taken up front, and changed
+it.** Five live enrichments produced separations of 12 m, 14 m, 34 m and
+**1116 m**. `ambiguousMetres` was 2000, so the 1116 m pair — an OSM
+`amenity`/`restaurant` and a Google seafood restaurant on Geirsgata, in a
+city centre small enough that 1.1 km is a different neighbourhood — was
+recorded as *agreement* and resolved silently. Raised at the checkpoint
+rather than changed quietly; see the follow-up below for what it became.
 
 Verified: `make ci` green. New Go tests — a seven-row table over
 `choosePosition` covering every branch of the matrix including both
@@ -392,6 +387,56 @@ the parser, rows with no coordinates skipped while 0,0 is kept, the
 sibling-endpoint derivation, and which backends offer places at all.
 `make test-ui` green across all 12 assist specs with the stub places
 backend now in the path.
+
+**Follow-up: `ambiguousMetres` is 150, not 2000.** Set against the
+measurement above rather than against intuition. A kilometre in a dense
+city is not a rounding error — in Tokyo it means being completely lost —
+and the first draft's reasoning about "two services pinning opposite ends
+of one complex" was defending a case far rarer than the one it let
+through.
+
+Ten places across Reykjavík, Tokyo and Berlin, driven straight through
+the resolver against the real OpenStreetMap and the real Serper:
+
+| | apart | chose | ambiguous |
+|---|---|---|---|
+| Kex Hostel, Reykjavík | 9 m | osm | no |
+| Hallgrímskirkja | 26 m | osm | no |
+| Brauð and Co | 9 m | osm | no |
+| Harpa | 35 m | osm | no |
+| Hotel Adlon, Berlin | 73 m | osm | no |
+| Café Einstein, Berlin | 9 m | google | no |
+| Sensōji, Tokyo | 183 m | osm | **yes** |
+| Hotel Rangá | 8258 m | google | **yes** |
+| Kaffibarinn / Tsuta ramen | — | — | only one source answered |
+
+Six agreed, two ambiguous, two one-sided. The boundary is well placed:
+everything that plainly agreed came in under 75 m, and the only near-miss
+is Sensōji at 183 m — a temple complex where the main hall and the
+Kaminarimon gate are genuinely that far apart, which is a question worth
+asking rather than a wrong answer worth hiding. Compared against the old
+2000 m, the tighter threshold costs exactly **one** extra question in
+ten places and catches the Geirsgata case that started this.
+
+The two "only one source answered" rows are worth noting too: Google's
+coverage varies between identical calls, and Tsuta ramen resolved through
+Google in one run and neither source in another. Nothing depends on it —
+one source answering is an ordinary outcome — but it means the question
+rate is a range rather than a number.
+
+`TestChoosePosition`'s "they agree" fixtures were 900 m apart and had to
+be rebuilt at 28 m, which is the test catching the change rather than
+rubber-stamping it.
+
+The probe is kept as `TestLiveSourceAgreement` rather than thrown away,
+because the threshold is expected to move again and the next person to
+wonder should not have to rebuild the harness. It needs **two** things to
+run — a key *and* `CARAVEL_LIVE_PROBE=1` — so a developer with the
+project's `.env` exported into their shell cannot trigger paid calls by
+running `go test ./...`. Verified by running it with the key exported and
+no opt-in: it skips. `check_env_vars.py` then required the new variable
+to be documented, which is the repo guard working; it is in the
+server-configuration table alongside the other test-only names.
 
 ---
 

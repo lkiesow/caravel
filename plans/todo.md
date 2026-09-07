@@ -157,6 +157,17 @@ purpose — do not reconstruct it from an older stage plan without asking.
   shows the days it is on but does not link to them, so the way to see a
   location in context is to go back to the trip and pick the tab.
 
+- **`ambiguousMetres` is a first guess and wants watching in real use.** (Stage
+  33 Milestone 3 follow-up.) 150m, set against ten live places where everything
+  that plainly agreed came in under 75m. The one borderline case was Sensoji in
+  Tokyo at 183m -- a temple complex whose main hall and gate really are that far
+  apart -- so a large site with several entrances is the shape of false question
+  to expect. Raise it if the question starts firing on places nobody is confused
+  about; the harness for deciding is already written and needs no rebuilding:
+  `CARAVEL_LIVE_PROBE=1 CARAVEL_SEARCH_KEY=... go test ./internal/assist/ -run
+  TestLiveSourceAgreement -v`. Note Google coverage varies between identical
+  calls, so one run is a sample and not a measurement.
+
 - **Serper reports a website and a phone number for every place it finds.**
   (Stage 33 Milestone 3.) `/places` carries `website` and `phoneNumber`
   alongside the position, and `PlaceResult` deliberately drops both. An

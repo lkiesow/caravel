@@ -388,8 +388,45 @@ purpose — do not reconstruct it from an older stage plan without asking.
   handler, or `login` could take the routes a test wants -- but both are more
   machinery than one comment, and the comment is now in `map.spec.js`.
 
-- **`assist-suggest.spec.js`'s first test is flaky under parallel load, and it
-  is getting worse.** (Stage 32 Milestone 5; revisited in Stage 33 Milestone 1.)
+- **Concurrent writes to one SQLite database return 500, and it is not a test
+  problem.** (Found in Stage 33 Milestone 5, chasing what looked like a flaky
+  spec.) **10 of 12** concurrent `POST /items/batch` requests into one trip fail
+  with HTTP 500. Reproduced outside the browser suite, against a plain server,
+  with the error surfaced temporarily:
+
+  ```
+  database is locked (517)          <- SQLITE_BUSY_SNAPSHOT
+  database is locked (5)            <- SQLITE_BUSY
+  ```
+
+  517 is the diagnosis. `WithTx` opens a **deferred** transaction
+  (`BeginTx(ctx, nil)`, `internal/db/sqlite_store.go`), and `createItemsTx`
+  reads before it writes -- `ListItemsByTrip`, to pick the next `sort_order`. In
+  WAL mode a deferred transaction that reads first takes a read snapshot; if any
+  other writer commits before it tries to write, the lock upgrade can *never*
+  succeed, so SQLite fails immediately with SQLITE_BUSY_SNAPSHOT. **The
+  `busy_timeout(5000)` in the DSN does not apply to that case** -- there is
+  nothing to wait for -- which is why the pragma looks like it should have
+  covered this and does not.
+
+  The usual fix is `BEGIN IMMEDIATE` for any transaction that will write, so the
+  write lock is taken up front, where `busy_timeout` *does* apply. In Go that
+  means a SQLite-specific `WithTx` (the driver takes it via a connection-level
+  option or a raw `BEGIN IMMEDIATE`), and it needs the retry question answered
+  too: an immediate transaction that times out still needs a caller that tries
+  again or an honest error. Postgres has no equivalent problem.
+
+  Scope: `internal/httpapi` calls `WithTx` in ten places, so this is not the
+  batch endpoint's bug. It is user-visible on any shared trip -- two people
+  adding locations at the same time, or one person adding a batch while another
+  writes -- and it presents as "could not be saved, try again", which usually
+  works on the retry and so reads as a glitch. Worth its own milestone, with
+  `make test-postgres` run alongside since the fix is dialect-specific.
+
+  Note the flake below is a *symptom* of this, not a separate issue.
+
+- **`assist-suggest.spec.js`'s first test is flaky under parallel load.** (Stage
+  32 Milestone 5; revisited in Stage 33 Milestones 1 and 5.)
   "is reached from the New menu, and adds the ticked places in one go" failed
   once at Stage 32, on `expect(page).toHaveURL(/\/suggest$/)` after 25.6s -- the
   New menu click did not reach the suggest page in time. It failed in *both*
@@ -397,19 +434,30 @@ purpose — do not reconstruct it from an older stage plan without asking.
   came back an error, so the page stayed on `/suggest` showing "The locations
   could not be added". It passes alone in ~8s every time.
 
+  **The batch half now has a cause**: it is the concurrent-write 500 in the
+  entry above -- SQLITE_BUSY_SNAPSHOT from a deferred transaction that reads
+  before it writes. The response capture added in Milestone 5 produced that
+  diagnosis on the very next full run, after two stages of the failure arriving
+  as a translated sentence with nothing attached. Fixing the transaction should
+  remove this symptom; the *menu* half is a separate, slower timeout and is not
+  explained by it.
+
   Not a regression from the stub geocoder, and that was checked rather than
   assumed: the whole flow was driven through the API against a stub-configured
   server -- suggest, then `POST /items/batch` with the exact candidates and the
   exact fixture coordinates -- and answered 200 and 201. `items/batch` has no
   rate limiter. So this is contention, and two different symptoms of it.
 
-  What it needs next is the thing neither run captured: the *status and body*
-  of the failed batch request. `suggest-page.js` logs it to the console and
-  nothing collects that, so the failure arrives as a translated sentence with
-  no cause attached. Capturing the response in the spec, or asserting on it,
-  would turn one of the two symptoms into a real diagnosis. The menu half
-  probably still wants an explicit wait on the menu being open before the row
-  is clicked, rather than a longer timeout.
+  Stage 33 Milestone 5 fixed the *diagnosis* half rather than the flake. The
+  spec now waits on the `/items/batch` response and puts its body in the
+  assertion message, so the next failure says what the server actually answered
+  instead of only what the page told the user -- `suggest-page.js` logs the
+  cause to a console nobody collects, which is why two stages of failures
+  arrived as a translated sentence with nothing attached. Milestone 5 also
+  re-checked it through a real browser against a stub-configured server: five
+  candidates proposed, three added, 201. The menu half probably still wants an
+  explicit wait on the menu being open before the row is clicked, rather than a
+  longer timeout.
 
 ---
 

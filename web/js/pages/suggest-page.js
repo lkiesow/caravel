@@ -234,14 +234,28 @@ export async function renderSuggestPage(container, { tripId }) {
     // found -- and the second is the one that says where the pin will land.
     // Before Stage 33 Milestone 4 this line showed the model's address, or the
     // bare words "Position found", neither of which could be checked.
-    const place = candidate.position?.label || candidate.address || (candidate.position ? t("suggest.located") : "");
-    if (place) {
+    // When the sources disagreed there is no matched place worth naming: the
+    // whole point is that two of them contradict each other. The address is
+    // shown instead, with a line saying the position is unclear, and the card
+    // is added without a pin -- see addSelected.
+    const unclear = !!candidate.position?.alternatives?.length;
+    const place = unclear
+      ? candidate.address
+      : candidate.position?.label || candidate.address || (candidate.position ? t("suggest.located") : "");
+    if (place || unclear) {
       const placeEl = document.createElement("p");
       placeEl.className = "suggest-card__place";
       placeEl.textContent = place;
-      // A match on the street rather than the place is worth saying here too:
-      // these cards are added in a batch, so it is the last chance to notice.
-      if (candidate.position && !candidate.position.precise) {
+      if (unclear) {
+        const warn = document.createElement("span");
+        warn.className = "suggest-card__approximate";
+        warn.textContent = t("suggest.positionUnclear");
+        if (place) placeEl.append(document.createTextNode(" \u00b7 "));
+        placeEl.appendChild(warn);
+      } else if (candidate.position && !candidate.position.precise) {
+        // A match on the street rather than the place is worth saying here
+        // too: these cards are added in a batch, so it is the last chance to
+        // notice.
         const warn = document.createElement("span");
         warn.className = "suggest-card__approximate";
         warn.textContent = t("assist.position.approximate");
@@ -376,7 +390,14 @@ export async function renderSuggestPage(container, { tripId }) {
           notes: candidate.notes || null,
           tags: splitTags(candidate.tags),
           links: (candidate.links ?? []).map((l) => ({ url: l.url, label: l.label || null })),
-          ...(candidate.position
+          // An ambiguous position is added with its address and no pin. There
+          // is deliberately no picker on this screen: six checkbox cards each
+          // growing a nested chooser is a lot of interface for a rare case,
+          // and it would make "Add selected" mean something different per
+          // card. The place lands on the trip and the pin is set in the
+          // location editor, which already has a map picker, an address
+          // search and the map-link resolver.
+          ...(candidate.position && !candidate.position.alternatives?.length
             ? {
                 location: {
                   lat: candidate.position.lat,

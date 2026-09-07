@@ -79,8 +79,8 @@ func TestAssistSuggestStreamsProgressThenCandidates(t *testing.T) {
 	if err := json.Unmarshal([]byte(final.Data), &out); err != nil {
 		t.Fatalf("decode suggestions: %v", err)
 	}
-	if len(out.Candidates) != 3 {
-		t.Fatalf("candidates = %d, want the stub's 3", len(out.Candidates))
+	if len(out.Candidates) != 5 {
+		t.Fatalf("candidates = %d, want the stub's 5", len(out.Candidates))
 	}
 	first := out.Candidates[0]
 	if first.Title == "" || first.Category == "" || first.Notes == "" {
@@ -173,8 +173,8 @@ func TestAssistSuggestDropsWhatTheTripAlreadyHas(t *testing.T) {
 			}
 		}
 	}
-	if len(out.Candidates) != 2 {
-		t.Fatalf("candidates = %d, want 2 with Kex Hostel dropped", len(out.Candidates))
+	if len(out.Candidates) != 4 {
+		t.Fatalf("candidates = %d, want 4 with Kex Hostel dropped", len(out.Candidates))
 	}
 	if out.Dropped != 1 {
 		t.Errorf("dropped = %d, want 1", out.Dropped)

@@ -42,6 +42,11 @@ const FIELD_NAMES = ["title", "category", "tags", "notes", "address"];
 // Where a position came from, as an i18n key per source. A map rather than a
 // switch so an unknown source falls through to being shown verbatim: see
 // renderPosition.
+// Radio groups need unique names across a page, and a panel can render more
+// than one position row over the life of a session. A counter is enough: it
+// only has to be unique, not meaningful.
+let positionGroups = 0;
+
 const SOURCE_LABELS = {
   osm: "assist.position.source.osm",
   google: "assist.position.source.google",
@@ -153,7 +158,12 @@ export function renderAssistPanel(container, { tripId, root, readCurrent, applyF
   function syncBar() {
     const n = outstanding.length;
     barEl.hidden = n === 0;
-    countEl.textContent = t("assist.outstanding", { count: n }, n);
+    // Two numbers when some rows hold a question, because "3 suggestions" with
+    // an Accept all that only takes two is a bar contradicting its own button.
+    const undecided = outstanding.filter((o) => o.needsChoice()).length;
+    countEl.textContent = undecided
+      ? `${t("assist.outstanding", { count: n }, n)} \u00b7 ${t("assist.needsChoice", { count: undecided }, undecided)}`
+      : t("assist.outstanding", { count: n }, n);
   }
 
   function clearSuggestions() {
@@ -179,10 +189,73 @@ export function renderAssistPanel(container, { tripId, root, readCurrent, applyF
   //
   // Same row as every other suggestion, with a node in place of the text.
   function addPositionSuggestion(position) {
+    // The ordinary case: one position, shown as evidence, accepted or not.
+    if (!position.alternatives?.length) {
+      addSuggestion("coordinates", {
+        overwrites: false,
+        onAccept: () => acceptPosition(position),
+        node: () => renderPosition(position),
+      });
+      return;
+    }
+
+    // The sources disagreed by more than the resolver is willing to call one
+    // place, so this is a question rather than a suggestion. Both answers are
+    // offered, *nothing is preselected*, and the row is skipped by Accept all
+    // until somebody chooses -- because picking between two places kilometres
+    // apart on the reader's behalf is precisely the failure this stage exists
+    // to remove.
+    //
+    // Capped at three. Two is what the resolver produces today; the cap is
+    // here so a future third source cannot turn one row into a list.
+    const options = [position, ...position.alternatives].slice(0, 3);
+    // Shared across the radios of *this* row only. Several proposals in one
+    // run would otherwise share a name and behave as one group.
+    const groupName = `assist-position-${++positionGroups}`;
+    let chosen = null;
+
     addSuggestion("coordinates", {
       overwrites: false,
-      onAccept: () => acceptPosition(position),
-      node: () => renderPosition(position),
+      needsChoice: () => chosen === null,
+      onAccept: () => acceptPosition(options[chosen]),
+      node: () => {
+        const wrap = document.createElement("div");
+        wrap.className = "assist-position-choice";
+
+        const ask = document.createElement("p");
+        ask.className = "assist-position-choice__ask";
+        ask.textContent = t("assist.position.choose");
+        wrap.appendChild(ask);
+
+        // A radiogroup rather than a list of buttons: the reader is answering
+        // one question with mutually exclusive answers, and a screen reader
+        // should hear it that way -- "1 of 2", not two unrelated controls.
+        const group = document.createElement("div");
+        group.setAttribute("role", "radiogroup");
+        group.setAttribute("aria-label", t("assist.position.choose"));
+        group.className = "assist-position-choice__options";
+
+        options.forEach((option, index) => {
+          const label = document.createElement("label");
+          label.className = "assist-position-choice__option";
+
+          const radio = document.createElement("input");
+          radio.type = "radio";
+          radio.name = groupName;
+          radio.value = String(index);
+          // Deliberately not checked. A default here is a guess presented as
+          // an answer, and the reader would accept it without reading.
+          radio.addEventListener("change", () => {
+            if (radio.checked) chosen = index;
+          });
+          label.appendChild(radio);
+          label.appendChild(renderPosition(option));
+          group.appendChild(label);
+        });
+
+        wrap.appendChild(group);
+        return wrap;
+      },
     });
   }
 
@@ -326,7 +399,10 @@ export function renderAssistPanel(container, { tripId, root, readCurrent, applyF
   // One suggestion, built with DOM calls rather than a template string: every
   // value in a proposal came off a web page the agent read, so one forgotten
   // escape in a template is an injection.
-  function addSuggestion(fieldName, { value, overwrites, onAccept, node }) {
+  // `needsChoice`, when given, is called before an accept and reports whether
+  // the row still has an unanswered question in it. A row that does is skipped
+  // by Accept all and kept in the list -- see acceptAll.
+  function addSuggestion(fieldName, { value, overwrites, onAccept, node, needsChoice }) {
     const slot = root.querySelector(`[data-assist-field="${fieldName}"]`);
     // No slot means this page has nowhere sensible to put it -- a newer server
     // proposing a field this build does not have. Skipped rather than dumped
@@ -377,13 +453,33 @@ export function renderAssistPanel(container, { tripId, root, readCurrent, applyF
 
     const entry = {
       el,
+      // Asked rather than stored, because the answer changes as the reader
+      // interacts with the row: an ambiguous position needs a choice until one
+      // is made, and then it does not.
+      needsChoice: () => (needsChoice ? needsChoice() : false),
       accept: () => {
+        // Belt and braces on top of the disabled button: the only other caller
+        // is Accept all, which already skips these, and a third caller
+        // appearing later should not be able to accept a question.
+        if (entry.needsChoice()) return;
         onAccept();
         forget(entry);
       },
     };
     accept.addEventListener("click", entry.accept);
     reject.addEventListener("click", () => forget(entry));
+    // A row with an open question cannot be accepted until it is answered, and
+    // the control says so rather than failing silently when pressed.
+    if (needsChoice) {
+      const syncAccept = () => {
+        accept.disabled = entry.needsChoice();
+      };
+      syncAccept();
+      el.addEventListener("change", () => {
+        syncAccept();
+        syncBar();
+      });
+    }
     outstanding.push(entry);
     syncBar();
   }
@@ -514,7 +610,20 @@ export function renderAssistPanel(container, { tripId, root, readCurrent, applyF
   container.querySelector('[data-action="assist-cancel"]').addEventListener("click", () => controller?.abort());
   container.querySelector('[data-action="assist-accept-all"]').addEventListener("click", () => {
     // A copy, because accept() mutates the list it is iterating.
-    for (const entry of [...outstanding]) entry.accept();
+    //
+    // Rows holding an unanswered question are skipped and stay outstanding.
+    // That is the whole point of the ambiguous case: when two mapping services
+    // disagree about where a place is, "accept everything" must not silently
+    // pick one of them. entry.accept() refuses on its own too; the filter is
+    // here so the intent is readable at the call site rather than only in the
+    // guard.
+    for (const entry of [...outstanding]) {
+      if (entry.needsChoice()) continue;
+      entry.accept();
+    }
+    // The bar stays up, now reading "1 suggestion · 1 needs a choice", and the
+    // row it means is the only thing left on screen.
+    syncBar();
   });
   // Dismiss all clears the proposal, not the account of how it was reached:
   // the run still happened, and the trace is the answer to "why was that

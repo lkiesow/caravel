@@ -429,7 +429,7 @@ func runTask[A any, R any](ctx context.Context, a *Agent, tk task, events func(E
 	// being asked for. Real providers are stateless between runs and need
 	// nothing here.
 	if s, ok := a.provider.(*stubProvider); ok {
-		s.begin(tk.mode)
+		s.begin(tk.mode, tk.user)
 	}
 
 	tools := newToolset(a.search, a.fetcher, a.geocoder, emit, log)

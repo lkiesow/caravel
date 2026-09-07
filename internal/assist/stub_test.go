@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"caravel/internal/geocode"
 )
 
 // The stub's value is that it drives a *multi-step* exchange, so the loop, the
@@ -134,7 +136,7 @@ func TestStubReplaysAfterReset(t *testing.T) {
 			t.Fatalf("first pass: %v", err)
 		}
 	}
-	s.begin(ModeEnrich)
+	s.begin(ModeEnrich, "")
 	resp, err := s.Complete(ctx, chatRequest{})
 	if err != nil {
 		t.Fatalf("after reset: %v", err)
@@ -236,5 +238,50 @@ func TestProposalSchemaIsValidJSON(t *testing.T) {
 	props, _ := parsed["properties"].(map[string]any)
 	if len(required) != len(props) {
 		t.Errorf("required lists %d fields but there are %d properties; strict mode wants every one", len(required), len(props))
+	}
+}
+
+// The prompt-selected script, which exists for the one state the default
+// enrichment script cannot reach: a place the two mapping fixtures disagree
+// about, so the panel has to ask rather than propose.
+//
+// Asserted in Go as well as in the browser because the browser assertion is
+// three layers away from the cause, and a fixture that silently stopped
+// producing a disagreement would look like a UI regression.
+func TestTheStubCanBeAskedAboutAPlaceTheSourcesDisagreeAbout(t *testing.T) {
+	a := agentWith()
+	a.provider = newStubProvider()
+	a.geocoder = geocode.New(geocode.StubURL)
+	a.search = &stubSearcher{}
+
+	req := enrichRequest()
+	req.Prompt = "Harpa concert hall"
+	p, err := a.Propose(context.Background(), req, nil)
+	if err != nil {
+		t.Fatalf("Propose: %v", err)
+	}
+	if p.Position == nil {
+		t.Fatal("no position")
+	}
+	if !p.Position.Ambiguous() {
+		t.Fatalf("Ambiguous() = false for %q — the panel could never show its question", p.Position.Label)
+	}
+	if len(p.Position.Alternatives) != 1 {
+		t.Errorf("alternatives = %d, want the other source's answer", len(p.Position.Alternatives))
+	}
+	// Both answers need a label, because the label is the entire basis on
+	// which somebody picks one.
+	if p.Position.Label == "" || p.Position.Alternatives[0].Label == "" {
+		t.Errorf("an option has no label: %q / %q", p.Position.Label, p.Position.Alternatives[0].Label)
+	}
+
+	// And the default script is untouched: a run with any other prompt still
+	// gets Kex Hostel, resolved precisely and with no question attached.
+	plain, err := a.Propose(context.Background(), enrichRequest(), nil)
+	if err != nil {
+		t.Fatalf("Propose (default script): %v", err)
+	}
+	if plain.Position == nil || plain.Position.Ambiguous() {
+		t.Errorf("the default script now produces a question: %+v", plain.Position)
 	}
 }

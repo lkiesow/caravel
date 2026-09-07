@@ -8,6 +8,11 @@ OpenStreetMap's Nominatim, the same project the map tiles come from.
 |---|---|
 | `CARAVEL_GEOCODER_URL` | `https://nominatim.openstreetmap.org/search` |
 
+The value `stub` is a third option: an in-process fixture geocoder that answers
+a handful of Reykjavík places from a table and nothing else. It exists so the
+browser test suite does not ask a volunteer-run service for the same
+coordinates on every run, and it is never a real answer.
+
 ## It is called from the server, not the browser
 
 Caravel proxies address search through `/api/geocode` rather than letting the

@@ -2,11 +2,21 @@
 // together.
 //
 // Driven by the stub provider's suggest script (internal/assist/stub.go),
-// which proposes three Reykjavik places -- one with a cover and coordinates,
-// one with coordinates and no cover, and one deliberately thin: no address, no
-// link, nothing to geocode. That third one is the point of the fixture. A
-// script where every candidate was complete would never show whether a sparse
-// card renders, and sparse is the common case.
+// which proposes five Reykjavik places with a job each. A script where every
+// candidate was complete and confidently positioned would never show what the
+// awkward ones look like, and the awkward ones are the common case:
+//
+//   - Hallgrimskirkja -- a cover, and a position matched by name.
+//   - Kex Hostel -- a position matched by name, no cover.
+//   - Braud and Co -- deliberately thin: no address, no link, nothing to
+//     geocode at all.
+//   - Skulagata apartment -- no findable name, so the position comes from the
+//     postal address and lands on the *street*. The card has to say so.
+//   - Harpa -- the two fixture sources put it 3.4km apart, so there is no
+//     position anyone should trust. Added with its address and no pin.
+//
+// internal/assist/suggest_test.go asserts that scenario in Go, so a change to
+// the script fails there with a sentence rather than here as a timeout.
 //
 // Owns its trip, like every other spec that writes, so the seeded scenarios
 // are untouched.
@@ -55,12 +65,12 @@ test.describe("suggesting several locations", () => {
     await page.locator('[data-action="suggest-run"]').click();
 
     const cards = page.locator(".suggest-card");
-    await expect(cards).toHaveCount(3, { timeout: 30_000 });
+    await expect(cards).toHaveCount(5, { timeout: 30_000 });
 
     // Every card is ticked to start with: the reviewing act is removing the
     // wrong ones, not picking the right ones out of a blank list.
-    await expect(page.locator(".suggest-card input[type=checkbox]:checked")).toHaveCount(3);
-    await expect(page.locator('[data-action="suggest-add"]')).toHaveText("Add 3 locations");
+    await expect(page.locator(".suggest-card input[type=checkbox]:checked")).toHaveCount(5);
+    await expect(page.locator('[data-action="suggest-add"]')).toHaveText("Add 5 locations");
 
     // The run trace is an account of what it did, and it is shared with the
     // editor's panel -- so this also proves the extraction reaches both.
@@ -74,26 +84,56 @@ test.describe("suggesting several locations", () => {
     await expect(cards.filter({ hasText: "Kex Hostel" }).locator(".suggest-card__place"))
       .toHaveText(/Kex Hostel, 28, Skulagata/);
 
+    // A match on the street rather than on the place is said out loud, because
+    // these cards are added in a batch and this is the last chance to notice.
+    const street = cards.filter({ hasText: "Skulagata apartment" });
+    await expect(street.locator(".suggest-card__place")).toContainText("matched the street");
+
+    // And where the sources contradict each other there is no matched name to
+    // show at all -- the address, and a line saying the position could not be
+    // settled.
+    const unclear = cards.filter({ hasText: "Harpa" });
+    await expect(unclear.locator(".suggest-card__place")).toContainText("Austurbakki 2");
+    await expect(unclear.locator(".suggest-card__approximate")).toContainText("could not be settled");
+
     // The thin candidate has no cover and no links, and still renders.
     const thin = cards.filter({ hasText: "Braud and Co" });
     await expect(thin).toHaveCount(1);
     await expect(thin.locator(".suggest-card__cover")).toHaveCount(0);
     await expect(thin.locator(".suggest-card__links")).toHaveCount(0);
 
-    // Untick one, and the button counts down with it.
+    // Untick two, and the button counts down with them.
     await thin.locator("input[type=checkbox]").uncheck();
-    await expect(page.locator('[data-action="suggest-add"]')).toHaveText("Add 2 locations");
+    await street.locator("input[type=checkbox]").uncheck();
+    await expect(page.locator('[data-action="suggest-add"]')).toHaveText("Add 3 locations");
 
+    // The batch response is captured so that a failure here says *why*. This
+    // test failed intermittently for two stages with nothing but the
+    // translated "could not be added" sentence to go on, because the page
+    // logs the cause to a console nobody collects (todo.md).
+    const batch = page.waitForResponse((r) => r.url().includes("/items/batch"));
     await page.locator('[data-action="suggest-add"]').click();
+    const batchRes = await batch;
+    expect(batchRes.status(), `the batch add said: ${await batchRes.text()}`).toBe(201);
 
-    // Back on the locations tab, holding exactly the two that were ticked.
+    // Back on the locations tab, holding exactly the three that were ticked.
     await expect(page).toHaveURL(new RegExp(`/trips/${tripId}/locations$`));
-    await expect(page.locator("item-card")).toHaveCount(2);
+    await expect(page.locator("item-card")).toHaveCount(3);
 
     // Read back through the API rather than off the cards: what matters is
     // that the whole candidate was written, not that a title was rendered.
     const items = await (await page.request.get(`/api/trips/${tripId}/items`)).json();
-    expect(items.map((i) => i.title).sort()).toEqual(["Hallgrimskirkja", "Kex Hostel"]);
+    expect(items.map((i) => i.title).sort()).toEqual(["Hallgrimskirkja", "Harpa", "Kex Hostel"]);
+
+    // The ambiguous one landed with its address and *no pin*. There is no
+    // picker on this screen on purpose: the place gets onto the trip and the
+    // position is settled in the location editor, which already has a map, an
+    // address search and the map-link resolver.
+    const harpa = items.find((i) => i.title === "Harpa");
+    expect(harpa.lat, "an unsettled position must not be written as a pin").toBeFalsy();
+    const harpaDetail = await (await page.request.get(`/api/items/${harpa.id}`)).json();
+    expect(harpaDetail.location.lat, "no coordinates").toBeNull();
+    expect(harpaDetail.location.address, "but the address it did have").toContain("Austurbakki 2");
 
     const church = items.find((i) => i.title === "Hallgrimskirkja");
     expect(church.category, "the proposed category was written").toBe("site");
@@ -119,7 +159,7 @@ test.describe("suggesting several locations", () => {
 
     await page.locator(".suggest-page__prompt").fill("things to do in Reykjavik");
     await page.locator('[data-action="suggest-run"]').click();
-    await expect(page.locator(".suggest-card")).toHaveCount(3, { timeout: 30_000 });
+    await expect(page.locator(".suggest-card")).toHaveCount(5, { timeout: 30_000 });
 
     const items = await (await page.request.get(`/api/trips/${tripId}/items`)).json();
     expect(items, "the trip is still empty while the candidates are on screen").toHaveLength(0);
@@ -137,7 +177,7 @@ test.describe("suggesting several locations", () => {
     await page.locator(".suggest-page__prompt").fill("things to do in Reykjavik");
     await page.locator('[data-action="suggest-run"]').click();
 
-    await expect(page.locator(".suggest-card")).toHaveCount(2, { timeout: 30_000 });
+    await expect(page.locator(".suggest-card")).toHaveCount(4, { timeout: 30_000 });
     await expect(page.locator(".suggest-page__note")).toContainText("already has it");
     await expect(page.locator(".suggest-card", { hasText: "Kex Hostel" })).toHaveCount(0);
   });

@@ -57,9 +57,44 @@ is also against their terms of service.
 
 ## Coordinates are never taken from the model
 
-The model proposes an address, and `CARAVEL_GEOCODER_URL` resolves it. A
-plausible latitude and longitude 40km from the real hotel looks entirely correct
-in the form and is wrong only on the map — the one error with no visible tell.
+The model proposes a **name** and an **address**, and the position is looked up
+separately. A plausible latitude and longitude 40km from the real hotel looks
+entirely correct in the form and is wrong only on the map — the one error with
+no visible tell.
+
+Two things are asked, when both are available:
+
+- **`CARAVEL_GEOCODER_URL`**, the address search, is asked for the place name
+  first and the postal address only if that finds nothing. The order matters: a
+  postal address is a question about a delivery point, and Nominatim answers it
+  with a house-number node, an interpolated point along the street, or the
+  street itself — a pin outside the door rather than on it. Searching the name
+  finds the element somebody actually mapped. The address still earns its place
+  as the fallback: it is what positions a rented flat with no findable name.
+- **Serper's places endpoint**, when `CARAVEL_SEARCH_PROVIDER` is `serper`.
+  This is Google Maps data, and it is far better than OpenStreetMap on the
+  restaurants, cafés, bars, shops and hotels a trip is mostly made of — for
+  those, its pin is the business's own position rather than an address
+  interpolation. It costs one API credit per lookup, and up to six for one
+  trip-level suggestion run. No other search provider has such an endpoint;
+  with `ollama`, `ddgs` or none, only the geocoder is asked and everything
+  still works.
+
+Where the two agree, a precise OpenStreetMap match wins, because it is the only
+one of the two that carries an OSM element identity — which is what makes the
+"view on OpenStreetMap" link on a location possible. Where OpenStreetMap only
+found a street, Google wins.
+
+Where they disagree by more than 150 metres, **neither is trusted**. Both are
+offered and nothing is preselected, the row is skipped by *Accept all*, and on
+the trip-level suggestions screen the place is added with its address and no pin
+for you to set on the map. Picking between two places kilometres apart is not a
+decision to make on somebody's behalf.
+
+The proposed position always shows the **name of the place that was matched**
+rather than only its coordinates, plus which service found it, and says so when
+the match is street-level. Six decimal places is not something anybody can
+check; a name is.
 
 ## Limits
 

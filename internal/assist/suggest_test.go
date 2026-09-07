@@ -305,13 +305,58 @@ func TestSuggestAnswersFromAProposeCall(t *testing.T) {
 func TestTheStubHasASuggestScript(t *testing.T) {
 	a := agentWith()
 	a.provider = newStubProvider()
+	// The same three fixtures the browser suite runs against, because what is
+	// being checked is the *scenario* the suite sees, not the script in
+	// isolation: which candidate resolves precisely, which only to a street,
+	// and which the two sources cannot agree about.
+	a.geocoder = geocode.New(geocode.StubURL)
+	a.search = &stubSearcher{}
 
 	out, err := a.Suggest(context.Background(), suggestRequest(), nil)
 	if err != nil {
 		t.Fatalf("Suggest: %v", err)
 	}
-	if len(out.Candidates) != 3 {
-		t.Fatalf("candidates = %d, want the scripted 3", len(out.Candidates))
+	if len(out.Candidates) != 5 {
+		t.Fatalf("candidates = %d, want the scripted 5", len(out.Candidates))
+	}
+	// The script is a fixture with a job per candidate, and the browser suite
+	// asserts on each. Checked here so a change to the script fails in Go with
+	// a sentence rather than three stages later as a Playwright timeout.
+	byTitle := map[string]Candidate{}
+	for _, c := range out.Candidates {
+		byTitle[c.Place.Title] = c
+	}
+	for _, want := range []struct {
+		title     string
+		position  bool
+		precise   bool
+		ambiguous bool
+		why       string
+	}{
+		{title: "Hallgrimskirkja", position: true, precise: true, why: "the mapped element, found by name"},
+		{title: "Kex Hostel", position: true, precise: true, why: "the mapped element, found by name"},
+		{title: "Braud and Co", position: false, why: "nothing to geocode at all"},
+		{title: "Skulagata apartment", position: true, precise: false, why: "the name misses, so the address answers with the street"},
+		{title: "Harpa", position: true, precise: true, ambiguous: true, why: "the two fixtures are 3.4km apart"},
+	} {
+		c, ok := byTitle[want.title]
+		if !ok {
+			t.Errorf("the script no longer proposes %q (%s)", want.title, want.why)
+			continue
+		}
+		if (c.Position != nil) != want.position {
+			t.Errorf("%s: position = %v, want %v (%s)", want.title, c.Position != nil, want.position, want.why)
+			continue
+		}
+		if c.Position == nil {
+			continue
+		}
+		if c.Position.Precise != want.precise {
+			t.Errorf("%s: precise = %v, want %v (%s)", want.title, c.Position.Precise, want.precise, want.why)
+		}
+		if c.Position.Ambiguous() != want.ambiguous {
+			t.Errorf("%s: ambiguous = %v, want %v (%s)", want.title, c.Position.Ambiguous(), want.ambiguous, want.why)
+		}
 	}
 	// A second run in the same process must find the script rewound, and an
 	// enrichment afterwards must find its own script rather than this one.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 )
 
@@ -41,6 +42,11 @@ type stubProvider struct {
 	// built by newScriptedProvider, which plays its one script whatever it is
 	// asked.
 	byMode map[Mode][]stubTurn
+	// byPrompt overrides byMode when the run's prompt contains one of these
+	// words. It exists for the states the default script cannot reach -- see
+	// stubAmbiguousPrompt -- and is checked after the mode for that reason:
+	// naming a place is a more specific request than naming a kind of run.
+	byPrompt map[string][]stubTurn
 }
 
 // newStubProvider returns the default script: search, read two pages, answer
@@ -118,6 +124,33 @@ func newStubProvider() *stubProvider {
 			Tags:     "bakery",
 			Notes:    "A small bakery known for cinnamon buns. Sells out by the middle of the morning.",
 		},
+		{
+			// The COARSE case (Stage 33). The place name is not in the fixture
+			// geocoder and not in the stub places table, so both name lookups
+			// miss and the postal address answers -- with the street, which is
+			// what a postal address usually resolves to. The review screen
+			// should say so rather than showing a pin that looks as confident
+			// as any other.
+			Title:     "Skulagata apartment",
+			Category:  "stay",
+			Tags:      "apartment",
+			Notes:     "A rented flat on the harbour side. No sign outside, and nothing to look it up by but the address.",
+			Address:   "Skulagata 28, 101 Reykjavik, Iceland",
+			PlaceName: "Skulagata apartment",
+		},
+		{
+			// The AMBIGUOUS case (Stage 33). Both sources know Harpa and the
+			// two fixtures put it 3.4km apart on purpose, so the resolver
+			// cannot call it one place. This is the candidate that must be
+			// added *without* a pin, and whose row in the enrichment panel is
+			// a question rather than a suggestion.
+			Title:     "Harpa",
+			Category:  "site",
+			Tags:      "concert hall, harbour",
+			Notes:     "The glass concert hall on the waterfront. Worth walking through even without a ticket.",
+			Address:   "Austurbakki 2, 101 Reykjavik, Iceland",
+			PlaceName: "Harpa, Reykjavik",
+		},
 	}})
 	if err != nil {
 		panic("assist: encoding the stub suggestions: " + err.Error())
@@ -130,6 +163,33 @@ func newStubProvider() *stubProvider {
 		turnCalling(toolPropose, string(suggestions)),
 	}
 
+	// A second enrichment script, for the one state the first cannot reach: a
+	// place the two mapping fixtures disagree about. Kex Hostel resolves
+	// cleanly and precisely, which is the right default for the script every
+	// other assertion is built on -- but it means nothing could ever exercise
+	// the panel's "the sources disagree, pick one" row.
+	//
+	// Selected by the prompt rather than by a fourth Mode, because it is the
+	// same *kind* of run answering about a different place, and a Mode is a
+	// shape of answer. The stub search backend and the stub places table both
+	// switch on their query already; this is the same idea one layer up.
+	ambiguousAnswer, err := json.Marshal(modelProposal{
+		Title:     "Harpa",
+		Category:  "site",
+		Tags:      "concert hall, harbour",
+		Notes:     "The glass concert hall on the waterfront. Worth walking through even without a ticket.",
+		Address:   "Austurbakki 2, 101 Reykjavik, Iceland",
+		PlaceName: "Harpa, Reykjavik",
+	})
+	if err != nil {
+		panic("assist: encoding the stub ambiguous answer: " + err.Error())
+	}
+	ambiguous := []stubTurn{
+		turnCalling(toolWebSearch, `{"query":"Harpa Reykjavik"}`),
+		turnCalling(toolFetchPage, fetchArgs(fixture.base+"/reykjavik")),
+		turnCalling(toolPropose, string(ambiguousAnswer)),
+	}
+
 	return &stubProvider{
 		turns: location,
 		byMode: map[Mode][]stubTurn{
@@ -137,8 +197,15 @@ func newStubProvider() *stubProvider {
 			ModePrompt:  location,
 			ModeSuggest: suggest,
 		},
+		byPrompt: map[string][]stubTurn{stubAmbiguousPrompt: ambiguous},
 	}
 }
+
+// stubAmbiguousPrompt is the word in a prompt that selects the
+// disagreeing-sources script. A constant so the Go tests and the browser suite
+// type the same thing rather than both hard-coding a string one of them will
+// eventually get wrong.
+const stubAmbiguousPrompt = "harpa"
 
 // newScriptedProvider builds a stub that plays the given turns in order. Used
 // by tests that need a specific sequence -- a tool loop, a malformed answer, a
@@ -225,11 +292,20 @@ func (s *stubProvider) Complete(ctx context.Context, req chatRequest) (*chatResp
 // A provider built by newScriptedProvider has no per-mode scripts and keeps
 // the one it was given whatever mode it is asked for: those are tests that
 // chose their turns deliberately.
-func (s *stubProvider) begin(mode Mode) {
+func (s *stubProvider) begin(mode Mode, prompt string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if script, ok := s.byMode[mode]; ok {
 		s.turns = script
+	}
+	// After the mode, so a prompt-selected script wins: it is the more
+	// specific request of the two.
+	lowered := strings.ToLower(prompt)
+	for word, script := range s.byPrompt {
+		if strings.Contains(lowered, word) {
+			s.turns = script
+			break
+		}
 	}
 	s.n = 0
 }

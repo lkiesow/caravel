@@ -269,6 +269,69 @@ test.describe("AI assistant", () => {
     await expect(credit.locator("a")).toHaveAttribute("href", "https://de.wikipedia.org/wiki/Waterloo-Tor");
   });
 
+  // Two sources disagreeing about where a place is, which is the one case
+  // where "accept everything" must not decide on the reader's behalf.
+  //
+  // Driven by the stub's prompt-selected script: a prompt naming Harpa gets a
+  // proposal whose position the two mapping fixtures put 3.4km apart. See
+  // stubAmbiguousPrompt in internal/assist/stub.go.
+  test("a position the sources disagree about is a question, and Accept all leaves it alone", async ({ page }) => {
+    await page.goto(`/trips/${tripId}/locations/new`);
+    await page.locator(".assist__prompt").fill("Harpa concert hall");
+    await page.locator('[data-action="assist-run"]').click();
+
+    const row = page.locator('[data-assist-field="coordinates"] .assist-suggestion');
+    await expect(row).toBeVisible({ timeout: 60_000 });
+
+    // A question, phrased as one, with both answers offered.
+    const choice = row.locator(".assist-position-choice");
+    await expect(choice.locator(".assist-position-choice__ask")).toContainText("disagree");
+    const options = choice.locator('input[type="radio"]');
+    await expect(options).toHaveCount(2);
+
+    // *Nothing* is preselected. A default here would be a guess presented as
+    // an answer, and it would be accepted without being read.
+    await expect(choice.locator('input[type="radio"]:checked')).toHaveCount(0);
+
+    // Each option names the place its source matched, because that name is the
+    // entire basis on which somebody picks one.
+    const labels = await choice.locator(".assist-position__label").allTextContents();
+    expect(labels.length, "an option with no label is unanswerable").toBe(2);
+    for (const label of labels) expect(label.trim()).not.toBe("");
+    // And says which source said it, so "OpenStreetMap or Google" is a
+    // question the reader can actually have an opinion about.
+    await expect(choice.locator(".assist-position__source")).toHaveText(["OpenStreetMap", "Google Maps"]);
+
+    // Accept is refused until the question is answered.
+    await expect(row.getByRole("button", { name: "Accept" })).toBeDisabled();
+
+    // The bar says a decision is outstanding, rather than counting this row as
+    // if it were ready.
+    await expect(page.locator(".assist__count")).toContainText("1 needs a choice");
+
+    // Accept all takes everything else and leaves this one standing. This is
+    // the assertion the milestone exists for: a bulk action must not silently
+    // choose between two places kilometres apart.
+    await page.locator('[data-action="assist-accept-all"]').click();
+    await expect(page.locator(".assist-suggestion")).toHaveCount(1);
+    await expect(row).toBeVisible();
+    await expect(page.locator('.location-form [name="lat"]')).toHaveValue("");
+    // Other fields did land, so this is a skip rather than a jam.
+    await expect(page.locator('select[name="category"]')).toHaveValue("site");
+    await expect(page.locator(".assist__count")).toContainText("1 needs a choice");
+
+    // Answering it makes it acceptable, and accepting it fills the form.
+    await options.nth(1).check();
+    await expect(page.locator(".assist__count")).not.toContainText("needs a choice");
+    const accept = row.getByRole("button", { name: "Accept" });
+    await expect(accept).toBeEnabled();
+    await accept.click();
+    await expect(page.locator(".assist-suggestion")).toHaveCount(0);
+    // The *second* option was chosen, so the second option's coordinates are
+    // what the form holds -- not the one that happened to lead.
+    await expect(page.locator('.location-form [name="lng"]')).toHaveValue(/^-21\.86/);
+  });
+
   test("marks an overwrite, and rejecting one leaves the text alone", async ({ page }) => {
     // A location with notes somebody wrote by hand: the case the whole
     // per-field review exists to protect.

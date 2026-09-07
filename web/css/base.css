@@ -4686,6 +4686,59 @@ button {
   margin: 0;
 }
 
+/* --- A position the sources disagree about -------------------------------- */
+
+/* A question, not a suggestion. It reads as one because the ask sits above the
+   options and nothing is preselected -- there is no styling here that makes
+   one answer look preferred, deliberately. */
+.assist-position-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.assist-position-choice__ask {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--color-danger-fg);
+}
+
+.assist-position-choice__options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* The radio and the position side by side, with the whole row clickable --
+   these are two long addresses on a 324px screen and a bare radio is a 13px
+   target. align-items: start so the control sits with the first line of a
+   label that wraps to three. */
+.assist-position-choice__option {
+  display: flex;
+  align-items: start;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.assist-position-choice__option:focus-within {
+  border-color: var(--color-accent);
+}
+
+/* The radio must not shrink when the address beside it wraps. */
+.assist-position-choice__option input {
+  flex: none;
+  margin-top: 0.2rem;
+}
+
+/* The position inside an option carries no extra spacing of its own: the
+   option box provides it. */
+.assist-position-choice__option .assist-position {
+  min-width: 0;
+}
+
 /* --- The credit, where the cover is shown at size ------------------------- */
 
 /* Quiet, directly under the image, and only on the location view: a credit

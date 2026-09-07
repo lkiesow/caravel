@@ -591,6 +591,88 @@ asserting an ambiguous candidate is created with an address and null
 coordinates. Mobile check at 324×756 that the radio list does not
 overflow the panel.
 
+**Done.** An ambiguous position renders as a radiogroup with the ask
+above it, both answers labelled by the place *and* the source that found
+it, and **nothing preselected** — a default here would be a guess
+presented as an answer, and it would be accepted without being read.
+Accept is disabled until the question is answered, the row is skipped by
+**Accept all**, and the bar reads "6 suggestions · 1 needs a choice"
+rather than counting a question as if it were ready.
+
+Two mechanics worth naming, both in the place the plan predicted the
+defect would be. `addSuggestion` takes an optional `needsChoice`
+*callback* rather than a flag, because the answer changes as the reader
+interacts with the row; `syncBar` and Accept all both ask it, and
+`entry.accept()` refuses on its own as well, so a third caller appearing
+later cannot accept a question. And Accept all filters explicitly instead
+of relying only on that guard, so the intent is readable where the bulk
+action is written rather than only inside it.
+
+On the suggestions page there is no picker, as agreed: an ambiguous
+candidate is added with its address and `lat`/`lng` null, through the
+path that already existed, with a line saying the position could not be
+settled. The place lands on the trip and the pin is set in the editor,
+which already has a map, an address search and the map-link resolver.
+
+**The fixture surgery Milestone 4 deferred, done once.** The stub suggest
+script went from three candidates to five, adding the two states nothing
+could previously reach: `Skulagata apartment`, whose name is in neither
+fixture so the postal address answers with the *street*, and `Harpa`,
+which both sources know and the two fixtures put 3.4 km apart. That
+renumbered the counts in `assist-suggest.spec.js` and in two `httpapi`
+suggest tests — the second pair was caught by `make ci`, not by reading.
+`internal/assist/suggest_test.go` now asserts the whole scenario in Go —
+a row per candidate with the reason it is there — so a change to the
+script fails there with a sentence rather than three stages later as a
+Playwright timeout.
+
+The enrichment panel needed a *sixth* state the suggest script cannot
+provide, because the panel's row is a different surface: an enrichment
+whose one place is ambiguous. Rather than a fourth `Mode`, the stub
+provider gained `byPrompt` — a prompt containing "harpa" selects a second
+enrichment script. It is the same *kind* of run answering about a
+different place, and a Mode is a shape of answer; the stub search backend
+and the stub places table already switch on their query, so this is the
+same idea one layer up. `begin` takes the rendered user prompt to do it.
+
+Verified: `make ci` green, `make docs` green, i18n parity at 462 keys
+(four new, both locales). The new Playwright case asserts the ask, two
+options, **no** checked option, both labels non-empty, the two source
+badges reading "OpenStreetMap" and "Google Maps", Accept disabled, the
+counter naming the outstanding decision, that **Accept all** leaves
+exactly that row standing with `lat` still empty *while the other fields
+did land* — a skip rather than a jam — and that choosing the second
+option and accepting fills `lng` with the second option's value rather
+than the leading one's. The suggestions spec asserts the street-level
+warning, the "could not be settled" line, and that Harpa is created with
+a null `lat` and its address. Measured through the real app at 324×756:
+each option box is 230×117 inside a 324px viewport, `scrollWidth ===
+clientWidth`, the radio is not squashed by the wrapping address, and the
+whole label is the tap target.
+
+**One unrelated improvement, made because this milestone kept tripping
+over it — and it found a real bug on the first try.**
+`assist-suggest.spec.js`'s batch add now captures the response and puts
+its body in the assertion message. That test had failed intermittently
+for two stages with nothing but the translated "could not be added"
+sentence to go on, because the page logs the cause to a console nobody
+collects.
+
+The very next full run said what nobody had known: **HTTP 500**, not a
+client problem. Chased outside the browser suite, against a plain server:
+**10 of 12** concurrent `POST /items/batch` requests into one trip fail,
+with `database is locked (517)` — SQLITE_BUSY_SNAPSHOT. `WithTx` opens a
+*deferred* transaction and `createItemsTx` reads before it writes
+(`ListItemsByTrip`, for the next `sort_order`), so in WAL mode the lock
+upgrade can never succeed once another writer has committed, and
+`busy_timeout` does not apply because there is nothing to wait for. That
+is a user-visible bug on any shared trip, in ten `WithTx` call sites
+rather than in this one endpoint, and it is fixed by `BEGIN IMMEDIATE` —
+a dialect-specific change with a retry question attached. Recorded in
+`plans/todo.md` as its own item and **not** fixed here: it is not this
+stage's subject, and doing it properly wants `make test-postgres`
+alongside.
+
 ---
 
 ## Build order
@@ -654,3 +736,34 @@ array that both the accept path and the reject path mutate
 ([assist-panel.js:285-296](web/js/components/assist-panel.js#L285)).
 That interaction is where a defect will be, and it is worth reading twice
 rather than trusting a green suite.
+
+**In hindsight, half right.** The Serper shape was exactly the hazard
+predicted, and calling it first was what caught three things documentation
+would not have said — numbers rather than strings, an absent `category`,
+a wandering `address` format. But the live call also caught something the
+plan had not imagined: a bug in the *stage's own design*, where
+concatenating the name and the address into one maps query made Google
+miss a hotel it certainly knows, silently, falling back to a trunk road
+9.3 km away. No fixture could have found that, because a fixture only
+knows what you put in it.
+
+Accept all was the right place to look and produced no defect, because
+the shape chosen — `needsChoice` as a callback the bar and the bulk
+action both ask, plus a guard inside `accept()` — left nowhere for the
+two states to drift apart. The defects this stage actually produced were
+elsewhere and all of one kind: **stale counts in fixtures**. Adding two
+candidates to the stub script broke three assertions in two packages and
+one spec, and adding the ambiguous enrichment script broke none because
+it was reached by prompt rather than by changing what an existing run
+returns. The lesson is not about counts; it is that a shared fixture is a
+shared interface, and the cheap defence is what Milestone 5 ended up
+writing — a Go test that asserts the *scenario* candidate by candidate,
+so the failure is a sentence rather than a Playwright timeout three
+layers away.
+
+The other thing worth recording: **the two decisions that changed during
+the stage were both changed by measurement, not by argument.** The order
+of the two geocoder queries came from reading a payload the code was
+already throwing away, and `ambiguousMetres` went from 2000 to 150
+because ten live places said the boundary was in the wrong place. Both
+were cheap to measure and neither would have been settled by discussion.

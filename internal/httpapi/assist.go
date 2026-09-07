@@ -89,11 +89,15 @@ type assistLinkInput struct {
 // assist.Proposal so the transport can change without touching the domain
 // package -- and so it is obvious at a glance what the client actually sees.
 type assistProposalResponse struct {
-	Fields  []assistFieldResponse  `json:"fields"`
-	Links   []assistLinkResponse   `json:"links"`
-	Lat     *float64               `json:"lat"`
-	Lng     *float64               `json:"lng"`
-	Sources []assistSourceResponse `json:"sources"`
+	Fields []assistFieldResponse `json:"fields"`
+	Links  []assistLinkResponse  `json:"links"`
+	// Position replaced a bare lat/lng pair in Stage 33 Milestone 4. The pair
+	// was never enough to review: six decimal places are not something a
+	// person can judge, so what goes with them is what was matched and by
+	// whom. Null when nothing resolved, which is the same branch the client
+	// already had.
+	Position *assistPositionResponse `json:"position"`
+	Sources  []assistSourceResponse  `json:"sources"`
 	// Cover is a proposed cover photograph, or null. Nullable rather than a
 	// zero-valued object because "no picture was found" is the ordinary case
 	// and the client has to branch on it either way.
@@ -164,15 +168,76 @@ type assistSuggestionsResponse struct {
 }
 
 type assistCandidateResponse struct {
-	Title    string               `json:"title"`
-	Category string               `json:"category"`
-	Tags     string               `json:"tags"`
-	Notes    string               `json:"notes"`
-	Address  string               `json:"address"`
-	Links    []assistLinkResponse `json:"links"`
-	Lat      *float64             `json:"lat"`
-	Lng      *float64             `json:"lng"`
-	Cover    *assistCoverResponse `json:"cover"`
+	Title    string                  `json:"title"`
+	Category string                  `json:"category"`
+	Tags     string                  `json:"tags"`
+	Notes    string                  `json:"notes"`
+	Address  string                  `json:"address"`
+	Links    []assistLinkResponse    `json:"links"`
+	Position *assistPositionResponse `json:"position"`
+	Cover    *assistCoverResponse    `json:"cover"`
+}
+
+// assistPositionResponse is where a place is and the evidence for it.
+//
+// Everything past the coordinates exists so the user can judge the pin rather
+// than accept a number. Label is what the source called the match; Source says
+// which service answered, which the client renders as a badge; Precise is
+// false when the match is the street or the district rather than the place,
+// which is worth saying out loud because it is the failure this whole stage
+// was about.
+type assistPositionResponse struct {
+	Lat     float64 `json:"lat"`
+	Lng     float64 `json:"lng"`
+	Label   string  `json:"label"`
+	Source  string  `json:"source"`
+	Precise bool    `json:"precise"`
+
+	// OSMType and OSMID are the OpenStreetMap identity of the match, absent
+	// for any other source. Forwarded so that accepting a proposed position
+	// gives the location the same feature link an address search would --
+	// which it did not, before this milestone, for no reason other than that
+	// nobody passed it through.
+	OSMType string `json:"osm_type,omitempty"`
+	OSMID   string `json:"osm_id,omitempty"`
+
+	// Alternatives are the other source answer when the two disagreed by more
+	// than the resolver is willing to call the same place. Absent in the
+	// ordinary case. The client turns a non-empty list into a question rather
+	// than a suggestion -- see Stage 33 Milestone 5.
+	Alternatives []assistPositionResponse `json:"alternatives,omitempty"`
+}
+
+// toAssistPositionResponse maps one position, and its alternatives with it.
+//
+// One level deep by construction: the resolver never nests, and flattening
+// here rather than recursing without a bound is what keeps a future change to
+// that from becoming an unbounded response.
+func toAssistPositionResponse(p *assist.Position) *assistPositionResponse {
+	if p == nil {
+		return nil
+	}
+	out := &assistPositionResponse{
+		Lat:     p.Lat,
+		Lng:     p.Lng,
+		Label:   p.Label,
+		Source:  p.Source,
+		Precise: p.Precise,
+		OSMType: p.OSMType,
+		OSMID:   p.OSMID,
+	}
+	for _, alt := range p.Alternatives {
+		out.Alternatives = append(out.Alternatives, assistPositionResponse{
+			Lat:     alt.Lat,
+			Lng:     alt.Lng,
+			Label:   alt.Label,
+			Source:  alt.Source,
+			Precise: alt.Precise,
+			OSMType: alt.OSMType,
+			OSMID:   alt.OSMID,
+		})
+	}
+	return out
 }
 
 func (s *Server) handleAssistLocation(w http.ResponseWriter, r *http.Request) {
@@ -615,17 +680,10 @@ func toAssistProposalResponse(p *assist.Proposal) assistProposalResponse {
 	// Non-nil slices throughout: the client iterates them, and null is one
 	// more branch at every call site for no gain.
 	out := assistProposalResponse{
-		Fields:  make([]assistFieldResponse, 0, len(p.Fields)),
-		Links:   make([]assistLinkResponse, 0, len(p.Links)),
-		Sources: make([]assistSourceResponse, 0, len(p.Sources)),
-	}
-	// The wire still carries a bare coordinate pair. Stage 33 Milestone 2
-	// changed only where it comes from -- the resolver now knows what it
-	// matched and how good the match is, and Milestone 4 is where the client
-	// starts being told. Until then the extra is deliberately dropped here
-	// rather than sent to a client that would ignore it.
-	if p.Position != nil {
-		out.Lat, out.Lng = &p.Position.Lat, &p.Position.Lng
+		Fields:   make([]assistFieldResponse, 0, len(p.Fields)),
+		Links:    make([]assistLinkResponse, 0, len(p.Links)),
+		Sources:  make([]assistSourceResponse, 0, len(p.Sources)),
+		Position: toAssistPositionResponse(p.Position),
 	}
 	for _, f := range p.Fields {
 		out.Fields = append(out.Fields, assistFieldResponse{
@@ -670,9 +728,7 @@ func toAssistSuggestionsResponse(out *assist.Suggestions) assistSuggestionsRespo
 			Notes:    c.Place.Notes,
 			Address:  c.Place.Address,
 			Links:    make([]assistLinkResponse, 0, len(c.Links)),
-		}
-		if c.Position != nil {
-			item.Lat, item.Lng = &c.Position.Lat, &c.Position.Lng
+			Position: toAssistPositionResponse(c.Position),
 		}
 		for _, l := range c.Links {
 			item.Links = append(item.Links, assistLinkResponse{URL: l.URL, Label: l.Label})

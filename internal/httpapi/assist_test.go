@@ -139,3 +139,71 @@ func TestAuthMeReportsAssistCapability(t *testing.T) {
 		}
 	})
 }
+
+// The position on the wire.
+//
+// Everything past the coordinates exists so a person can judge the pin instead
+// of accepting a number, so what matters here is that it all survives the
+// mapping -- particularly the OpenStreetMap identity, which is what gives an
+// assist-placed location the same feature link one placed through the address
+// search gets.
+func TestPositionCrossesTheWireWhole(t *testing.T) {
+	p := &assist.Proposal{
+		Position: &assist.Position{
+			Lat: 64.14659, Lng: -21.92535,
+			Label:   "Kex Hostel, 28, Skulagata, Reykjavik",
+			Source:  assist.SourceOSM,
+			Precise: true,
+			OSMType: "node", OSMID: "1370624482",
+			Alternatives: []assist.Position{{
+				Lat: 64.1505, Lng: -21.8620,
+				Label:   "Somewhere else entirely",
+				Source:  assist.SourceGoogle,
+				Precise: true,
+			}},
+		},
+	}
+
+	got := toAssistProposalResponse(p)
+	if got.Position == nil {
+		t.Fatal("the position was dropped")
+	}
+	if got.Position.Lat != 64.14659 || got.Position.Lng != -21.92535 {
+		t.Errorf("coordinates = %v,%v", got.Position.Lat, got.Position.Lng)
+	}
+	if got.Position.Label == "" || got.Position.Source != assist.SourceOSM || !got.Position.Precise {
+		t.Errorf("evidence lost: %+v", got.Position)
+	}
+	if got.Position.OSMType != "node" || got.Position.OSMID != "1370624482" {
+		t.Errorf("OSM identity = %q/%q — an accepted position would have no feature link",
+			got.Position.OSMType, got.Position.OSMID)
+	}
+	if len(got.Position.Alternatives) != 1 || got.Position.Alternatives[0].Source != assist.SourceGoogle {
+		t.Fatalf("alternatives = %+v", got.Position.Alternatives)
+	}
+	// One level only. A client rendering a list of choices should not have to
+	// wonder whether each choice has choices.
+	if len(got.Position.Alternatives[0].Alternatives) != 0 {
+		t.Error("an alternative carries alternatives of its own")
+	}
+}
+
+// No position is null rather than a zero-valued object, so the client branches
+// on presence rather than on 0,0 -- which is a real point in the Gulf of
+// Guinea and would render as a confident pin off the coast of Ghana.
+func TestNoPositionIsNullOnTheWire(t *testing.T) {
+	body, err := json.Marshal(toAssistProposalResponse(&assist.Proposal{}))
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(body), `"position":null`) {
+		t.Errorf("body = %s, want a null position", body)
+	}
+
+	out := toAssistSuggestionsResponse(&assist.Suggestions{
+		Candidates: []assist.Candidate{{Place: assist.Location{Title: "Braud and Co"}}},
+	})
+	if out.Candidates[0].Position != nil {
+		t.Error("a candidate with nowhere resolved carries a position anyway")
+	}
+}

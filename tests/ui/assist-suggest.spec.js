@@ -68,6 +68,12 @@ test.describe("suggesting several locations", () => {
     // The pages it read, likewise shared.
     await expect(page.locator(".assist-sources a").first()).toBeVisible();
 
+    // The card names the place the geocoder *matched*, not the address the
+    // model wrote. Those are different claims, and only the first one says
+    // where the pin will actually land.
+    await expect(cards.filter({ hasText: "Kex Hostel" }).locator(".suggest-card__place"))
+      .toHaveText(/Kex Hostel, 28, Skulagata/);
+
     // The thin candidate has no cover and no links, and still renders.
     const thin = cards.filter({ hasText: "Braud and Co" });
     await expect(thin).toHaveCount(1);
@@ -97,6 +103,13 @@ test.describe("suggesting several locations", () => {
     const detail = await (await page.request.get(`/api/items/${church.id}`)).json();
     expect(detail.links.length, "the proposed link was written").toBe(1);
     expect(detail.notes, "the proposed notes were written").toContain("church");
+    // The OpenStreetMap identity of the matched element, so a place added in a
+    // batch gets the same feature link one added through the editor does. It
+    // had none before Stage 33 Milestone 4: the position crossed the wire as a
+    // bare coordinate pair, and an identity nobody forwarded is an identity
+    // nobody has.
+    expect(detail.location.osm_type, "the matched element type was written").toBe("way");
+    expect(detail.location.osm_id, "the matched element id was written").toMatch(/^\d+$/);
   });
 
   // Nothing is written until the button is pressed. The whole feature rests on

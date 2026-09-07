@@ -4633,6 +4633,59 @@ button {
   overflow-wrap: anywhere;
 }
 
+/* --- The proposed position ------------------------------------------------ */
+
+/* What leads is the matched place name, because that is the part a person can
+   recognise. The coordinates are still shown -- they are what is being
+   accepted -- but as small print under it rather than as the headline they
+   used to be. */
+.assist-position {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.assist-position__label {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.assist-position__meta {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* The source is a word, not a coloured pill: which of two mapping services
+   answered is context, and a badge loud enough to be a control would be
+   claiming more attention than it deserves. */
+.assist-position__source {
+  font-weight: 600;
+}
+
+/* The coordinates are tabular-ish, so two proposals in a column line up rather
+   than shimmering against each other. */
+.assist-position__coords {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The one line that is a caution rather than information: the match is the
+   street and not the place. Borrows --color-danger-fg, the same foreground the
+   overwrite badge uses, because this is the same kind of claim on attention --
+   "look before you accept this" rather than "something failed". Nothing has
+   gone wrong and the proposal is still worth taking once the pin is checked,
+   which is why it is a line of text and not a banner. */
+.assist-position__approximate,
+.suggest-card__approximate {
+  font-size: 0.8125rem;
+  color: var(--color-danger-fg);
+}
+
+.assist-position__approximate {
+  margin: 0;
+}
+
 /* --- The credit, where the cover is shown at size ------------------------- */
 
 /* Quiet, directly under the image, and only on the location view: a credit

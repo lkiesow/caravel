@@ -225,13 +225,28 @@ export async function renderSuggestPage(container, { tripId }) {
       body.appendChild(notes);
     }
 
-    // Address and coordinates in one line, because what a reader wants to know
-    // is "does the app know where this is", and either answers it.
-    const place = candidate.address || (candidate.lat != null ? t("suggest.located") : "");
+    // Where the app thinks this is, in one line, because that is the question
+    // a reader has about a card they are about to tick.
+    //
+    // The *matched* place leads when there is one, rather than the address the
+    // model wrote. Those are different claims: the model's address is what it
+    // read on a web page, and the matched label is what a geocoder actually
+    // found -- and the second is the one that says where the pin will land.
+    // Before Stage 33 Milestone 4 this line showed the model's address, or the
+    // bare words "Position found", neither of which could be checked.
+    const place = candidate.position?.label || candidate.address || (candidate.position ? t("suggest.located") : "");
     if (place) {
       const placeEl = document.createElement("p");
       placeEl.className = "suggest-card__place";
       placeEl.textContent = place;
+      // A match on the street rather than the place is worth saying here too:
+      // these cards are added in a batch, so it is the last chance to notice.
+      if (candidate.position && !candidate.position.precise) {
+        const warn = document.createElement("span");
+        warn.className = "suggest-card__approximate";
+        warn.textContent = t("assist.position.approximate");
+        placeEl.append(document.createTextNode(" \u00b7 "), warn);
+      }
       body.appendChild(placeEl);
     }
 
@@ -361,8 +376,19 @@ export async function renderSuggestPage(container, { tripId }) {
           notes: candidate.notes || null,
           tags: splitTags(candidate.tags),
           links: (candidate.links ?? []).map((l) => ({ url: l.url, label: l.label || null })),
-          ...(candidate.lat != null && candidate.lng != null
-            ? { location: { lat: candidate.lat, lng: candidate.lng, address: candidate.address || null } }
+          ...(candidate.position
+            ? {
+                location: {
+                  lat: candidate.position.lat,
+                  lng: candidate.position.lng,
+                  address: candidate.address || null,
+                  // The identity when the match was an OpenStreetMap element,
+                  // so a place added in a batch gets the same feature link one
+                  // added through the editor does.
+                  osm_type: candidate.position.osm_type ?? null,
+                  osm_id: candidate.position.osm_id ?? null,
+                },
+              }
             : candidate.address
               ? { location: { lat: null, lng: null, address: candidate.address } }
               : {}),

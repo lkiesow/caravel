@@ -125,7 +125,20 @@ test.describe("AI assistant", () => {
     await expect(tagsSuggestion).toHaveCount(0);
     await expect(page.locator(".assist__count")).toHaveText("6 suggestions");
 
-    // Coordinates go through the Location card's own handler, so the map
+    // The position leads with the *matched place*, not with six decimal
+    // places. That is the whole point of the row: a coordinate pair is not
+    // something a person can check, and a name is.
+    const position = page.locator('[data-assist-field="coordinates"] .assist-position');
+    await expect(position.locator(".assist-position__label")).toHaveText(/Kex Hostel/);
+    // Where it came from, so two mapping services are distinguishable.
+    await expect(position.locator(".assist-position__source")).toHaveText("OpenStreetMap");
+    // The coordinates are still there, because they are still what is being
+    // accepted -- as small print under the name.
+    await expect(position.locator(".assist-position__coords")).toHaveText(/^64\.\d+, -21\.\d+$/);
+    // The stub matches the hostel itself, so there is no street-level warning.
+    await expect(position.locator(".assist-position__approximate")).toHaveCount(0);
+
+    // Accepting goes through the Location card's own handler, so the map
     // marker moves exactly as it does when a pin is dragged.
     await page.locator('[data-assist-field="coordinates"] .assist-suggestion')
       .getByRole("button", { name: "Accept" }).click();
@@ -200,6 +213,15 @@ test.describe("AI assistant", () => {
     // The cover survived the staged-upload flush and is served from this
     // instance rather than hotlinked.
     await expect(page.locator(".location-view__image")).toHaveAttribute("src", /^\/api\/media\//);
+
+    // And so did the OpenStreetMap identity of the matched element, which is
+    // the assertion that proves it survived the hand-off from the proposal to
+    // the form to the save. Before Stage 33 Milestone 4 an assist-placed
+    // location had no feature link, where one placed through the editor's own
+    // address search did -- the panel simply never forwarded the identity, and
+    // a pin looks identical either way.
+    await expect(page.locator(".location-view__maps-link[href*='openstreetmap.org']"))
+      .toHaveAttribute("href", /openstreetmap\.org\/node\/\d+/);
   });
 
   // The credit, which is the whole reason the provenance columns exist: a

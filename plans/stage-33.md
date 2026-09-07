@@ -495,6 +495,61 @@ label and its source badge, and that accepting it leaves the location
 view showing an OpenStreetMap feature link — which is the assertion that
 proves the identity actually survived the hand-off.
 
+**Done.** `lat`/`lng` are gone from both assist responses, replaced by a
+nullable `position` object carrying the coordinates, the matched `label`,
+the `source`, `precise`, the OSM identity, and `alternatives` — which the
+resolver already fills and Milestone 5 turns into a question. Null rather
+than a zero-valued object when nothing resolved, so the client branches
+on presence and never renders 0,0 as a confident pin off the coast of
+Ghana.
+
+The panel's coordinates row led with `64.146600, -21.942600` and an
+Accept button. It now leads with **the matched place name**, with the
+source and the coordinates as small print underneath, and a line saying
+so when the match is the street rather than the place. Six decimal places
+is about 10cm of claimed precision on a number whose real error was
+routinely a couple of hundred metres, and the reader had no way to tell —
+a name is a thing a person recognises or does not.
+
+**A gap closed that was not really in the plan's scope and should have
+been.** Accepting a proposed position now hands the OSM identity to the
+editor as well as the point, and `takeCoordinates` sets it *after*
+`coordinatesChanged()` for the reason that function's own comment gives.
+The suggestions page forwards it in the batch payload too. Before this,
+an assist-placed location had **no** OpenStreetMap feature link where one
+placed through the editor's address search did — and the only reason was
+that nobody passed the identity through. Both paths are now asserted, and
+the batch one was verified by reading the created rows back: `way`/
+`23553642` for the church and `node`/`1370624482` for the hostel.
+
+The suggestions card shows the matched label rather than the model's
+address. Those are different claims — the address is what the model read
+on a web page, the label is what a geocoder actually found — and only the
+second says where the pin will land. `suggest.located` survives as the
+fallback for the case where a position resolved but carries no label.
+
+Verified: `make ci` green, `check_i18n.py` at 458 keys in sync (three new,
+both locales). Go tests: the whole position survives the mapping
+including its OSM identity, an alternative never nests, and no position
+serialises as `"position":null`. `make test-ui` green across all 12
+assist specs, now asserting the label leads, the source badge reads
+"OpenStreetMap", the coordinates are still present as `64.…, -21.…`, no
+street-level warning appears for a precise match, the saved location
+shows an `openstreetmap.org/node/…` feature link, and a batch-added place
+keeps its element type and id. Measured at 324×756 through the real app:
+the row is 230px wide inside a 324px viewport with `scrollWidth ===
+clientWidth`, so nothing overflows.
+
+**One thing deliberately not covered in the browser yet.** The
+street-level warning's *presence* has no Playwright assertion, only its
+absence, because no candidate the stub assistant proposes resolves
+coarsely — every one of them matches a mapped element or is too sparse to
+geocode at all. Reaching that state means adding a candidate to the stub
+script, which also renumbers `assist-suggest.spec.js`'s counts. Milestone
+5 has to touch that fixture anyway to make an ambiguous position
+reachable, so both assertions land there rather than doing the surgery
+twice.
+
 ---
 
 ## Milestone 5 — Ambiguity, Accept all, and the docs

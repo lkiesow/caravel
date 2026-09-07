@@ -39,6 +39,14 @@ import { hasCapability } from "../session.js";
 // arbitrary.
 const FIELD_NAMES = ["title", "category", "tags", "notes", "address"];
 
+// Where a position came from, as an i18n key per source. A map rather than a
+// switch so an unknown source falls through to being shown verbatim: see
+// renderPosition.
+const SOURCE_LABELS = {
+  osm: "assist.position.source.osm",
+  google: "assist.position.source.google",
+};
+
 export function renderAssistPanel(container, { tripId, root, readCurrent, applyField, applyLink, applyCoordinates, applyCover }) {
   if (!hasCapability("assist")) {
     container.hidden = true;
@@ -158,6 +166,91 @@ export function renderAssistPanel(container, { tripId, root, readCurrent, applyF
   function clearSources() {
     sourcesBox?.remove();
     sourcesBox = null;
+  }
+
+  // The position: where the place is, and the evidence for it.
+  //
+  // This used to be the coordinate pair and nothing else -- "64.146600,
+  // -21.942600" with an Accept button. Nobody can judge that. Six decimal
+  // places is about 10cm of claimed precision on a number whose actual error
+  // was, before Stage 33, routinely a couple of hundred metres, and the reader
+  // had no way to tell the difference. So what leads now is the *name of the
+  // matched place*, which is a thing a person recognises or does not.
+  //
+  // Same row as every other suggestion, with a node in place of the text.
+  function addPositionSuggestion(position) {
+    addSuggestion("coordinates", {
+      overwrites: false,
+      onAccept: () => acceptPosition(position),
+      node: () => renderPosition(position),
+    });
+  }
+
+  // One position, rendered: the matched name, where it came from, a warning
+  // when the match is not the place itself, and the coordinates underneath.
+  //
+  // The coordinates stay because they are still what is being accepted, and
+  // because a label can be right while the pin is wrong -- but they are the
+  // small print now rather than the headline.
+  function renderPosition(position) {
+    const wrap = document.createElement("div");
+    wrap.className = "assist-position";
+
+    if (position.label) {
+      const label = document.createElement("p");
+      label.className = "assist-position__label";
+      label.textContent = position.label;
+      wrap.appendChild(label);
+    }
+
+    const meta = document.createElement("p");
+    meta.className = "assist-position__meta";
+
+    const badge = document.createElement("span");
+    badge.className = "assist-position__source";
+    // An unknown source is named rather than hidden: a newer server sending a
+    // provider this build has no string for should still say where the pin
+    // came from, and "google" is more use than nothing.
+    badge.textContent = SOURCE_LABELS[position.source]
+      ? t(SOURCE_LABELS[position.source])
+      : position.source || "";
+    meta.appendChild(badge);
+
+    const coords = document.createElement("span");
+    coords.className = "assist-position__coords";
+    coords.textContent = `${Number(position.lat).toFixed(6)}, ${Number(position.lng).toFixed(6)}`;
+    meta.append(document.createTextNode(" \u00b7 "), coords);
+    wrap.appendChild(meta);
+
+    // Said out loud, because it is the failure this stage was about: a match
+    // on the street rather than on the building looks identical in a
+    // coordinate pair and is a pin outside the door.
+    if (!position.precise) {
+      const warn = document.createElement("p");
+      warn.className = "assist-position__approximate";
+      warn.textContent = t("assist.position.approximate");
+      wrap.appendChild(warn);
+    }
+
+    return wrap;
+  }
+
+  // Accepting a position hands over the OSM identity as well as the point.
+  //
+  // Without it an assist-placed location had no OpenStreetMap feature link,
+  // where one placed through the editor's own address search did -- for no
+  // reason other than that nobody forwarded it. Only an OSM-sourced position
+  // has one; the editor treats it as optional, which is what makes a
+  // Google-sourced pin fine to accept.
+  function acceptPosition(position) {
+    applyCoordinates({
+      lat: position.lat,
+      lng: position.lng,
+      osm:
+        position.osm_type && position.osm_id
+          ? { type: position.osm_type, id: position.osm_id }
+          : null,
+    });
   }
 
   // The cover photograph: the one suggestion whose value cannot be judged as
@@ -385,15 +478,7 @@ export function renderAssistPanel(container, { tripId, root, readCurrent, applyF
 
     if (proposal.cover?.url) addCoverSuggestion(proposal.cover);
 
-    if (proposal.lat != null && proposal.lng != null) {
-      addSuggestion("coordinates", {
-        // Six decimals is about 10cm; more is noise from a geocoder that does
-        // not know the building to that precision anyway.
-        value: `${Number(proposal.lat).toFixed(6)}, ${Number(proposal.lng).toFixed(6)}`,
-        overwrites: false,
-        onAccept: () => applyCoordinates({ lat: proposal.lat, lng: proposal.lng }),
-      });
-    }
+    if (proposal.position) addPositionSuggestion(proposal.position);
 
     // Sources are shown so the proposal can be judged, and stored nowhere:
     // once a suggestion is accepted it is just the user's own data. Rendered

@@ -340,7 +340,12 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
         draft.links.push({ url: link.url, label: link.label || null });
         renderLinksList();
       },
-      applyCoordinates: ({ lat, lng }) => setCoordinates?.({ lat, lng }),
+      // The identity travels with the point when the assistant matched an
+      // OpenStreetMap element, so an assist-placed location gets the same
+      // feature link one placed through the address search does. It had none
+      // before Stage 33 Milestone 4, and the only reason was that nobody
+      // forwarded it.
+      applyCoordinates: ({ lat, lng, osm }) => setCoordinates?.({ lat, lng, osm }),
       // The cover goes through the image field's own API, so accepting it is
       // the same operation as pasting a URL into that card -- including the
       // staging path on a location that does not exist yet. The provenance
@@ -550,10 +555,16 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
 
     // Map -> fields. No loop: setting the attributes above only moves the
     // marker, and location-picked is only ever emitted by a click or a drag.
-    const takeCoordinates = ({ lat, lng }) => {
+    // osm is optional and only ever set by a writer that genuinely knows one
+    // -- today the assistant's accepted position. It is applied *after*
+    // coordinatesChanged(), which clears the identity, for exactly the reason
+    // the comment there gives: the writer that forgets is the bug, so clearing
+    // is central and setting is local.
+    const takeCoordinates = ({ lat, lng, osm }) => {
       form.lat.value = lat;
       form.lng.value = lng;
       coordinatesChanged();
+      if (osm?.type && osm?.id) osmIdentity = { type: osm.type, id: osm.id };
     };
     setCoordinates = takeCoordinates;
     picker.addEventListener("location-picked", (e) => takeCoordinates(e.detail));

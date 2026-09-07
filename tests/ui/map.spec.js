@@ -620,10 +620,11 @@ test.describe("a marker popup links back into the app", () => {
 });
 
 
-// Stage 34. The popup shows the location's own photo, in the same 16/9 crop
-// .location-view__image gives it on the location page - so a marker is
-// recognisable as the place, not just as its name. Places without a photo get
-// no image and no placeholder box.
+// Stage 34. The popup shows the location's own photo, so a marker is
+// recognisable as the place and not just as its name. A 21/9 letterbox rather
+// than the location page's 16/9: a popup is a card, not a page banner, and the
+// picture must not push the two links below the fold of a short map. Places
+// without a photo get no image and no placeholder box.
 test.describe("a marker popup shows the location photo", () => {
   // The seeded trip has one located item with a cover and others without, and
   // the marker order is the payload order, so this walks them rather than
@@ -648,6 +649,7 @@ test.describe("a marker popup shows the location photo", () => {
         out.push({
           title: popup?.querySelector("strong")?.textContent ?? null,
           hasImage: !!img,
+          width: rect ? rect.width : null,
           // naturalWidth is the proof the file was actually served - a broken
           // src still has a box, and the box is what the ratio is read from.
           naturalWidth: img?.naturalWidth ?? 0,
@@ -663,7 +665,7 @@ test.describe("a marker popup shows the location photo", () => {
     });
   }
 
-  test("crops it to 16/9, and renders nothing for a place without one", async ({ page }) => {
+  test("crops it to 21/9 at 200px, and renders nothing for a place without one", async ({ page }) => {
     await login(page);
     await gotoTripMap(page);
 
@@ -682,9 +684,14 @@ test.describe("a marker popup shows the location photo", () => {
 
     for (const p of withPhoto) {
       expect(p.naturalWidth, `"${p.title}" rendered an image that never loaded`).toBeGreaterThan(0);
-      // The seeded cover is not 16/9, so this is the CSS cropping it rather
-      // than the file happening to have the right shape.
-      expect(p.ratio, `"${p.title}" is ${p.ratio?.toFixed(3)}, want 16/9`).toBeCloseTo(16 / 9, 2);
+      // 200 exactly, for every photo regardless of how long the place's name
+      // is. The ratio alone would not catch this: a percentage width follows
+      // the popup's shrink-to-fit text, which is what made one seeded popup's
+      // picture 190px before .popup-image was pinned.
+      expect(p.width, `"${p.title}" is ${p.width?.toFixed(1)}px wide, want 200`).toBeCloseTo(200, 0);
+      // No seeded cover is 21/9, so this is the CSS cropping it rather than
+      // the file happening to have the right shape.
+      expect(p.ratio, `"${p.title}" is ${p.ratio?.toFixed(3)}, want 21/9`).toBeCloseTo(21 / 9, 2);
       expect(p.objectFit, "a cropped box needs object-fit, or the photo is squashed").toBe("cover");
       // Decorative: the title is right above it.
       expect(p.alt).toBe("");

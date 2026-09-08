@@ -7,6 +7,7 @@ import { alertDialog, confirmDialog, selectDialog } from "../components/dialog.j
 import { renderMenu } from "../components/menu.js";
 import { renderLoading } from "../components/loading.js";
 import { canEdit } from "../trip-role.js";
+import { byTitle } from "../sort.js";
 
 const CATEGORY_COLORS = {
   site: "#16a34a",
@@ -22,7 +23,10 @@ export async function renderItineraryTab(container, trip) {
   renderLoading(container);
   let days = await api.get(`/trips/${trip.id}/itinerary`);
   days.forEach((d) => (d.entries ??= []));
-  const items = await api.get(`/trips/${trip.id}/items`);
+  // Sorted by title for the "add an entry" select below: the API returns the
+  // trip's own location order, which reads as random when you are scanning the
+  // list for one place you already have in mind.
+  const items = (await api.get(`/trips/${trip.id}/items`)).sort(byTitle());
 
   // Which days are expanded. Seeded from the rule below and then owned by the
   // user: toggling a day updates this set, so a re-render (adding or removing

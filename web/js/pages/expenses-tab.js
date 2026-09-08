@@ -6,6 +6,7 @@ import { confirmDialog } from "../components/dialog.js";
 import { renderMenu } from "../components/menu.js";
 import { renderLoading } from "../components/loading.js";
 import { getCurrentUser } from "../session.js";
+import { byTitle } from "../sort.js";
 import {
   formatMoney,
   parseMoney,
@@ -69,6 +70,12 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
   if (!readOnly) {
     try {
       items = await api.get(`/trips/${trip.id}/items`);
+      // Alphabetically, not in the trip's own location order: this select is
+      // for finding one known place by name, and the manual/creation order the
+      // API returns reads as random when you are scanning for a title. Same
+      // collator settings as the locations tab, so umlauts and "Hut 2" before
+      // "Hut 10" behave the way they do there.
+      items.sort(byTitle());
     } catch {
       items = [];
     }

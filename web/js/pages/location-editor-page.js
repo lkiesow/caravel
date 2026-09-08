@@ -1,7 +1,7 @@
 import { api } from "../api.js";
 import { createGuard, guardClick } from "../busy.js";
 import { t, translatePage, getLocale } from "../i18n.js";
-import { navigate } from "../router.js";
+import { navigate, leaveEditor } from "../router.js";
 import { renderItemForm } from "../components/location-form.js";
 import { renderImageField } from "../components/image-field.js";
 import { renderFileList } from "../components/file-list.js";
@@ -61,7 +61,9 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
   }
   if (!canEdit(trip)) {
     // The location they were trying to edit if there is one, the trip if not.
-    navigate(itemId ? `/trips/${tripId}/locations/${itemId}` : `/trips/${tripId}`);
+    // leaveEditor rather than navigate: a form every save would 403 is not a
+    // place Back should return to either.
+    leaveEditor(itemId ? `/trips/${tripId}/locations/${itemId}` : `/trips/${tripId}/locations`);
     return;
   }
 
@@ -138,7 +140,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     itemForm?.destroy();
     container.innerHTML = `
       <div class="page location-editor">
-        <a href="${item ? `/trips/${tripId}/locations/${item.id}` : `/trips/${tripId}`}" data-link class="back-link">${icon("arrow-left")} <span data-i18n="common.back"></span></a>
+        <a href="${item ? `/trips/${tripId}/locations/${item.id}` : `/trips/${tripId}/locations`}" data-link data-leave-editor class="back-link">${icon("arrow-left")} <span data-i18n="common.back"></span></a>
         <div class="page__header">
           <h1></h1>
         </div>
@@ -293,7 +295,16 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       guardClick(deleteBtn, async () => {
         if (!(await confirmDialog({ messageKey: "item.deleteConfirm" }))) return;
         await api.delete(`/items/${item.id}`);
-        navigate(`/trips/${tripId}`);
+        // Not leaveEditor: the entry behind this one is the location that has
+        // just been deleted, so popping back to it would render not-found.
+        // Overwriting the editor entry is the best available. It does leave
+        // that dead entry in place -- Back from the overview lands on the
+        // deleted location and gets not-found -- which is what pressing Back
+        // after a delete did before this too, when the entry it returned to
+        // was the editor for the same deleted item. Fixing it properly means
+        // rewriting the entry underneath, which the History API only allows
+        // from inside the popstate that lands on it; deliberately left alone.
+        navigate(`/trips/${tripId}/locations`, { replace: true });
       });
     }
   }
@@ -410,7 +421,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       return;
     }
 
-    navigate(`/trips/${tripId}/locations/${saved.id}`);
+    leaveEditor(`/trips/${tripId}/locations/${saved.id}`);
   }
 
   // Everything a new location is made of, in one multipart body: the item as
@@ -448,7 +459,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
 
   function cancel() {
     if (draft.image?.kind === "file" && draft.image.previewUrl) URL.revokeObjectURL(draft.image.previewUrl);
-    navigate(item ? `/trips/${tripId}/locations/${item.id}` : `/trips/${tripId}`);
+    leaveEditor(item ? `/trips/${tripId}/locations/${item.id}` : `/trips/${tripId}/locations`);
   }
 
   // "Edit {title}" needs the item's title interpolated into the string,

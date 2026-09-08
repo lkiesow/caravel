@@ -669,3 +669,16 @@ else runs this.
   page). The missing half is cheap -- walk the image references in `docs/` and
   assert each target exists -- and belongs next to that script in `make ci`.
 
+
+- **Back after deleting a location lands on the deleted location.** (Editor
+  history follow-up, Sep 2026.) `leaveEditor` in `web/js/router.js` keeps the
+  editors out of the back stack, but Delete cannot use it: the entry behind the
+  editor is the view page for the item that has just been deleted, so popping
+  to it renders not-found. It replaces the editor entry with the locations
+  overview instead, which leaves that dead entry one press of Back away --
+  no worse than before (Back then returned to the editor for the same deleted
+  item, which 404s identically), and still wrong. The History API only allows
+  rewriting an entry from inside the popstate that lands on it, so a fix means
+  back() plus a one-shot popstate handler that replaces the URL and suppresses
+  the router's own render for that event -- deliberately not built for a path
+  this rare.

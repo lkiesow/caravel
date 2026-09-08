@@ -1,6 +1,6 @@
 import { api } from "../api.js";
 import { translatePage } from "../i18n.js";
-import { navigate } from "../router.js";
+import { leaveEditor } from "../router.js";
 import { renderTripForm } from "../components/trip-form.js";
 import { renderImageField } from "../components/image-field.js";
 import { icon } from "../icon.js";
@@ -32,7 +32,7 @@ export async function renderTripEditorPage(container) {
   function render() {
     container.innerHTML = `
       <div class="page trip-editor">
-        <a href="/trips" data-link class="back-link">${icon("arrow-left")} <span data-i18n="common.home"></span></a>
+        <a href="/trips" data-link data-leave-editor class="back-link">${icon("arrow-left")} <span data-i18n="common.home"></span></a>
         <div class="page__header">
           <h1 data-i18n="trip.editor.newTitle"></h1>
         </div>
@@ -55,7 +55,7 @@ export async function renderTripEditorPage(container) {
     const form = renderTripForm(container.querySelector(".trip-form-slot"), null, {
       showActions: false,
       createRequest: (body) => api.postForm("/trips", buildCreateForm(body)),
-      onSaved: (saved) => navigate(`/trips/${saved.id}`),
+      onSaved: (saved) => leaveEditor(`/trips/${saved.id}`),
     });
 
     renderImageField(container.querySelector(".image-field-slot"), {
@@ -74,7 +74,7 @@ export async function renderTripEditorPage(container) {
 
     container.querySelector('[data-action="cancel"]').addEventListener("click", () => {
       if (stagedImage?.kind === "file" && stagedImage.previewUrl) URL.revokeObjectURL(stagedImage.previewUrl);
-      navigate("/trips");
+      leaveEditor("/trips");
     });
   }
 

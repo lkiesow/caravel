@@ -1384,3 +1384,138 @@ test.describe("the OpenStreetMap link on a location", () => {
     await expect(page.locator(".location-view__maps-link")).toHaveText("View on Google Maps");
   });
 });
+
+// The editor is not a stop on the way back.
+//
+// Stage-less follow-up to the editor work: going overview -> location -> edit
+// -> save used to leave three entries behind, so getting back to the overview
+// took three presses of Back, twice through a form nobody wants to see again.
+// router.js's leaveEditor now pops the editor entry instead of pushing its
+// destination on top -- see the comment there for which exit does which.
+//
+// Asserted on window.location.pathname after a real browser Back rather than
+// on history.length, which is the thing that does not change: back() moves the
+// pointer without shrinking the stack, so length proves nothing either way.
+test.describe("the location editor stays out of the history", () => {
+  test.use({ viewport: MOBILE });
+
+  let tripId;
+
+  test.beforeEach(async ({ page }) => {
+    await login(page);
+    const res = await page.request.post("/api/trips", { data: { title: "UI suite: editor history" } });
+    expect(res.status(), "create the spec's own trip").toBe(201);
+    tripId = (await res.json()).id;
+  });
+
+  test.afterEach(async ({ page }) => {
+    if (tripId) await page.request.delete(`/api/trips/${tripId}`);
+    tripId = null;
+  });
+
+  // The scenario this was built for, clicked through exactly as described:
+  // overview, location, edit, fix a small thing, save, Back.
+  test("editing: one Back from the saved location reaches the overview", async ({ page }) => {
+    const item = await (
+      await page.request.post(`/api/trips/${tripId}/items`, { data: { title: "Kirkjufel", category: "site" } })
+    ).json();
+
+    await gotoRoute(page, `/trips/${tripId}/locations`);
+    // Through the card's own event rather than a click, for the same reason
+    // map.spec.js does: what is being tested is the navigation, not the shadow
+    // DOM the click has to reach through.
+    await page.locator(`item-card[title="Kirkjufel"]`).evaluate((el) => {
+      el.dispatchEvent(new CustomEvent("item-open", { bubbles: true, detail: { itemId: el.getAttribute("item-id") } }));
+    });
+    await expect(page).toHaveURL(`/trips/${tripId}/locations/${item.id}`);
+
+    await page.locator('[data-action="edit"]').click();
+    await expect(page).toHaveURL(`/trips/${tripId}/locations/${item.id}/edit`);
+    await page.locator('.item-form input[name="title"]').fill("Kirkjufell");
+    await page.locator('[data-action="save"]').click();
+    await expect(page.locator("h1")).toHaveText("Kirkjufell");
+
+    await page.goBack();
+    await expect(page).toHaveURL(`/trips/${tripId}/locations`);
+  });
+
+  // The other half, and the one a plain "replace on entry" gets wrong: the
+  // destination has never been in the history, so there is nothing to pop.
+  test("creating: one Back from the new location reaches the overview", async ({ page }) => {
+    await gotoRoute(page, `/trips/${tripId}/locations`);
+    await startNewLocation(page);
+    await expect(page).toHaveURL(`/trips/${tripId}/locations/new`);
+
+    await page.locator('.item-form input[name="title"]').fill("Somewhere new");
+    await page.locator('[data-action="save"]').click();
+    await expect(page.locator("h1")).toHaveText("Somewhere new");
+
+    await page.goBack();
+    await expect(page).toHaveURL(`/trips/${tripId}/locations`);
+  });
+
+  // Cancel and the page's own back-link are exits too, and the link is the one
+  // that is an <a>: it goes through the router's data-link interception, which
+  // reads data-leave-editor to decide between popping and pushing.
+  test("cancelling and the back-link both pop the editor entry", async ({ page }) => {
+    const item = await (
+      await page.request.post(`/api/trips/${tripId}/items`, { data: { title: "Unchanged", category: "site" } })
+    ).json();
+    const view = `/trips/${tripId}/locations/${item.id}`;
+
+    await gotoRoute(page, view);
+    await page.locator('[data-action="edit"]').click();
+    await expect(page).toHaveURL(`${view}/edit`);
+    await page.locator('[data-action="cancel"]').click();
+    await expect(page).toHaveURL(view);
+
+    // Popped, not pushed -- and Forward is what tells the two apart, since
+    // both land on the same URL. Going back leaves the editor ahead of us, so
+    // Forward returns to it; a push would have left nothing ahead at all and
+    // Forward would do nothing. (Reachable-by-Forward is a consequence of
+    // pop-by-back(), not a feature: the point is only that it happened.)
+    await page.goForward();
+    await expect(page).toHaveURL(`${view}/edit`);
+
+    // Same for the back-link, which is the exit that goes through the router's
+    // data-link interception rather than a click handler of the editor's own.
+    await page.locator(".back-link").click();
+    await expect(page).toHaveURL(view);
+    await page.goForward();
+    await expect(page).toHaveURL(`${view}/edit`);
+  });
+
+  // A typed /edit URL has no history entry of ours behind it, so popping would
+  // leave the app. That exit replaces instead.
+  //
+  // Note this one passes against the code from before leaveEditor existed too:
+  // there was no back() to get wrong. It is here to catch the fallback being
+  // dropped later, not as evidence of the change that introduced it.
+  test("a directly-loaded editor saves without leaving the app", async ({ page }) => {
+    const item = await (
+      await page.request.post(`/api/trips/${tripId}/items`, { data: { title: "Direct", category: "site" } })
+    ).json();
+
+    await gotoRoute(page, `/trips/${tripId}/locations/${item.id}/edit`);
+    await page.locator('.item-form input[name="title"]').fill("Direct, saved");
+    await page.locator('[data-action="save"]').click();
+    await expect(page).toHaveURL(`/trips/${tripId}/locations/${item.id}`);
+    await expect(page.locator("h1")).toHaveText("Direct, saved");
+  });
+});
+
+// "New location" is a plain button on a trip with no assistant configured and
+// a two-item menu when there is one (see locations-tab.js). Either way this
+// lands on the blank editor, and it navigates from the overview rather than
+// loading /new directly -- which is the whole point when the thing under test
+// is what the entry pushed.
+async function startNewLocation(page) {
+  const plain = page.locator('[data-action="new-item"]');
+  if (await plain.count()) {
+    await plain.click();
+    return;
+  }
+  const menu = page.locator(".locations-new-slot .menu");
+  await menu.locator('[data-action="toggle"]').click();
+  await menu.locator('[data-value="blank"]').click();
+}

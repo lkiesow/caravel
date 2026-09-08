@@ -37,7 +37,9 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
   // tab-less URL in the address bar and history.
   if (!tab || !TABS.includes(tab)) {
     tab = "locations";
-    window.history.replaceState({}, "", `/trips/${tripId}/locations`);
+    // Spread rather than {}: this entry is the same stop on the way back, so
+    // whatever router.js recorded about where it came from still holds.
+    window.history.replaceState({ ...window.history.state }, "", `/trips/${tripId}/locations`);
   }
 
   function render() {

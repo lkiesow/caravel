@@ -76,6 +76,11 @@ type stubPlace struct {
 	addressType string
 	osmType     string
 	osmID       string
+	// city is what Nominatim would send inside `address` when addressdetails
+	// is asked for, which Search always does. Every row is in Reykjavik --
+	// the fixture is one city -- but it is a field rather than a constant so
+	// that a future row somewhere else does not silently claim to be there.
+	city string
 }
 
 // The fixture table. Coordinates are the real ones, to within the precision a
@@ -94,6 +99,7 @@ var stubPlaces = []stubPlace{
 		addressType: "hostel",
 		osmType:     "node",
 		osmID:       "1370624482",
+		city:        "Reykjavik",
 	},
 	{
 		// The coarse case, and the whole point of the stage: the postal
@@ -109,6 +115,7 @@ var stubPlaces = []stubPlace{
 		addressType: "road",
 		osmType:     "way",
 		osmID:       "23553640",
+		city:        "Reykjavik",
 	},
 	{
 		queries:     []string{"hallgrimskirkja, reykjavik", "hallgrimskirkja"},
@@ -120,6 +127,7 @@ var stubPlaces = []stubPlace{
 		addressType: "place_of_worship",
 		osmType:     "way",
 		osmID:       "23553642",
+		city:        "Reykjavik",
 	},
 	{
 		// The disagreement case. The stub places backend (internal/assist,
@@ -136,6 +144,7 @@ var stubPlaces = []stubPlace{
 		addressType: "arts_centre",
 		osmType:     "way",
 		osmID:       "23553646",
+		city:        "Reykjavik",
 	},
 	{
 		queries:     []string{"hallgrimstorg 1, 101 reykjavik, iceland", "hallgrimstorg 1"},
@@ -147,6 +156,7 @@ var stubPlaces = []stubPlace{
 		addressType: "road",
 		osmType:     "way",
 		osmID:       "23553644",
+		city:        "Reykjavik",
 	},
 }
 
@@ -215,6 +225,11 @@ func stubSearchAnswer(query string) []map[string]any {
 				"osm_type":    p.osmType,
 				// A number, again as Nominatim sends it.
 				"osm_id": json.Number(p.osmID),
+				// The structured address, sent because Search asks for it
+				// with addressdetails=1. Only the one key the parsing reads:
+				// a real answer carries a dozen, and the rest would be
+				// fixture nobody looks at.
+				"address": map[string]any{"city": p.city},
 			}}
 		}
 	}
@@ -230,5 +245,8 @@ func stubReverseAnswer(lat string) map[string]any {
 	if parsed, err := strconv.ParseFloat(lat, 64); err == nil && (parsed > stubReverseNowhere || parsed < -stubReverseNowhere) {
 		return map[string]any{"error": "Unable to geocode"}
 	}
-	return map[string]any{"display_name": stubReverseName}
+	return map[string]any{
+		"display_name": stubReverseName,
+		"address":      map[string]any{"city": "Reykjavik"},
+	}
 }

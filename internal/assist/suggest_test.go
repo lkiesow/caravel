@@ -403,3 +403,33 @@ func TestSuggestionsSchemaWrapsTheProposalSchema(t *testing.T) {
 		t.Error("the element schema is not the proposal schema")
 	}
 }
+
+// A trip-level candidate gets its city tag the same way an enrichment does,
+// which is worth asserting separately because the two paths assemble the place
+// in different code -- buildCandidates builds a whole Location where
+// buildProposal builds one field at a time.
+func TestSuggestedCandidatesAreTaggedWithTheirCity(t *testing.T) {
+	a := agentWith(
+		stubTurn{Content: "done"},
+		stubTurn{Content: suggestionsJSON(t,
+			modelProposal{
+				Title:     "Hallgrimskirkja",
+				Category:  "site",
+				Tags:      "church",
+				PlaceName: "Hallgrimskirkja, Reykjavik",
+			},
+		)},
+	)
+	a.geocoder = geocode.New(geocode.StubURL)
+
+	out, err := a.Suggest(context.Background(), suggestRequest(), nil)
+	if err != nil {
+		t.Fatalf("Suggest: %v", err)
+	}
+	if len(out.Candidates) != 1 {
+		t.Fatalf("candidates = %d, want 1", len(out.Candidates))
+	}
+	if want := "reykjavik, church"; out.Candidates[0].Place.Tags != want {
+		t.Errorf("tags = %q, want %q", out.Candidates[0].Place.Tags, want)
+	}
+}

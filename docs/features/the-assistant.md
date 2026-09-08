@@ -48,6 +48,13 @@ proposes an address, and the geocoder resolves that address into a position. A
 plausible latitude and longitude 40km from the real hotel looks entirely correct
 in the form and is wrong only on the map — the one error with no visible tell.
 
+One tag does not come from the model either: the town or city the place turned
+out to be in is added automatically, lowercase, so that everything in Berlin
+filters together without anybody having to type it. It uses the spelling the
+trip already uses where there is one, and it is left out when the mapping
+sources disagree about where the place is — if the pin is in question, so is
+the city.
+
 The pages the assistant used are listed with the suggestions so you can check
 them. They are not saved.
 

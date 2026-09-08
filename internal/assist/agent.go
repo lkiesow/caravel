@@ -822,13 +822,23 @@ func (a *Agent) buildProposal(ctx context.Context, req Request, raw modelProposa
 		title = ""
 	}
 
+	// The position before the fields, because one of the fields is built from
+	// it: a city tag is the geocoder's answer about where the place is, so it
+	// cannot be assembled until that answer exists. Nothing else in the loop
+	// depends on the order, and resolvePosition reads none of the fields.
+	//
+	// Never from the model. See locate.go for why the place name is asked
+	// about before the address.
+	p.Position = a.resolvePosition(ctx, raw, log)
+
 	for _, f := range []struct{ name, current, proposed string }{
 		{"title", req.Current.Title, title},
 		{"category", req.Current.Category, category},
 		// Tags are a set rather than a value, and the proposal is the set the
-		// user would end up with: theirs plus whatever this run found. Empty
-		// when the run found nothing new -- see proposeTags.
-		{fieldTags, req.Current.Tags, proposeTags(req.Current.Tags, raw.Tags, req.TagVocabulary)},
+		// user would end up with: theirs plus whatever this run found -- the
+		// city the position resolved to, then whatever the model proposed.
+		// Empty when the run found nothing new -- see proposeTags.
+		{fieldTags, req.Current.Tags, proposeTags(req.Current.Tags, p.Position.city(), raw.Tags, req.TagVocabulary)},
 		{"notes", req.Current.Notes, strings.TrimSpace(raw.Notes)},
 		{"address", req.Current.Address, strings.TrimSpace(raw.Address)},
 	} {
@@ -850,10 +860,6 @@ func (a *Agent) buildProposal(ctx context.Context, req Request, raw modelProposa
 	}
 
 	p.Links = a.checkLinks(ctx, req.Current.Links, raw.Links, events, log)
-
-	// The position last, and never from the model. See locate.go for why the
-	// place name is asked about before the address.
-	p.Position = a.resolvePosition(ctx, raw, log)
 
 	p.Cover = a.chooseCover(ctx, req.Locale, raw, p.Links, sources, log)
 
@@ -909,13 +915,19 @@ func (a *Agent) buildCandidates(ctx context.Context, req SuggestRequest, raw mod
 			continue
 		}
 
+		// Before the place is assembled, because its tags include the city
+		// the position resolved to -- the same ordering, and the same reason,
+		// as buildProposal above.
+		position := a.resolvePosition(ctx, item, log)
+
 		c := Candidate{
+			Position: position,
 			Place: Location{
 				Title:    title,
 				Category: category,
 				// No merge here: a candidate is a place that does not exist
 				// yet, so there is nothing of the user's to preserve.
-				Tags:    joinTags(cleanProposedTags(item.Tags, req.TagVocabulary)),
+				Tags:    joinTags(cleanProposedTags(position.city(), item.Tags, req.TagVocabulary)),
 				Notes:   strings.TrimSpace(item.Notes),
 				Address: strings.TrimSpace(item.Address),
 			},
@@ -924,7 +936,6 @@ func (a *Agent) buildCandidates(ctx context.Context, req SuggestRequest, raw mod
 		// duplicate of what is there -- which is the only argument checkLinks
 		// takes beyond the proposal itself.
 		c.Links = a.checkLinks(ctx, nil, item.Links, events, log)
-		c.Position = a.resolvePosition(ctx, item, log)
 		lat, lng := c.Position.latLng()
 
 		// The position is what catches the duplicate a name cannot: the same

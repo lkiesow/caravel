@@ -90,6 +90,22 @@ type Result struct {
 	Class       string `json:"class,omitempty"`
 	Kind        string `json:"kind,omitempty"`
 	AddressType string `json:"address_type,omitempty"`
+
+	// City is the town or city the match sits in, from Nominatim's structured
+	// address rather than from the display name. One field out of the several
+	// the payload can carry -- see pickCity for which, and why the order is
+	// what it is.
+	//
+	// The display name usually contains the city too, somewhere in the middle
+	// of six comma-separated parts whose count and meaning vary by country.
+	// Parsing it out of there is a guess; this is the value the geocoder
+	// itself assigned to that role.
+	//
+	// Empty whenever the address details are absent, which covers a caller
+	// that did not ask for them, a Nominatim-compatible service that does not
+	// send them, the map-link resolver, and a match genuinely outside any
+	// settlement -- a mountain, a stretch of coast.
+	City string `json:"city,omitempty"`
 }
 
 // preciseClasses are the OSM top-level classes whose elements are the *thing*
@@ -198,6 +214,11 @@ func (c *Client) Search(ctx context.Context, query, locale string) ([]Result, er
 		"q":      query,
 		"format": "jsonv2",
 		"limit":  strconv.Itoa(MaxResults),
+		// The structured address, for Result.City. Costs nothing upstream --
+		// Nominatim assembles it either way to build the display name -- and
+		// it is the difference between knowing the city and parsing a comma
+		// out of prose.
+		"addressdetails": "1",
 	}, locale))
 	if err != nil {
 		return nil, err
@@ -280,9 +301,10 @@ func (c *Client) Reverse(ctx context.Context, lat, lng float64, locale string) (
 		return Result{}, ErrNoReverseEndpoint
 	}
 	body, err := c.get(ctx, endpoint, withLocale(map[string]string{
-		"lat":    strconv.FormatFloat(lat, 'f', -1, 64),
-		"lon":    strconv.FormatFloat(lng, 'f', -1, 64),
-		"format": "jsonv2",
+		"lat":            strconv.FormatFloat(lat, 'f', -1, 64),
+		"lon":            strconv.FormatFloat(lng, 'f', -1, 64),
+		"format":         "jsonv2",
+		"addressdetails": "1",
 	}, locale))
 	if err != nil {
 		return Result{}, err
@@ -298,7 +320,7 @@ func (c *Client) Reverse(ctx context.Context, lat, lng float64, locale string) (
 	if raw.DisplayName == "" {
 		return Result{}, ErrNoResult
 	}
-	return Result{DisplayName: raw.DisplayName, Lat: lat, Lng: lng}, nil
+	return Result{DisplayName: raw.DisplayName, Lat: lat, Lng: lng, City: pickCity(raw.Address)}, nil
 }
 
 // withLocale adds the language to ask for names in, when there is one.
@@ -378,6 +400,49 @@ type nominatimResult struct {
 	Class       string `json:"class"`
 	Kind        string `json:"type"`
 	AddressType string `json:"addresstype"`
+	// Present only when addressdetails=1 was asked for, which Search and
+	// Reverse both do. A service that ignores the parameter decodes into the
+	// zero value here, which is the same as "no city known".
+	Address nominatimAddress `json:"address"`
+}
+
+// nominatimAddress is the subset of Nominatim's structured address that says
+// which settlement a match is in.
+//
+// Several fields for one question, because OSM has no single "the city" key:
+// which one is populated depends on how the place is administratively
+// organised, and in much of the world more than one arrives at once. See
+// pickCity.
+type nominatimAddress struct {
+	City         string `json:"city"`
+	Town         string `json:"town"`
+	Village      string `json:"village"`
+	Municipality string `json:"municipality"`
+	Hamlet       string `json:"hamlet"`
+	Suburb       string `json:"suburb"`
+	CityDistrict string `json:"city_district"`
+	Borough      string `json:"borough"`
+}
+
+// pickCity chooses one settlement name out of the several the payload may
+// carry, largest first.
+//
+// The order is the point. For a landmark in a big city Nominatim sends both
+// the city and the district it is in -- Berlin *and* Mitte for the Brandenburg
+// Gate -- and the city is the more useful of the two as a filter: somebody
+// scanning a trip wants everything in Berlin together, not Mitte separated
+// from Kreuzberg. So city, town, village and municipality are preferred, in
+// that order, and the district-level keys are a fallback for the match that
+// has no city at all rather than a refinement of one that does.
+//
+// Empty for a match in no settlement, which is an ordinary answer: a
+// waterfall, a pass, a beach.
+func pickCity(a nominatimAddress) string {
+	return firstNonEmpty(
+		a.City, a.Town, a.Village, a.Municipality, a.Hamlet,
+		// Below here is "no settlement was named, take the district".
+		a.CityDistrict, a.Borough, a.Suburb,
+	)
 }
 
 // toResult parses one upstream row, reporting false for a row that cannot be
@@ -395,6 +460,7 @@ func (n nominatimResult) toResult() (Result, bool) {
 		Class:       firstNonEmpty(n.Category, n.Class),
 		Kind:        n.Kind,
 		AddressType: n.AddressType,
+		City:        pickCity(n.Address),
 	}
 	// Both or neither: an element type without an id, or the reverse, cannot
 	// build a URL, and half an identity stored is worse than none.

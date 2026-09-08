@@ -93,6 +93,19 @@ type Position struct {
 	OSMType string
 	OSMID   string
 
+	// City is the town or city the place is in, as the geocoder's structured
+	// address reports it -- see geocode.Result.City. Not shown as part of the
+	// pin: it is what the tag proposal turns into a city tag (see tags.go).
+	//
+	// Only ever set from the OpenStreetMap answer, because it is the only one
+	// of the two sources that reports a settlement as a field rather than
+	// inside a formatted address string. It can therefore be present on a
+	// Google-sourced position, copied across by choosePosition when the two
+	// sources agreed about where the place is -- and it is deliberately empty
+	// when they did not. A position nobody should accept without looking is
+	// not a position to assert a city from.
+	City string
+
 	// Alternatives are the other sources answers, when they are far enough
 	// away that both cannot be describing the same place. Empty in the
 	// ordinary case, which is the two services agreeing to within a street.
@@ -120,6 +133,17 @@ func (p *Position) latLng() (*float64, *float64) {
 		return nil, nil
 	}
 	return &p.Lat, &p.Lng
+}
+
+// city is the settlement for the tag proposal, or "" when there is none.
+//
+// Nil-safe for the same reason latLng is: "this place resolved to nowhere" is
+// an ordinary outcome and should not need a check at every call site.
+func (p *Position) city() string {
+	if p == nil {
+		return ""
+	}
+	return p.City
 }
 
 // The sources a Position can come from. Strings rather than an enum because
@@ -234,6 +258,7 @@ func (a *Agent) locateViaOSM(ctx context.Context, name, address string, log *slo
 			From:    from.source,
 			OSMType: best.OSMType,
 			OSMID:   best.OSMID,
+			City:    best.City,
 		}
 	}
 	return nil
@@ -354,6 +379,12 @@ func choosePosition(osm, google *Position, log *slog.Logger) *Position {
 		alt := *other
 		alt.Alternatives = nil
 		chosen.Alternatives = []Position{alt}
+		// No city from a pair that disagrees, whichever of them leads. The
+		// two answers are far enough apart that they may not be the same
+		// place at all, and a tag naming the city of the wrong one is a
+		// filter that quietly lies -- worse than no tag, because the tag
+		// survives the review that the position gets.
+		chosen.City = ""
 		return &chosen
 	}
 
@@ -362,5 +393,12 @@ func choosePosition(osm, google *Position, log *slog.Logger) *Position {
 		return osm
 	}
 	log.Debug("assist: sources agree", "metres", int(apart), "chose", SourceGoogle, "reason", "the osm match was coarse")
-	return google
+	// Google's pin, OSM's city. The two agreed to within ambiguousMetres, so
+	// they are describing one place, and only one of them says which
+	// settlement it is in. Losing the city because the coordinates came from
+	// the better-placed source would make the tag depend on a decision that
+	// has nothing to do with it.
+	chosen := *google
+	chosen.City = osm.City
+	return &chosen
 }

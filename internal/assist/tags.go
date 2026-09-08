@@ -54,16 +54,48 @@ func splitTags(raw string) []string {
 // joinTags renders a set back into the string the wire carries.
 func joinTags(list []string) string { return strings.Join(list, ", ") }
 
-// cleanProposedTags is what a model said, reduced to what may be offered:
-// parsed, capped at maxProposedTags, and re-spelled to match the trip.
+// cityTag is the geocoded settlement, as a tag, or "" for nothing to add.
 //
-// The re-spelling is the part worth having. The prompt asks for a vocabulary
-// tag to be reused exactly, and mostly it is, but "City Centre" against an
-// existing "city centre" is a near miss that normalizeTags cannot fold away --
-// it folds duplicates *within* one location, and these are on two. Adopting
-// the spelling already in use is the cheap fix, and it is not inventing
-// anything: both strings came back meaning the tag the trip already has.
-func cleanProposedTags(raw string, vocabulary []string) []string {
+// Lowercase, because a tag is a filter label rather than a name in prose and
+// the rest of a trip vocabulary tends to be written that way -- "museum",
+// "ferry", "free entry". Where the trip already spells the city some other
+// way, cleanProposedTags re-spells this to match it, which is how "Berlin"
+// stays "Berlin" on a trip that already uses it.
+//
+// The length limit is the one the save enforces, applied here for the same
+// reason splitTags applies it: letting an over-long tag through would only
+// move the failure to the Save button. A settlement name that long is a
+// Nominatim answer that is not really a settlement name.
+func cityTag(city string) string {
+	tag := strings.ToLower(tags.Clean(city))
+	if tag == "" || utf8.RuneCountInString(tag) > tags.MaxLength {
+		return ""
+	}
+	return tag
+}
+
+// cleanProposedTags is what this run found, reduced to what may be offered:
+// the geocoded city plus what the model said, parsed, capped at
+// maxProposedTags, and re-spelled to match the trip.
+//
+// The city goes first, ahead of every tag the model proposed, and that
+// ordering is the cap talking. A model that answered with five tags of its own
+// would otherwise push the city out of a five-tag budget -- and of the two
+// kinds of tag in here, the city is the one that came from a geocoder rather
+// than from a language model, so it is the last one that should lose a
+// tie-break. It is also the only one whose accuracy the position review
+// already covers: an accepted pin and a city tag come from the same match.
+//
+// The re-spelling is the other part worth having. The prompt asks for a
+// vocabulary tag to be reused exactly, and mostly it is, but "City Centre"
+// against an existing "city centre" is a near miss that normalizeTags cannot
+// fold away -- it folds duplicates *within* one location, and these are on
+// two. Adopting the spelling already in use is the cheap fix, and it is not
+// inventing anything: both strings came back meaning the tag the trip already
+// has. The city rides the same path, which is what makes "prefer the trip's
+// own capitalisation, lowercase otherwise" a property of one loop rather than
+// a rule stated twice.
+func cleanProposedTags(city, raw string, vocabulary []string) []string {
 	known := make(map[string]string, len(vocabulary))
 	for _, tag := range vocabulary {
 		if tag = tags.Clean(tag); tag != "" {
@@ -75,6 +107,13 @@ func cleanProposedTags(raw string, vocabulary []string) []string {
 	}
 
 	out := splitTags(raw)
+	if tag := cityTag(city); tag != "" {
+		// Normalize again, because the model naming the city too is the
+		// ordinary case rather than a surprise, and the duplicate has to fold
+		// away before the cap counts it. Prepending keeps the city's spelling
+		// as the survivor, since Normalize keeps the first one it sees.
+		out = tags.Normalize(append([]string{tag}, out...))
+	}
 	for i, tag := range out {
 		if existing, ok := known[strings.ToLower(tag)]; ok {
 			out[i] = existing
@@ -112,14 +151,17 @@ func mergeTags(current, proposed []string) []string {
 
 // proposeTags builds the tags field of a proposal, or "" for no proposal.
 //
+// city is the settlement the position resolved to, which is why this is called
+// after resolvePosition rather than alongside the other fields.
+//
 // Empty covers both nothing-found and nothing-new, which is what the caller
 // wants: an empty proposal is silence. Note what this does *not* do -- compare
 // the two strings. Reordering or respacing the same set is not a change, and
 // offering one as a suggestion badged "Replaces what is there" trains people
 // to click past a review that is supposed to mean something.
-func proposeTags(current, raw string, vocabulary []string) string {
+func proposeTags(current, city, raw string, vocabulary []string) string {
 	have := splitTags(current)
-	merged := mergeTags(have, cleanProposedTags(raw, vocabulary))
+	merged := mergeTags(have, cleanProposedTags(city, raw, vocabulary))
 	if len(merged) == len(have) {
 		return ""
 	}

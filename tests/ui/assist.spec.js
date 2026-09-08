@@ -360,9 +360,12 @@ test.describe("AI assistant", () => {
     // the proposal is what is already there plus what the run found, so
     // accepting it adds and never removes. Marked as an overwrite it would be
     // claiming to replace a tag it in fact keeps.
+    // "reykjavik" is the other thing to read here: it is not in the stub
+    // model's answer at all. It is the city the geocoder resolved the pin to,
+    // added lowercase and ahead of the model's own tags.
     const tagsSuggestion = page.locator('[data-assist-field="tags"] .assist-suggestion');
     await expect(tagsSuggestion.locator(".assist-suggestion__value")).toHaveText(
-      "guesthouse, hostel, harbour, city centre",
+      "guesthouse, reykjavik, hostel, harbour, city centre",
     );
     await expect(tagsSuggestion).not.toHaveClass(/assist-suggestion--overwrite/);
 

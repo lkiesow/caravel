@@ -435,3 +435,99 @@ func TestClassIsReadUnderEitherName(t *testing.T) {
 		t.Errorf("class = %q, precise = %v — the `class` spelling was not read", got[0].Class, got[0].Precise())
 	}
 }
+
+// The settlement a match is in, which is what a city tag on a location is
+// built from (internal/assist, tags.go). Nominatim sends it inside `address`,
+// and only when addressdetails is asked for -- so there are two things to
+// prove: that the parameter goes out, and that the several keys the payload
+// can use are read in a sensible order.
+
+func TestSearchAsksForAddressDetails(t *testing.T) {
+	var gotSearch, gotReverse string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/reverse") {
+			gotReverse = r.URL.RawQuery
+			fmt.Fprint(w, `{"display_name":"Somewhere","lat":"1","lon":"2"}`)
+			return
+		}
+		gotSearch = r.URL.RawQuery
+		fmt.Fprint(w, `[{"display_name":"Somewhere","lat":"1","lon":"2"}]`)
+	}))
+	defer srv.Close()
+	c := New(srv.URL + "/search")
+
+	_, _ = c.Search(context.Background(), "x", "")
+	_, _ = c.Reverse(context.Background(), 1, 2, "")
+
+	for _, tc := range []struct{ name, query string }{
+		{"search", gotSearch},
+		{"reverse", gotReverse},
+	} {
+		if !strings.Contains(tc.query, "addressdetails=1") {
+			t.Errorf("%s query = %q, want addressdetails=1", tc.name, tc.query)
+		}
+	}
+}
+
+func TestCityPrefersTheSettlementOverTheDistrict(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		address string
+		want    string
+	}{
+		{
+			// The case the ordering exists for. A landmark in a big city
+			// arrives with both, and the city is the more useful filter:
+			// everything in Berlin together beats Mitte separated from
+			// Kreuzberg.
+			"the city, not the district it is in",
+			`{"city":"Berlin","borough":"Mitte","suburb":"Mitte","city_district":"Mitte"}`,
+			"Berlin",
+		},
+		{"a town", `{"town":"Hella","county":"Sudurland"}`, "Hella"},
+		{"a village", `{"village":"Vik"}`, "Vik"},
+		{"a municipality when nothing smaller is named", `{"municipality":"Kotor"}`, "Kotor"},
+		{
+			// No settlement key at all, which is what a place inside a city
+			// that maps its districts rather than itself looks like. The
+			// district is the fallback -- worse than the city, better than
+			// nothing, and the case the request allows explicitly.
+			"the district when there is no city",
+			`{"city_district":"Asakusa","suburb":"Asakusa"}`,
+			"Asakusa",
+		},
+		{"the suburb, last of all", `{"suburb":"Vesturbaer"}`, "Vesturbaer"},
+		{
+			// An ordinary answer, not a failure: a waterfall is in no
+			// settlement, and there is nothing to tag it with.
+			"nowhere in particular",
+			`{"country":"Iceland","ISO3166-2-lvl4":"IS-8"}`,
+			"",
+		},
+		{"no address block at all", ``, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := `[{"display_name":"Somewhere","lat":"1","lon":"2"`
+			if tc.address != "" {
+				body += `,"address":` + tc.address
+			}
+			body += `}]`
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprint(w, body)
+			}))
+			defer srv.Close()
+
+			got, err := New(srv.URL).Search(context.Background(), "x", "")
+			if err != nil {
+				t.Fatalf("Search: %v", err)
+			}
+			if len(got) != 1 {
+				t.Fatalf("got %d results, want 1", len(got))
+			}
+			if got[0].City != tc.want {
+				t.Errorf("City = %q, want %q", got[0].City, tc.want)
+			}
+		})
+	}
+}

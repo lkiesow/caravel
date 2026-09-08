@@ -342,3 +342,77 @@ func (r *recordingLocator) SearchPlaces(_ context.Context, query string) ([]Plac
 	}
 	return []PlaceResult{{Title: "Found", Address: "An address", Lat: 63.84, Lng: -20.31}}, nil
 }
+
+// The city, which rides along with the position because it comes from the same
+// match. Three cases, and the middle one is the one worth having a test for.
+
+func TestPositionCarriesTheCity(t *testing.T) {
+	a := &Agent{geocoder: geocode.New(geocode.StubURL), search: &stubSearcher{}}
+	log := slog.New(slog.DiscardHandler)
+
+	// The ordinary case: OSM answered and OSM won.
+	osm := a.resolvePosition(context.Background(), modelProposal{PlaceName: "Kex Hostel, Reykjavik"}, log)
+	if osm == nil {
+		t.Fatal("no position")
+	}
+	if osm.City != "Reykjavik" {
+		t.Errorf("City = %q, want the fixture's city", osm.City)
+	}
+
+	// Only the maps backend knows this one, and it reports no settlement as a
+	// field -- so there is no city, and that is not a bug to work around by
+	// parsing its address string.
+	google := a.resolvePosition(context.Background(), modelProposal{PlaceName: "Braud and Co, Reykjavik"}, log)
+	if google == nil {
+		t.Fatal("no position")
+	}
+	if google.Source != SourceGoogle {
+		t.Fatalf("source = %q, want the maps backend to have answered alone", google.Source)
+	}
+	if google.City != "" {
+		t.Errorf("City = %q, want empty — nothing structured said which city", google.City)
+	}
+
+	// The disagreement: 3.4km apart, so the two may not be the same place, and
+	// a city tag would assert something the pin itself is being questioned
+	// about.
+	split := a.resolvePosition(context.Background(), modelProposal{PlaceName: "Harpa, Reykjavik"}, log)
+	if split == nil {
+		t.Fatal("no position")
+	}
+	if !split.Ambiguous() {
+		t.Fatal("the fixtures put Harpa 3.4km apart and should disagree")
+	}
+	if split.City != "" {
+		t.Errorf("City = %q, want empty while the sources disagree", split.City)
+	}
+}
+
+// Google's pin, OSM's city: the two agreed about where the place is, and only
+// one of them says which city that is. Losing it because the coordinates came
+// from the better-placed source would make the tag depend on a decision that
+// has nothing to do with it.
+func TestAnAgreedGooglePositionKeepsTheOSMCity(t *testing.T) {
+	coarse := &Position{
+		// A few metres apart, so the two agree that this is one place.
+		Lat: 64.14661, Lng: -21.92538,
+		Label: "Skulagata, Reykjavik", Source: SourceOSM, City: "Reykjavik",
+		// A street: the case where Google's business pin is preferred.
+		Precise: false,
+	}
+	precise := &Position{
+		Lat: 64.14659, Lng: -21.92535,
+		Label: "Kex Hostel", Source: SourceGoogle, Precise: true,
+	}
+
+	got := choosePosition(coarse, precise, slog.New(slog.DiscardHandler))
+	if got.Source != SourceGoogle {
+		t.Fatalf("source = %q, want %q — a coarse OSM match should lose the pin", got.Source, SourceGoogle)
+	}
+	if got.City != "Reykjavik" {
+		t.Errorf("City = %q, want the city OSM reported", got.City)
+	}
+	if precise.City != "" {
+		t.Error("choosePosition wrote the city onto its argument rather than a copy")
+	}
+}

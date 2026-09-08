@@ -312,6 +312,17 @@ purpose — do not reconstruct it from an older stage plan without asking.
   rather than quality -- five candidates times five fields is a lot of UI for
   a small gain, which is why it was left.
 
+- **A place only the maps backend can find gets no city tag.** (Stage 33
+  follow-up, the city tag.) `Position.City` is filled from OpenStreetMap's
+  structured address, and Serper's /places answers with a formatted address
+  string instead -- so a restaurant OSM has never heard of resolves fine and
+  is tagged with everything except where it is. Two ways out: parse the
+  city out of the Google address string (cheap, guesswork, the comma count
+  varies by country), or reverse-geocode the chosen coordinates through
+  Nominatim (accurate, one more request per place, and it works for every
+  source there will ever be). The second is the right one if it becomes
+  worth a request.
+
 ---
 
 ## Multi-user and sharing

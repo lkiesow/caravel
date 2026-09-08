@@ -1029,6 +1029,27 @@ class MapView extends HTMLElement {
 
     this.bindGestureGate(mapEl);
 
+    // Where this map is looking, announced so the page can remember it across
+    // a navigation (trip-detail-page.js parks it in history.state, and hands
+    // it back as initial-view). moveend covers zooming too - a zoom is a
+    // camera move - and it fires for our own fitBounds as well, which is what
+    // makes the very first view worth restoring and not just the ones the
+    // person chose. Only the trip-wide map has a camera worth keeping: the
+    // single-marker embed and pick mode each have exactly one view.
+    if (!chromeless) {
+      map.on("moveend", () => {
+        if (generation !== this._generation) return;
+        const { lng, lat } = map.getCenter();
+        this.dispatchEvent(
+          new CustomEvent("map-view-change", {
+            bubbles: true,
+            composed: true,
+            detail: { lng, lat, zoom: map.getZoom() },
+          })
+        );
+      });
+    }
+
     this.plotMarkers();
 
     // Delegated, because popup DOM is built and destroyed on demand - there is
@@ -1175,7 +1196,10 @@ class MapView extends HTMLElement {
       this._markers.push(marker);
     }
 
-    if (visible.length) {
+    const initialView = this.consumeInitialView();
+    if (initialView) {
+      this._map.jumpTo(initialView);
+    } else if (visible.length) {
       const bounds = visible.reduce(
         (b, i) => b.extend([i.lng, i.lat]),
         new maplibre.LngLatBounds([visible[0].lng, visible[0].lat], [visible[0].lng, visible[0].lat])
@@ -1191,6 +1215,19 @@ class MapView extends HTMLElement {
     } else {
       this._map.jumpTo({ center: [0, 20], zoom: 2 });
     }
+  }
+
+  // A camera handed in by the page (see the map-view-change event above), used
+  // once and then forgotten: it is the view to *open* at, not a view to snap
+  // back to, so a later legend toggle still refits the bounds as it always
+  // did. Consumed rather than re-read so that survives a re-plot.
+  consumeInitialView() {
+    if (this._initialViewUsed) return null;
+    this._initialViewUsed = true;
+    const parts = (this.getAttribute("initial-view") || "").split(",").map(Number);
+    if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return null;
+    const [lng, lat, zoom] = parts;
+    return { center: [lng, lat], zoom };
   }
 
   // Popups, with the two defaults this app disagrees with.

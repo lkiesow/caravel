@@ -129,7 +129,19 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
     if (tab === "locations") {
       renderItemsTab(content, trip);
     } else if (tab === "map") {
-      content.innerHTML = `<map-view trip-id="${trip.id}" locate></map-view>`;
+      // The map remembers where it was looking, but only in *this* history
+      // entry. A camera change is a replaceState, so panning and zooming never
+      // grows the back stack - going back from a location's page returns to
+      // the same view, and going back once more leaves the map entirely. A tab
+      // switch pushes a fresh (empty) state, so arriving at the map anew still
+      // fits the trip's bounds.
+      const savedView = window.history.state?.mapView;
+      content.innerHTML = `<map-view trip-id="${trip.id}" locate${
+        savedView ? ` initial-view="${savedView.lng},${savedView.lat},${savedView.zoom}"` : ""
+      }></map-view>`;
+      content.addEventListener("map-view-change", (e) => {
+        window.history.replaceState({ ...window.history.state, mapView: e.detail }, "");
+      });
       // A marker popup's in-app link. map-view.js can't let the router's
       // [data-link] interception handle it - that listener sits on document
       // and a click inside a shadow root retargets to the host - so it

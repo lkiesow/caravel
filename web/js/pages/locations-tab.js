@@ -63,16 +63,19 @@ const SCHEDULED = "scheduled";
 export async function renderItemsTab(container, trip) {
   const tripId = trip.id;
   const editable = canEdit(trip);
-  let activeFilter = "all";
-  let query = "";
+  // What the toolbar was set to when this history entry was last left. See
+  // saveToolbarState below for why it is read here rather than reset.
+  const saved = window.history.state?.locationsToolbar ?? {};
+  let activeFilter = saved.category ?? "all";
+  let query = saved.query ?? "";
   let allItems = [];
   let radiusKm = null;
-  let sort = DEFAULT_SORT;
-  let activeTag = ANY_TAG;
+  let sort = saved.sort ?? DEFAULT_SORT;
+  let activeTag = saved.tag ?? ANY_TAG;
   // The date filter has more states than a value: three presets plus a range,
   // so it carries a small object rather than a string. `mode` is what the
   // predicate switches on; from/to are only meaningful in "range".
-  let dateFilter = { mode: ANY_DATE, from: "", to: "" };
+  let dateFilter = saved.date ?? { mode: ANY_DATE, from: "", to: "" };
   // Kept between selections so switching 5km -> 10km does not ask the device
   // again. Not fetched on load: asking for someone's position before they
   // have expressed any interest in it is rude, and the permission prompt
@@ -206,7 +209,59 @@ export async function renderItemsTab(container, trip) {
     return out;
   }
 
+  // Whether this history entry is already the one holding a filtered list.
+  //
+  // The rule, and the reason for the flag: leaving the neutral toolbar pushes
+  // ONE entry, and every change after that overwrites it. So overview ->
+  // filter -> location -> Back returns to the filtered list, and one more Back
+  // reaches the unfiltered one - however many times the filter was changed in
+  // between. Without the flag, a list of every filter anybody tried would sit
+  // between the reader and the way out.
+  //
+  // Same mechanism as the map tab's camera one tab over (trip-detail-page.js),
+  // and the same tradeoff: state on the entry, not in the URL. Nothing here is
+  // shareable, and a link to a filtered list is not what a Back press is for.
+  let toolbarEntryPushed = Boolean(window.history.state?.locationsToolbar);
+  // Not until the first render is on screen: restoring saved state must not
+  // itself push an entry.
+  let toolbarSaveArmed = false;
+
+  function toolbarState() {
+    // Distance is deliberately absent. It is the one filter that is not a
+    // value but a question put to the device, and re-applying it on a Back
+    // press would either fire a permission prompt nobody asked for or restore
+    // a radius measured from a position we no longer hold.
+    const state = {};
+    if (activeFilter !== "all") state.category = activeFilter;
+    if (query) state.query = query;
+    if (sort !== DEFAULT_SORT) state.sort = sort;
+    if (activeTag !== ANY_TAG) state.tag = activeTag;
+    if (dateFilter.mode !== ANY_DATE) state.date = dateFilter;
+    return state;
+  }
+
+  function saveToolbarState() {
+    if (!toolbarSaveArmed) return;
+    const state = toolbarState();
+    const neutral = Object.keys(state).length === 0;
+    const base = { ...window.history.state };
+    if (neutral) delete base.locationsToolbar;
+    else base.locationsToolbar = state;
+
+    if (!neutral && !toolbarEntryPushed) {
+      // The entry left behind keeps the state it had - which is the unfiltered
+      // list, since that is where a first filter is applied from.
+      window.history.pushState(base, "");
+      toolbarEntryPushed = true;
+      return;
+    }
+    // Once this entry is the toolbar entry it stays the toolbar entry, even
+    // after everything is cleared again: clearing is not a place to go back to.
+    window.history.replaceState(base, "");
+  }
+
   function applyFilters() {
+    saveToolbarState();
     const visible = sorted(allItems.filter(matches));
 
     // Only while a radius is active, and only if there is actually something
@@ -261,7 +316,7 @@ export async function renderItemsTab(container, trip) {
     name: t("locations.filter.tags"),
     neutralLabel: t("locations.filter.anyTag"),
     neutralValue: ANY_TAG,
-    activeValue: ANY_TAG,
+    activeValue: activeTag,
     items: [],
     onSelect: (value) => {
       activeTag = value;
@@ -274,6 +329,8 @@ export async function renderItemsTab(container, trip) {
     name: t("locations.filter.date"),
     neutralLabel: t("locations.filter.anyDate"),
     neutralValue: ANY_DATE,
+    // Never read for this group: isNeutral and currentLabel below both go
+    // straight to dateFilter, which is where the restored range lives too.
     activeValue: ANY_DATE,
     isNeutral: () => dateFilter.mode === ANY_DATE,
     currentLabel: () => {
@@ -305,7 +362,7 @@ export async function renderItemsTab(container, trip) {
         // was being filtered; as one row among several it has to say so itself.
         neutralLabel: t("locations.filter.allCategories"),
         neutralValue: "all",
-        activeValue: "all",
+        activeValue: activeFilter,
         items: [
           { value: "all", label: t("locations.filter.all") },
           ...CATEGORIES.map((c) => ({ value: c, label: t(`item.category.${c}`) })),
@@ -435,7 +492,7 @@ export async function renderItemsTab(container, trip) {
   renderMenu(container.querySelector(".locations-sort-slot"), {
     iconName: "arrow-down-up",
     ariaLabel: "locations.sort.label",
-    activeValue: DEFAULT_SORT,
+    activeValue: sort,
     // Sorting by anything other than the default tints the trigger, so a
     // collapsed icon-only button on a phone still says the order is not the
     // one the list normally has - the same cue the filter funnel carries.
@@ -447,7 +504,9 @@ export async function renderItemsTab(container, trip) {
     },
   });
 
-  container.querySelector('input[name="q"]').addEventListener("input", (e) => {
+  const searchInput = container.querySelector('input[name="q"]');
+  searchInput.value = query;
+  searchInput.addEventListener("input", (e) => {
     query = e.target.value.trim().toLowerCase();
     applyFilters();
   });
@@ -512,4 +571,8 @@ export async function renderItemsTab(container, trip) {
   filterMenu.refresh();
 
   applyFilters();
+  // Everything above is the restored (or default) state being put on screen.
+  // From here on a change is somebody changing it, which is what earns an
+  // entry.
+  toolbarSaveArmed = true;
 }

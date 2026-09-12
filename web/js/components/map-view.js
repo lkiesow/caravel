@@ -551,6 +551,54 @@ const styles = `
     display: none;
   }
 
+  /* The map credit, mounted under the map rather than over it (Stage 34).
+     MapLibre's own control is instantiated by hand in initMap and its
+     element appended here, so everything below is restyling a dependency's
+     markup that has left the context its CSS was written for.
+
+     max-width is the load-bearing one. Inside .map-wrap the credit was
+     clipped by overflow: hidden when it outgrew the map; out here there is
+     nothing to clip it, so without this it could widen the document -- which
+     routes.spec.js sweeps for. */
+  .attribution {
+    max-width: 100%;
+    margin: 0.5rem 0 0;
+    /* .maplibregl-map sets font: 12px/20px Helvetica for everything inside
+       the map container, and that inheritance is gone out here. Without an
+       explicit size the credit would come out at the app's body size. */
+    font-size: 0.7rem;
+    line-height: 1.4;
+    color: var(--color-text-muted, #666);
+  }
+  /* No background: the vendored hsla(0,0%,100%,.5) plate exists to keep the
+     credit readable over cartography, and there is no cartography under it
+     any more. Padding and the corner-position margins go for the same
+     reason -- this is a line of text in the page's flow now. */
+  .attribution .maplibregl-ctrl.maplibregl-ctrl-attrib {
+    background: none;
+    padding: 0;
+    margin: 0;
+    float: none;
+  }
+  /* The vendor gives these rgba(0, 0, 0, .75) and no underline, which is
+     invisible on a dark page. Muted rather than accent-coloured, because a
+     credit should read as a footnote and nearly every word in it is a link;
+     underlined, because they still have to look like links. */
+  .attribution .maplibregl-ctrl-attrib a,
+  .attribution .maplibregl-ctrl-attrib a:visited {
+    color: inherit;
+    text-decoration: underline;
+  }
+  .attribution .maplibregl-ctrl-attrib a:hover {
+    color: var(--color-text, #111);
+  }
+  /* Between the render and the map's construction, and permanently when the
+     map could not be built at all, there is no control in here -- an empty
+     box should not reserve a line of margin under the map. */
+  .attribution:empty {
+    display: none;
+  }
+
   /* Rendered only on coarse pointers (see render()), where one-finger drag
      deliberately no longer pans the map. */
   /* The gesture hint, shown *when the gesture happens* rather than standing
@@ -666,10 +714,20 @@ const styles = `
        320px on a phone. [pick] after [lat] on purpose, the same equal-
        specificity source-order point the desktop rules make: a picker with
        coordinates set matches both. */
+    /* height: auto on both, overriding the desktop rules, because in this
+       block the number means *the map* rather than the whole component: the
+       desktop path hands .map-wrap the leftover space with flex: 1, and here
+       .map-wrap is flex: none and #map takes --map-height literally. Left at
+       16rem the host would be exactly as tall as its map, and the credit
+       under it (Stage 34) would hang out of the host and over whatever the
+       page puts next -- measured at 324px on the location view, 39px of
+       overlap across the "View on Google Maps" links. */
     :host([lat]) {
+      height: auto;
       --map-height: 16rem;
     }
     :host([pick]) {
+      height: auto;
       --map-height: 20rem;
     }
     .legend {
@@ -761,7 +819,41 @@ class MapView extends HTMLElement {
     map.setStyle(style, { diff: false });
   }
 
+  // The map credit, mounted under the map instead of floating in its
+  // bottom-right corner. On a 324px phone the corner version was clipped: the
+  // library parks it in an absolutely positioned, shrink-to-fit box and floats
+  // it right, nothing constrains its left edge, and .map-wrap cut off whatever
+  // ran past the map. Under the map it is a line of text that wraps.
+  //
+  // Still MapLibre's own control, not a string of ours. onAdd returns a
+  // detached element and only wires map events - the one place it reads the
+  // map's geometry is the compact-mode check, and compact: false takes the
+  // branch that does not care - so it works perfectly well outside the map
+  // container, and it keeps the property that matters: the credit names the
+  // sources that actually loaded, and re-reads them on styledata. That is why
+  // Stage 30 Milestone 6 could delete CARAVEL_TILE_ATTRIBUTION, and writing
+  // our own static credit here would hand the trap straight back.
+  mountAttribution(maplibre, map) {
+    const box = this.shadowRoot.querySelector(".attribution");
+    if (!box) return;
+    // compact: false keeps the credit visible rather than behind a toggle
+    // under 640px, which is what every provider's terms actually ask for.
+    //
+    // No customAttribution: a style carries its own credit, inline on its
+    // sources or in the TileJSON they point at, and MapLibre renders it.
+    const ctrl = new maplibre.AttributionControl({ compact: false });
+    box.appendChild(ctrl.onAdd(map));
+    this._attribution = ctrl;
+  }
+
   destroyMap() {
+    // Explicitly, and before the map goes: a control added by hand is not in
+    // the map's own control list, so map.remove() does not tear it down and
+    // its five map listeners would outlive the map they point at.
+    if (this._attribution) {
+      this._attribution.onRemove();
+      this._attribution = null;
+    }
     if (this._onMapThemeChanged) {
       eventBus.removeEventListener("map-theme-changed", this._onMapThemeChanged);
       this._onMapThemeChanged = null;
@@ -903,6 +995,7 @@ class MapView extends HTMLElement {
         }
       </div>
       ${this.hasAttribute("locate") ? `<p class="locate-status" role="status" hidden></p>` : ""}
+      <div class="attribution"></div>
     `;
 
     if (!chromeless && !this._items.length) {
@@ -958,16 +1051,10 @@ class MapView extends HTMLElement {
         // and the coordinate-less picker settle on anyway.
         center: [0, 20],
         zoom: 2,
-        // compact: false keeps the credit visible rather than behind a toggle
-        // under 640px, which is what every provider's terms actually ask for.
-        //
-        // No customAttribution: a style carries its own credit, inline on its
-        // sources or in the TileJSON they point at, and MapLibre renders it.
-        // The old CARAVEL_TILE_ATTRIBUTION existed because a bare XYZ template
-        // carries no provenance at all, and it was a standing trap - change
-        // the URL, forget the credit, and the instance is out of compliance
-        // with a map that still looks right.
-        attributionControl: { compact: false },
+        // Off here, and added by hand below, because the credit does not live
+        // over the map any more - see mountAttribution. Turning it off is not
+        // dropping it.
+        attributionControl: false,
         // The wheel is handled entirely in bindGestureGate below - see the
         // reasoning there. The library's own handler being off is what makes
         // the gesture deterministic: there is exactly one piece of code
@@ -1007,6 +1094,7 @@ class MapView extends HTMLElement {
       return;
     }
     this._map = map;
+    this.mountAttribution(maplibre, map);
     map.touchZoomRotate.disableRotation();
     map.keyboard.disableRotation();
 

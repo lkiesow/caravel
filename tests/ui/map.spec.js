@@ -308,6 +308,42 @@ test.describe("the map follows the server's configuration", () => {
   // plans/todo.md as a real gap: on a running instance the credit reads
   // "OpenFreeMap © OpenMapTiles Data from OpenStreetMap" with all three links
   // working, which is what the providers' terms require.
+  //
+  // What *can* be asserted with no map data is where the credit is mounted,
+  // which is what Stage 34 changed and is the part a refactor would break.
+
+  test("the credit is mounted under the map, not over it", async ({ page }) => {
+    await login(page);
+    await page.setViewportSize(MOBILE);
+    await gotoTripMap(page);
+
+    const seen = await page.evaluate(() => {
+      const sr = document.querySelector("map-view").shadowRoot;
+      const box = sr.querySelector(".attribution");
+      const wrap = sr.querySelector(".map-wrap");
+      const ctrl = box?.querySelector(".maplibregl-ctrl-attrib");
+      return {
+        mounted: Boolean(ctrl),
+        // The bug this replaced: inside .map-wrap the credit was clipped by
+        // overflow: hidden whenever it outgrew a phone-width map.
+        insideTheMap: Boolean(sr.querySelector(".map-wrap .maplibregl-ctrl-attrib")),
+        afterTheMap:
+          Boolean(box) &&
+          (wrap.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING) > 0,
+        // No plate behind it any more: it is text on the page.
+        background: ctrl && getComputedStyle(ctrl).backgroundColor,
+        // And it stays inside the component, which is what stops it widening
+        // the document now that nothing clips it.
+        fits: Boolean(box) && box.getBoundingClientRect().right <= wrap.getBoundingClientRect().right,
+      };
+    });
+
+    expect(seen.mounted, "the control should be mounted in the credit box").toBe(true);
+    expect(seen.insideTheMap, "and no longer inside the map container").toBe(false);
+    expect(seen.afterTheMap, "the credit box follows the map in the flow").toBe(true);
+    expect(seen.background, "no background plate behind page text").toBe("rgba(0, 0, 0, 0)");
+    expect(seen.fits, "the credit must not reach past the map's own width").toBe(true);
+  });
 });
 
 test.describe("the trip map with a mouse", () => {

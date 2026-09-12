@@ -497,6 +497,15 @@ purpose — do not reconstruct it from an older stage plan without asking.
   fine for entity escaping; it is the *promise in the name* that is the
   problem here.
 
+- **The map component means two different things by a height.** (Stage 34.)
+  `:host([lat]) { height: 16rem }` is the whole component on the desktop path,
+  where `.map-wrap { flex: 1 }` hands it the leftover space, and *the map* in
+  the `max-width: 640px` block, where `#map` takes `--map-height` literally and
+  the host is auto. Both are internally coherent and the mobile one had to be
+  made explicit to stop the credit overflowing its host, but a reader has to
+  hold two meanings at once. One meaning -- the number is the map, the host is
+  auto everywhere -- would be a small, purely-visual refactor.
+
 ## Testing, CI and dev tooling
 
 - **Map attribution is not asserted anywhere.** (Stage 30 Milestone 6.)
@@ -512,6 +521,12 @@ purpose — do not reconstruct it from an older stage plan without asking.
   suite gains a way to let one source load -- a stubbed vector tile, most
   likely, which the "UI suite reaches the real Nominatim" entry below would
   also benefit from.
+
+  **Narrowed by Stage 34.** Moving the credit out of the map's corner and into
+  the page added the assertion that *can* be made with no map data -- it is
+  mounted in the box under the map, not inside `.map-wrap`, transparent, and
+  within the map's width. What is still unasserted is the only part that
+  matters for compliance: the credit's *text*, which needs a loaded source.
 
 - **A vertical two-finger pan cannot move the trip map, by design.** (Stage 30
   Milestone 2.) MapLibre pins the camera when the world already fits the

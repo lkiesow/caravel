@@ -4,6 +4,7 @@ const CATEGORY_COLORS = {
   site: "#16a34a",
   stay: "#7c3aed",
   transport: "#2563eb",
+  area: "#e11d48",
 };
 
 const styles = `

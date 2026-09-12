@@ -1138,7 +1138,7 @@ func (a *Agent) chooseCover(ctx context.Context, locale string, raw modelProposa
 // in internal/httpapi/items.go. Duplicated rather than shared because this
 // package must not import the HTTP layer; the two are pinned together by
 // TestValidCategoriesMatchTheSchema.
-var validCategories = []string{"site", "stay", "transport"}
+var validCategories = []string{"site", "stay", "transport", "area"}
 
 // checkLinks fetches every proposed link and keeps the ones that answer.
 //

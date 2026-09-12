@@ -26,6 +26,7 @@ import (
 type nestedItem struct {
 	ID       string `json:"id"`
 	Title    string `json:"title"`
+	Category string `json:"category"`
 	Location *struct {
 		Lat     *float64 `json:"lat"`
 		Lng     *float64 `json:"lng"`
@@ -301,5 +302,33 @@ func TestListItemsCarriesCoordinatesIgnoringShowOnMap(t *testing.T) {
 		if got := byID[id]; got.Lat != nil || got.Lng != nil {
 			t.Errorf("%s should have no coordinates, got %v,%v", name, got.Lat, got.Lng)
 		}
+	}
+}
+
+// The area category, added in migration 0010, has to survive the write: a
+// value the API accepts but the CHECK constraint refuses is a 500, and the
+// SQLite side of that migration rebuilds the whole items table to allow it.
+func TestAreaCategoryRoundTrips(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login("demo")
+	tripID := ts.createTrip(cookie, "Iceland")
+
+	w := ts.do(http.MethodPost, "/api/trips/"+tripID+"/items", cookie,
+		`{"title":"Snaefellsnes","category":"area","location":{"lat":64.87,"lng":-23.35}}`)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create area item: got %d, want 201, body %s", w.Code, w.Body.String())
+	}
+	if got := decode[nestedItem](t, w); got.Category != "area" {
+		t.Errorf("category = %q, want area", got.Category)
+	}
+
+	// And the list filter, which validates the query parameter against the
+	// same map.
+	w = ts.do(http.MethodGet, "/api/trips/"+tripID+"/items?category=area", cookie, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("filter by area: got %d, want 200, body %s", w.Code, w.Body.String())
+	}
+	if items := decode[[]map[string]any](t, w); len(items) != 1 {
+		t.Errorf("got %d items filtered by area, want 1", len(items))
 	}
 }

@@ -33,7 +33,7 @@ import { safeHref } from "../url.js";
 // The categories a candidate may carry, for rendering its label. The server
 // validates against the same three and sends an empty string rather than a
 // guess, which renders as no category at all.
-const CATEGORIES = ["site", "stay", "transport"];
+const CATEGORIES = ["site", "stay", "transport", "area"];
 
 export async function renderSuggestPage(container, { tripId }) {
   if (!hasCapability("assist")) {

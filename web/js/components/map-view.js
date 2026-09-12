@@ -128,7 +128,13 @@ const CATEGORY_COLORS = {
   site: "#16a34a",
   stay: "#7c3aed",
   transport: "#2563eb",
+  area: "#e11d48",
 };
+
+// The categories, in legend order. Derived from the palette above so that the
+// legend, the filter set and the marker colours cannot disagree about what the
+// categories are.
+const CATEGORIES = Object.keys(CATEGORY_COLORS);
 
 // Zoom used when the view can't be derived from spread-out markers - a
 // single marker, or a set of markers that all sit in the same place. Close
@@ -148,15 +154,15 @@ const WHEEL_PX_PER_ZOOM = 60;
 const WHEEL_ACCUM_CAP = 240;
 
 // Category colour for a marker, for items whose category is unknown or not
-// one of the three the app defines (the single-marker mode gets it from an
+// one of the four the app defines (the single-marker mode gets it from an
 // attribute, so it can legitimately be absent).
 const FALLBACK_MARKER_COLOR = "#71717a";
 
 // The marker being *placed* in pick mode. Amber deliberately: none of the
-// three category colours above, and not --color-accent either, which is the
+// four category colours above, and not --color-accent either, which is the
 // same #2563eb transport already uses. It is also drawn as a ring with a
 // centre dot rather than as a plain disc, so it reads as "the point you are
-// setting" rather than as a fourth category.
+// setting" rather than as one more category.
 const PICK_MARKER_COLOR = "#ea580c";
 
 // Coordinates are emitted at 6 decimals (~11cm). Without this a map click
@@ -274,6 +280,12 @@ const styles = `
      than the fill: perceptually they are 58 and 55 dE apart, which is not a
      near miss. The ring is what does the work, and always was.
 
+     "area", added later, was picked to the same rules: rose #e11d48 is 4.4:1 on
+     liberty paper, and its dark twin #fb7185 is 7.3:1 on the dark map, where
+     the light value would have been 4.1:1. Rose rather than another orange
+     because #ea580c is already the pick marker, and rather than a teal
+     because #0891b2 is already "you are here".
+
      The legend dots use these too. They sit on app chrome rather than on the
      map, so they could have followed the app's theme instead - but a legend
      whose dot is a different colour from the marker it names is worse than a
@@ -282,6 +294,7 @@ const styles = `
     --marker-site: ${CATEGORY_COLORS.site};
     --marker-stay: ${CATEGORY_COLORS.stay};
     --marker-transport: ${CATEGORY_COLORS.transport};
+    --marker-area: ${CATEGORY_COLORS.area};
     --marker-fallback: ${FALLBACK_MARKER_COLOR};
     --marker-pick: ${PICK_MARKER_COLOR};
     --marker-pick-fill: rgba(255, 255, 255, 0.85);
@@ -302,6 +315,7 @@ const styles = `
     --marker-site: #22c55e;
     --marker-stay: #a78bfa;
     --marker-transport: #60a5fa;
+    --marker-area: #fb7185;
     --marker-fallback: #a1a1aa;
     --marker-pick: #fb923c;
     --marker-pick-fill: rgba(24, 24, 27, 0.85);
@@ -697,7 +711,7 @@ class MapView extends HTMLElement {
 
   connectedCallback() {
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
-    this._activeCategories = new Set(["site", "stay", "transport"]);
+    this._activeCategories = new Set(CATEGORIES);
     this._markers = [];
     this.load();
   }
@@ -870,7 +884,7 @@ class MapView extends HTMLElement {
           chromeless
             ? ""
             : `<div class="legend">
-          ${["site", "stay", "transport"]
+          ${CATEGORIES
             .map(
               (cat) => `
               <label>

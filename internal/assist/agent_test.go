@@ -283,7 +283,7 @@ func TestValidCategoryIsAcceptedCaseInsensitively(t *testing.T) {
 // Pins the duplicated list against the schema's CHECK constraint and the map
 // in internal/httpapi/items.go, which this package cannot import.
 func TestValidCategoriesMatchTheSchema(t *testing.T) {
-	want := []string{"site", "stay", "transport"}
+	want := []string{"site", "stay", "transport", "area"}
 	if len(validCategories) != len(want) {
 		t.Fatalf("validCategories = %v, want %v", validCategories, want)
 	}

@@ -337,6 +337,16 @@ purpose — do not reconstruct it from an older stage plan without asking.
 
 ## Consistency and cleanup
 
+- **The category palette lives in four files.** (Surfaced adding the `area`
+  category.) `CATEGORY_COLORS` is copy-pasted into `map-view.js`,
+  `location-card.js`, `itinerary-tab.js` and `location-view-page.js`, and the
+  list of category *names* into `location-form.js`, `locations-tab.js` and
+  `suggest-page.js` -- seven places that must agree, with nothing checking that
+  they do. Adding a fifth category means finding all seven again. One module
+  exporting both the names and the colours would end it; the only wrinkle is
+  that map-view needs the hexes to build its custom properties while the other
+  three want a plain lookup, which is not much of a wrinkle.
+
 - **List view state is not in the URL.** (Stage 26.) The locations tab's
   toolbar now survives a Back press -- its filters, search text and sort ride on
   the history entry, one entry deep, the same way the map tab's camera does --

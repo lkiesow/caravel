@@ -17,13 +17,14 @@ subtitle and dates stay at the top wherever you are in it.
 
 ## Locations
 
-A location is anywhere the trip touches, and it is one of three kinds:
+A location is anywhere the trip touches, and it is one of four kinds:
 
 | Category | For |
 |---|---|
 | **Site** | Somewhere you are going — a waterfall, a museum, a viewpoint |
 | **Stay** | Somewhere you are sleeping |
 | **Transport** | A flight, a ferry, a train, a car hire |
+| **Area** | Somewhere you are *in* rather than at — a district, a valley, a park |
 
 ![The locations list](../assets/screenshots/locations.png)
 

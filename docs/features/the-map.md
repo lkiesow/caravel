@@ -4,7 +4,7 @@ Every location with coordinates, on one map.
 
 ![The trip map](../assets/screenshots/map.png)
 
-Pins are coloured by category — site, stay, transport — and each category can be
+Pins are coloured by category — site, stay, transport, area — and each category can be
 switched off, so "show me only where we are sleeping" is one click. The map
 frames itself to fit whatever is currently shown.
 

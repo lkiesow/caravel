@@ -11,7 +11,7 @@ import { canEdit } from "../trip-role.js";
 import { hasCapability } from "../session.js";
 import { formatDateRange } from "../format.js";
 
-const CATEGORIES = ["site", "stay", "transport"];
+const CATEGORIES = ["site", "stay", "transport", "area"];
 
 // Radii for the "near me" filter, in km. Coarse on purpose: the question is
 // "walkable / a short drive / same region", not a precise number.

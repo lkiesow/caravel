@@ -1074,14 +1074,114 @@ button {
   font-family: inherit;
 }
 
-/* The per-route loading line (components/loading.js). Muted, because it is a
-   placeholder rather than content, and padded so it doesn't sit flush against
-   the edge of whatever container it was dropped into - it stands in for both
-   whole pages and single list bodies. */
+/* The per-route loading state (components/loading.js): the brand mark held
+   inside a sweeping ring. This used to be a muted line of text, which read as
+   a broken page rather than a busy one on anything but the fastest connection.
+
+   .loading is the centring box and the live region; .loader below is the
+   animation itself, and is purely decorative. Both sizes exist because the
+   same helper stands in for two different things - a whole page that paints
+   nothing until its fetch lands, and a list body under a toolbar that has
+   already painted. */
 .loading {
-  color: var(--color-text-muted);
-  padding: 1rem;
-  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+}
+
+/* The whole-page case reserves height, so the content landing under a
+   centred loader does not make the page jump. Not applied to the list-body
+   case, where the toolbar above it already anchors the layout. */
+.loading--page {
+  min-height: 50vh;
+}
+
+.loader {
+  --loader-size: 2rem;
+  position: relative;
+  /* The ring stands off the mark rather than hugging it, so the box is
+     appreciably larger than the mark inside it. */
+  width: calc(var(--loader-size) * 1.9);
+  height: calc(var(--loader-size) * 1.9);
+  flex: none;
+}
+
+.loader--lg {
+  --loader-size: 3.5rem;
+}
+
+.loader__ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform-origin: 50% 50%;
+  animation: loader-spin 1.25s linear infinite;
+}
+
+/* The ring reads as UI rather than as branding, so it takes the UI palette -
+   an unfilled track in the border grey with the accent sweeping over it. The
+   mark inside it is branding, and takes --brand-ink. All three resolve per
+   theme already, which is why this carries no dark-mode block of its own. */
+.loader__track {
+  stroke: var(--color-border);
+}
+
+.loader__arc {
+  stroke: var(--color-accent);
+}
+
+.loader__sail {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: loader-breathe 1.9s ease-in-out infinite;
+}
+
+.loader__sail svg {
+  width: calc(var(--loader-size) * 0.92);
+  height: calc(var(--loader-size) * 0.92);
+  /* The mark's ink sits right of its viewBox centre - nudge it back so it
+     reads centred in the ring. */
+  transform: translateX(calc(var(--loader-size) * -0.085));
+}
+
+.loader__sail path {
+  fill: var(--brand-ink);
+}
+
+@keyframes loader-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes loader-breathe {
+  0%,
+  100% {
+    transform: scale(0.9);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+/* Same call as .assist__spinner further down: a slow route can leave this
+   running for a while, so somebody who asked for less motion gets a still
+   frame. The rotation is cosmetic - the arc starts at 3 o'clock, which looks
+   accidental when it never moves. */
+@media (prefers-reduced-motion: reduce) {
+  .loader__ring,
+  .loader__sail {
+    animation: none;
+  }
+
+  .loader__ring {
+    transform: rotate(-40deg);
+  }
 }
 
 .page {

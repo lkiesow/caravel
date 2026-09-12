@@ -587,7 +587,11 @@ purpose — do not reconstruct it from an older stage plan without asking.
   before asserting heading outlines, and that wait is a `window.fetch` wrapper
   injected by `tests/ui/helpers/scenarios.js`. A `data-loading` attribute on
   `#app`, or a "ready" event, would let the suite wait on a contract the app
-  publishes. One component already does exactly that: `leaflet-map.js` sets
+  publishes. Half a step closer since the loader landed (Sep 2026): both probes
+  now wait on the *absence of* `.loader` in `#app` rather than on a regex over
+  the boot sentence, which is a DOM contract rather than a string -- but it is
+  still the suite reading the app's markup, and the fetch wrapper is still what
+  decides when a route is done. One component already does exactly that: `leaflet-map.js` sets
   `data-ready` once the map has laid out (Stage 13 Milestone 3), and `gotoRoute`
   waits for it — Leaflet is lazily imported *after* a route's fetches settle, so
   "fetches quiet plus two frames" did not mean the map was up. That is the shape

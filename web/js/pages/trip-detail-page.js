@@ -21,7 +21,7 @@ import { renderNotFoundPage } from "./not-found-page.js";
 const TABS = TRIP_TABS.map(({ key }) => key);
 
 export async function renderTripDetailPage(container, { tripId, tab }) {
-  renderLoading(container);
+  renderLoading(container, { size: "lg" });
 
   let trip;
   try {

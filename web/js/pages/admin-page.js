@@ -32,7 +32,7 @@ export async function renderAdminPage(container) {
   let openSignup = false;
 
   async function load() {
-    renderLoading(container);
+    renderLoading(container, { size: "lg" });
     [users, openSignup] = await Promise.all([
       api.get("/admin/users"),
       api.get("/auth/config").then((c) => c.open_signup),

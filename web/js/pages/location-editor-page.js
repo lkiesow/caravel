@@ -45,7 +45,7 @@ import { safeHref } from "../url.js";
 // again made a *second* location.
 export async function renderLocationEditorPage(container, { tripId, itemId }) {
   let item = null;
-  renderLoading(container);
+  renderLoading(container, { size: "lg" });
 
   // A viewer reaching this route — by typed URL, a bookmark, or a back button
   // after being demoted — gets sent somewhere useful rather than shown a form

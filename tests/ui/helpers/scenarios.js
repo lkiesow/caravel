@@ -268,7 +268,12 @@ export async function gotoRoute(page, path) {
   await page.waitForFunction(
     () => {
       const app = document.getElementById("app");
-      if (!app || app.children.length === 0 || /starting up/i.test(app.textContent)) return false;
+      // A .loader anywhere in #app means something is still in flight: the
+      // boot screen from index.html, app.js swapping in its own, or a route
+      // that has painted a shell but not its data. Until Stage 34 the boot
+      // screen was a bare text node and "#app has element children" was the
+      // signal - that broke the moment the placeholder became markup.
+      if (!app || app.children.length === 0 || app.querySelector(".loader")) return false;
       const f = window.__caravelFetches;
       return f && f.completed > 0 && f.pending === 0;
     },

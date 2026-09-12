@@ -50,7 +50,7 @@ const CATEGORY_COLORS = {
 // mobile. At the bottom it can be full-width and keep its label at every
 // width - editing isn't frequent enough to need to be above the fold.
 export async function renderLocationViewPage(container, { tripId, itemId }) {
-  renderLoading(container);
+  renderLoading(container, { size: "lg" });
 
   // The trip comes along for its `role` — this page has no other use for it,
   // but the Edit button has to know whether editing is possible, and the role

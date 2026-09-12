@@ -71,7 +71,32 @@
   </script>
 </head>
 <body>
-  <div id="app">Caravel is starting up&hellip;</div>
+  <!-- The boot loader, painted before /js/app.js has parsed. A static copy of
+       what components/loading.js builds - keep the two in step, or the ring
+       visibly restarts when app.js swaps its own in. Its label is hardcoded
+       English because there is no i18n yet at this point in the boot, which is
+       what the sentence it replaced did too.
+
+       The UI suite treats a .loader inside #app as "not ready yet"
+       (tests/ui/helpers/scenarios.js) - before this was markup, an empty #app
+       was the signal. -->
+  <div id="app">
+    <div class="loading loading--page" role="status">
+      <span class="loader loader--lg" aria-hidden="true">
+        <svg class="loader__ring" viewBox="0 0 64 64">
+          <circle class="loader__track" cx="32" cy="32" r="28" fill="none" stroke-width="3"></circle>
+          <circle class="loader__arc" cx="32" cy="32" r="28" fill="none" stroke-width="3" stroke-linecap="round" stroke-dasharray="48 128"></circle>
+        </svg>
+        <span class="loader__sail">
+          <svg viewBox="0 0 64 64">
+            <path d="M43.2 4C31.4 14.8 21.4 31 14.6 50.4L39 40.6C42.2 28.6 43.6 15.4 43.2 4Z"></path>
+            <path d="M27.4 46.6 60.8 37.9 41.2 60.8 27.4 46.6Z" opacity=".72"></path>
+          </svg>
+        </span>
+      </span>
+      <span class="sr-only">Loading…</span>
+    </div>
+  </div>
   <script type="module" src="/js/app.js"></script>
 </body>
 </html>

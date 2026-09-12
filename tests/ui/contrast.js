@@ -302,7 +302,10 @@ async function measureScheme(browser, opts, scheme, route) {
   await page.waitForFunction(
     () => {
       const app = document.getElementById("app");
-      return app && app.children.length > 0 && !/starting up/i.test(app.textContent);
+      // See scenarios.js: a .loader in #app is the "still loading" marker,
+      // covering the boot screen and any route mid-fetch. This sweep has no
+      // fetch tracker, so waiting the route loader out matters here.
+      return app && app.children.length > 0 && !app.querySelector(".loader");
     },
     undefined,
     { timeout: 15000 }

@@ -43,7 +43,7 @@ export async function renderSuggestPage(container, { tripId }) {
     return;
   }
 
-  renderLoading(container);
+  renderLoading(container, { size: "lg" });
 
   let trip;
   try {

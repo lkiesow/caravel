@@ -11,6 +11,7 @@ import { renderSettingsPage } from "./pages/settings-page.js";
 import { renderAdminPage } from "./pages/admin-page.js";
 import { renderNotFoundPage } from "./pages/not-found-page.js";
 import { renderSuggestPage } from "./pages/suggest-page.js";
+import { renderLoading } from "./components/loading.js";
 import { renderUserMenu } from "./components/user-menu.js";
 import { createRouter, navigate } from "./router.js";
 import { initTheme } from "./theme.js";
@@ -105,7 +106,10 @@ async function renderAuthenticated(user) {
 }
 
 async function boot() {
-  app.textContent = t("common.loading");
+  // Replaces index.html's static copy of the same loader with the translated
+  // one, so the wait runs unbroken from first paint to the first route - the
+  // ring does not restart, because the markup it swaps in is identical.
+  renderLoading(app, { size: "lg" });
   try {
     const user = await api.get("/auth/me");
     setCurrentUser(user);

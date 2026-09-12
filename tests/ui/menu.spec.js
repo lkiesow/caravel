@@ -620,7 +620,9 @@ test.describe("locations filter menu", () => {
     // categories") -- otherwise the distance panel would read "Any distance"
     // above an option also reading "Any distance".
     await expect(menu.locator(".menu--filter__back")).toHaveText("Category");
-    await expect(menu.locator("[data-value]")).toHaveText(["All", "Site", "Stay", "Transport"]);
+    // In CATEGORIES order (locations-tab.js), behind the neutral "All" -- so
+    // a category added there has to be added here too.
+    await expect(menu.locator("[data-value]")).toHaveText(["All", "Site", "Stay", "Transport", "Area"]);
 
     // Back returns to the root without closing the menu.
     await menu.locator(".menu--filter__back").click();

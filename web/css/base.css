@@ -1097,6 +1097,18 @@ button {
   min-height: 50vh;
 }
 
+/* The boot loader is the only thing on screen - no header, no nav, nothing
+   landing under it - so it centres in the whole viewport rather than
+   reserving half of it. Selected by position rather than by a class, because
+   it covers both copies of the same markup: index.html's static one and the
+   translated one app.js swaps in over it (boot() in js/app.js). dvh so a
+   mobile browser showing its URL bar centres against the visible area, not
+   the taller ideal viewport. */
+#app > .loading--page {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
 .loader {
   --loader-size: 2rem;
   position: relative;

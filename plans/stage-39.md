@@ -266,6 +266,35 @@ deleted) are **not** detected — that goes to `plans/todo.md`.
 rendered note changes `window.location.pathname` without a navigation event
 (`page.on("load")` never fires), which is a stronger check than a screenshot.
 
+**Done.** The helper landed as `web/js/rendered-markdown.js` rather than inside
+`url.js`: that module is about whether a *stored, outbound* URL may become an
+href, and this is the opposite question -- whether an href is ours to route --
+so sharing a file would have put two different rules under one name. It exports
+`markInternalLinks(root)`, called at all three sinks (`notes-tab.js`,
+`location-view-page.js`, and the location form's preview).
+
+The plan said to leave modified clicks alone, which turned out to mean changing
+`router.js` rather than `rendered-markdown.js`: the router's click handler
+called `preventDefault()` on *every* data-link click, so Ctrl-clicking any link
+in the app -- not just a note's -- silently failed to open a new tab. A note
+linking half a dozen places is the case that makes that worth fixing, so the
+guard went in there and now benefits every link in the app. Flagged as a
+deliberate widening of the milestone.
+
+Rather than asserting `page.on("load")` never fires, the spec sets
+`window.__sameDocument` before the click and asserts it survives: a full page
+load would boot the app again and lose it, so this proves the same thing
+without depending on how Playwright reports navigations.
+
+Verified: `make ci` green. `tests/ui/mentions.spec.js` is now 11 specs -- the
+two new ones assert that a location link gets `data-link` and a pin while an
+external link in the same note gets neither, that clicking it lands on the
+location page with the flag intact, and that a Ctrl-click leaves the notes page
+exactly where it was. The whole suite ran for the app-wide router change: 291
+specs, all passing.
+
+---
+
 ---
 
 ## Build order

@@ -803,7 +803,9 @@ else runs this.
   Sep 2026.) Same root as the entry above: the link is plain markdown, so
   nothing checks the target still exists. The client already has the trip's
   item list when it renders a note, so marking dead ones is cheap -- the open
-  question is what a dead reference should *look* like, not how to find it.
+  question is what a dead reference should *look* like, not how to find it. Now
+  that `markInternalLinks` (`web/js/rendered-markdown.js`) already walks every
+  anchor in a rendered note, that walk is where the check would go.
 
 - **The `@` picker is only in the trip notepad.** (Stage 39, Sep 2026.) The
   location form's notes field (`web/js/components/location-form.js`) is the

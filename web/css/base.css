@@ -3967,6 +3967,15 @@ button {
   font-size: 0.8rem;
 }
 
+/* A link to one of the trip's places, marked by rendered-markdown.js after the
+   note HTML lands. The pin is what separates it at a glance from an ordinary
+   link in the same paragraph: both are the link colour, only one is a place.
+   .icon already carries the 1em sizing and the baseline nudge, so all this
+   adds is the gap. */
+.rendered-link__pin {
+  margin-inline-end: 0.15em;
+}
+
 /* Anchored to the caret's line rather than the bottom of the field. The two
    markdown boxes this is used on grow to the full height of what is written in
    them, so `top: 100%` would put the popup a screenful below the word being

@@ -103,6 +103,12 @@ export function createRouter(routes, container) {
   document.addEventListener("click", (e) => {
     const link = e.target.closest("[data-link]");
     if (!link) return;
+    // A modified click is a request for a second window, not a navigation, and
+    // preventDefault on it would be the app overriding what the browser was
+    // asked to do. Notes made this worth fixing rather than only noting:
+    // a note linking half a dozen places is exactly where someone opens them
+    // in tabs. map-view.js:onShadowLinkClick is the existing precedent.
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
     e.preventDefault();
     // An editor page's own back-link carries data-leave-editor, so pressing it
     // pops the editor entry instead of pushing its destination on top -- the

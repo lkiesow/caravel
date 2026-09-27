@@ -4,6 +4,7 @@ import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
 import { renderLoading } from "../components/loading.js";
 import { bindMentionPicker } from "../components/mention-picker.js";
+import { markInternalLinks } from "../rendered-markdown.js";
 import { canEdit } from "../trip-role.js";
 
 // The trip notepad: one markdown document per trip, written in a textarea and
@@ -129,7 +130,11 @@ export async function renderNotesTab(container, trip) {
     // Trusted: the server sanitized it (bluemonday, in internal/markdown),
     // which is the entire reason the note is rendered server-side at all --
     // the same justification as location-view-page.js.
-    if (rendered) rendered.innerHTML = note.body_html;
+    if (rendered) {
+      rendered.innerHTML = note.body_html;
+      // The links in it are bare: see rendered-markdown.js.
+      markInternalLinks(rendered);
+    }
 
     const editBtn = container.querySelector(".trip-notes__edit");
     editBtn?.addEventListener("click", () => {

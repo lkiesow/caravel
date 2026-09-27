@@ -221,4 +221,59 @@ test.describe("linking a location from the notepad", () => {
       });
     expect(inViewport, "fully inside the viewport").toBe(true);
   });
+  test("a location link in a rendered note navigates without reloading", async ({ page }) => {
+    await page.goto(`/trips/${tripId}/notes`);
+    const textarea = page.locator("#trip-notes-body");
+    await textarea.fill(
+      [
+        `Sleep: [Kex Hostel](/trips/${tripId}/locations/${ids["Kex Hostel"]})`,
+        "",
+        "Read: [OpenStreetMap](https://www.openstreetmap.org/)",
+      ].join("\n"),
+    );
+    await page.locator('.trip-notes__form button[type="submit"]').click();
+
+    const rendered = page.locator(".trip-notes__rendered");
+    const internal = rendered.locator('a[href^="/trips/"]');
+    const external = rendered.locator('a[href^="https://"]');
+
+    // Marked for the router, and wearing a pin so it reads as a place rather
+    // than as any other link in the same paragraph.
+    await expect(internal).toHaveAttribute("data-link", "");
+    await expect(internal.locator("svg.rendered-link__pin")).toHaveCount(1);
+    // The external link is left exactly as the sanitizer produced it.
+    await expect(external).not.toHaveAttribute("data-link", "");
+    await expect(external.locator("svg")).toHaveCount(0);
+
+    // A flag that only survives if the document is never replaced. This is the
+    // whole assertion: a full page load would boot the app again and lose it.
+    await page.evaluate(() => {
+      window.__sameDocument = true;
+    });
+    await internal.click();
+
+    await expect(page).toHaveURL(new RegExp(`/trips/${tripId}/locations/${ids["Kex Hostel"]}$`));
+    await expect(page.locator(".location-view")).toBeVisible();
+    expect(
+      await page.evaluate(() => window.__sameDocument),
+      "navigated client-side, without a page load",
+    ).toBe(true);
+  });
+
+  test("a modified click is still the browser's to handle", async ({ page }) => {
+    await page.goto(`/trips/${tripId}/notes`);
+    const textarea = page.locator("#trip-notes-body");
+    await textarea.fill(`[Kex Hostel](/trips/${tripId}/locations/${ids["Kex Hostel"]})`);
+    await page.locator('.trip-notes__form button[type="submit"]').click();
+
+    const link = page.locator('.trip-notes__rendered a[href^="/trips/"]');
+    await expect(link).toHaveAttribute("data-link", "");
+
+    // Ctrl+click asks for a new tab. The router must not swallow it -- and the
+    // current page must stay where it is.
+    const before = page.url();
+    await link.click({ modifiers: ["ControlOrMeta"] });
+    expect(page.url(), "the notes page did not navigate").toBe(before);
+    await expect(page.locator(".trip-notes__rendered")).toBeVisible();
+  });
 });

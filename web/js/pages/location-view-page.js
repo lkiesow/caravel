@@ -4,6 +4,7 @@ import { navigate } from "../router.js";
 import { icon } from "../icon.js";
 import "../components/map-view.js";
 import { renderLoading } from "../components/loading.js";
+import { markInternalLinks } from "../rendered-markdown.js";
 import { canEdit, isShared } from "../trip-role.js";
 import { renderFileList } from "../components/file-list.js";
 import { formatDateRange } from "../format.js";
@@ -230,7 +231,11 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
       creditEl.append(document.createTextNode(" · "), lic);
     }
   }
-  if (item.notes) container.querySelector(".location-view__notes").innerHTML = item.notes_html;
+  if (item.notes) {
+    const notes = container.querySelector(".location-view__notes");
+    notes.innerHTML = item.notes_html;
+    markInternalLinks(notes);
+  }
   if (hasAddress) container.querySelector(".location-view__address").textContent = item.location.address;
 
   container.querySelector('[data-action="edit"]')?.addEventListener("click", () => {

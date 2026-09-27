@@ -2,6 +2,7 @@ import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
 import { renderTagField } from "./tag-field.js";
+import { markInternalLinks } from "../rendered-markdown.js";
 
 const CATEGORIES = ["site", "stay", "transport", "area", "food", "event", "shop"];
 
@@ -154,6 +155,7 @@ export function renderItemForm(container, item, { onSubmit, tripId }) {
       // which is the entire reason the preview is a round trip.
       const { html } = await api.post("/markdown/preview", { markdown: source });
       previewEl.innerHTML = html;
+      markInternalLinks(previewEl);
       previewedSource = source;
       setMode("preview");
     } catch (err) {

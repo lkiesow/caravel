@@ -80,6 +80,9 @@ export async function renderItemsTab(container, trip) {
   // again. Not fetched on load: asking for someone's position before they
   // have expressed any interest in it is rude, and the permission prompt
   // would arrive unexplained.
+  // The position the filter is measuring from. Held here because applyFilters
+  // needs it synchronously on every keystroke and re-render; it is refreshed
+  // rather than kept forever (see the distance group below).
   let devicePosition = null;
 
   container.innerHTML = `
@@ -391,20 +394,34 @@ export async function renderItemsTab(container, trip) {
             return;
           }
           radiusKm = Number(value);
-          if (!devicePosition) {
-            setStatus("map.locate.searching");
-            try {
-              devicePosition = await getCurrentPosition();
-            } catch (err) {
-              // The filter cannot be honored, so it must not look active: the
-              // row goes back to "any distance" rather than showing a radius
-              // that is not being applied.
-              radiusKm = null;
-              filterMenu.setActive("distance", ANY_DISTANCE);
-              setStatus(locateErrorKey(err.reason || "unavailable"));
-              applyFilters();
-              return;
-            }
+          setStatus("map.locate.searching");
+          try {
+            // Asked every time, with the module's own cache deciding whether
+            // that costs anything. The old code kept the very first fix for
+            // the lifetime of the page, which is the wrong answer to "what is
+            // within 5km of me" asked a second time from somewhere else -- and
+            // a page left open all day never re-asked at all.
+            //
+            // Half a kilometre is already far better than a filter that works
+            // in kilometres needs, and twelve seconds is the longest it is
+            // worth making somebody wait to be told what is nearby. Holding
+            // out thirty seconds for a GNSS lock to answer "within 5 km" would
+            // be absurd, which is why this does not take the locate control's
+            // settings.
+            devicePosition = await getCurrentPosition({
+              desiredAccuracyM: 500,
+              deadlineMs: 12000,
+              maxAgeMs: 30000,
+            });
+          } catch (err) {
+            // The filter cannot be honored, so it must not look active: the
+            // row goes back to "any distance" rather than showing a radius
+            // that is not being applied.
+            radiusKm = null;
+            filterMenu.setActive("distance", ANY_DISTANCE);
+            setStatus(locateErrorKey(err.reason || "unavailable"));
+            applyFilters();
+            return;
           }
           setStatus(null);
           applyFilters();

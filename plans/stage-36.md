@@ -553,6 +553,40 @@ describe (`map.spec.js:1620` onwards) passes untouched, plus one new
 assertion that choosing a radius twice does not start a second watch, and
 one that it never requests `continuous: true`.
 
+**Done.** The call site in `locations-tab.js` now passes
+`{ desiredAccuracyM: 500, deadlineMs: 12000, maxAgeMs: 30000 }` explicitly, and
+the `if (!devicePosition)` guard around it is gone: the position is asked for
+on every radius change, with the module cache deciding whether that costs an
+acquisition.
+
+One correction to the plan's wording. It said to "drop the closure-scoped
+`devicePosition`", which is not possible -- `applyFilters()` needs a position
+synchronously on every keystroke and re-render, so the variable has to stay.
+What was actually dropped is its *never-expiring* behaviour, which is the part
+that was wrong: the first fix was kept for the lifetime of the page, so asking
+"what is within 5 km of me" a second time from somewhere else was answered
+against where the page happened to be opened, and a page left open all day
+never re-asked at all.
+
+Note that Milestone 1 had already moved `getCurrentPosition`'s *defaults* to
+500m/12s (recorded there), so this milestone is the explicit call site plus the
+cache. The behaviour change users can see is entirely the cache one.
+
+Verified by `make ci` green and 131 tests passing across `map.spec.js`,
+`geolocation.spec.js`, `locations.spec.js` and `map-theme.spec.js` -- the five
+pre-existing distance-filter tests unmodified among them. Three new tests: that
+the filter never asks for a continuous watch and releases it as soon as it has
+an answer (tracking is for the map, which is showing you where you are; a live
+watch here is battery spent on a list that will not re-sort itself), that a
+second radius inside the window starts no second watch at all, and that a
+position past the window is re-asked rather than reused.
+
+That last one was confirmed as a real negative control: restoring the
+`if (devicePosition) return;` short-circuit makes it fail by timing out waiting
+for a second watch that never starts. Worth noting the other two still pass
+under that change -- only the staleness test distinguishes the new behaviour
+from the old, which is exactly why it is the one that had to be written.
+
 ## 6. The editor flags a coarse fix
 
 `web/js/pages/location-editor-page.js`. Inline, not a dialog at save: by

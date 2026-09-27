@@ -2201,6 +2201,80 @@ async function pickRadius(page, value) {
   await menu.locator(`[data-value="${value}"]`).click();
 }
 
+// Stage 36 Milestone 5. The filter asks for less, and caches honestly.
+//
+// It works in kilometres, so half a kilometre is already far better than it
+// needs -- and holding out thirty seconds for a GNSS lock to answer "within
+// 5 km" would be absurd. It used to keep the very first fix for the lifetime
+// of the page, which is the wrong answer asked a second time from somewhere
+// else, and never re-asked at all on a page left open all day.
+test.describe("what the distance filter asks the device for", () => {
+  test.beforeEach(async ({ page }) => {
+    await installFakeGeolocation(page);
+  });
+
+  const gotoLocations = async (page) => {
+    await login(page);
+    const routes = await buildRoutes(page);
+    await gotoRoute(page, routes.find((r) => r.label === "trip locations").path);
+  };
+
+  test("it never asks for a continuous watch", async ({ page }) => {
+    // Tracking is for the map, which is showing you where you are. A filter
+    // wants one answer; a live watch here would be battery spent on a list
+    // that is not going to re-sort itself.
+    await gotoLocations(page);
+    await pickRadius(page, "5");
+    await waitForWatch(page);
+    await emitFix(page, { lat: 64.1466, lng: -21.9426, accuracy: 300 });
+
+    await expect
+      .poll(async () => (await geoCounters(page)).clears)
+      .toBe(1);
+    const options = await page.evaluate(() => window.__geo.options);
+    expect(options).toHaveLength(1);
+    // The one-shot shape: it releases the watch as soon as it has an answer.
+    // enableHighAccuracy is still true -- asking the right sensor is not the
+    // same question as how long to wait for it.
+    expect(options[0].enableHighAccuracy).toBe(true);
+  });
+
+  test("a second radius within the cache window costs nothing", async ({ page }) => {
+    await gotoLocations(page);
+    await pickRadius(page, "5");
+    await waitForWatch(page);
+    await emitFix(page, { lat: 64.1466, lng: -21.9426, accuracy: 300 });
+    await expect.poll(async () => (await geoCounters(page)).clears).toBe(1);
+
+    const before = await geoCounters(page);
+    await pickRadius(page, "25");
+    // Served from the module's own cache, so no second acquisition at all.
+    await expect(page.locator(".locations-distance-status")).toBeHidden();
+    expect((await geoCounters(page)).starts, "no second watch inside the window").toBe(
+      before.starts
+    );
+  });
+
+  test("a stale position is re-asked rather than reused", async ({ page }) => {
+    // The point of the change. Thirty seconds on from the last fix, the answer
+    // to "what is within 5 km of me" may be somewhere else entirely, and the
+    // old code would have gone on filtering against where the page was opened.
+    await gotoLocations(page);
+    await pickRadius(page, "5");
+    await waitForWatch(page);
+    await emitFix(page, { lat: 64.1466, lng: -21.9426, accuracy: 300 });
+    await expect.poll(async () => (await geoCounters(page)).clears).toBe(1);
+
+    const before = await geoCounters(page);
+    await advanceClock(page, 45000);
+    await pickRadius(page, "25");
+    await waitForWatch(page, before.starts + 1);
+    expect((await geoCounters(page)).starts, "past the window it asks again").toBe(
+      before.starts + 1
+    );
+  });
+});
+
 test.describe("distance filter on the locations list", () => {
   test.use({ permissions: ["geolocation"], geolocation: AT_THE_HOTEL });
 

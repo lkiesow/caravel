@@ -383,34 +383,52 @@ const styles = `
     --popup-hover: rgba(255, 255, 255, 0.08);
   }
 
-  /* A column flex box, not a plain block: the map fills the height and the
-     two-finger hint below it takes its own, so adding that line can't push
-     the map past :host's height at any width. */
+  /* A column flex box, not a plain block: the map takes --map-height and
+     everything stacked under it -- the two-finger hint's reserved line, the
+     locate status, the credit, the legend -- takes its own, so adding one of
+     those can never push the map past its height.
+
+     The height lives on .map-wrap rather than on :host, and that is the whole
+     layout model (Stage 38). The other way round -- :host fixed, .map-wrap
+     flex: 1 -- means anything added below the map is subtracted *from* the
+     map, which is how the legend ended up as an overlay at wide widths in the
+     first place: it was the only way to add it without shrinking the thing it
+     describes. With the height on the wrapper the component simply grows by
+     whatever is stacked under the map, and the map is the size it says it is
+     at every width. */
   :host {
     display: flex;
     flex-direction: column;
-    height: 60vh;
-    min-height: 24rem;
-    --map-height: 100%;
+    height: auto;
+    --map-height: 60vh;
+    --map-min-height: 24rem;
   }
   :host([lat]) {
-    height: 16rem;
-    min-height: 0;
+    --map-height: 16rem;
+    --map-min-height: 0;
   }
   /* After :host([lat]) on purpose - equal specificity, so source order wins.
      A picker inside an editor card is the same size whether or not it has
      coordinates yet; without this it would be 16rem once a point exists and
      60vh before that, which is a form card that jumps on first click. */
   :host([pick]) {
-    height: 20rem;
-    min-height: 0;
+    --map-height: 20rem;
+    --map-min-height: 0;
   }
+  /* .map-wrap *is* the map: the map element fills it, and the only other
+     things inside it are laid over the cartography (the gesture hint, the
+     locate button, the "nothing has a location yet" line). That is what lets
+     the overlay below use a plain inset: 0.
+
+     --map-min-height is a second property rather than a literal because the
+     floor and the height have to move together: 24rem under a 20rem picker
+     would silently inflate it to 24rem, which is the trap the old
+     min-height: 0 overrides on :host existed to avoid. */
   .map-wrap {
     position: relative;
-    flex: 1;
-    /* A flex item's default min-height: auto would let the map's content
-       floor the box instead of the flex basis doing it. */
-    min-height: 0;
+    height: var(--map-height);
+    min-height: var(--map-min-height);
+    flex: none;
     /* Kept from the Leaflet era, for a weaker reason than it had then.
        Leaflet parked internal helpers at very large offsets (measured at
        right=1825757) and briefly widened the document by 1636px mid-animation,
@@ -421,34 +439,50 @@ const styles = `
        by their own content. */
     overflow: hidden;
   }
-  /* --map-height is what the map box measures, and it exists so the gesture
-     overlay can be exactly that tall without restating the expression. At wide
-     widths the legend is absolutely positioned, so .map-wrap *is* the map and
-     100% is right; the mobile block below puts the legend into the flow above
-     the map, at which point "the whole wrapper" and "the map" stop being the
-     same box - and an overlay pinned to inset: 0 would dim the legend too. */
   #map {
-    height: var(--map-height);
+    height: 100%;
     border-radius: 0.5rem;
   }
+  /* The category filter, under the credit at the very bottom of the component
+     (Stage 38). It used to sit over the map's top-right corner at wide widths
+     and in the flow *above* the map on a phone, where at seven categories it
+     stood 158px tall and left 42px of an 85vh map above the fold. It is a
+     control people open rarely, and it was outranking the thing the page
+     exists to show.
+
+     A fieldset because it is a named group of checkboxes rather than a
+     caption: over the map its meaning was positional, and down here it needs
+     to say what it is. The UA border and padding go; the card border below is
+     ours. */
   .legend {
-    /* base.css's global box-sizing reset doesn't pierce this shadow root,
-       and the mobile override below adds width: 100% - left at the browser
-       default (content-box), that width plus this padding and border would
-       push past the container's right edge. */
+    /* base.css's global box-sizing reset doesn't pierce this shadow root, and
+       the border and padding here are added to a 100%-wide box - left at the
+       browser default (content-box) they would push past the container's
+       right edge. */
     box-sizing: border-box;
-    position: absolute;
-    top: 0.5rem;
-    right: 0.5rem;
-    z-index: 1000;
+    margin: 0.5rem 0 0;
     background: var(--color-surface, #fff);
     border: 1px solid var(--color-border, #ccc);
     border-radius: 0.375rem;
     padding: 0.5rem 0.75rem;
     font-size: 0.8rem;
     display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.75rem;
+  }
+  .legend > legend {
+    /* A fieldset's legend is taken out of the flex flow by the UA, so it
+       cannot be a flex item here; float: left with a full-width clear is the
+       arrangement that puts it on its own line above the wrapped checkboxes
+       in every engine. padding: 0 overrides the UA's inline padding, which
+       would otherwise indent it past the checkboxes below. */
+    float: left;
+    width: 100%;
+    padding: 0;
+    margin-bottom: 0.25rem;
+    font-weight: 600;
+    color: var(--color-text-muted, #666);
   }
   .legend label {
     display: flex;
@@ -672,14 +706,15 @@ const styles = `
      mid-sentence for it would be worse than useless. */
   .gesture-hint {
     position: absolute;
-    /* Pinned to the bottom of the wrapper and given the map's own height,
-       rather than inset: 0 - see --map-height above. */
-    inset: auto 0 0 0;
-    height: var(--map-height);
+    /* A plain inset: 0 since Stage 38. It used to be pinned to the bottom and
+       given --map-height explicitly, because the legend sat inside this
+       wrapper on a phone and an overlay across the whole wrapper would have
+       dimmed it too; the legend is out of here now, so the wrapper and the map
+       are the same box at every width. */
+    inset: 0;
     /* base.css's global border-box reset does not pierce this shadow root -
-       the same trap the legend rule below records. Without this the 1rem
-       padding is added to the height and the overlay stands 32px taller than
-       the map, dimming the legend above it. */
+       the same trap the legend rule records. Without this the 1rem padding is
+       added to the height and the overlay stands 32px taller than the map. */
     box-sizing: border-box;
     z-index: 500;
     margin: 0;
@@ -724,79 +759,32 @@ const styles = `
     }
   }
 
-  /* On narrow viewports the legend, absolutely positioned over the map's
-     top-right corner at wider widths, covered over half the map's width. It
-     comes out of the overlay and into the flow instead. :host([lat]) (the
-     single-marker mode used on the location view page, no legend there) is
-     more specific than a plain :host, so it's unaffected by this at any
-     width.
-     Two things here are the fix for Stage 07's "the map swallows the page
-     scroll" bug (stage-13.md Milestone 1), not styling preference:
-     - the map is capped rather than taking a flat 50vh. At 324x756 the old
-       rule left ~67px of page below a 424px map, so a drag starting anywhere
-       in the lower half had nowhere to go but the map;
-     - the legend sits *above* the map (order: -1) rather than after it. Below
-       it, it landed at y=769 - just past the fold, with nothing suggesting it
-       existed - and it doubles as a strip of non-map page to start a drag in. */
+  /* What is left of the mobile block, and it is worth saying what is *not*
+     here any more (Stage 38). It used to restate the whole layout: height:
+     auto on :host and all three mounts, a second flex column on .map-wrap,
+     and the legend pulled out of the overlay into the flow with order: -1.
+     All of that was undoing the desktop model, where :host carried the height
+     and .map-wrap took the leftover. With the height on .map-wrap at every
+     width and the legend out of the wrapper entirely, the only thing that
+     genuinely differs on a phone is how tall the trip map is.
+
+     The trip map is not capped, and that is deliberate. The cap carried a
+     warning from Stage 13 that it was the fix for "the map swallows the page
+     scroll", but that reasoning predates the coarse-pointer drag fix landing
+     in the same milestone: a one-finger drag over the map is never consumed
+     at any height (Stage 30 replaced the mechanism with MapLibre's
+     cooperativeGestures, which keeps that property).
+
+     85vh rather than 100vh: enough that the map is the screen, with a strip
+     of page left at the bottom so it is visible that there is more below, and
+     so the scroll position after a page load does not look like a full-bleed
+     map with no context. That strip is where the credit and the legend now
+     live. The other two mounts sit inside a page of other content and keep
+     their own heights at every width. */
   @media (max-width: 640px) {
     :host {
-      height: auto;
-    }
-    .map-wrap {
-      display: flex;
-      flex-direction: column;
-      height: auto;
-      flex: none;
-    }
-    /* One rule used to set the height for all three mounts, which is why the
-       trip map was capped at 20rem: raising the number would have put a
-       full-height map inside the editor's form card. Mode by mode instead.
-
-       The cap on the trip map is gone. This entry has carried a warning since
-       Stage 21 that the cap was the Stage 13 fix for the map swallowing the
-       page scroll -- but that reasoning predates the coarse-pointer drag fix
-       landing in the same milestone, and a one-finger drag over the map is
-       never consumed at any height (Stage 30 replaced the mechanism with
-       MapLibre's cooperativeGestures, which keeps that property). The legend
-       above the map stays because that is where the filters live, not because
-       the page needs somewhere to be dragged from.
-
-       85vh rather than 100vh: enough that the map is the screen, with a strip
-       of page left at the bottom so it is visible that there is more below,
-       and so the scroll position after a page load does not look like a
-       full-bleed map with no context. */
-    :host {
       --map-height: 85vh;
-    }
-    /* The other two mounts sit inside a page of other content and keep the
-       heights their own desktop rules give them -- which is also a small
-       correction: the single blanket rule was *inflating* both of them to
-       320px on a phone. [pick] after [lat] on purpose, the same equal-
-       specificity source-order point the desktop rules make: a picker with
-       coordinates set matches both. */
-    /* height: auto on both, overriding the desktop rules, because in this
-       block the number means *the map* rather than the whole component: the
-       desktop path hands .map-wrap the leftover space with flex: 1, and here
-       .map-wrap is flex: none and #map takes --map-height literally. Left at
-       16rem the host would be exactly as tall as its map, and the credit
-       under it (Stage 34) would hang out of the host and over whatever the
-       page puts next -- measured at 324px on the location view, 39px of
-       overlap across the "View on Google Maps" links. */
-    :host([lat]) {
-      height: auto;
-      --map-height: 16rem;
-    }
-    :host([pick]) {
-      height: auto;
-      --map-height: 20rem;
-    }
-    .legend {
-      position: static;
-      order: -1;
-      flex-direction: row;
-      flex-wrap: wrap;
-      width: 100%;
-      margin-bottom: 0.5rem;
+      --map-min-height: 0;
     }
     /* The legend's category toggles are tap targets like any other, and at
        20px they were among the smallest in the app (Stage 09 Milestone 6).
@@ -1056,22 +1044,6 @@ class MapView extends HTMLElement {
         <div id="map"></div>
         <p class="gesture-hint" role="status" aria-live="polite" hidden></p>
         ${
-          chromeless
-            ? ""
-            : `<div class="legend">
-          ${CATEGORIES
-            .map(
-              (cat) => `
-              <label>
-                <input type="checkbox" data-category="${cat}" checked />
-                <span class="dot" style="background:${markerColorVar(cat)}"></span>
-                ${t(`item.category.${cat}`)}
-              </label>`
-            )
-            .join("")}
-        </div>`
-        }
-        ${
           this.hasAttribute("locate")
             ? `<button type="button" class="locate" data-action="locate">${icon("locate-fixed")}<span>${t("map.locate.label")}</span></button>`
             : ""
@@ -1079,6 +1051,23 @@ class MapView extends HTMLElement {
       </div>
       ${this.hasAttribute("locate") ? `<p class="locate-status" role="status" hidden></p>` : ""}
       <div class="attribution"></div>
+      ${
+        chromeless
+          ? ""
+          : `<fieldset class="legend">
+        <legend>${t("map.legend.label")}</legend>
+        ${CATEGORIES
+          .map(
+            (cat) => `
+            <label>
+              <input type="checkbox" data-category="${cat}" checked />
+              <span class="dot" style="background:${markerColorVar(cat)}"></span>
+              ${t(`item.category.${cat}`)}
+            </label>`
+          )
+          .join("")}
+      </fieldset>`
+      }
     `;
 
     if (!chromeless && !this._items.length) {

@@ -95,6 +95,15 @@ function readMap(page) {
     return {
       map: box(sr.getElementById("map")),
       legend: box(sr.querySelector(".legend")),
+      attribution: box(sr.querySelector(".attribution")),
+      // Source order, not geometry: the legend is meant to be the last thing
+      // in the component, after the credit.
+      legendFollowsAttribution: (() => {
+        const a = sr.querySelector(".attribution");
+        const l = sr.querySelector(".legend");
+        if (!a || !l) return null;
+        return Boolean(a.compareDocumentPosition(l) & Node.DOCUMENT_POSITION_FOLLOWING);
+      })(),
       hint: sr.querySelector(".gesture-hint")?.textContent?.trim() ?? null,
       hintShown: (() => {
         const el = sr.querySelector(".gesture-hint");
@@ -115,32 +124,82 @@ function readMap(page) {
 test.describe("the trip map at phone width", () => {
   test.use({ viewport: MOBILE });
 
-  // This test used to assert the opposite -- that the map was *capped* at 20rem
-  // and took no more than half the visible screen. That cap was Stage 13's
-  // belt-and-braces beside the fix that actually mattered, dragging:
-  // !isCoarsePointer(), and it left a map too small to read on the one screen
-  // whose entire job is showing a map. Stage 23 Milestone 7 raised it, and what
-  // is asserted now is the reason it is safe to: the page is still scrollable
-  // and the legend is still above the map.
+  // This test has now been inverted twice, and both reversals are the point of
+  // it, so both are recorded here.
+  //
+  // It first asserted the map was *capped* at 20rem and took no more than half
+  // the visible screen - Stage 13's belt-and-braces beside the fix that
+  // actually mattered, dragging: !isCoarsePointer(). That left a map too small
+  // to read on the one screen whose entire job is showing a map, and Stage 23
+  // Milestone 7 raised it.
+  //
+  // It then asserted the legend sat *above* the map, because rendering it
+  // after the map had put it at y=769, just past the fold, with nothing
+  // hinting it was there. Stage 38 reversed that deliberately: at seven
+  // categories the legend stood 158px tall and pushed the map's top edge to
+  // y=714 of a 756px viewport, so opening the Map tab showed 42px of map. A
+  // filter opened on a minority of visits should not outrank the thing the
+  // page exists to show. It is below the credit now, off the fold, and named
+  // ("Show on map") so that it says what it is once detached from the map.
+  //
+  // What is asserted is therefore the opposite of the old arrangement, plus
+  // the number the reversal was *for*: how much map you actually get on load.
   test("the map fills the screen it is the subject of", async ({ page }) => {
     await login(page);
     await gotoTripMap(page);
-    const { map, legend, innerHeight } = await readMap(page);
+    const { map, legend, attribution, legendFollowsAttribution, innerHeight } = await readMap(page);
 
     expect(map.height, "the trip map should be 85vh on a phone").toBeCloseTo(innerHeight * 0.85, -1);
 
-    // The legend used to render *after* the map and land at y=769 - a dozen
-    // pixels past the fold, with nothing hinting it was there.
-    expect(legend.bottom, "the legend should sit above the map, not below it").toBeLessThanOrEqual(map.top + 1);
-    expect(legend.top, "the legend should be above the fold").toBeLessThan(innerHeight);
+    // The whole reason for moving the legend. This was 42px before Stage 38.
+    expect(
+      innerHeight - map.top,
+      "the map must be the thing you see when the Map tab opens"
+    ).toBeGreaterThan(150);
+
+    expect(legend.top, "the legend should sit below the map, not above it").toBeGreaterThanOrEqual(map.bottom - 1);
+    expect(legend.top, "and below the credit").toBeGreaterThanOrEqual(attribution.bottom - 1);
+    expect(legendFollowsAttribution, "the legend should be last in the component").toBe(true);
 
     // Deliberately not the whole screen: a strip of page below the map is what
-    // shows there is more underneath it.
+    // shows there is more underneath it - and since Stage 38 that strip is
+    // where the credit and the legend live.
     expect(map.height, "but not the entire screen").toBeLessThan(innerHeight);
     const scrollable = await page.evaluate(
       () => document.documentElement.scrollHeight > window.innerHeight
     );
     expect(scrollable, "the page must still have somewhere to scroll").toBe(true);
+  });
+
+  // Moving a control is the kind of change that can leave it looking right and
+  // wired to nothing, so this asserts the filtering itself from the new
+  // position rather than only the geometry above.
+  test("the legend still filters the map from below it", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+
+    const pins = () =>
+      page.evaluate(() => document.querySelector("map-view").shadowRoot.querySelectorAll(".maplibregl-marker").length);
+    const toggle = (cat) =>
+      page.evaluate(
+        (c) => document.querySelector("map-view").shadowRoot.querySelector(`[data-category="${c}"]`).click(),
+        cat
+      );
+
+    const all = await pins();
+    expect(all, "the seeded trip should have pins to filter").toBeGreaterThan(1);
+
+    await toggle("site");
+    await expect.poll(pins, { message: "unchecking a category should remove its pins" }).toBeLessThan(all);
+    await toggle("site");
+    await expect.poll(pins, { message: "and re-checking it should bring them back" }).toBe(all);
+
+    // The group is announced as one named thing, which is what makes seven
+    // checkboxes under a copyright line legible.
+    const name = await page.evaluate(
+      () => document.querySelector("map-view").shadowRoot.querySelector(".legend > legend").textContent.trim()
+    );
+    expect(name).toBe("Show on map");
   });
 
   // The other two mounts sit inside a page of other content, and the single

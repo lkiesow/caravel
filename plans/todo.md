@@ -550,14 +550,6 @@ purpose — do not reconstruct it from an older stage plan without asking.
   fine for entity escaping; it is the *promise in the name* that is the
   problem here.
 
-- **The map component means two different things by a height.** (Stage 34.)
-  `:host([lat]) { height: 16rem }` is the whole component on the desktop path,
-  where `.map-wrap { flex: 1 }` hands it the leftover space, and *the map* in
-  the `max-width: 640px` block, where `#map` takes `--map-height` literally and
-  the host is auto. Both are internally coherent and the mobile one had to be
-  made explicit to stop the credit overflowing its host, but a reader has to
-  hold two meanings at once. One meaning -- the number is the map, the host is
-  auto everywhere -- would be a small, purely-visual refactor.
 
 ## Testing, CI and dev tooling
 
@@ -568,6 +560,19 @@ purpose — do not reconstruct it from an older stage plan without asking.
   `cmd/seed/main.go`, but the full scenario's item count is asserted in several
   places (`map.spec.js:2471` pins it at three cards), so it wants doing together
   with the specs that count cards -- which is why Stage 37 left it.
+
+- **The committed screenshots are three stages out of date.** (Noticed in Stage
+  38.) `docs/assets/screenshots/` was last regenerated in Stage 31
+  (`30b3430`). Since then Stage 34 moved the map credit out from over the
+  cartography, Stage 37 took the categories from four to seven, and Stage 38
+  moved the legend below the map -- so `map.png` and `mobile-map.png` show a
+  three-item legend floating over the map's corner and a credit inside it,
+  none of which the app does any more. Regenerating wants a machine with
+  `pngquant` installed and a `images/` photo directory; without them the run
+  still works but every image is the seeder's 343x200 test-sheet crop and the
+  set comes out roughly 3x larger, which is why Stage 38 did not do it.
+  `check_screenshots.py` only checks that every committed file is *shown* by a
+  page, never that it is current, so nothing fails while they rot.
 
 - **Map attribution is not asserted anywhere.** (Stage 30 Milestone 6.)
   Removing the attribution variable made the credit a property of loaded map

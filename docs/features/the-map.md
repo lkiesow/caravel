@@ -5,9 +5,9 @@ Every location with coordinates, on one map.
 ![The trip map](../assets/screenshots/map.png)
 
 Pins are coloured by category — site, stay, transport, area, food & drink, event,
-shopping — and each category can be switched off, so "show me only where we are
-sleeping" is one click. The map
-frames itself to fit whatever is currently shown.
+shopping. Under the map, **Show on map** switches any category off, so "show me
+only where we are sleeping" is one click. The map frames itself to fit whatever
+is currently shown.
 
 The map is drawn in your browser from OpenStreetMap data, which means the
 labels follow **your** language: the same trip reads Tokyo for an English
@@ -41,6 +41,6 @@ coordinates, for something like a home airport you do not want framing the view.
 
 ![The map on a phone](../assets/screenshots/mobile-map.png){ .screenshot-phone }
 
-The tab row collapses to icons with a **More** menu, and the category filter
-moves above the map so it does not cover it. The map itself gets the rest of the
-screen.
+The tab row collapses to icons with a **More** menu, and the map gets the rest
+of the screen. The category filter sits below the map, under the map credit, so
+it never takes space from the map itself — scroll past the map to reach it.

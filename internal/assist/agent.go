@@ -47,7 +47,7 @@ import (
 //   - Coordinates are never taken from the model. It supplies an address and a
 //     place name; internal/geocode resolves them.
 //   - Category is validated against the enum, and a wrong value is dropped
-//     rather than corrected -- guessing which of three the model meant is how
+//     rather than corrected -- guessing which of the seven the model meant is how
 //     a hotel becomes a ferry terminal.
 //   - Every proposed link is fetched before it is shown, and dead ones are
 //     dropped. Hallucinated URLs are the classic failure of this feature, and
@@ -800,8 +800,8 @@ func (a *Agent) buildProposal(ctx context.Context, req Request, raw modelProposa
 	p := &Proposal{Sources: sources}
 
 	// Category: validated, never corrected. A wrong value is dropped, because
-	// guessing which of three the model meant is how a hotel becomes a ferry
-	// terminal.
+	// guessing which of the seven the model meant is how a hotel becomes a
+	// ferry terminal.
 	category := strings.ToLower(strings.TrimSpace(raw.Category))
 	if !slices.Contains(validCategories, category) {
 		if category != "" {
@@ -1138,7 +1138,7 @@ func (a *Agent) chooseCover(ctx context.Context, locale string, raw modelProposa
 // in internal/httpapi/items.go. Duplicated rather than shared because this
 // package must not import the HTTP layer; the two are pinned together by
 // TestValidCategoriesMatchTheSchema.
-var validCategories = []string{"site", "stay", "transport", "area"}
+var validCategories = []string{"site", "stay", "transport", "area", "food", "event", "shop"}
 
 // checkLinks fetches every proposed link and keeps the ones that answer.
 //

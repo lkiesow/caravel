@@ -31,9 +31,9 @@ import { safeHref } from "../url.js";
 // internal/assist makes: the agent proposes and a person decides.
 
 // The categories a candidate may carry, for rendering its label. The server
-// validates against the same three and sends an empty string rather than a
+// validates against the same set and sends an empty string rather than a
 // guess, which renders as no category at all.
-const CATEGORIES = ["site", "stay", "transport", "area"];
+const CATEGORIES = ["site", "stay", "transport", "area", "food", "event", "shop"];
 
 export async function renderSuggestPage(container, { tripId }) {
   if (!hasCapability("assist")) {

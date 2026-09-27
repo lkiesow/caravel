@@ -240,7 +240,7 @@ func TestNoCoordinatesWithoutAGeocoder(t *testing.T) {
 	}
 }
 
-// Dropped rather than corrected: guessing which of three the model meant is
+// Dropped rather than corrected: guessing which of the seven the model meant is
 // how a hotel becomes a ferry terminal.
 func TestInvalidCategoryIsDroppedNotGuessed(t *testing.T) {
 	for _, bad := range []string{"hotel", "Accommodation", "", "restaurant"} {
@@ -280,16 +280,41 @@ func TestValidCategoryIsAcceptedCaseInsensitively(t *testing.T) {
 	}
 }
 
-// Pins the duplicated list against the schema's CHECK constraint and the map
-// in internal/httpapi/items.go, which this package cannot import.
+// Pins the duplicated list against the schema the model is handed, the CHECK
+// constraint on items.category, and the map in internal/httpapi/items.go,
+// which this package cannot import.
+//
+// The literal is what pins the first and third of those. The schema is read
+// out of proposalSchema rather than retyped: until Stage 37 this test only
+// compared against a literal despite its name, so adding a category to
+// validCategories and forgetting the enum next door would have passed -- and
+// a model handed an enum without "food" in it never proposes food.
 func TestValidCategoriesMatchTheSchema(t *testing.T) {
-	want := []string{"site", "stay", "transport", "area"}
-	if len(validCategories) != len(want) {
-		t.Fatalf("validCategories = %v, want %v", validCategories, want)
+	want := []string{"site", "stay", "transport", "area", "food", "event", "shop"}
+	if !slices.Equal(validCategories, want) {
+		t.Errorf("validCategories = %v, want %v", validCategories, want)
 	}
-	for i := range want {
-		if validCategories[i] != want[i] {
-			t.Errorf("validCategories = %v, want %v", validCategories, want)
+
+	var schema struct {
+		Properties struct {
+			Category struct {
+				Enum        []string `json:"enum"`
+				Description string   `json:"description"`
+			} `json:"category"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(proposalSchema, &schema); err != nil {
+		t.Fatalf("proposalSchema is not valid JSON: %v", err)
+	}
+	if !slices.Equal(schema.Properties.Category.Enum, want) {
+		t.Errorf("schema enum = %v, want %v", schema.Properties.Category.Enum, want)
+	}
+	// The enum tells the model which values exist; the description is what
+	// tells it which one to pick. A value with no gloss is a value the model
+	// will not reach for.
+	for _, c := range want {
+		if !strings.Contains(schema.Properties.Category.Description, c) {
+			t.Errorf("the schema description never mentions %q, so the model has nothing to go on", c)
 		}
 	}
 }

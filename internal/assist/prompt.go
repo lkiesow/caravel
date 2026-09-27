@@ -55,7 +55,7 @@ func placeFields(vocabulary []string, locale string) string {
 	var b strings.Builder
 
 	fmt.Fprintf(&b, "\nThe category must be exactly one of: %s.\n", strings.Join(validCategories, ", "))
-	b.WriteString("Use `stay` for accommodation, `transport` for a journey, station, airport or terminal, `area` for a district, region or park rather than a single point, and `site` for anywhere else to visit.\n")
+	b.WriteString("Use `stay` for accommodation, `transport` for a journey, station, airport or terminal, `area` for a district, region or park rather than a single point, `food` for a restaurant, bar or cafe, `event` for something happening at a time rather than a place that is always open, `shop` for a shop or market, and `site` for anywhere else to visit.\n")
 
 	// Three things about tags, and each is here because leaving it out showed.
 	//

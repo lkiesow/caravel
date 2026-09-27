@@ -561,6 +561,14 @@ purpose — do not reconstruct it from an older stage plan without asking.
 
 ## Testing, CI and dev tooling
 
+- **No seeded location for `area`, `food`, `event` or `shop`.** (Stage 37.) The
+  demo trip has a site, a stay and a transport and nothing else, so four of the
+  seven categories never appear in a screenshot, in the map legend with a pin
+  behind it, or in any UI assertion. Adding them is a one-line-each change to
+  `cmd/seed/main.go`, but the full scenario's item count is asserted in several
+  places (`map.spec.js:2471` pins it at three cards), so it wants doing together
+  with the specs that count cards -- which is why Stage 37 left it.
+
 - **Map attribution is not asserted anywhere.** (Stage 30 Milestone 6.)
   Removing the attribution variable made the credit a property of loaded map
   data -- a style's source metadata, or the TileJSON it points at -- and the UI

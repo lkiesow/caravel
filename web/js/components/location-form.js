@@ -3,7 +3,7 @@ import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
 import { renderTagField } from "./tag-field.js";
 
-const CATEGORIES = ["site", "stay", "transport", "area"];
+const CATEGORIES = ["site", "stay", "transport", "area", "food", "event", "shop"];
 
 // One id per instance, because a <label for> needs one and this component could
 // in principle be rendered twice on a page.

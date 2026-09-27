@@ -465,7 +465,7 @@ type MediaAsset struct {
 type Item struct {
 	ID        string
 	TripID    string
-	Category  string // "site" | "stay" | "transport" | "area" (renamed from "location" in migration 0002; "area" added in 0010)
+	Category  string // one of the seven in internal/httpapi.validCategories (renamed from "location" in migration 0002; "area" added in 0010, "food"/"event"/"shop" in 0011)
 	Title     string
 	Notes     *string
 	ImageID   *string

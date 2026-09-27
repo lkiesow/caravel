@@ -5,6 +5,9 @@ const CATEGORY_COLORS = {
   stay: "#7c3aed",
   transport: "#2563eb",
   area: "#e11d48",
+  food: "#a16207",
+  event: "#a21caf",
+  shop: "#3f6212",
 };
 
 const styles = `

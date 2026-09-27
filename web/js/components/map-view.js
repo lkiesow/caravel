@@ -135,6 +135,9 @@ const CATEGORY_COLORS = {
   stay: "#7c3aed",
   transport: "#2563eb",
   area: "#e11d48",
+  food: "#a16207",
+  event: "#a21caf",
+  shop: "#3f6212",
 };
 
 // The categories, in legend order. Derived from the palette above so that the
@@ -160,12 +163,12 @@ const WHEEL_PX_PER_ZOOM = 60;
 const WHEEL_ACCUM_CAP = 240;
 
 // Category colour for a marker, for items whose category is unknown or not
-// one of the four the app defines (the single-marker mode gets it from an
+// one of the seven the app defines (the single-marker mode gets it from an
 // attribute, so it can legitimately be absent).
 const FALLBACK_MARKER_COLOR = "#71717a";
 
 // The marker being *placed* in pick mode. Amber deliberately: none of the
-// four category colours above, and not --color-accent either, which is the
+// category colours above, and not --color-accent either, which is the
 // same #2563eb transport already uses. It is also drawn as a ring with a
 // centre dot rather than as a plain disc, so it reads as "the point you are
 // setting" rather than as one more category.
@@ -308,6 +311,26 @@ const styles = `
      because #ea580c is already the pick marker, and rather than a teal
      because #0891b2 is already "you are here".
 
+     "food", "event" and "shop" came next, and by then the easy hues were gone,
+     so they were chosen by search rather than by eye: every Tailwind-ish
+     candidate scored on contrast against both papers AND on CIELab distance to
+     every other marker colour, the pick amber, the here cyan and the grey
+     fallback. The winners are yellow #a16207, fuchsia #a21caf and a dark lime
+     #3f6212, all between 4.5:1 and 6.5:1 on liberty -- better than the green
+     "site" has ever had -- with dark twins #facc15, #d946ef and #a3e635.
+
+     Two notes on that set. The first pass used the obvious amber #ca8a04 for
+     food; it measured 2.7:1 on paper, below the 3:1 floor, which is exactly
+     the kind of thing eyeballing a swatch does not catch. And the dark fuchsia
+     is #d946ef rather than the lighter #e879f9: the lighter one is 7.9:1
+     against 5.7:1, but it lands 27 dE from the violet "stay", and two pins
+     that are the same colour are worse than one pin that is slightly dimmer.
+     With #d946ef nothing new is closer than 39 dE to anything else, and the
+     tightest pair in the dark set is still the original stay/transport at 31.
+
+     Seven categories is about what this encoding holds. An eighth would have
+     to be a different pin shape or an icon, not another hue.
+
      The legend dots use these too. They sit on app chrome rather than on the
      map, so they could have followed the app's theme instead - but a legend
      whose dot is a different colour from the marker it names is worse than a
@@ -317,6 +340,9 @@ const styles = `
     --marker-stay: ${CATEGORY_COLORS.stay};
     --marker-transport: ${CATEGORY_COLORS.transport};
     --marker-area: ${CATEGORY_COLORS.area};
+    --marker-food: ${CATEGORY_COLORS.food};
+    --marker-event: ${CATEGORY_COLORS.event};
+    --marker-shop: ${CATEGORY_COLORS.shop};
     --marker-fallback: ${FALLBACK_MARKER_COLOR};
     --marker-pick: ${PICK_MARKER_COLOR};
     --marker-pick-fill: rgba(255, 255, 255, 0.85);
@@ -338,6 +364,9 @@ const styles = `
     --marker-stay: #a78bfa;
     --marker-transport: #60a5fa;
     --marker-area: #fb7185;
+    --marker-food: #facc15;
+    --marker-event: #d946ef;
+    --marker-shop: #a3e635;
     --marker-fallback: #a1a1aa;
     --marker-pick: #fb923c;
     --marker-pick-fill: rgba(24, 24, 27, 0.85);

@@ -622,7 +622,16 @@ test.describe("locations filter menu", () => {
     await expect(menu.locator(".menu--filter__back")).toHaveText("Category");
     // In CATEGORIES order (locations-tab.js), behind the neutral "All" -- so
     // a category added there has to be added here too.
-    await expect(menu.locator("[data-value]")).toHaveText(["All", "Site", "Stay", "Transport", "Area"]);
+    await expect(menu.locator("[data-value]")).toHaveText([
+      "All",
+      "Site",
+      "Stay",
+      "Transport",
+      "Area",
+      "Food & Drink",
+      "Event",
+      "Shopping",
+    ]);
 
     // Back returns to the root without closing the menu.
     await menu.locator(".menu--filter__back").click();

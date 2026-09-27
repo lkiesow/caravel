@@ -15,7 +15,10 @@ import (
 	"caravel/internal/tags"
 )
 
-var validCategories = map[string]bool{"site": true, "stay": true, "transport": true, "area": true}
+var validCategories = map[string]bool{
+	"site": true, "stay": true, "transport": true, "area": true,
+	"food": true, "event": true, "shop": true,
+}
 
 type itemResponse struct {
 	ID        string  `json:"id"`
@@ -215,7 +218,7 @@ func (req itemRequest) validate() error {
 		return errors.New("title is required")
 	}
 	if !validCategories[req.Category] {
-		return errors.New("category must be one of: site, stay, transport, area")
+		return errors.New("category must be one of: site, stay, transport, area, food, event, shop")
 	}
 	// Validate the nested blocks up front so a bad link or date is a 400
 	// before anything is written, rather than a rolled-back 500.

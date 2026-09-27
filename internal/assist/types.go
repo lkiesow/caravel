@@ -70,7 +70,7 @@ type Request struct {
 // both directions, so a proposal is directly comparable to what is there.
 type Location struct {
 	Title    string
-	Category string // "site" | "stay" | "transport" | "area" -- validated, never trusted
+	Category string // one of validCategories in agent.go -- validated, never trusted
 	// Tags is a comma-separated list, not a slice. It stays a string because
 	// the whole proposal pipeline -- Field{Name, Current, Proposed string},
 	// the agent's diff table, the panel's allowlist and the editor's

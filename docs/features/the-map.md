@@ -4,8 +4,9 @@ Every location with coordinates, on one map.
 
 ![The trip map](../assets/screenshots/map.png)
 
-Pins are coloured by category — site, stay, transport, area — and each category can be
-switched off, so "show me only where we are sleeping" is one click. The map
+Pins are coloured by category — site, stay, transport, area, food & drink, event,
+shopping — and each category can be switched off, so "show me only where we are
+sleeping" is one click. The map
 frames itself to fit whatever is currently shown.
 
 The map is drawn in your browser from OpenStreetMap data, which means the

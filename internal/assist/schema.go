@@ -73,8 +73,8 @@ var proposalSchema = json.RawMessage(`{
     },
     "category": {
       "type": "string",
-      "enum": ["site", "stay", "transport", "area"],
-      "description": "site for somewhere to visit, stay for accommodation, transport for a journey or terminal, area for a district, region or park."
+      "enum": ["site", "stay", "transport", "area", "food", "event", "shop"],
+      "description": "site for somewhere to visit, stay for accommodation, transport for a journey or terminal, area for a district, region or park, food for a restaurant, bar or cafe, event for something happening at a time rather than a place that is always open, shop for shopping."
     },
     "tags": {
       "type": "string",

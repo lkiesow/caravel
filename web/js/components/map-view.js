@@ -1,5 +1,6 @@
 import { api } from "../api.js";
 import { t, getLocale } from "../i18n.js";
+import { formatDistance } from "../format.js";
 import { icon } from "../icon.js";
 import {
   LOCATE_CANCELLED,
@@ -197,6 +198,11 @@ const HERE_ZOOM = 15;
 // Breathing room around the accuracy ring when the camera fits it, so the ring
 // reads as a ring rather than as the edge of the viewport.
 const ACCURACY_FIT_PADDING = 32;
+
+// Past this, a fix is worth apologising for in words. Chosen as the point
+// where a position stops being useful for "am I at the right building" -- and
+// a tower-trilaterated fix, the one that puts you ashore, is far beyond it.
+const COARSE_ACCURACY_M = 200;
 
 // Every marker in this component is drawn as a CSS dot rather than an image,
 // and under MapLibre that is simply what a marker *is*: `new Marker({element})`
@@ -1494,8 +1500,8 @@ class MapView extends HTMLElement {
     const button = this.shadowRoot.querySelector('[data-action="locate"]');
     const status = this.shadowRoot.querySelector(".locate-status");
 
-    const say = (key) => {
-      status.textContent = key ? t(key) : "";
+    const say = (key, params) => {
+      status.textContent = key ? t(key, params) : "";
       status.hidden = !key;
     };
 
@@ -1577,6 +1583,7 @@ class MapView extends HTMLElement {
           fix.accuracy,
           !this._locateSettled ? "fit" : this._followCamera ? "follow" : "none"
         );
+        this.sayAccuracy(fix);
       },
       // Set here rather than off the promise, because it has to be true before
       // the *next* fix arrives and a promise continuation is a microtask away.
@@ -1588,7 +1595,10 @@ class MapView extends HTMLElement {
 
     watch.promise.then(
       (position) => {
-        say(null);
+        // Not say(null): a settled fix can still be a poor one, and going
+        // quiet is what made a coast pin look like an answer in the first
+        // place. sayAccuracy decides whether there is anything to admit.
+        this.sayAccuracy(position);
         button.disabled = false;
         this.setTracking(continuous);
         if (!fromPress) return;
@@ -1620,6 +1630,30 @@ class MapView extends HTMLElement {
         say(locateErrorKey(err.reason || "unavailable"));
       }
     );
+  }
+
+  // How good the reading is, in words.
+  //
+  // The ring says the same thing in pixels and is the better answer when it is
+  // visible -- but it is a faint tint over whatever the map is showing, and
+  // over open water that is faint teal on blue. A sentence does not depend on
+  // the cartography underneath it.
+  //
+  // Nothing is said for a good fix. A permanent line restating the obvious is
+  // noise, and noise is what stops people reading the line that matters.
+  sayAccuracy(fix) {
+    const say = this._locateSay;
+    if (!say) return;
+    const distance = formatDistance(fix?.accuracy);
+    if (!distance) {
+      if (this._locateSettled) say(null);
+      return;
+    }
+    if (!this._locateSettled) {
+      say("map.locate.refining", { distance });
+      return;
+    }
+    say(fix.accuracy > COARSE_ACCURACY_M ? "map.locate.coarse" : null, { distance });
   }
 
   // The button is the only indicator that tracking is on, so it carries both

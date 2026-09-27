@@ -259,6 +259,8 @@
   "map.locate.timeout": "Finding your location took too long. If your browser asked for permission, answer that first, then try again.",
   "map.locate.insecure": "Your location needs a secure connection. This page is served over plain HTTP, so the browser will not provide it.",
   "map.locate.unsupported": "This browser cannot report your location.",
+  "map.locate.refining": "Finding your location… accurate to about {distance} so far.",
+  "map.locate.coarse": "This is a rough position, accurate only to about {distance}. Out of sight of land your device may place you on the nearest coast.",
   "map.pickMarkerLabel": "Chosen location — drag to move it",
   "itinerary.noDates": "Set a start and end date in this trip's settings to build a day-by-day itinerary, or add days manually below.",
   "itinerary.addDay": "Add a day",

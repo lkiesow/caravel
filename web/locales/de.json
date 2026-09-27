@@ -259,6 +259,8 @@
   "map.locate.timeout": "Die Standortermittlung hat zu lange gedauert. Falls dein Browser nach Erlaubnis gefragt hat, beantworte das zuerst und versuche es dann erneut.",
   "map.locate.insecure": "Für den Standort ist eine sichere Verbindung nötig. Diese Seite wird über einfaches HTTP ausgeliefert, daher gibt der Browser ihn nicht heraus.",
   "map.locate.unsupported": "Dieser Browser kann deinen Standort nicht ermitteln.",
+  "map.locate.refining": "Standort wird ermittelt … bisher auf etwa {distance} genau.",
+  "map.locate.coarse": "Das ist eine grobe Position, nur auf etwa {distance} genau. Außer Sichtweite von Land setzt dich dein Gerät womöglich an die nächste Küste.",
   "map.pickMarkerLabel": "Gewählter Ort — zum Verschieben ziehen",
   "itinerary.noDates": "Lege in den Einstellungen dieser Reise ein Start- und Enddatum fest, um einen Tag-für-Tag-Reiseplan zu erstellen, oder füge unten manuell Tage hinzu.",
   "itinerary.addDay": "Tag hinzufügen",

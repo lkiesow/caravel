@@ -10,6 +10,7 @@
 // one-finger drag that the user meant for the page. They are asserted
 // separately below, because the fixes are independent (CSS vs. a map option)
 // and one passing should not hide the other regressing.
+import { readFileSync } from "node:fs";
 import { test, expect } from "@playwright/test";
 import { login, buildRoutes, gotoRoute } from "./helpers/scenarios.js";
 import {
@@ -1949,6 +1950,171 @@ test.describe("tracking", () => {
   });
 });
 
+// Stage 36 Milestone 4. How good the reading is, in words.
+//
+// The accuracy ring says the same thing in pixels and is the better answer
+// when it is visible -- but it is a faint tint over whatever the map is
+// showing, and over open water that is faint teal on blue. A sentence does not
+// depend on the cartography underneath it.
+test.describe("the locate control says how accurate it is", () => {
+  test.beforeEach(async ({ page }) => {
+    await installFakeGeolocation(page);
+  });
+
+  const pressLocate = (page) =>
+    page.evaluate(() =>
+      document.querySelector("map-view").shadowRoot.querySelector('[data-action="locate"]').click()
+    );
+
+  const statusLine = (page) =>
+    page.evaluate(() => {
+      const el = document.querySelector("map-view").shadowRoot.querySelector(".locate-status");
+      return { hidden: el.hidden, text: el.textContent.trim() };
+    });
+
+  // Reaching the settled *coarse* line takes more than emitting one bad fix:
+  // a 2800m reading never meets the accuracy the watch is holding out for, so
+  // it stays in the acquiring phase showing "refining" until the deadline.
+  // Settling on a good fix and then losing it is the honest route, and it is
+  // also the real scenario -- GNSS dropping back to the towers mid-passage.
+  // The clock is advanced past the tracking guard's grace so the poor fix is
+  // believed rather than dismissed as a single wild sample.
+  const settleThenDegradeTo = async (page, accuracy) => {
+    await pressLocate(page);
+    await waitForWatch(page);
+    await emitFix(page, AT_SEA);
+    await waitForLocateSettled(page);
+    // Emitted twice with the grace period in between, because the guard starts
+    // its clock on the *first* poor fix and refuses that one: a reading has to
+    // persist to be believed, which is the whole point of the guard. Advancing
+    // before the first one would leave it refused and the wait below would
+    // time out -- which is exactly how this was got wrong first time.
+    await emitFix(page, { lat: 54.4, lng: 10.3, accuracy });
+    await advanceClock(page, 16000);
+    await emitFix(page, { lat: 54.4, lng: 10.3, accuracy });
+    await page.waitForFunction(
+      (a) => document.querySelector("map-view")._hereAccuracy === a,
+      accuracy,
+      { timeout: 10000 }
+    );
+  };
+
+  test("a rough position says so, and names the distance", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+    await settleThenDegradeTo(page, 2800);
+
+    const status = await statusLine(page);
+    expect(status.hidden, "a 2800m fix is worth admitting to").toBe(false);
+    expect(status.text).toMatch(/2\.8\s*km/);
+    // The clause that actually helps somebody on a boat: it names the failure
+    // they are looking at rather than just grading it.
+    expect(status.text, "and says what a rough fix does at sea").toMatch(/coast/i);
+  });
+
+  test("a good position says nothing at all", async ({ page }) => {
+    // A permanent line restating the obvious is noise, and noise is what stops
+    // people reading the line that matters.
+    await login(page);
+    await gotoTripMap(page);
+    await pressLocate(page);
+    await waitForWatch(page);
+    await emitFix(page, AT_SEA);
+    await waitForLocateSettled(page);
+
+    expect((await statusLine(page)).hidden, "18m needs no apology").toBe(true);
+  });
+
+  test("the line comes back if the fix degrades, and goes again when it recovers", async ({
+    page,
+  }) => {
+    await login(page);
+    await gotoTripMap(page);
+    await pressLocate(page);
+    await waitForWatch(page);
+    await emitFix(page, AT_SEA);
+    await waitForLocateSettled(page);
+    expect((await statusLine(page)).hidden).toBe(true);
+
+    // Well inside the tracking guard's ceiling, so this is a position the
+    // marker genuinely moves to -- it is just a much less certain one.
+    await advanceClock(page, 4000);
+    await emitFix(page, { lat: 54.5, lng: 10.5, accuracy: 300 });
+    const degraded = await statusLine(page);
+    expect(degraded.hidden, "losing the signal has to be visible").toBe(false);
+    expect(degraded.text).toMatch(/300\s*m/);
+
+    await advanceClock(page, 4000);
+    await emitFix(page, { lat: 54.52, lng: 10.52, accuracy: 20 });
+    expect((await statusLine(page)).hidden, "and regaining it clears the line").toBe(true);
+  });
+
+  test("while still searching it reports how far it has got", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+    await pressLocate(page);
+    await waitForWatch(page);
+    await emitFix(page, NEARER);
+    await page.waitForFunction(
+      () => document.querySelector("map-view")._hereAccuracy === 300,
+      null,
+      { timeout: 10000 }
+    );
+
+    const status = await statusLine(page);
+    expect(status.hidden).toBe(false);
+    // Distinguishable from the settled message: this one is progress, not a
+    // verdict, and it carries the number either way.
+    expect(status.text).toMatch(/300\s*m/);
+    expect(status.text).not.toMatch(/coast/i);
+  });
+
+  test("formatDistance rounds to what a GPS reading can actually claim", async ({ page }) => {
+    // An accuracy is an estimate with its own error, so exact metres would be
+    // claiming a precision about the imprecision that nobody has.
+    await login(page);
+    const formatted = await page.evaluate(async () => {
+      const { formatDistance } = await import("/js/format.js");
+      return [35, 99, 300, 994, 995, 1000, 2800, 12000, 0, NaN].map((v) => formatDistance(v));
+    });
+    expect(formatted).toEqual([
+      "35 m",
+      "99 m",
+      "300 m",
+      "990 m",
+      // Rounded before the unit is chosen: "1,000 m" next to "1 km" for a
+      // metre's difference would read as a bug in the units.
+      "1 km",
+      "1 km",
+      "2.8 km",
+      "12 km",
+      null,
+      null,
+    ]);
+  });
+
+  test.describe("in German", () => {
+    test.use({ locale: "de" });
+
+    test("the sentence is translated and the number is localised", async ({ page }) => {
+      // Two different mechanisms, and the test is worth having because only
+      // one of them is check_i18n.py's business. The sentence comes from
+      // de.json, which make ci checks the *keys* of; the "2,8 km" comes from
+      // Intl, which no locale file mentions at all -- that is the point of
+      // formatting the distance rather than writing a unit into the strings.
+      await login(page);
+      await gotoTripMap(page);
+      await settleThenDegradeTo(page, 2800);
+
+      const status = await statusLine(page);
+      expect(status.hidden).toBe(false);
+      expect(status.text, "the decimal comma, from Intl").toMatch(/2,8\s*km/);
+      expect(status.text, "and the sentence, from de.json").toMatch(/K\u00fcste/);
+      expect(status.text, "which must not have fallen back to English").not.toMatch(/coast/i);
+    });
+  });
+});
+
 test.describe("the locate control when it cannot work", () => {
   test("an unanswered or refused prompt settles instead of hanging", async ({ page, context }) => {
     await context.clearPermissions();
@@ -2193,8 +2359,17 @@ test.describe("distance filter when the position cannot be had", () => {
 // forced visible here rather than left unmeasured. That is the same trick
 // settings.spec.js uses on its success line, and it exists because a sweep
 // only measures what is actually rendered.
-const LONGEST_LOCATE_MESSAGE_DE =
-  "Für den Standort ist eine sichere Verbindung nötig. Diese Seite wird über einfaches HTTP ausgeliefert, daher gibt der Browser ihn nicht heraus.";
+// Derived from the locale file rather than pasted, because a pasted copy goes
+// stale silently: Stage 36 added two longer map.locate.* strings, and the
+// hardcoded one would have gone on "measuring the longest message" while no
+// longer being it. Placeholders are filled with a plausible value so the line
+// is measured at the width it actually renders at.
+const LONGEST_LOCATE_MESSAGE_DE = Object.entries(
+  JSON.parse(readFileSync(new URL("../../web/locales/de.json", import.meta.url), "utf8"))
+)
+  .filter(([key]) => key.startsWith("map.locate.") && key !== "map.locate.label")
+  .map(([, value]) => value.replaceAll("{distance}", "2,8 km"))
+  .sort((a, b) => b.length - a.length)[0];
 
 // Everything visible must fit, and every control must stay tappable.
 async function assertFitsAndTappable(page, root) {

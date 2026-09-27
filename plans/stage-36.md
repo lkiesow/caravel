@@ -488,6 +488,55 @@ subsequent good fix hides it again. Direct `formatDistance` checks via
 `await import("/js/format.js")` at the 35 m / 300 m / 2800 m / 12000 m
 boundaries. `make ci` catches a missing German key.
 
+**Done.** `formatDistance(metres)` is in `web/js/format.js`, using Intl's unit
+style so neither locale file contains an "m" or a "km". `map-view.js` gained
+`sayAccuracy(fix)` and `say()` now takes interpolation params;
+`map.locate.refining` reports progress while acquiring and `map.locate.coarse`
+is the verdict for a settled fix worse than `COARSE_ACCURACY_M` (200). A good
+fix still says nothing.
+
+One deviation: `formatDistance` **rounds before choosing the unit**, which the
+plan did not specify and which matters -- rounding after gives "1,000 m"
+sitting next to "1 km" for a metre's difference, which reads as a bug in the
+units rather than the rounding it is.
+
+Also, `LONGEST_LOCATE_MESSAGE_DE` in `map.spec.js` is now **derived from
+de.json** rather than pasted. That constant exists to measure the worst case at
+324px, and this milestone added two longer `map.locate.*` strings -- a pasted
+copy would have gone on calling itself "the longest message" while no longer
+being one. (It still is the timeout string, at 143 characters; the new coarse
+one is 137.)
+
+Two test errors worth recording, because both produced tests that **passed
+while checking nothing**.
+
+The first: emitting a single 2800m fix does not reach the coarse line at all.
+That reading never meets the accuracy the watch is holding out for, so it stays
+in the *acquiring* phase showing `map.locate.refining` until the deadline --
+the assertion on "2.8 km" passed either way, so the test looked right. Caught
+by deliberately emptying the German string and finding the test still green.
+The settled-coarse state is now reached the way it actually happens at sea:
+settle on a good fix, then lose it.
+
+The second: the first attempt at that degrade advanced the clock *before* the
+poor fix. The tracking guard starts its grace on the first poor reading and
+refuses that one, so nothing was ever accepted and the wait timed out. A
+degraded fix has to persist to be believed -- which is the point of the guard,
+and the helper now emits twice with the grace in between.
+
+Verified by `make ci` green and 114 tests passing across `map.spec.js`,
+`geolocation.spec.js`, `map-theme.spec.js`, `a11y-names.spec.js`,
+`map.gesture.spec.js`, `routes.spec.js` and `headings.spec.js`. Eight new
+tests: the settled coarse line naming the distance *and* the coast clause, a
+good fix staying silent, the line returning when a fix degrades and clearing
+when it recovers, the refining line during acquisition, `formatDistance` across
+the 35m/99m/300m/994m/995m/1km/2.8km/12km boundaries plus its null cases, and a
+German test proving both mechanisms at once -- the sentence from `de.json` and
+the "2,8 km" from Intl, which no locale file mentions. That last one was
+confirmed as a real negative control: emptying `map.locate.coarse` in de.json
+fails it on an empty status line, which is precisely the failure
+`scripts/check_i18n.py` cannot see, since it compares keys and never values.
+
 ## 5. The distance filter asks for less, and caches honestly
 
 `web/js/pages/locations-tab.js:397` becomes

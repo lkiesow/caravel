@@ -36,6 +36,43 @@ export function formatDateRange(start, end) {
 //
 // Lived in two copies (the file list and the location view page) until Stage 11,
 // which is how they were free to disagree. Anything showing a size uses this.
+// A distance, for telling somebody how good their position is.
+//
+// Rounded rather than exact, and that is the point: a GPS accuracy is an
+// estimate with its own error, so "accurate to about 37.428 m" claims a
+// precision about the imprecision that nobody has. Under 100m it rounds to the
+// metre, above that to ten, and past a kilometre it switches units.
+//
+// Intl does the units, so there is no "m"/"km" to translate and German gets
+// "2,8 km" -- comma and all -- for free. Locale comes from the browser (Intl's
+// undefined locale), matching formatDateRange above and the itinerary's day
+// headings.
+//
+// Returns null for a missing or nonsensical reading, so a caller omits the
+// sentence rather than rendering "accurate to about null".
+export function formatDistance(metres) {
+  if (!Number.isFinite(metres) || metres <= 0) return null;
+
+  const unit = (value, name, digits) =>
+    new Intl.NumberFormat(undefined, {
+      style: "unit",
+      unit: name,
+      unitDisplay: "short",
+      maximumFractionDigits: digits,
+    }).format(value);
+
+  // Rounded before the unit is chosen, not after: 999m rounds to 1000m, and
+  // "1,000 m" sitting next to "1 km" for a metre's difference would look like
+  // a bug in the units rather than the rounding it is.
+  const rounded = metres < 100 ? Math.round(metres) : Math.round(metres / 10) * 10;
+  if (rounded < 1000) return unit(rounded, "meter", 0);
+
+  // One decimal only while it says something: 2.8km is a useful distinction
+  // from 2km, 12.4km is not a useful one from 12km.
+  const km = rounded / 1000;
+  return unit(km, "kilometer", km < 10 ? 1 : 0);
+}
+
 export function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;

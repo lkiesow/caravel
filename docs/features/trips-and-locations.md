@@ -8,6 +8,12 @@ people and the money. The trips list is what you land on.
 Each card carries a cover photo, the title and the dates. Trips can be searched
 and sorted, which starts mattering somewhere around the tenth one.
 
+The list opens on **Upcoming first**: the trip you are on or about to take is at
+the top, the rest of the future follows in the order it will happen, and past
+trips come after it with the most recent one first. Trips with no dates yet sort
+last, because unscheduled is not the same as imminent. The other two orders are
+**By name** and **Recently added**.
+
 ## Inside a trip
 
 ![A trip, showing its locations](../assets/screenshots/trip-overview.png)

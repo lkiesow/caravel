@@ -347,6 +347,17 @@ purpose — do not reconstruct it from an older stage plan without asking.
   that map-view needs the hexes to build its custom properties while the other
   three want a plain lookup, which is not much of a wrinkle.
 
+- **The trips list is filtered and sorted entirely in the browser.** (Stage 15,
+  restated Stage 35 -- `trips-page.js` has claimed this was a todo.md entry
+  since Stage 15 and it was never actually written down.) `GET /trips` returns
+  every trip the user can see, unconditionally, and the page searches and
+  orders that array. Instant feedback and no round trip per keystroke, which is
+  the right trade for the number of trips anybody has today; it is the wrong
+  one at a few hundred, where the answer is a `q`/`sort` pair on
+  `ListTripsForUser` and a page size. The three sort orders the UI offers --
+  upcoming, title, added -- are all expressible in SQL, so the migration is
+  mechanical whenever it becomes worth making.
+
 - **List view state is not in the URL.** (Stage 26.) The locations tab's
   toolbar now survives a Back press -- its filters, search text and sort ride on
   the history entry, one entry deep, the same way the map tab's camera does --

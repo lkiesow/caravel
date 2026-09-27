@@ -25,11 +25,11 @@ const SUBTITLE_ONLY_MATCH = {
 };
 
 const SORT_LABELS = {
-  en: { newest: "Newest first", title: "By name", start: "By start date" },
+  en: { upcoming: "Upcoming first", title: "By name", added: "Recently added" },
   de: {
-    newest: "Neueste zuerst",
+    upcoming: "Bevorstehende zuerst",
     title: "Nach Name",
-    start: "Nach Startdatum",
+    added: "Zuletzt hinzugefügt",
   },
 };
 
@@ -98,7 +98,7 @@ for (const locale of ["en", "de"]) {
       // The sort trigger says which order is in force, and starts on the
       // default rather than blank.
       await expect(page.locator(".trips-sort-slot .menu__label")).toHaveText(
-        SORT_LABELS[locale].newest,
+        SORT_LABELS[locale].upcoming,
       );
     });
   });
@@ -168,19 +168,70 @@ test.describe("trips sort", () => {
     );
   }
 
-  test("reorders by name and by start date, and keeps undated trips last", async ({
+  // The cards' start/end dates, paired, in the order they are rendered.
+  function cardDates(page) {
+    return page.locator("trip-card").evaluateAll((cards) =>
+      cards.map((c) => ({
+        start: c.getAttribute("start-date"),
+        end: c.getAttribute("end-date"),
+      })),
+    );
+  }
+
+  test("opens on upcoming first, with past trips behind them and undated last", async ({
     page,
   }) => {
     await login(page);
     await gotoRoute(page, "/trips");
 
-    const newest = await cardTitles(page);
+    // The page's own idea of today, in its own timezone - the same value the
+    // sort compares against. Deriving it here rather than in node keeps the
+    // two from disagreeing when the test runs near midnight.
+    const today = await page.evaluate(() => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    });
+
+    const dates = await cardDates(page);
+    expect(dates.length, "the seed should render several trips").toBeGreaterThan(
+      2,
+    );
+
+    // 0 = current or future, 1 = past, 2 = undated. Mirrors upcomingBucket()
+    // in trips-page.js; ISO dates, so string comparison is date comparison.
+    const bucket = (d) =>
+      !d.start ? 2 : (d.end ?? d.start) >= today ? 0 : 1;
+    const buckets = dates.map(bucket);
+    for (const want of [0, 1, 2]) {
+      expect(
+        buckets.includes(want),
+        `the seed should include a trip in bucket ${want}`,
+      ).toBe(true);
+    }
+    // The blocks come in order, which is the same as saying the bucket numbers
+    // never decrease down the list.
+    expect([...buckets].sort()).toEqual(buckets);
+
+    const startsIn = (want) =>
+      dates.filter((d) => bucket(d) === want).map((d) => d.start);
+    // Future: soonest first. Past: most recent first.
+    expect([...startsIn(0)].sort()).toEqual(startsIn(0));
+    expect([...startsIn(1)].sort().reverse()).toEqual(startsIn(1));
+  });
+
+  test("reorders by name and by date added without losing a trip", async ({
+    page,
+  }) => {
+    await login(page);
+    await gotoRoute(page, "/trips");
+
+    const upcoming = await cardTitles(page);
 
     // --- by name ---
     await chooseSort(page, SORT_LABELS.en.title);
     const byName = await cardTitles(page);
     expect(byName, "sorting must not drop or duplicate a trip").toHaveLength(
-      newest.length,
+      upcoming.length,
     );
     expect(
       [...byName].sort((a, b) =>
@@ -189,34 +240,23 @@ test.describe("trips sort", () => {
     ).toEqual(byName);
     expect(
       byName,
-      "by name should differ from newest-first on this seed",
-    ).not.toEqual(newest);
+      "by name should differ from upcoming-first on this seed",
+    ).not.toEqual(upcoming);
+    expect([...byName].sort()).toEqual([...upcoming].sort());
 
-    // --- by start date ---
-    await chooseSort(page, SORT_LABELS.en.start);
-    const dates = await page
-      .locator("trip-card")
-      .evaluateAll((cards) => cards.map((c) => c.getAttribute("start-date")));
-    expect(dates, "sorting must not drop a trip").toHaveLength(newest.length);
-
-    const dated = dates.filter(Boolean);
-    const undated = dates.length - dated.length;
-    expect(
-      undated,
-      "the seed should include a trip with no start date",
-    ).toBeGreaterThan(0);
-    // Every undated trip sits at the end: unscheduled, not imminent.
-    expect(dates.slice(dates.length - undated).every((d) => d === null)).toBe(
-      true,
+    // --- recently added: the server's own order, which the fetch arrives in ---
+    await chooseSort(page, SORT_LABELS.en.added);
+    const byAdded = await cardTitles(page);
+    expect(byAdded, "sorting must not drop or duplicate a trip").toHaveLength(
+      upcoming.length,
     );
-    // ISO dates, so a string comparison is a date comparison.
-    expect([...dated].sort()).toEqual(dated);
+    expect([...byAdded].sort()).toEqual([...upcoming].sort());
 
     // --- back to the default ---
-    await chooseSort(page, SORT_LABELS.en.newest);
+    await chooseSort(page, SORT_LABELS.en.upcoming);
     expect(
       await cardTitles(page),
-      "returning to Newest first restores the server's order",
-    ).toEqual(newest);
+      "returning to Upcoming first restores the order the page opened on",
+    ).toEqual(upcoming);
   });
 });

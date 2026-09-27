@@ -8,6 +8,7 @@ import { renderMenu } from "../components/menu.js";
 import { renderLoading } from "../components/loading.js";
 import { canEdit } from "../trip-role.js";
 import { byTitle } from "../sort.js";
+import { todayISO } from "../format.js";
 
 const CATEGORY_COLORS = {
   site: "#16a34a",
@@ -500,15 +501,6 @@ export async function renderItineraryTab(container, trip) {
 // used both for the remove-day confirmation and for deciding what to expand.
 function hasContent(day) {
   return day.entries.length > 0 || (day.notes ?? "").trim() !== "";
-}
-
-// Today as YYYY-MM-DD in the *local* timezone, so it compares directly against
-// the API's date strings. toISOString() would be wrong here: it converts to
-// UTC first, so anyone east of Greenwich late in the evening would get
-// tomorrow's date and see today's plans collapsed as past.
-function todayISO() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
 function formatDate(dateStr) {

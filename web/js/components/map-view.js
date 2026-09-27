@@ -1322,13 +1322,18 @@ class MapView extends HTMLElement {
           const cat = cb.getAttribute("data-category");
           if (cb.checked) this._activeCategories.add(cat);
           else this._activeCategories.delete(cat);
-          this.plotMarkers();
+          // keepView: filtering is about what is on the map, not where the
+          // map is looking. Until Stage 39 a toggle refit the bounds to
+          // whatever was left, which meant unchecking a category could zoom
+          // and pan the map out from under you - deliberate, and in practice
+          // more disorienting than useful. The camera is now the person's.
+          this.plotMarkers({ keepView: true });
         });
       });
     }
   }
 
-  plotMarkers() {
+  plotMarkers({ keepView = false } = {}) {
     const maplibre = this._maplibre;
     if (!maplibre || !this._map) return;
     this._markers.forEach((m) => m.remove());
@@ -1391,6 +1396,8 @@ class MapView extends HTMLElement {
       this._markers.push(marker);
     }
 
+    if (keepView) return;
+
     const initialView = this.consumeInitialView();
     if (initialView) {
       this._map.jumpTo(initialView);
@@ -1414,8 +1421,8 @@ class MapView extends HTMLElement {
 
   // A camera handed in by the page (see the map-view-change event above), used
   // once and then forgotten: it is the view to *open* at, not a view to snap
-  // back to, so a later legend toggle still refits the bounds as it always
-  // did. Consumed rather than re-read so that survives a re-plot.
+  // back to. A legend toggle re-plots with keepView, so it never reaches this
+  // at all; consumed rather than re-read so that survives any other re-plot.
   consumeInitialView() {
     if (this._initialViewUsed) return null;
     this._initialViewUsed = true;

@@ -1,15 +1,9 @@
 #!/bin/sh
-# commit-msg hook: git calls this with the path to the file holding the
-# proposed commit message. A non-zero exit aborts the commit; the message
-# is kept in .git/COMMIT_EDITMSG, so `git commit -e -F .git/COMMIT_EDITMSG`
-# picks up where you left off.
-#
-# Example check: refuse the marker string ABCDEFG anywhere in the message.
 
 msg_file="$1"
 
-if grep -q 'ABCDEFG' "$msg_file"; then
-	echo "commit-msg: refusing commit — message contains 'ABCDEFG'." >&2
+if grep -q 'Co-Authored-By: .*Claude' "$msg_file"; then
+	echo 'commit-msg: refusing commit — `Co-Authored-By: Claude ...` may not be in the commit message' >&2
 	exit 1
 fi
 

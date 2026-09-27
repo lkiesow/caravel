@@ -26,14 +26,52 @@
 // in the field, `label` the human name, `hint` the secondary line. It is called
 // debounced, and its rejections are swallowed.
 //
+// By default the *whole field* is the query and a pick replaces the whole
+// field, which is what a username or a tag wants. Two options lift that, so
+// the same component can drive a picker over a run of text inside a textarea
+// (see components/mention-picker.js):
+//
+//   readQuery(el) -> { query, start, end } | null
+//     Where the query is. Returning null means "there is no query here" and
+//     closes the list - that is how a trigger-character picker says the caret
+//     has left the run it was completing.
+//   applyPick(el, item, range) -> void
+//     Puts the chosen item into the field. `range` is the readQuery result the
+//     open list was built from, so an insertion knows what to replace.
+//
+// Plus `autoActivateFirst`, which highlights the first option as soon as the
+// list opens so Enter picks it without an ArrowDown first (there is no arrow
+// key on a phone keyboard), and `onOpen(el, listEl)`, called after the list is
+// visible and populated - the hook a caller needs to position it somewhere
+// other than where the stylesheet puts it.
+//
 // Returns { destroy() }, which the caller must call before it replaces the DOM
 // these nodes live in: a pending debounce timer or an open list's document
 // listener would otherwise outlive the elements they point at.
-export function bindSuggestInput(input, listEl, { search, minChars = 2, delay = 200, onPick } = {}) {
+export function bindSuggestInput(input, listEl, opts = {}) {
+  const { search, minChars = 2, delay = 200, onPick, autoActivateFirst = false, onOpen } = opts;
+
+  // Whether the caller reads part of the field rather than all of it. Gates the
+  // selectionchange listener below, so the two whole-field callers attach
+  // exactly the listeners they attached before these options existed.
+  const partial = Boolean(opts.readQuery);
+  const readQuery =
+    opts.readQuery ?? ((el) => ({ query: el.value.trim(), start: 0, end: el.value.length }));
+  const applyPick =
+    opts.applyPick ??
+    ((el, item) => {
+      el.value = item.value;
+    });
+
   let items = [];
   let activeIndex = -1;
   let timer = null;
   let lastQuery = null;
+  // The readQuery result the open list was built from, handed to applyPick.
+  let range = null;
+  // True between compositionstart and compositionend: an IME is mid-word and
+  // neither its keystrokes nor its intermediate text are ours to act on.
+  let composing = false;
   // Guards against a slower earlier lookup landing after a faster later one and
   // overwriting its results.
   let seq = 0;
@@ -73,10 +111,15 @@ export function bindSuggestInput(input, listEl, { search, minChars = 2, delay = 
   }
 
   function open() {
-    if (!listEl.hidden) return;
-    listEl.hidden = false;
-    input.setAttribute("aria-expanded", "true");
-    document.addEventListener("pointerdown", onOutside);
+    if (listEl.hidden) {
+      listEl.hidden = false;
+      input.setAttribute("aria-expanded", "true");
+      document.addEventListener("pointerdown", onOutside);
+      if (partial) document.addEventListener("selectionchange", onSelection);
+    }
+    // Called even when the list was already open: a new batch of results is a
+    // new height, and whoever placed it needs to place it again.
+    onOpen?.(input, listEl);
   }
 
   // Closing empties the list rather than only hiding it. A hidden list still
@@ -86,6 +129,7 @@ export function bindSuggestInput(input, listEl, { search, minChars = 2, delay = 
   function close() {
     activeIndex = -1;
     items = [];
+    range = null;
     // Forget the query too, so the same text typed again after an Escape asks
     // once more instead of being suppressed as a repeat. One redundant request
     // in that case is better than a field that has quietly stopped suggesting.
@@ -96,6 +140,7 @@ export function bindSuggestInput(input, listEl, { search, minChars = 2, delay = 
     listEl.hidden = true;
     input.setAttribute("aria-expanded", "false");
     document.removeEventListener("pointerdown", onOutside);
+    document.removeEventListener("selectionchange", onSelection);
   }
 
   function setActive(i) {
@@ -117,11 +162,15 @@ export function bindSuggestInput(input, listEl, { search, minChars = 2, delay = 
   }
 
   function pick(i) {
-    // Read before close(), which empties `items`.
+    // Read before close(), which empties `items` and forgets the range.
     const item = items[i];
     if (!item) return;
-    input.value = item.value;
+    const where = range;
+    // Closed *before* the field is written to, not after: an insertion that
+    // keeps the undo stack fires a real input event, which would otherwise
+    // re-enter the handler below while this list was still live.
     close();
+    applyPick(input, item, where);
     input.focus();
     onPick?.(item);
   }
@@ -133,28 +182,47 @@ export function bindSuggestInput(input, listEl, { search, minChars = 2, delay = 
     if (event.target !== input && !listEl.contains(event.target)) close();
   }
 
+  // Only attached in partial mode. Moving the caret out of the run being
+  // completed - by clicking elsewhere in the text, or by an arrow key - has to
+  // close the list, and neither of those fires an input event.
+  function onSelection() {
+    if (listEl.hidden) return;
+    if (!input.isConnected) return destroy();
+    const now = readQuery(input);
+    if (!now || !range || now.start !== range.start) close();
+  }
+
   input.addEventListener("input", () => {
-    const query = input.value.trim();
+    // Mid-composition text is the IME's scratchpad, not something to search on.
+    if (composing) return;
+    const found = readQuery(input);
     // Debounced: this fires per keystroke and each one is a request.
     clearTimeout(timer);
-    if (query.length < minChars) {
+    if (!found || found.query.length < minChars) {
       close();
       return;
     }
-    if (query === lastQuery) return;
+    // Keyed by position as well as text: two identical runs in one textarea are
+    // two different questions, and a text-only key would silence the second.
+    const key = `${found.start}:${found.query}`;
+    if (key === lastQuery) return;
     timer = setTimeout(async () => {
-      lastQuery = query;
+      lastQuery = key;
       const mine = ++seq;
-      let found;
+      let list;
       try {
-        found = await search(query);
+        list = await search(found.query);
       } catch {
         // Silent, deliberately: the field is fully usable by typing a name out,
         // so an error banner here would report a problem the user does not have.
         return;
       }
-      if (mine !== seq || !input.isConnected || input.value.trim() !== query) return;
-      items = found;
+      // Re-read rather than re-compare the field's text: the caret may have
+      // moved while the lookup was out, and the range a pick applies into has
+      // to be the current one.
+      const now = input.isConnected ? readQuery(input) : null;
+      if (mine !== seq || !now || now.query !== found.query) return;
+      items = list;
       if (!items.length) {
         // No "no matches" row. The field works when typed in full, and the
         // lookup is silent about its failures - an empty list would be the one
@@ -162,14 +230,30 @@ export function bindSuggestInput(input, listEl, { search, minChars = 2, delay = 
         close();
         return;
       }
+      range = now;
       renderOptions();
       activeIndex = -1;
       input.removeAttribute("aria-activedescendant");
       open();
+      if (autoActivateFirst) setActive(0);
     }, delay);
   });
 
+  // An IME swallows the keys it is composing with. Without these, Enter picking
+  // a Japanese candidate would also pick a suggestion.
+  input.addEventListener("compositionstart", () => {
+    composing = true;
+  });
+  input.addEventListener("compositionend", () => {
+    composing = false;
+    // Run the pass that was skipped, now that the text is final.
+    input.dispatchEvent(new Event("input", { bubbles: false }));
+  });
+
   input.addEventListener("keydown", (event) => {
+    // isComposing is the standard signal; keyCode 229 is the older one some
+    // Android keyboards still send instead.
+    if (event.isComposing || event.keyCode === 229) return;
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       if (listEl.hidden || !items.length) return;
       event.preventDefault();

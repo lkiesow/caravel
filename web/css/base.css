@@ -1848,6 +1848,23 @@ button {
   color: var(--color-text-muted);
 }
 
+/* The coarse-fix warning, between the picker hint and the map itself so it
+   sits where the coordinates it is about are. Not muted like the hints above
+   it: those describe how the control works and can be skimmed past, this one
+   says the value in the fields is probably not the place being recorded. Not
+   --color-danger-fg either -- nothing has gone wrong and nothing is being
+   refused. */
+.location-form__coarse {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--color-text);
+}
+
+.location-form__coarse[hidden] {
+  display: none;
+}
+
 .location-form__map {
   flex: 1 1 100%;
 }

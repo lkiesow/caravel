@@ -1575,6 +1575,14 @@ class MapView extends HTMLElement {
 
     const watch = watchPosition({
       continuous,
+      // The picker blocks a form, so it does not hold out as long. It still
+      // wants a *place*-grade fix and keeps refining towards one -- pressing
+      // this while standing somewhere is the case it exists for -- but after
+      // fifteen seconds it takes the best it has and says how good that is,
+      // rather than leaving somebody watching a disabled button. The trip
+      // map can afford the longer default because it keeps tracking
+      // afterwards, so a slow lock costs nothing there.
+      settleDeadlineMs: continuous ? undefined : 15000,
       onUpdate: (fix) => {
         this._lastFix = fix;
         this.showPosition(

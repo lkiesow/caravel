@@ -79,6 +79,16 @@ purpose — do not reconstruct it from an older stage plan without asking.
 
 ## Planned features
 
+- **A rough fix is only reachable through a fifteen-second wait.** (Stage 36
+  Milestone 6, Sep 2026.) The editor's picker settles early only on a
+  place-grade fix (50m), so a 300m reading spends the full deadline refining
+  before it settles and admits how rough it is. The status line reports
+  progress throughout, so it is not a dead wait -- but somebody indoors, where
+  a 300m fix is the best there is, waits fifteen seconds every time. Settling
+  early once the accuracy has visibly stopped improving would fix it, and needs
+  a rule for what "stopped improving" means that does not fire on ordinary
+  jitter.
+
 - **A UI test cannot pause the page the way a phone does.** (Stage 36 Milestone
   3, Sep 2026.) The tracking tests fake `document.hidden` with a redefined
   getter and a synthetic `visibilitychange`, which proves the listener is wired

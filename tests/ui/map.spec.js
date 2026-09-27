@@ -2115,6 +2115,126 @@ test.describe("the locate control says how accurate it is", () => {
   });
 });
 
+// Stage 36 Milestone 6. The editor says when a fix is too rough to be a place.
+//
+// A position good to a few hundred metres is a real answer to "where am I" and
+// a poor one to "where is this place", and nothing on screen otherwise tells
+// the two apart -- the coordinate fields show six decimals either way.
+test.describe("saving a place from a rough position", () => {
+  test.beforeEach(async ({ page }) => {
+    await installFakeGeolocation(page);
+  });
+
+  // Three of these take about twenty seconds each, and that is the feature
+  // rather than a slow test: a settled fix worse than 200m is only reachable
+  // by the picker's deadline, because it settles early only on something good
+  // enough for a place (50m). There is no shortcut -- the deadline is a real
+  // timer, not something the fake clock can move -- and shortening it further
+  // to suit the suite would be letting the tests design the product.
+  //
+  // The editor needs a trip of its own: this writes, and the suite's shared
+  // seed is what the isolation problem in plans/todo.md is about.
+  const inNewLocationEditor = async (page, body) => {
+    await login(page);
+    const res = await page.request.post("/api/trips", { data: { title: "UI suite: coarse fix" } });
+    expect(res.status()).toBe(201);
+    const tripId = (await res.json()).id;
+    try {
+      await page.goto(`/trips/${tripId}/locations/new`);
+      await page.waitForFunction(() => document.querySelector(".location-form__map")?._map, null, {
+        timeout: 20000,
+      });
+      await body();
+    } finally {
+      await page.request.delete(`/api/trips/${tripId}`);
+    }
+  };
+
+  const pressLocate = (page) =>
+    page.evaluate(() =>
+      document
+        .querySelector(".location-form__map")
+        .shadowRoot.querySelector('[data-action="locate"]')
+        .click()
+    );
+
+  const warning = (page) =>
+    page.evaluate(() => {
+      const el = document.querySelector(".location-form__coarse");
+      return { hidden: el.hidden, text: el.textContent.trim() };
+    });
+
+  const fields = (page) =>
+    page.evaluate(() => {
+      const form = document.querySelector(".location-form");
+      return { lat: form.lat.value, lng: form.lng.value };
+    });
+
+  test("a rough fix still fills the fields, and says it is rough", async ({ page }) => {
+    await inNewLocationEditor(page, async () => {
+      await pressLocate(page);
+      await waitForWatch(page);
+      // 300m settles it outright -- the picker is one-shot and asks for a
+      // usable answer, not a perfect one -- so this is the settled state the
+      // warning is about, not a passing stage of acquisition.
+      await emitFix(page, { lat: 54.4, lng: 10.3, accuracy: 300 });
+      await waitForLocateSettled(page, ".location-form__map");
+
+      const set = await fields(page);
+      expect(set.lat, "the point is still taken: a rough answer is still an answer")
+        .not.toBe("");
+      expect(Number(set.lat)).toBeCloseTo(54.4, 3);
+
+      const warn = await warning(page);
+      expect(warn.hidden).toBe(false);
+      expect(warn.text).toMatch(/300\s*m/);
+      // It names the remedy, not just the problem.
+      expect(warn.text).toMatch(/drag/i);
+    });
+  });
+
+  test("a good fix says nothing", async ({ page }) => {
+    await inNewLocationEditor(page, async () => {
+      await pressLocate(page);
+      await waitForWatch(page);
+      await emitFix(page, AT_SEA);
+      await waitForLocateSettled(page, ".location-form__map");
+      expect((await warning(page)).hidden, "18m is a place, not a guess").toBe(true);
+    });
+  });
+
+  test("moving the pin afterwards clears it", async ({ page }) => {
+    // The warning described the point that was there. A click is a deliberate
+    // choice and carries no accuracy at all, so leaving the line up would have
+    // it describing a coordinate it knows nothing about.
+    await inNewLocationEditor(page, async () => {
+      await pressLocate(page);
+      await waitForWatch(page);
+      await emitFix(page, { lat: 54.4, lng: 10.3, accuracy: 300 });
+      await waitForLocateSettled(page, ".location-form__map");
+      expect((await warning(page)).hidden).toBe(false);
+
+      await clickPickerAt(page, 0.35, 0.4, ".location-form__map");
+      await expect.poll(async () => (await warning(page)).hidden).toBe(true);
+    });
+  });
+
+  test("typing a coordinate clears it too", async ({ page }) => {
+    // One of five writers, and the one most likely to be forgotten: the
+    // clearing is central, in coordinatesChanged, rather than per writer.
+    await inNewLocationEditor(page, async () => {
+      await pressLocate(page);
+      await waitForWatch(page);
+      await emitFix(page, { lat: 54.4, lng: 10.3, accuracy: 300 });
+      await waitForLocateSettled(page, ".location-form__map");
+      expect((await warning(page)).hidden).toBe(false);
+
+      await page.locator(".location-form [name='lat']").fill("48.1");
+      await expect.poll(async () => (await warning(page)).hidden).toBe(true);
+    });
+  });
+});
+
 test.describe("the locate control when it cannot work", () => {
   test("an unanswered or refused prompt settles instead of hanging", async ({ page, context }) => {
     await context.clearPermissions();

@@ -611,6 +611,39 @@ user's own pin drags.
 naming a distance; a 20 m fix leaves it hidden; dragging the pick marker
 afterwards hides it. Assert on `hidden`/`textContent`, no screenshot.
 
+**Done.** `location-editor-page.js` renders a `.location-form__coarse` line
+between the picker hint and the map, written by the `position-found` listener
+when the accuracy is worse than `COARSE_FIX_ACCURACY_M` (200, the same
+threshold `map-view.js` uses for its own status line -- they answer the same
+question about the same reading) and cleared centrally in
+`coordinatesChanged()`, so an edit by any of the five writers removes it.
+
+One change the plan did not anticipate, and it is a behaviour change rather
+than a test convenience. **The picker's settle deadline is now 15s** instead of
+the 30s default. Writing the tests exposed that a settled fix worse than 200m
+is only reachable *by the deadline* -- the picker settles early only on
+something good enough for a place (50m), so a 300m reading meant thirty seconds
+of disabled button before the warning could appear at all. Thirty seconds is
+too long to block a form. It still refines towards a place-grade fix the whole
+time, and since Milestone 4 the status line reports progress rather than
+sitting blank, so the wait is honest rather than dead. The trip map keeps the
+longer default, where a slow lock costs nothing because it tracks afterwards.
+
+Verified by `make ci` green and 151 tests passing across `map.spec.js`,
+`geolocation.spec.js`, `locations.spec.js`, `map-theme.spec.js`,
+`a11y-names.spec.js`, `routes.spec.js` and `map.gesture.spec.js`. Four new
+tests: a rough fix still filling the fields *and* saying it is rough and naming
+the remedy, a good fix saying nothing, and the line clearing on both a map
+click and a typed coordinate. The two clearing tests are a confirmed negative
+control -- deleting the single `showCoarseFixWarning(null)` from
+`coordinatesChanged()` fails both, which is the case for clearing centrally
+rather than in each writer.
+
+Three of those tests take about twenty seconds each, and that is the feature
+rather than a slow test: the deadline is a real timer and the fake clock cannot
+move it. Shortening it further to suit the suite would be letting the tests
+design the product.
+
 ## Build order
 
 1. **Milestone 1** — the primitive. The only milestone that can break

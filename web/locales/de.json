@@ -191,6 +191,7 @@
   "location.form.showOnMap": "Auf der Karte anzeigen",
   "location.form.showOnMapHint": "Ergänze oben Breiten- und Längengrad, damit dieser Ort auf der Karte erscheint.",
   "location.form.pickHint": "Oder klicke auf die Karte, um den Punkt zu setzen, und zieh ihn zum Feinjustieren.",
+  "location.form.coarseFix": "Aus einer groben Position übernommen, auf etwa {distance} genau. Zieh die Markierung, wenn du es genauer weißt.",
   "location.form.searchPlaceholder": "Ort suchen oder Google-Maps-Link einfügen",
   "location.form.searchButton": "Suchen",
   "location.form.searching": "Suche läuft …",

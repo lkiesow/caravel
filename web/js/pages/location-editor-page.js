@@ -13,8 +13,15 @@ import { canEdit, isShared } from "../trip-role.js";
 import "../components/map-view.js";
 import { hasCapability } from "../session.js";
 import { renderAssistPanel } from "../components/assist-panel.js";
-import { formatDateRange } from "../format.js";
+import { formatDateRange, formatDistance } from "../format.js";
 import { safeHref } from "../url.js";
+
+// Past this, a fix taken from the device is worth a word of warning when it
+// is being saved as a *place*. Same threshold the map's own status line
+// uses (COARSE_ACCURACY_M in map-view.js); they answer the same question
+// about the same reading and disagreeing would be confusing rather than
+// nuanced.
+const COARSE_FIX_ACCURACY_M = 200;
 
 // Both modes render the same cards, in the same order - Basic info, Cover
 // photo, Location, Links, Dates, Files - matching the read view's
@@ -197,6 +204,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
               <ul class="location-search__results"></ul>
             </div>
             <p class="location-form__pick-hint" data-i18n="location.form.pickHint"></p>
+            <p class="location-form__coarse" role="status" hidden></p>
             <map-view pick locate class="location-form__map"${
               item?.location?.lat != null && item?.location?.lng != null
                 ? ` lat="${escapeAttr(item.location.lat)}" lng="${escapeAttr(item.location.lng)}"`
@@ -559,6 +567,12 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       // reason the listeners are: the writer that forgets is the bug. The one
       // writer that *does* know an identity sets it again after calling this.
       osmIdentity = null;
+      // Any edit by any route invalidates the warning, for the same reason it
+      // invalidates the OSM identity: it described the point that was there.
+      // Cleared centrally rather than in each of the five writers -- the
+      // writer that forgets is the bug -- and the one writer that has
+      // something to say sets it again afterwards.
+      showCoarseFixWarning(null);
       syncMapFromFields();
       syncHint();
       for (const listener of coordinateListeners) listener();
@@ -571,6 +585,17 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     // coordinatesChanged(), which clears the identity, for exactly the reason
     // the comment there gives: the writer that forgets is the bug, so clearing
     // is central and setting is local.
+    // A position good to a few hundred metres is a real answer to "where am
+    // I" and a poor one to "where is this place", and nothing on screen
+    // otherwise tells the two apart -- the fields show six decimals either
+    // way.
+    const coarseLine = container.querySelector(".location-form__coarse");
+    const showCoarseFixWarning = (accuracy) => {
+      const distance = accuracy > COARSE_FIX_ACCURACY_M ? formatDistance(accuracy) : null;
+      coarseLine.textContent = distance ? t("location.form.coarseFix", { distance }) : "";
+      coarseLine.hidden = !distance;
+    };
+
     const takeCoordinates = ({ lat, lng, osm }) => {
       form.lat.value = lat;
       form.lng.value = lng;
@@ -583,7 +608,20 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     // also the answer to "where is this place", which is the single most
     // useful case - standing somewhere and recording it. The trip map gets
     // the same button and ignores this event.
-    picker.addEventListener("position-found", (e) => takeCoordinates(e.detail));
+    picker.addEventListener("position-found", (e) => {
+      takeCoordinates(e.detail);
+      // Said here rather than at save. By save time the point may have been
+      // dragged, searched for or geocoded since, so a dialog then would either
+      // fire on the common good case or need provenance tracking to avoid it
+      // -- and it would interrupt somebody at the furthest possible point from
+      // the cause. A line next to the fields appears at the moment of the
+      // mistake and names the remedy.
+      //
+      // Only this writer knows an accuracy: a click or a marker drag is a
+      // deliberate choice and carries none, and a search result is somebody
+      // else's coordinate entirely.
+      showCoarseFixWarning(e.detail?.accuracy);
+    });
 
     for (const name of ["lat", "lng"]) {
       form[name].addEventListener("input", coordinatesChanged);

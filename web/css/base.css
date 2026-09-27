@@ -3967,6 +3967,17 @@ button {
   font-size: 0.8rem;
 }
 
+/* Anchored to the caret's line rather than the bottom of the field. The two
+   markdown boxes this is used on grow to the full height of what is written in
+   them, so `top: 100%` would put the popup a screenful below the word being
+   typed. components/mention-picker.js sets the offset inline on every open,
+   flipping above the line when the list would not fit below it; only the
+   vertical offset is computed, because the list wants the field's full width
+   anyway -- which is also why there is no RTL horizontal case here. */
+.suggest--caret .suggest__list {
+  top: 0;
+}
+
 /* The per-row overflow trigger: a bare ⋮, same as a file row's. Not sharing
    .file-actions__trigger's selector because that one turns red on hover, which
    suits a menu whose main item is Delete and misreads on a menu whose main

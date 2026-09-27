@@ -787,3 +787,39 @@ else runs this.
   back() plus a one-shot popstate handler that replaces the URL and suppresses
   the router's own render for that event -- deliberately not built for a path
   this rare.
+
+
+- **A renamed location leaves stale link text in notes that point at it.**
+  (Stage 39, Sep 2026.) The `@` picker inserts a plain markdown link --
+  `[Kex Hostel](/trips/T/locations/I)` -- which is what keeps `internal/markdown`
+  and its sanitizer out of the feature entirely. The id in the href keeps
+  working after a rename; the label does not follow. A fix means either
+  resolving titles at render time (a goldmark extension plus a batch lookup
+  threaded through all three render call sites, including the trip-less
+  `/markdown/preview`) or a rename-time rewrite of the notes that mention the
+  item. Neither is obviously worth it until somebody is actually bitten.
+
+- **A link to a deleted location renders as a live link that 404s.** (Stage 39,
+  Sep 2026.) Same root as the entry above: the link is plain markdown, so
+  nothing checks the target still exists. The client already has the trip's
+  item list when it renders a note, so marking dead ones is cheap -- the open
+  question is what a dead reference should *look* like, not how to find it.
+
+- **The `@` picker is only in the trip notepad.** (Stage 39, Sep 2026.) The
+  location form's notes field (`web/js/components/location-form.js`) is the
+  other markdown textarea and would want it too, letting one place reference
+  another. `bindMentionPicker` was built to be wired in with a few lines: the
+  wrapper markup, the bind, `picker.destroy()` alongside `tagField.destroy()`,
+  and a `picker.close()` in `setMode("preview")`, which hides the textarea and
+  could otherwise leave the list open. Left out of Stage 39 deliberately, to
+  see whether the notepad version earns its keep first. Itinerary day notes are
+  plain text rather than markdown, so they would need rendering first.
+
+- **`caret-coords.js` assumes the textarea has no vertical scrollbar.**
+  (Stage 39, Sep 2026.) The mirror is sized from `offsetWidth`, which includes
+  a scrollbar the mirror itself does not have, so a field that scrolls would
+  wrap slightly differently from its mirror and the caret measurement would
+  drift. Both fields it is used on auto-grow, so they do not scroll -- but
+  `resize: vertical` means a user can drag one short. The error is at most a
+  line or two on the popup's position, which is why it was left.
+

@@ -3,6 +3,7 @@ import { guardClick, guardForm } from "../busy.js";
 import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
 import { renderLoading } from "../components/loading.js";
+import { bindMentionPicker } from "../components/mention-picker.js";
 import { canEdit } from "../trip-role.js";
 
 // The trip notepad: one markdown document per trip, written in a textarea and
@@ -23,6 +24,10 @@ import { canEdit } from "../trip-role.js";
 // The rendering is the server's: body_html comes back sanitized from
 // internal/markdown, the same call the location view page and the markdown
 // preview endpoint go through. See the innerHTML assignment below.
+//
+// Typing @ in the editor offers the trip's locations and inserts a markdown
+// link to the one picked -- components/mention-picker.js, which is all this
+// file knows about it.
 export async function renderNotesTab(container, trip) {
   const editable = canEdit(trip);
 
@@ -42,8 +47,14 @@ export async function renderNotesTab(container, trip) {
   let editing = editable && note.body === "";
   let draft = note.body;
   let error = null;
+  let picker = null;
 
   function render() {
+    // Torn down first: this runs again on every save and every cancel, and an
+    // @-picker left behind would keep a document listener pointing at a
+    // textarea that no longer exists.
+    picker?.destroy();
+    picker = null;
     container.innerHTML = `
       <div class="trip-notes">
         <p class="trip-notes__error" role="alert" hidden></p>
@@ -91,8 +102,12 @@ export async function renderNotesTab(container, trip) {
     return `
       <form class="trip-notes__form">
         <label class="sr-only" for="trip-notes-body" data-i18n="tripNotes.heading"></label>
-        <textarea id="trip-notes-body" name="body" rows="12"
-                  data-i18n-placeholder="tripNotes.placeholder"></textarea>
+        <div class="suggest suggest--caret">
+          <textarea id="trip-notes-body" name="body" rows="12"
+                    data-i18n-placeholder="tripNotes.placeholder"></textarea>
+          <ul class="suggest__list" id="trip-notes-mentions" role="listbox"
+              data-i18n-aria-label="tripNotes.mentions" hidden></ul>
+        </div>
         <div class="trip-notes__actions">
           <button type="submit" class="btn btn-primary">
             ${icon("check")} <span data-i18n="common.save"></span>
@@ -145,6 +160,13 @@ export async function renderNotesTab(container, trip) {
       autoGrow();
     });
     autoGrow();
+
+    // Registered after the input listener above, and deliberately: the picker
+    // inserts by firing a real input event, which is what keeps `draft` in step
+    // and regrows the box once a link has landed.
+    picker = bindMentionPicker(textarea, form.querySelector("#trip-notes-mentions"), {
+      tripId: trip.id,
+    });
 
     // guardForm, not a hand-rolled submit listener: it owns the preventDefault
     // and applies it *before* the busy check, so the second of a double-tap is

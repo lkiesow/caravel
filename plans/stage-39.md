@@ -203,6 +203,38 @@ at 324×756 with the popup fully inside the viewport.
 **Verify:** `make ci`, the new spec, `tests/ui/notes.spec.js` still green, and a
 manual pass at 324×756 against `make dev`.
 
+**Done.** Landed as planned, with three findings worth recording.
+
+`caret-coords.js` does *not* copy `width` or `box-sizing` from the computed
+style, as the plan sketched: `getComputedStyle().width` reports the **content**
+width whatever the box-sizing is, so copying both would have made a border-box
+field's mirror narrower than the field by its padding and wrap in the wrong
+places. It sets `box-sizing: border-box` and `width: el.offsetWidth` instead,
+which is unambiguous.
+
+The `line-height: normal` -> `NaN` fallback is **load-bearing on Firefox**, not
+defensive: the textarea computes `line-height` as the string `normal`, so
+`parseFloat` gives NaN on the primary test browser. The spec's geometry
+assertion had to fall back identically, and failed first without it.
+
+`place()` measures the caret against `window.visualViewport?.height` and flips
+the list above the caret line when it would not fit below; the list keeps the
+field's full width, so nothing horizontal is computed.
+
+Verified: `make ci` green (472 i18n keys in sync, 58 JS modules valid); the new
+`tests/ui/mentions.spec.js` -- 9 specs covering the trigger rule, prefix-first
+ordering, the category hint, bracket escaping round-tripped through the real
+renderer, all four ways the list closes, an email address *not* triggering it,
+the list sitting within three line-heights of the caret on a 400px-tall field,
+and staying fully inside a 324x756 viewport; plus
+`make test-ui GREP="notes|sharing|locations|a11y-names|headings|routes"` -- 79
+specs, all passing. Manual pass at 324x756 against `make dev` on the seeded
+Iceland trip: typing `@rey` mid-sentence offers "Foss Hotel Reykjavik / Stay"
+directly under the caret's line, and Enter inserts the full markdown link. The
+seeded note was not saved.
+
+---
+
 ---
 
 ## Milestone 3 — internal links in rendered notes stay in the app

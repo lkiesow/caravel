@@ -465,9 +465,10 @@
   "suggest.addFailed": "Die Orte konnten nicht hinzugefügt werden. Es wurde nichts gespeichert — bitte erneut versuchen.",
   "suggest.ask": "Wonach gesucht wird",
   "tripNotes.heading": "Reisenotizen",
-  "tripNotes.placeholder": "Alles, was kein Ort und keine Aufgabe ist. Markdown funktioniert.",
+  "tripNotes.placeholder": "Alles, was kein Ort und keine Aufgabe ist. Markdown funktioniert. Tippe @, um einen Ort zu verlinken.",
   "tripNotes.edit": "Bearbeiten",
   "tripNotes.empty": "Noch nichts notiert.",
   "tripNotes.saveFailed": "Die Notiz konnte nicht gespeichert werden.",
+  "tripNotes.mentions": "Orte",
   "tripNotes.loadFailed": "Die Notiz konnte nicht geladen werden."
 }

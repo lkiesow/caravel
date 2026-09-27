@@ -64,9 +64,28 @@ purpose — do not reconstruct it from an older stage plan without asking.
   layout read per iteration on every card; not worth it until somebody tags a
   location with a single letter.
 
+- **A reverse lookup over water finds nothing.** (Stage 36 planning, Sep 2026.)
+  `geocode.Reverse` sends no `zoom`, so Nominatim uses its default of 18 --
+  building level -- and a point in the middle of a sea or a large lake comes
+  back as "Unable to geocode", which becomes `ErrNoResult`, a 404, and "No
+  address found for this point." Correct as far as it goes, and deliberate, but
+  now that the locate control works on the water it is reachable by ordinary
+  use: press My location on a boat, save the place, press Look up address, get
+  nothing. Retrying once at a coarse zoom (3 to 8) would answer "North Sea"
+  rather than nothing. Kept out of Stage 36 on purpose -- it is a different
+  complaint from the one that stage was opened for.
+
 ---
 
 ## Planned features
+
+- **The location marker has no heading.** (Stage 36 planning, Sep 2026.) Stage
+  36 made the map follow you while you move, but the marker is a dot: it says
+  where you are and not which way you are pointing, which is the half that
+  matters when you are working out whether to turn. The direction cone other
+  map apps draw needs `deviceorientation`, which is a second permission prompt
+  with its own set of failure modes and its own calibration problems, so it
+  wants planning rather than bolting on.
 
 - **The dark map is a patched vendored style, and a refetch would drop that.**
   (Stage 30 follow-up.) `web/js/vendor/map-styles/dark.json` carries 32 colour

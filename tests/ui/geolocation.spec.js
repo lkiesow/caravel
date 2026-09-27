@@ -8,64 +8,16 @@
 // observable through the real path. One end-to-end test on the real path stays
 // in map.spec.js so the fake is never the only thing under test.
 import { test, expect } from "@playwright/test";
-
-// A scripted navigator.geolocation, plus a movable Date.now.
-//
-// The clock matters as much as the sequence: the tracking guard is written in
-// terms of elapsed time, and a test that waited out fifteen real seconds to
-// prove it would be a test nobody runs. Date.now is offset instead, which the
-// module reads on every fix.
-async function installFakeGeolocation(page) {
-  await page.addInitScript(() => {
-    let offset = 0;
-    const realNow = Date.now.bind(Date);
-    Date.now = () => realNow() + offset;
-
-    const state = {
-      starts: 0,
-      clears: 0,
-      options: [],
-      advance: (ms) => {
-        offset += ms;
-      },
-    };
-    let nextId = 1;
-    const live = new Map();
-
-    state.emit = (fix) => {
-      for (const cb of live.values()) {
-        cb.success({
-          coords: { latitude: fix.lat, longitude: fix.lng, accuracy: fix.accuracy },
-          timestamp: Date.now(),
-        });
-      }
-    };
-    state.emitError = (code) => {
-      for (const cb of live.values()) cb.error?.({ code });
-    };
-
-    Object.defineProperty(navigator, "geolocation", {
-      configurable: true,
-      value: {
-        watchPosition(success, error, options) {
-          state.starts += 1;
-          state.options.push(options);
-          const id = nextId++;
-          live.set(id, { success, error });
-          return id;
-        },
-        clearWatch(id) {
-          if (live.delete(id)) state.clears += 1;
-        },
-        getCurrentPosition() {
-          throw new Error("getCurrentPosition must not be used any more");
-        },
-      },
-    });
-
-    window.__geo = state;
-  });
-}
+import {
+  AT_SEA,
+  COAST,
+  NEARER,
+  advanceClock,
+  emitFix,
+  geoCounters,
+  installFakeGeolocation,
+  waitForWatch,
+} from "./helpers/geolocation.js";
 
 // Starts a watch and parks the handle plus a record of everything it reported
 // on window, so the test can emit fixes between assertions.
@@ -92,21 +44,12 @@ async function startWatch(page, options = {}) {
       }
     );
   }, options);
-  // The module checks the permission before registering, so emitting any
-  // sooner than this would go nowhere.
-  await page.waitForFunction(() => window.__geo.starts > 0, null, { timeout: 5000 });
+  await waitForWatch(page);
 }
 
-const emit = (page, fix) => page.evaluate((f) => window.__geo.emit(f), fix);
+const emit = emitFix;
 const record = (page) => page.evaluate(() => window.__record);
-const counters = (page) =>
-  page.evaluate(() => ({ starts: window.__geo.starts, clears: window.__geo.clears }));
-
-// Coast, then closer, then the real position out on the water. The accuracies
-// are the point: 2800m is what tower trilateration gives you offshore.
-const COAST = { lat: 54.32, lng: 10.14, accuracy: 2800 };
-const NEARER = { lat: 54.4, lng: 10.3, accuracy: 300 };
-const AT_SEA = { lat: 54.45, lng: 10.42, accuracy: 18 };
+const counters = geoCounters;
 
 test.beforeEach(async ({ page }) => {
   await installFakeGeolocation(page);
@@ -205,7 +148,7 @@ test.describe("once tracking", () => {
   test("a worse but plausible fix still moves you", async ({ page }) => {
     await settle(page);
     // Worse than the settled 18m, and accepted: this is the boat moving.
-    await page.evaluate(() => window.__geo.advance(4000));
+    await advanceClock(page, 4000);
     await emit(page, { lat: 54.5, lng: 10.6, accuracy: 60 });
 
     const seen = await record(page);
@@ -220,14 +163,14 @@ test.describe("once tracking", () => {
 
     // A single sample dropping back to the towers must not teleport the
     // marker ashore.
-    await page.evaluate(() => window.__geo.advance(4000));
+    await advanceClock(page, 4000);
     await emit(page, COAST);
     expect((await record(page)).updates, "a lone 2800m fix is noise").toHaveLength(before);
 
     // But refusing forever would be its own lie: if the signal is genuinely
     // gone, showing the poor position with its large ring is the honest
     // answer, and a stale marker with a small ring is not.
-    await page.evaluate(() => window.__geo.advance(16000));
+    await advanceClock(page, 16000);
     await emit(page, COAST);
     const seen = await record(page);
     expect(seen.updates.length, "after the grace, it is believed").toBe(before + 1);
@@ -253,7 +196,7 @@ test("a one-shot caller gets the old shape back", async ({ page }) => {
       window.__once.done = fix;
     });
   });
-  await page.waitForFunction(() => window.__geo.starts > 0, null, { timeout: 5000 });
+  await waitForWatch(page);
   await emit(page, NEARER);
   await page.waitForFunction(() => window.__once.done !== null, null, { timeout: 5000 });
 

@@ -1,7 +1,12 @@
 import { api } from "../api.js";
 import { t, getLocale } from "../i18n.js";
 import { icon } from "../icon.js";
-import { getCurrentPosition, locateErrorKey, locateUnavailableReason } from "../geolocation.js";
+import {
+  LOCATE_CANCELLED,
+  locateErrorKey,
+  locateUnavailableReason,
+  watchPosition,
+} from "../geolocation.js";
 import { googleMapsUrl } from "../url.js";
 import { eventBus } from "../eventbus.js";
 import { resolveMapTheme } from "../map-theme.js";
@@ -177,10 +182,21 @@ const HERE_MARKER_COLOR = "#0891b2";
 // The GeoJSON source and layer prefix for the accuracy ring.
 const ACCURACY_SOURCE = "here-accuracy";
 
-// Zoom used when centring on the device's position. Closer than
+// The *closest* zoom used when centring on the device's position. Closer than
 // SINGLE_MARKER_ZOOM: you know roughly where you are, so the useful question
 // is what is on the next street, not which region this is.
+//
+// A ceiling since Stage 36 rather than the answer. It used to be applied
+// unconditionally, which is how a coast fix came to look like a confident dot:
+// at zoom 15 a pixel is about 2.8m at this latitude, so the 3km accuracy ring
+// that was supposed to give the reading away had a radius of roughly 1070px
+// and sat entirely outside the viewport. The ring was drawn correctly and
+// could not be seen. zoomForAccuracy() is what fixes that.
 const HERE_ZOOM = 15;
+
+// Breathing room around the accuracy ring when the camera fits it, so the ring
+// reads as a ring rather than as the edge of the viewport.
+const ACCURACY_FIT_PADDING = 32;
 
 // Every marker in this component is drawn as a CSS dot rather than an image,
 // and under MapLibre that is simply what a marker *is*: `new Marker({element})`
@@ -783,6 +799,13 @@ class MapView extends HTMLElement {
   // enough are live - so a map that is navigated away from has to say so.
   disconnectedCallback() {
     this._generation = (this._generation || 0) + 1;
+    // A position watch outlives the element unless it is told not to, and a
+    // GNSS watch running for a map nobody is looking at is a battery leak with
+    // no upside. Cancelling settles the pending promise too, so the click
+    // handler that is awaiting it can run its finally rather than hanging on
+    // to this element forever.
+    this._locateWatch?.cancel();
+    this._locateWatch = null;
     this.destroyMap();
   }
 
@@ -1438,15 +1461,33 @@ class MapView extends HTMLElement {
     }
 
     button.addEventListener("click", async () => {
+      // A press while one is already running replaces it rather than racing
+      // it: two watches would draw two answers over each other.
+      this._locateWatch?.cancel();
+
       button.disabled = true;
       say("map.locate.searching");
+
+      // A watch rather than a single reading, even though this milestone still
+      // wants exactly one answer. The platform hands over the last network fix
+      // first and refines seconds later, so asking once returns the stale
+      // coarse one -- the coast, out at sea. Each improvement redraws, which is
+      // what lets a wrong first marker visibly correct itself instead of
+      // sitting there.
+      const watch = watchPosition({
+        onUpdate: (fix) => this.showPosition(fix.lat, fix.lng, fix.accuracy),
+      });
+      this._locateWatch = watch;
+
       try {
-        const position = await getCurrentPosition();
+        const position = await watch.promise;
         say(null);
         this.showPosition(position.lat, position.lng, position.accuracy);
         // The page decides what a position *means*: the trip map only shows
         // it, while the editor's picker takes it as the point being set. Same
-        // control, one event, no second button to keep in step.
+        // control, one event, no second button to keep in step. Fired once, on
+        // the settled fix, so the editor is never handed a coordinate that is
+        // about to be improved on.
         this.dispatchEvent(
           new CustomEvent("position-found", {
             bubbles: true,
@@ -1455,11 +1496,16 @@ class MapView extends HTMLElement {
           })
         );
       } catch (err) {
+        // Cancelled is not a failure and has no message: it means this element
+        // went away, or a second press superseded this watch. Saying "your
+        // location could not be determined" for either would be a lie.
+        if (err.reason === LOCATE_CANCELLED) return;
         // Denied, unavailable and timed out are three different situations
         // and get three different sentences; anything else would tell the
         // user nothing about what to try next.
         say(locateErrorKey(err.reason || "unavailable"));
       } finally {
+        if (this._locateWatch === watch) this._locateWatch = null;
         button.disabled = false;
       }
     });
@@ -1486,7 +1532,41 @@ class MapView extends HTMLElement {
     this._hereRingAt = this._hereAccuracy ? { lat, lng } : null;
     this.applyOverlays();
 
-    this._map.jumpTo({ center: [lng, lat], zoom: HERE_ZOOM });
+    this._map.jumpTo({ center: [lng, lat], zoom: this.zoomForAccuracy(lat, lng) });
+  }
+
+  // How far to zoom in on a fix: close, but never closer than the fix deserves.
+  //
+  // The ring exists so that a 2km reading and a 5m reading do not look alike,
+  // and a fixed zoom defeated it completely -- at HERE_ZOOM a kilometre-scale
+  // ring is wider than the screen, so the one thing on the map that admitted
+  // the position was a guess was the one thing not on the map. Fitting the
+  // ring instead means a coarse fix arrives already zoomed out far enough to
+  // see how coarse it is. Nothing about the geometry changed; it is the camera
+  // that was lying.
+  //
+  // HERE_ZOOM stays the ceiling, so a good fix is framed exactly as before.
+  zoomForAccuracy(lat, lng) {
+    const radius = this._hereAccuracy;
+    if (!radius) return HERE_ZOOM;
+
+    // The ring's own geometry rather than a second piece of arithmetic that
+    // could disagree with it: accuracyRing() already knows that a degree of
+    // longitude is a different distance at every latitude.
+    const ring = accuracyRing(lat, lng, radius).geometry.coordinates[0];
+    const lngs = ring.map((c) => c[0]);
+    const lats = ring.map((c) => c[1]);
+    const bounds = [
+      [Math.min(...lngs), Math.min(...lats)],
+      [Math.max(...lngs), Math.max(...lats)],
+    ];
+
+    // cameraForBounds answers undefined for a map that has not been laid out
+    // yet, which is a real state here -- the locate button can be pressed
+    // before the first style has loaded. Falling back to the old behaviour is
+    // right: an un-laid-out map has no viewport to fit anything to.
+    const camera = this._map.cameraForBounds(bounds, { padding: ACCURACY_FIT_PADDING });
+    return Number.isFinite(camera?.zoom) ? Math.min(camera.zoom, HERE_ZOOM) : HERE_ZOOM;
   }
 
   // Everything the *style* owns, (re-)built from the component's own state.

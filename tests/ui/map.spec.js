@@ -12,6 +12,15 @@
 // and one passing should not hide the other regressing.
 import { test, expect } from "@playwright/test";
 import { login, buildRoutes, gotoRoute } from "./helpers/scenarios.js";
+import {
+  AT_SEA,
+  COAST,
+  NEARER,
+  emitFix,
+  geoCounters,
+  installFakeGeolocation,
+  waitForWatch,
+} from "./helpers/geolocation.js";
 
 const MOBILE = { width: 324, height: 756 };
 
@@ -1548,6 +1557,159 @@ test.describe("the locate control", () => {
     } finally {
       await page.request.delete(`/api/trips/${tripId}`);
     }
+  });
+});
+
+// Stage 36 Milestone 2. The reported bug: on a boat at sea, My location put
+// the marker on the nearest coastline.
+//
+// Nothing in the app snaps a coordinate -- the fix arrived already wrong,
+// because the old options asked the network provider (wifi and cell towers)
+// rather than GNSS, and offshore every reachable tower is ashore. Milestone 1
+// changed what is asked for; this is where the map stops showing the answer as
+// though it were certain.
+//
+// Driven through the scripted fake, because both claims below are about
+// *accuracy* and Playwright's geolocation override cannot vary it over time.
+test.describe("a coarse fix is not drawn as a confident dot", () => {
+  test.beforeEach(async ({ page }) => {
+    await installFakeGeolocation(page);
+  });
+
+  const pressLocate = (page) =>
+    page.evaluate(() =>
+      document.querySelector("map-view").shadowRoot.querySelector('[data-action="locate"]').click()
+    );
+
+  // The ring is the only thing on the map that admits a position is a guess.
+  // At a fixed zoom 15 a 2800m ring has a radius of roughly 1070px, so it sat
+  // entirely outside the viewport: drawn correctly, and impossible to see.
+  // That is what made a coast pin look like a confident answer.
+  test("the camera zooms out until the accuracy ring actually fits", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+    await pressLocate(page);
+    await waitForWatch(page);
+    await emitFix(page, COAST);
+    // Waiting on the *marker*, not on the button: a 2800m fix never reaches
+    // the accuracy the watch is holding out for, so the control stays busy
+    // until its deadline. The camera is fitted on every update, which is the
+    // whole point -- a wrong marker is framed honestly the moment it appears,
+    // not once the watch gives up.
+    await page.waitForFunction(
+      () => document.querySelector("map-view")._hereAccuracy === 2800,
+      null,
+      { timeout: 10000 }
+    );
+
+    const seen = await page.evaluate(() => {
+      const el = document.querySelector("map-view");
+      const ring = el._hereRing.geometry.coordinates[0];
+      const xs = ring.map((c) => el._map.project(c).x);
+      const ys = ring.map((c) => el._map.project(c).y);
+      return {
+        accuracy: el._hereAccuracy,
+        zoom: el._map.getZoom(),
+        ringWidthPx: Math.max(...xs) - Math.min(...xs),
+        ringHeightPx: Math.max(...ys) - Math.min(...ys),
+        container: {
+          width: el._map.getContainer().clientWidth,
+          height: el._map.getContainer().clientHeight,
+        },
+      };
+    });
+
+    expect(seen.accuracy, "the fake should have delivered the coarse fix").toBe(2800);
+    // The assertion that would have failed before this milestone: the whole
+    // ring is on screen, not merely drawn.
+    expect(seen.ringWidthPx, "the ring must fit across the map").toBeLessThanOrEqual(
+      seen.container.width
+    );
+    expect(seen.ringHeightPx, "and down it").toBeLessThanOrEqual(seen.container.height);
+    // Not a degenerate pass: a ring shrunk to nothing would also "fit".
+    expect(seen.ringWidthPx, "and still be big enough to read as a ring").toBeGreaterThan(20);
+    expect(seen.zoom, "which means zooming out well past the street-level default").toBeLessThan(12);
+  });
+
+  test("a good fix is still framed exactly as before", async ({ page }) => {
+    // HERE_ZOOM is a ceiling now, not the answer. A tight fix must not be
+    // pushed further in than it used to be, or this milestone would have
+    // traded one framing bug for another.
+    await login(page);
+    await gotoTripMap(page);
+    await pressLocate(page);
+    await waitForWatch(page);
+    await emitFix(page, AT_SEA);
+    await waitForLocateSettled(page);
+
+    const zoom = await page.evaluate(() => document.querySelector("map-view")._map.getZoom());
+    expect(zoom, "an 18m fix deserves the closest zoom the control offers").toBeCloseTo(15, 1);
+  });
+
+  test("a wrong first marker corrects itself as the fix improves", async ({ page }) => {
+    // The other half of why this is a watch and not a single reading: the
+    // platform hands over the stale network fix first. Asking once returns
+    // the coast and stops listening.
+    await login(page);
+    await gotoTripMap(page);
+    await pressLocate(page);
+    await waitForWatch(page);
+
+    await emitFix(page, COAST);
+    const ashore = await page.evaluate(() => {
+      const el = document.querySelector("map-view");
+      return { ...el._hereMarker.getLngLat(), accuracy: el._hereAccuracy, zoom: el._map.getZoom() };
+    });
+    expect(ashore.lat, "the first fix is drawn, wrong or not").toBeCloseTo(COAST.lat, 3);
+    expect(ashore.accuracy).toBe(2800);
+
+    await emitFix(page, NEARER);
+    await emitFix(page, AT_SEA);
+    await waitForLocateSettled(page);
+
+    const afloat = await page.evaluate(() => {
+      const el = document.querySelector("map-view");
+      return { ...el._hereMarker.getLngLat(), accuracy: el._hereAccuracy, zoom: el._map.getZoom() };
+    });
+    expect(afloat.lat, "and moved out to the water once GNSS answers").toBeCloseTo(AT_SEA.lat, 3);
+    expect(afloat.accuracy).toBe(18);
+    expect(afloat.zoom, "zooming back in as the ring shrinks").toBeGreaterThan(ashore.zoom + 2);
+  });
+
+  test("a fix that is worse than the one on screen is ignored", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+    await pressLocate(page);
+    await waitForWatch(page);
+
+    await emitFix(page, AT_SEA);
+    await waitForLocateSettled(page);
+    await emitFix(page, COAST);
+
+    const where = await page.evaluate(() => {
+      const el = document.querySelector("map-view");
+      return { ...el._hereMarker.getLngLat(), accuracy: el._hereAccuracy };
+    });
+    expect(where.lat, "the marker must not bounce back to the coast").toBeCloseTo(AT_SEA.lat, 3);
+    expect(where.accuracy).toBe(18);
+  });
+
+  test("leaving the map releases the watch", async ({ page }) => {
+    // A GNSS watch running for a map nobody is looking at is a battery leak.
+    await login(page);
+    await gotoTripMap(page);
+    await pressLocate(page);
+    await waitForWatch(page);
+    await emitFix(page, AT_SEA);
+    await waitForLocateSettled(page);
+
+    // A one-shot watch releases itself at settle; the point of the assertion
+    // is that nothing is left running once the element is gone either.
+    await page.evaluate(() => {
+      document.querySelector(".trip-tab-content").innerHTML = "";
+    });
+    const { starts, clears } = await geoCounters(page);
+    expect(clears, "every watch started must have been cleared").toBe(starts);
   });
 });
 

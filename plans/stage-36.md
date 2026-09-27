@@ -264,6 +264,50 @@ arriving worse than the current one does not move the marker. The three
 existing ring tests must pass unmodified; they are the regression gate on
 `showPosition`.
 
+**Done.** `showPosition()` now ends with
+`jumpTo({ center, zoom: this.zoomForAccuracy(lat, lng) })`, and the new
+`zoomForAccuracy()` fits the accuracy ring's own geometry through
+`cameraForBounds` with 32px of padding, clamped by `Math.min(camera.zoom,
+HERE_ZOOM)`. It reuses `accuracyRing()` rather than doing the metres-to-degrees
+arithmetic a second time, so the camera cannot disagree with the ring it is
+framing. `cameraForBounds` answers undefined for a map that has not been laid
+out -- reachable here, since the button can be pressed before the first style
+loads -- and that falls back to `HERE_ZOOM`, which is the honest answer for a
+map with no viewport to fit to. `HERE_ZOOM`'s comment now records that it is a
+ceiling rather than the answer, and why.
+
+`bindLocate()` drives `watchPosition({ onUpdate })` with `continuous: false`,
+redrawing on every improvement; `position-found` still fires exactly once, on
+the settled fix, so the editor is never handed a coordinate that is about to be
+improved on. A second press cancels the first watch rather than racing it, a
+`LOCATE_CANCELLED` rejection is swallowed without a message (it means this
+element went away or was superseded, neither of which is a failure), and
+`disconnectedCallback()` cancels any live watch.
+
+One deviation worth noting: the scripted `navigator.geolocation` fake was
+extracted to `tests/ui/helpers/geolocation.js` rather than living in
+`geolocation.spec.js`, because Milestone 2 needs the same fake from
+`map.spec.js` and two copies would drift. Milestone 1's spec was refactored
+onto it in the same commit and still passes unchanged otherwise.
+
+Verified by `make ci` green and 115 passing tests across `map.spec.js`,
+`geolocation.spec.js`, `map-theme.spec.js` and `locations.spec.js` -- including
+all fifteen pre-existing locate and distance-filter tests, and the three
+pre-existing accuracy-ring tests, unmodified.
+
+Five new tests in `map.spec.js` under "a coarse fix is not drawn as a confident
+dot". The load-bearing one measures the ring's *projected pixel* extent against
+the map container and requires it to fit while staying above 20px, so neither a
+ring off the edge of the world nor a ring shrunk to a dot can pass. It was
+confirmed as a real negative control by temporarily restoring
+`zoom: HERE_ZOOM`: the ring then measures **4019px across in a 744px map** --
+5.4 times the viewport, which is precisely why it could never be seen -- and
+the test fails on that number rather than on a timeout or a missing element.
+The other four cover a good fix still landing at zoom 15 (the ceiling did not
+become a new framing bug), a wrong first marker visibly correcting itself from
+the coast out to the water as GNSS answers, a worse fix not bouncing the marker
+back ashore, and every watch started being cleared once the element goes away.
+
 ## 3. The position keeps up while you move
 
 `web/js/components/map-view.js`, plus one locale key. The feature proper.

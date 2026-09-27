@@ -166,6 +166,32 @@ browser while the locations tab remembers its toolbar per history entry —
 two different mechanisms for the same idea, which the existing "List view
 state is not in the URL" entry should absorb rather than duplicate.
 
+**Done.** Landed as planned. `storedSort()`/`storeSort()` in `trips-page.js`
+read and write `caravel.trips.sort`, both wrapped in `try`/`catch`, with the
+stored value validated against `SORTS` on read and the default written as the
+*removal* of the key. `sort` initialises from `storedSort()` and `renderMenu`
+takes `activeValue: sort`; `neutralValue` stayed on `DEFAULT_SORT` as planned,
+so a remembered non-default order still tints the trigger.
+
+Verified: `make ci` green. `make test-ui GREP="trips"` green, 10 tests -- the
+new one asserts the fresh page stores nothing and is untinted, that picking
+"By name" writes `title`, that a reload comes back on that order and tinted,
+and that choosing the default again clears the key rather than storing it. It
+is not a vacuous test: with `let sort = storedSort()` reverted to
+`DEFAULT_SORT` it fails, and passes again restored.
+
+Manual pass against `make dev` at 324x756 covered the two paths the spec does
+not: a stale `"newest"` written into localStorage by hand -- the value this
+stage removed -- falls back to Upcoming first rather than selecting nothing,
+and a context where the `localStorage` getter itself throws still applies the
+chosen order to the page it is on, it merely forgets it. The reload there was a
+real `page.reload()`, not an in-app navigation.
+
+`plans/todo.md`'s "List view state is not in the URL" entry was rewritten
+rather than added to: the trips list now remembers per browser while the
+locations tab remembers per history entry, so the entry names both mechanisms
+and asks the URL question to settle which survives.
+
 ## Build order
 
 1. Milestone 1 — the ordering, the rename, docs, tests.

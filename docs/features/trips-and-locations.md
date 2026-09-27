@@ -12,7 +12,8 @@ The list opens on **Upcoming first**: the trip you are on or about to take is at
 the top, the rest of the future follows in the order it will happen, and past
 trips come after it with the most recent one first. Trips with no dates yet sort
 last, because unscheduled is not the same as imminent. The other two orders are
-**By name** and **Recently added**.
+**By name** and **Recently added**, and whichever order you pick is what the
+list opens on next time.
 
 ## Inside a trip
 

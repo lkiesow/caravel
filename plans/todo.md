@@ -358,13 +358,17 @@ purpose — do not reconstruct it from an older stage plan without asking.
   upcoming, title, added -- are all expressible in SQL, so the migration is
   mechanical whenever it becomes worth making.
 
-- **List view state is not in the URL.** (Stage 26.) The locations tab's
-  toolbar now survives a Back press -- its filters, search text and sort ride on
-  the history entry, one entry deep, the same way the map tab's camera does --
-  but it is still not in the query string, so a reload loses it and a filtered
-  list cannot be shared or bookmarked. The trips list's sort has neither. Doing
-  the URL half wants deciding for both lists together, since nothing in the app
-  puts view state in the URL today.
+- **List view state is not in the URL, and the two lists keep it differently.**
+  (Stage 26, revised Stage 35.) The locations tab's toolbar survives a Back
+  press -- its filters, search text and sort ride on the history entry, one
+  entry deep, the same way the map tab's camera does. The trips list instead
+  remembers its sort per *browser*, in localStorage, which survives a reload
+  and a new tab but is one setting rather than per-view state. Neither is in
+  the query string, so a filtered list still cannot be shared or bookmarked,
+  and the same idea now has two mechanisms. Doing the URL half wants deciding
+  for both lists together, since nothing in the app puts view state in the URL
+  today; whichever way that goes, it should also settle which of the two
+  existing mechanisms survives.
 
 - **Identifier sweep: "item" → "location".** Stage 05 fixed the user-visible
   copy, so what's left is entirely below the surface: the whole

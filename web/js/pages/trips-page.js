@@ -34,12 +34,49 @@ import { todayISO } from "../format.js";
 // date" led with the oldest holiday on record. Plain *descending* start date
 // is no better - it hands the top of the list to a vague idea pencilled in for
 // 2029, over next week's flight.
+//
+// The choice is remembered per browser (Stage 35 Milestone 2), the way
+// theme.js remembers light/dark: `sort` used to be a closure variable that the
+// router reset on every render, so opening a trip and pressing Back put the
+// list back in an order you had just changed it out of. Per *browser* rather
+// than per history entry, which is the other half of this and belongs with the
+// locations tab's version of the same problem - see the todo.md entry on view
+// state and the URL.
 const SORTS = ["upcoming", "title", "added"];
 const DEFAULT_SORT = "upcoming";
+const STORAGE_KEY = "caravel.trips.sort";
+
+// localStorage throws outright in a few real configurations (private windows
+// with storage blocked, embedded webviews), and an order is not worth failing
+// to render a page over, so both accessors swallow. An unknown stored value
+// falls back too, which is what happens to a browser that still holds the
+// "newest" or "start" this stage removed.
+function storedSort() {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    return SORTS.includes(stored) ? stored : DEFAULT_SORT;
+  } catch {
+    return DEFAULT_SORT;
+  }
+}
+
+function storeSort(value) {
+  try {
+    // The default is stored as the absence of a key, so "never chose" and
+    // "chose the default" are one state - and a future change of default is
+    // not silently stuck behind a value somebody selected once. Same reasoning
+    // as theme.js and "auto".
+    if (value === DEFAULT_SORT) localStorage.removeItem(STORAGE_KEY);
+    else localStorage.setItem(STORAGE_KEY, value);
+  } catch {
+    // Unpersisted, but applied for this page: a control that visibly does
+    // nothing is worse than one that forgets.
+  }
+}
 
 export async function renderTripsPage(container) {
   let query = "";
-  let sort = DEFAULT_SORT;
+  let sort = storedSort();
   let allTrips = [];
 
   container.innerHTML = `
@@ -69,14 +106,20 @@ export async function renderTripsPage(container) {
   renderMenu(container.querySelector(".trips-sort-slot"), {
     iconName: "arrow-down-up",
     ariaLabel: "trips.sort.label",
-    activeValue: DEFAULT_SORT,
+    // The remembered order, not the default one: the trigger has to say which
+    // order the list is actually in.
+    activeValue: sort,
     // Sorting by anything other than the default tints the trigger, so a
     // collapsed icon-only button on a phone still says the order is not the
-    // one the list normally has.
+    // one the list normally has. Still DEFAULT_SORT rather than `sort` - the
+    // tint means "not the normal order", which stays true of a remembered
+    // choice, and pinning it to the remembered value would make it mean
+    // nothing at all.
     neutralValue: DEFAULT_SORT,
     items: SORTS.map((value) => ({ value, label: t(`trips.sort.${value}`) })),
     onSelect: (value) => {
       sort = value;
+      storeSort(value);
       apply();
     },
   });

@@ -259,4 +259,39 @@ test.describe("trips sort", () => {
       "returning to Upcoming first restores the order the page opened on",
     ).toEqual(upcoming);
   });
+
+  test("remembers the chosen order across a reload", async ({ page }) => {
+    await login(page);
+    await gotoRoute(page, "/trips");
+
+    const trigger = page.locator(".trips-sort-slot .menu__trigger");
+    const stored = () =>
+      page.evaluate(() => localStorage.getItem("caravel.trips.sort"));
+
+    // The default is the *absence* of a key, so a page nobody has touched
+    // stores nothing and its trigger is untinted.
+    expect(await stored(), "the default should store nothing").toBeNull();
+    await expect(trigger).not.toHaveClass(/menu__trigger--active/);
+
+    await chooseSort(page, SORT_LABELS.en.title);
+    const byName = await cardTitles(page);
+    expect(await stored()).toBe("title");
+
+    await gotoRoute(page, "/trips");
+    await expect(page.locator(".trips-sort-slot .menu__label")).toHaveText(
+      SORT_LABELS.en.title,
+    );
+    expect(
+      await cardTitles(page),
+      "the remembered order is the one the list comes back in",
+    ).toEqual(byName);
+    // A remembered non-default order still reads as not-the-normal-order.
+    await expect(trigger).toHaveClass(/menu__trigger--active/);
+
+    // Choosing the default again clears the key rather than storing it, so
+    // "never chose" and "chose the default" stay one state.
+    await chooseSort(page, SORT_LABELS.en.upcoming);
+    expect(await stored()).toBeNull();
+    await expect(trigger).not.toHaveClass(/menu__trigger--active/);
+  });
 });

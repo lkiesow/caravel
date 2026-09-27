@@ -251,6 +251,7 @@
   "map.viewOnOpenStreetMap": "View on OpenStreetMap",
   "map.ctrlZoomHint": "Use Ctrl + scroll to zoom the map.",
   "map.twoFingerHint": "Use two fingers to move the map.",
+  "map.locate.recentre": "Recentre on my location",
   "map.locate.label": "My location",
   "map.locate.searching": "Finding your location…",
   "map.locate.denied": "Location access was refused. You can allow it in your browser's site settings.",

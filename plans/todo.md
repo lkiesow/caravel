@@ -79,6 +79,15 @@ purpose — do not reconstruct it from an older stage plan without asking.
 
 ## Planned features
 
+- **A UI test cannot pause the page the way a phone does.** (Stage 36 Milestone
+  3, Sep 2026.) The tracking tests fake `document.hidden` with a redefined
+  getter and a synthetic `visibilitychange`, which proves the listener is wired
+  but not that a real backgrounded tab behaves the same -- browsers also freeze
+  timers and may suspend the geolocation watch themselves. Playwright has no
+  background-a-tab primitive; opening a second page in the same context and
+  bringing it to the front would be closer, and would also cover the
+  freeze/resume path that bfcache adds.
+
 - **The location marker has no heading.** (Stage 36 planning, Sep 2026.) Stage
   36 made the map follow you while you move, but the marker is a dot: it says
   where you are and not which way you are pointing, which is the half that

@@ -547,6 +547,15 @@ const styles = `
     cursor: not-allowed;
     opacity: 0.6;
   }
+  /* Tracking. The same accent the filter menus use for "this control is
+     currently doing something", and it tints the icon too because the sprite
+     strokes with currentColor. This is the only indicator that the position is
+     live, since the visible label cannot change without resizing the control
+     (see setTracking). */
+  .locate[data-tracking] {
+    color: var(--color-accent, #2563eb);
+    border-color: var(--color-accent, #2563eb);
+  }
   .locate .icon {
     width: 1.1rem;
     height: 1.1rem;
@@ -806,6 +815,13 @@ class MapView extends HTMLElement {
     // to this element forever.
     this._locateWatch?.cancel();
     this._locateWatch = null;
+    // The intent has to go with it, or a visibilitychange after this element
+    // is gone would start a watch for a map that no longer exists.
+    this._trackingIntent = false;
+    if (this._onVisibilityChange) {
+      document.removeEventListener("visibilitychange", this._onVisibilityChange);
+      this._onVisibilityChange = null;
+    }
     this.destroyMap();
   }
 
@@ -839,6 +855,10 @@ class MapView extends HTMLElement {
     // A style that will not load leaves the current one alone. Better a map in
     // the wrong scheme than no map at all, and the reader can flip back.
     if (!style) return;
+    // The old style's sources and layers go with it, and the new one cannot
+    // take any until it has parsed. The style.load above turns this back on
+    // and rebuilds the overlays from component state.
+    this._styleReady = false;
     map.setStyle(style, { diff: false });
   }
 
@@ -939,6 +959,11 @@ class MapView extends HTMLElement {
     // A render builds a new map, so whatever the person did to the previous
     // one does not carry over.
     this._userMovedMap = false;
+    // Separate from _userMovedMap, which is set once per render and never
+    // reset. Following needs the narrower question -- has the reader taken the
+    // camera *since the last press of the locate button* -- because a press is
+    // exactly the gesture that hands it back.
+    this._followCamera = false;
 
     const lat = this.getAttribute("lat");
     const lng = this.getAttribute("lng");
@@ -1135,6 +1160,10 @@ class MapView extends HTMLElement {
     // jumpTo.
     const noteUserMovedMap = () => {
       this._userMovedMap = true;
+      // Touching the map is how you say you want to look at something else.
+      // The marker keeps updating -- that is a reading, and suppressing it
+      // would be hiding information -- but the camera is yours from here.
+      this._followCamera = false;
     };
     mapEl.addEventListener("mousedown", noteUserMovedMap);
     mapEl.addEventListener("touchstart", noteUserMovedMap, { passive: true });
@@ -1164,7 +1193,21 @@ class MapView extends HTMLElement {
     if (!chromeless) {
       map.on("moveend", () => {
         if (generation !== this._generation) return;
+        // A camera that follows the device would otherwise write a history
+        // entry about once a second, since trip-detail-page.js turns every one
+        // of these into a replaceState. Only follow-pans are swallowed: the
+        // comment above is right that our own fitBounds is worth restoring,
+        // and the initial fit on a locate still announces itself.
         const { lng, lat } = map.getCenter();
+        const followed = this._followTarget;
+        if (
+          followed &&
+          Math.abs(lng - followed.lng) < 1e-9 &&
+          Math.abs(lat - followed.lat) < 1e-9 &&
+          map.getZoom() === followed.zoom
+        ) {
+          return;
+        }
         this.dispatchEvent(
           new CustomEvent("map-view-change", {
             bubbles: true,
@@ -1229,7 +1272,10 @@ class MapView extends HTMLElement {
     // component draws through the style is re-added from here. Bound before
     // anything can restyle the map, and it fires for the initial style too -
     // harmless, since there is nothing to re-add until a position is taken.
-    map.on("style.load", () => this.applyOverlays());
+    map.on("style.load", () => {
+      this._styleReady = true;
+      this.applyOverlays();
+    });
 
     // The map is drawn from a style document, so it cannot follow data-theme
     // the way the rest of the app does - it has to be told. Removed again in
@@ -1460,29 +1506,92 @@ class MapView extends HTMLElement {
       return;
     }
 
-    button.addEventListener("click", async () => {
-      // A press while one is already running replaces it rather than racing
-      // it: two watches would draw two answers over each other.
-      this._locateWatch?.cancel();
+    this._locateButton = button;
+    this._locateSay = say;
 
+    button.addEventListener("click", () => {
+      // A press while tracking is "bring me back", not "start again": it takes
+      // the camera back and recentres, and deliberately does not restart
+      // acquisition or stop the watch. Leaving the map tab, reloading, or the
+      // page going to the background are what end a watch -- see the recorded
+      // trade-off in plans/stage-36.md.
+      this._followCamera = true;
+      if (this._locateWatch) {
+        const fix = this._lastFix;
+        // Re-fit rather than plain recentre, so a fix that has degraded since
+        // the first one is framed for what it is now.
+        if (fix) this.showPosition(fix.lat, fix.lng, fix.accuracy, "fit");
+        return;
+      }
+      this._locateSettled = false;
+      this.startLocateWatch(true);
+    });
+
+    // A watch running while the screen is off, or while the reader is in
+    // another tab, is pure battery cost for something nobody can see. The
+    // intent survives, so coming back resumes rather than requiring a press.
+    this._onVisibilityChange = () => {
+      if (!this._trackingIntent) return;
+      if (document.hidden) {
+        this._locateWatch?.cancel();
+        this._locateWatch = null;
+      } else if (!this._locateWatch) {
+        // Not a fresh press: no "position-found" is announced, and because
+        // _locateSettled is left alone the resumed watch's fixes are treated
+        // as tracking rather than re-fitting the camera under the reader.
+        this.startLocateWatch(false);
+      }
+    };
+    document.addEventListener("visibilitychange", this._onVisibilityChange);
+  }
+
+  // One press, one watch. Also the resume path, which is why `fromPress`
+  // exists: a resumed watch must not re-announce a position the page already
+  // acted on.
+  startLocateWatch(fromPress) {
+    const button = this._locateButton;
+    const say = this._locateSay;
+    this._trackingIntent = true;
+
+    // Only an acquisition says it is working. A resume already has a position
+    // on screen, and blanking it back to "Finding your location" every time
+    // the reader glanced at another tab would be noise.
+    if (!this._locateSettled) {
       button.disabled = true;
       say("map.locate.searching");
+    }
 
-      // A watch rather than a single reading, even though this milestone still
-      // wants exactly one answer. The platform hands over the last network fix
-      // first and refines seconds later, so asking once returns the stale
-      // coarse one -- the coast, out at sea. Each improvement redraws, which is
-      // what lets a wrong first marker visibly correct itself instead of
-      // sitting there.
-      const watch = watchPosition({
-        onUpdate: (fix) => this.showPosition(fix.lat, fix.lng, fix.accuracy),
-      });
-      this._locateWatch = watch;
+    // Continuous everywhere but the editor's picker. That one is recording
+    // where a *place* is, not where you are going, so a live watch would fight
+    // the reader's own pin drags -- and would re-announce a position over
+    // coordinates they had since adjusted.
+    const continuous = !this.hasAttribute("pick");
 
-      try {
-        const position = await watch.promise;
+    const watch = watchPosition({
+      continuous,
+      onUpdate: (fix) => {
+        this._lastFix = fix;
+        this.showPosition(
+          fix.lat,
+          fix.lng,
+          fix.accuracy,
+          !this._locateSettled ? "fit" : this._followCamera ? "follow" : "none"
+        );
+      },
+      // Set here rather than off the promise, because it has to be true before
+      // the *next* fix arrives and a promise continuation is a microtask away.
+      onSettled: () => {
+        this._locateSettled = true;
+      },
+    });
+    this._locateWatch = watch;
+
+    watch.promise.then(
+      (position) => {
         say(null);
-        this.showPosition(position.lat, position.lng, position.accuracy);
+        button.disabled = false;
+        this.setTracking(continuous);
+        if (!fromPress) return;
         // The page decides what a position *means*: the trip map only shows
         // it, while the editor's picker takes it as the point being set. Same
         // control, one event, no second button to keep in step. Fired once, on
@@ -1495,26 +1604,63 @@ class MapView extends HTMLElement {
             detail: position,
           })
         );
-      } catch (err) {
+      },
+      (err) => {
+        if (this._locateWatch === watch) this._locateWatch = null;
+        button.disabled = false;
         // Cancelled is not a failure and has no message: it means this element
-        // went away, or a second press superseded this watch. Saying "your
-        // location could not be determined" for either would be a lie.
+        // went away, or the page was backgrounded. Saying "your location could
+        // not be determined" for either would be a lie.
         if (err.reason === LOCATE_CANCELLED) return;
+        this._trackingIntent = false;
+        this.setTracking(false);
         // Denied, unavailable and timed out are three different situations
         // and get three different sentences; anything else would tell the
         // user nothing about what to try next.
         say(locateErrorKey(err.reason || "unavailable"));
-      } finally {
-        if (this._locateWatch === watch) this._locateWatch = null;
-        button.disabled = false;
       }
-    });
+    );
+  }
+
+  // The button is the only indicator that tracking is on, so it carries both
+  // halves: a tint (the same accent the filter menus use for "this control is
+  // doing something"), and an accessible name that says what a press will now
+  // do.
+  //
+  // The *visible* label deliberately does not change. It is real text rather
+  // than a tooltip, so swapping it for a longer sentence would resize a map
+  // control mid-use -- and at 324px in German there is no room for that.
+  // aria-label supersedes it for a screen reader, and still contains it.
+  setTracking(on) {
+    const button = this._locateButton;
+    if (!button) return;
+    if (on) {
+      button.setAttribute("data-tracking", "");
+      button.setAttribute("aria-label", t("map.locate.recentre"));
+      button.title = t("map.locate.recentre");
+    } else {
+      button.removeAttribute("data-tracking");
+      button.removeAttribute("aria-label");
+      button.removeAttribute("title");
+    }
   }
 
   // "You are here": the point plus the accuracy the browser reported, drawn
   // as a ring. The ring is not decoration - a 2km fix and a 5m fix look
   // identical without it, and only one of them is worth acting on.
-  showPosition(lat, lng, accuracy) {
+  //
+  // `camera` is what the three phases come down to on screen:
+  //
+  //   "fit"    - frame the accuracy ring. Used for every fix while the answer
+  //              is still being acquired, so a wrong marker is honestly framed
+  //              the moment it appears and the framing tightens as it improves.
+  //   "follow" - pan to the position at whatever zoom is already set. Used
+  //              while tracking, because by then the zoom is the one the
+  //              initial fit chose and re-fitting on every fix would make the
+  //              map breathe in and out as the accuracy wobbled.
+  //   "none"   - draw and do not touch the camera. Used once the reader has
+  //              panned or zoomed themselves.
+  showPosition(lat, lng, accuracy, camera = "fit") {
     const maplibre = this._maplibre;
     if (!maplibre || !this._map) return;
 
@@ -1532,6 +1678,28 @@ class MapView extends HTMLElement {
     this._hereRingAt = this._hereAccuracy ? { lat, lng } : null;
     this.applyOverlays();
 
+    if (camera === "none") return;
+    if (camera === "follow") {
+      // Remember where following put the camera, and let the moveend handler
+      // recognise it. Two simpler versions were tried and both were flaky
+      // under load, for the same underlying reason -- moveend is not promised
+      // to arrive synchronously, or exactly once:
+      //
+      //   a flag cleared on setTimeout(0) - the timer could win the race and
+      //   let a follow-pan through;
+      //   a count of moves to swallow - it only stays balanced if every jumpTo
+      //   produces exactly one moveend, and an extra or a coalesced one leaves
+      //   the count wrong from then on.
+      //
+      // Comparing the camera instead is idempotent: any number of moveends at
+      // the follow target are swallowed, none anywhere else is, and there is
+      // no state to get out of step. A reader panning to precisely this centre
+      // and zoom by hand would be missed; that is not reachable in practice.
+      const zoom = this._map.getZoom();
+      this._followTarget = { lng, lat, zoom };
+      this._map.jumpTo({ center: [lng, lat], zoom });
+      return;
+    }
     this._map.jumpTo({ center: [lng, lat], zoom: this.zoomForAccuracy(lat, lng) });
   }
 
@@ -1587,6 +1755,22 @@ class MapView extends HTMLElement {
   applyOverlays() {
     const map = this._map;
     if (!map) return;
+    // Sources and layers cannot be added to a style that is still parsing --
+    // MapLibre throws "Style is not done loading" outright. Nothing is lost by
+    // waiting: this method is bound to `style.load` (see render), so the ring
+    // is rebuilt from component state the moment the style is ready, which is
+    // the same mechanism that survives a restyle.
+    //
+    // Reachable in ordinary use since Stage 36: a fix can now arrive within a
+    // second or two of the press, so pressing locate as the page settles can
+    // land a position before the first style has parsed.
+    //
+    // Our own flag rather than map.isStyleLoaded(), which is a stricter
+    // question than the one being asked: it also requires every *source* to
+    // have loaded, so it answers false during the very `style.load` callback
+    // that exists to re-add this ring. Using it here silently stopped the ring
+    // coming back after a light/dark swap.
+    if (!this._styleReady) return;
 
     const at = this._hereRingAt;
     const radius = this._hereAccuracy;

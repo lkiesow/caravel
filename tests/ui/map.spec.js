@@ -16,6 +16,7 @@ import {
   AT_SEA,
   COAST,
   NEARER,
+  advanceClock,
   emitFix,
   geoCounters,
   installFakeGeolocation,
@@ -1710,6 +1711,241 @@ test.describe("a coarse fix is not drawn as a confident dot", () => {
     });
     const { starts, clears } = await geoCounters(page);
     expect(clears, "every watch started must have been cleared").toBe(starts);
+  });
+});
+
+// Stage 36 Milestone 3. The position keeps up while you move.
+//
+// Pressing My location used to take one reading and leave it on the map to go
+// stale, which is least useful exactly when the map is worth looking at -- on
+// the way somewhere. It is also what lets a poor first fix correct itself
+// rather than sitting there wrong.
+test.describe("tracking", () => {
+  test.beforeEach(async ({ page }) => {
+    await installFakeGeolocation(page);
+  });
+
+  const pressLocate = (page) =>
+    page.evaluate(() =>
+      document.querySelector("map-view").shadowRoot.querySelector('[data-action="locate"]').click()
+    );
+
+  const here = (page) =>
+    page.evaluate(() => {
+      const el = document.querySelector("map-view");
+      return {
+        marker: { ...el._hereMarker.getLngLat() },
+        centre: { ...el._map.getCenter() },
+        zoom: el._map.getZoom(),
+        accuracy: el._hereAccuracy,
+      };
+    });
+
+  // Settles the watch on a good fix, leaving it tracking.
+  const settled = async (page) => {
+    await login(page);
+    await gotoTripMap(page);
+    await pressLocate(page);
+    await waitForWatch(page);
+    await emitFix(page, AT_SEA);
+    await waitForLocateSettled(page);
+  };
+
+  // The single most important assertion in this stage. Acquiring accepts only
+  // improving fixes, or the marker bounces back to the coast; tracking must
+  // accept every plausible fix, because by then each one is a new *position*
+  // rather than a better guess at the same one. If that rule leaks past
+  // settle, the marker freezes at the first good fix and never moves again --
+  // which is the exact opposite of the feature, and looks like it works.
+  test("the marker keeps moving after the fix has settled", async ({ page }) => {
+    await settled(page);
+    const start = await here(page);
+
+    const track = [
+      { lat: 54.48, lng: 10.5, accuracy: 20 },
+      { lat: 54.52, lng: 10.58, accuracy: 22 },
+      { lat: 54.56, lng: 10.66, accuracy: 19 },
+    ];
+    for (const fix of track) {
+      await advanceClock(page, 4000);
+      await emitFix(page, fix);
+    }
+
+    const end = await here(page);
+    expect(end.marker.lat, "three fixes in, the marker must have moved").toBeCloseTo(54.56, 3);
+    expect(end.marker.lat).not.toBeCloseTo(start.marker.lat, 3);
+    // Follow, do not re-zoom: the zoom is the one the initial fit chose.
+    expect(end.zoom, "following must not change the zoom").toBeCloseTo(start.zoom, 5);
+    expect(end.centre.lat, "and the camera follows while untouched").toBeCloseTo(54.56, 2);
+  });
+
+  test("panning hands the camera over for good, and the marker still moves", async ({ page }) => {
+    await settled(page);
+
+    // The real gesture, not a flag poke: noteUserMovedMap listens for
+    // mousedown on the map, which is what "I want to look at something else"
+    // actually is.
+    await page.evaluate(() => {
+      const el = document.querySelector("map-view");
+      el.shadowRoot
+        .getElementById("map")
+        .dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+      el._map.jumpTo({ center: [8, 50], zoom: el._map.getZoom() });
+    });
+    const parked = await here(page);
+
+    await advanceClock(page, 4000);
+    await emitFix(page, { lat: 54.6, lng: 10.7, accuracy: 20 });
+    await advanceClock(page, 4000);
+    await emitFix(page, { lat: 54.64, lng: 10.78, accuracy: 20 });
+
+    const after = await here(page);
+    expect(after.centre.lat, "the camera is the reader's now").toBeCloseTo(parked.centre.lat, 3);
+    expect(after.centre.lng).toBeCloseTo(parked.centre.lng, 3);
+    // Suppressing the marker as well would be hiding a reading, not respecting
+    // a gesture.
+    expect(after.marker.lat, "but the position is still a live reading").toBeCloseTo(54.64, 3);
+  });
+
+  test("pressing again brings you back without restarting the watch", async ({ page }) => {
+    await settled(page);
+    const before = await geoCounters(page);
+
+    await page.evaluate(() => {
+      const el = document.querySelector("map-view");
+      el.shadowRoot
+        .getElementById("map")
+        .dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+      el._map.jumpTo({ center: [8, 50], zoom: 6 });
+    });
+    await advanceClock(page, 4000);
+    await emitFix(page, { lat: 54.6, lng: 10.7, accuracy: 20 });
+
+    await pressLocate(page);
+    const after = await here(page);
+    expect(after.centre.lat, "the press recentres on the latest fix").toBeCloseTo(54.6, 2);
+    // Re-fitting rather than plain recentring, so a 20m fix is framed close.
+    expect(after.zoom, "and re-frames it for the accuracy it has now").toBeGreaterThan(12);
+
+    const counters = await geoCounters(page);
+    expect(counters.starts, "no second watch: this press means recentre").toBe(before.starts);
+    expect(counters.clears, "and the first one is still live").toBe(before.clears);
+  });
+
+  test("the button says tracking is on, and what a press will do", async ({ page }) => {
+    await settled(page);
+    const state = await page.evaluate(() => {
+      const b = document.querySelector("map-view").shadowRoot.querySelector('[data-action="locate"]');
+      return {
+        tracking: b.hasAttribute("data-tracking"),
+        ariaLabel: b.getAttribute("aria-label"),
+        visible: b.querySelector("span").textContent.trim(),
+        accent: getComputedStyle(b).borderColor,
+      };
+    });
+    expect(state.tracking).toBe(true);
+    expect(state.ariaLabel, "a screen reader is told what pressing does now").toBeTruthy();
+    // The visible text must not change: it is a real label on a map control,
+    // and growing it mid-use would resize the control (at 324px in German
+    // there is no room). The accessible name still contains it.
+    expect(state.visible.toLowerCase(), "the visible label stays put").toBe("my location");
+    expect(state.ariaLabel.toLowerCase()).toContain("my location");
+    expect(state.accent, "and it is tinted").not.toBe("rgb(204, 204, 204)");
+  });
+
+  test("backgrounding the page stops the watch, and returning resumes it", async ({ page }) => {
+    await settled(page);
+    const before = await geoCounters(page);
+
+    // A GNSS watch running with the screen off is pure battery cost.
+    await page.evaluate(() => {
+      Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect((await geoCounters(page)).clears, "hidden means released").toBe(before.clears + 1);
+
+    await page.evaluate(() => {
+      Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    const after = await geoCounters(page);
+    expect(after.starts, "coming back resumes without needing a press").toBe(before.starts + 1);
+
+    // And it resumes as *tracking*: the camera is not re-fitted under the
+    // reader just because they glanced at another tab.
+    const zoomBefore = (await here(page)).zoom;
+    await emitFix(page, { lat: 54.7, lng: 10.9, accuracy: 25 });
+    const resumed = await here(page);
+    expect(resumed.marker.lat, "the resumed watch still moves the marker").toBeCloseTo(54.7, 3);
+    expect(resumed.zoom, "and does not re-zoom").toBeCloseTo(zoomBefore, 5);
+  });
+
+  test("following does not write a history entry per fix", async ({ page }) => {
+    // trip-detail-page.js turns every map-view-change into a replaceState, so
+    // an unguarded follow would write one about once a second. The initial fit
+    // must still announce itself: that is what makes the first view restorable.
+    await login(page);
+    await gotoTripMap(page);
+    await page.evaluate(() => {
+      window.__viewChanges = 0;
+      document.querySelector("map-view").addEventListener("map-view-change", () => {
+        window.__viewChanges += 1;
+      });
+    });
+
+    await pressLocate(page);
+    await waitForWatch(page);
+    await emitFix(page, AT_SEA);
+    await waitForLocateSettled(page);
+    // The button re-enabling says the watch settled, not that the camera has.
+    // Without this the fit's own moveend can land *after* the baseline is read
+    // and be counted against the follow-pans below -- which is how this test
+    // first failed, by exactly one event.
+    await settleMap(page, "map-view");
+    const afterFit = await page.evaluate(() => window.__viewChanges);
+    expect(afterFit, "the initial fit is still worth remembering").toBeGreaterThan(0);
+
+    for (const lat of [54.48, 54.52, 54.56, 54.6]) {
+      await advanceClock(page, 4000);
+      await emitFix(page, { lat, lng: 10.5, accuracy: 20 });
+    }
+    await settleMap(page, "map-view");
+    const afterFollow = await page.evaluate(() => window.__viewChanges);
+    expect(afterFollow, "but following is not").toBe(afterFit);
+  });
+
+  test("the editor's picker does not track", async ({ page }) => {
+    // It is recording where a *place* is, not where you are going, so a live
+    // watch would fight the reader's own pin drags and could re-announce a
+    // position over coordinates they had since adjusted.
+    await login(page);
+    const res = await page.request.post("/api/trips", { data: { title: "UI suite: tracking spec" } });
+    expect(res.status()).toBe(201);
+    const tripId = (await res.json()).id;
+    try {
+      await page.goto(`/trips/${tripId}/locations/new`);
+      await page.waitForFunction(() => document.querySelector(".location-form__map")?._map, null, {
+        timeout: 20000,
+      });
+      await page.evaluate(() =>
+        document.querySelector(".location-form__map").shadowRoot.querySelector('[data-action="locate"]').click()
+      );
+      await waitForWatch(page);
+      await emitFix(page, AT_SEA);
+      await waitForLocateSettled(page, ".location-form__map");
+
+      const { starts, clears } = await geoCounters(page);
+      expect(clears, "a one-shot watch releases itself at settle").toBe(starts);
+      const tracking = await page.evaluate(() =>
+        document
+          .querySelector(".location-form__map")
+          .shadowRoot.querySelector('[data-action="locate"]')
+          .hasAttribute("data-tracking")
+      );
+      expect(tracking, "and the picker never claims to be tracking").toBe(false);
+    } finally {
+      await page.request.delete(`/api/trips/${tripId}`);
+    }
   });
 });
 

@@ -387,6 +387,76 @@ visibility starts exactly one new watch. (e) Navigating away from the map
 tab calls `clearWatch` and starts none. (f) Follow-pans emit no
 `map-view-change` while the initial fit still does — count the events.
 
+**Done.** `startLocateWatch(fromPress)` owns a watch; `bindLocate()` presses it
+and the `visibilitychange` listener resumes it. `showPosition()` took a fourth
+argument, `camera`, which is the three phases on screen: `"fit"` while
+acquiring, `"follow"` (pan at the current zoom) while tracking with the camera
+still ours, `"none"` once the reader has taken it. `noteUserMovedMap` clears
+`_followCamera` alongside `_userMovedMap`, so a real mousedown detaches the
+camera for good while the marker keeps updating. The button tints via
+`data-tracking` and gains an `aria-label`/`title` of `map.locate.recentre`.
+
+Five deviations, all deliberate. **`continuous` is gated on `!this.hasAttribute("pick")`
+here rather than in Milestone 6**: this milestone is what makes the watch
+continuous, so leaving the editor's picker tracking until a later commit would
+have shipped a window where a resumed watch could re-announce a position over
+coordinates the reader had since dragged. **`position-found` fires only for a
+watch started by a press**, never by a visibility resume, for the same reason.
+**The visible button label deliberately does not change** -- it is real text on
+a map control, and growing it mid-use would resize the control, which at 324px
+in German there is no room for; the accessible name changes and still contains
+the visible one. **A resume does not re-run acquisition or touch the camera**:
+`_locateSettled` is left true, so the resumed watch's fixes are treated as
+tracking. And **`applyOverlays()` gained a style-readiness guard** -- see below.
+
+Two things cost real time and are worth not repeating.
+
+**Suppressing the follow-pan's `map-view-change` took three attempts**, and the
+first two were flaky rather than wrong-looking. A flag cleared on
+`setTimeout(0)` loses the race when `moveend` is not synchronous; a *count* of
+moves to swallow only stays balanced if every `jumpTo` produces exactly one
+`moveend`, and a single extra or coalesced event leaves the count permanently
+wrong -- it failed roughly one run in four, always by exactly one event. What
+works is comparing the `moveend` camera against the recorded follow target:
+idempotent, no state to get out of step, and nothing to race. If this needs
+touching again, do not reach for a flag or a counter.
+
+**`map.isStyleLoaded()` is not the question "can I add a source".** It also
+requires every *source* to have loaded, so it answers false during the very
+`style.load` callback that exists to re-add the accuracy ring -- using it as
+the guard silently stopped the ring coming back after a light/dark swap, and
+the pre-existing "the accuracy ring survives the style being replaced" test is
+what caught it. The guard is now our own `_styleReady`, set in `style.load` and
+cleared before `setStyle`. The guard is needed at all because Stage 36 made a
+fix arrive within a second or two of the press, so pressing locate as the page
+settles can now land a position before the first style has parsed and MapLibre
+throws "Style is not done loading" outright. That was reachable before this
+stage in principle and is reachable in ordinary use now.
+
+Verified by `make ci` green and 106 tests passing across `map.spec.js`,
+`geolocation.spec.js`, `map-theme.spec.js`, `a11y-names.spec.js`,
+`map.gesture.spec.js` and `routes.spec.js`, with the new tests repeated 15
+times over five runs to prove the timing work is actually stable rather than
+lucky. Nine new tests cover the marker still moving after settle, panning
+handing the camera over while the marker keeps updating, a second press
+recentring without starting a second watch, the button's tint and accessible
+name (and the visible label *not* moving), backgrounding releasing the watch
+and returning resuming it without re-zooming, following writing no history
+entry while the initial fit still does, and the editor's picker not tracking.
+
+Two of those were confirmed as real negative controls rather than assumed to
+be. Letting the improving-only rule leak past settle freezes the marker at the
+first good fix -- the test fails with the marker at 54.45 instead of 54.56,
+which is precisely the "looks like it works" failure this stage was most at
+risk of. Removing the `map-view-change` guard turns four follow-fixes into
+five extra history writes (7 events where 2 are expected).
+
+**Not verified in a real browser by hand.** The Playwright MCP Firefox binary
+is not installed in this environment, so the DevTools sensor-override pass in
+the Verification section below has not been run. The assertions above cover
+the same claims and are stronger, but the interactive feel of following --
+whether the pace looks right on a real moving device -- has not been seen.
+
 ## 4. Say how accurate it is, in words
 
 `web/js/format.js` gains `formatDistance(metres)` using

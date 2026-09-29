@@ -323,10 +323,6 @@ func createItemInStore(ctx context.Context, store db.Store, trip db.Trip, itemID
 	if req.ShowOnMap != nil {
 		showOnMap = *req.ShowOnMap
 	}
-	sortOrder := 0
-	if req.SortOrder != nil {
-		sortOrder = *req.SortOrder
-	}
 	uploader, hasUploader := auth.UserFromContext(ctx)
 	now := time.Now().UTC()
 
@@ -337,7 +333,6 @@ func createItemInStore(ctx context.Context, store db.Store, trip db.Trip, itemID
 		Title:     req.Title,
 		Notes:     req.Notes,
 		ShowOnMap: showOnMap,
-		SortOrder: sortOrder,
 		CreatedAt: now,
 		UpdatedAt: now,
 	})

@@ -56,7 +56,7 @@ func TestMigration0010AddsAreaAndKeepsEverything(t *testing.T) {
 	}
 	exec(`INSERT INTO users (id, username, display_name, created_at, updated_at) VALUES ('u','u','U','2026-01-01','2026-01-01')`)
 	exec(`INSERT INTO trips (id, owner_id, title, created_at, updated_at) VALUES ('t','u','T','2026-01-01','2026-01-01')`)
-	exec(`INSERT INTO items (id, trip_id, category, title, sort_order, created_at, updated_at) VALUES ('i','t','site','Kirkjufell',3,'2026-01-01','2026-01-01')`)
+	exec(`INSERT INTO items (id, trip_id, category, title, notes, sort_order, created_at, updated_at) VALUES ('i','t','site','Kirkjufell','a note',3,'2026-01-01','2026-01-01')`)
 	exec(`INSERT INTO item_locations (id, item_id, lat, lng, address) VALUES ('l','i',64.9,-23.3,'Grundarfjordur')`)
 	exec(`INSERT INTO item_links (id, item_id, url, sort_order) VALUES ('k','i','https://example.com',0)`)
 	exec(`INSERT INTO item_tags (item_id, tag) VALUES ('i','landmark')`)
@@ -74,7 +74,7 @@ func TestMigration0010AddsAreaAndKeepsEverything(t *testing.T) {
 		return n
 	}
 	// The rebuild copies every column, not just the ones it is about.
-	if n := count(`SELECT count(*) FROM items WHERE id='i' AND title='Kirkjufell' AND sort_order=3 AND category='site'`); n != 1 {
+	if n := count(`SELECT count(*) FROM items WHERE id='i' AND title='Kirkjufell' AND notes='a note' AND category='site'`); n != 1 {
 		t.Errorf("the item did not survive the rebuild intact (n=%d)", n)
 	}
 	for _, q := range []string{

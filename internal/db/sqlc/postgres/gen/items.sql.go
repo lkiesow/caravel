@@ -12,9 +12,9 @@ import (
 )
 
 const createItem = `-- name: CreateItem :one
-INSERT INTO items (id, trip_id, category, title, notes, show_on_map, sort_order, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, trip_id, category, title, notes, image_id, show_on_map, sort_order, created_at, updated_at
+INSERT INTO items (id, trip_id, category, title, notes, show_on_map, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id, trip_id, category, title, notes, image_id, show_on_map, created_at, updated_at
 `
 
 type CreateItemParams struct {
@@ -24,7 +24,6 @@ type CreateItemParams struct {
 	Title     string         `json:"title"`
 	Notes     sql.NullString `json:"notes"`
 	ShowOnMap bool           `json:"show_on_map"`
-	SortOrder int32          `json:"sort_order"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 }
@@ -37,7 +36,6 @@ func (q *Queries) CreateItem(ctx context.Context, arg CreateItemParams) (Item, e
 		arg.Title,
 		arg.Notes,
 		arg.ShowOnMap,
-		arg.SortOrder,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -50,7 +48,6 @@ func (q *Queries) CreateItem(ctx context.Context, arg CreateItemParams) (Item, e
 		&i.Notes,
 		&i.ImageID,
 		&i.ShowOnMap,
-		&i.SortOrder,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -75,7 +72,7 @@ func (q *Queries) DeleteItem(ctx context.Context, arg DeleteItemParams) (int64, 
 }
 
 const getItemByID = `-- name: GetItemByID :one
-SELECT id, trip_id, category, title, notes, image_id, show_on_map, sort_order, created_at, updated_at FROM items WHERE id = $1
+SELECT id, trip_id, category, title, notes, image_id, show_on_map, created_at, updated_at FROM items WHERE id = $1
 `
 
 func (q *Queries) GetItemByID(ctx context.Context, id string) (Item, error) {
@@ -89,7 +86,6 @@ func (q *Queries) GetItemByID(ctx context.Context, id string) (Item, error) {
 		&i.Notes,
 		&i.ImageID,
 		&i.ShowOnMap,
-		&i.SortOrder,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -143,10 +139,10 @@ func (q *Queries) ListItemLocationsByTrip(ctx context.Context, tripID string) ([
 }
 
 const listItemsByTrip = `-- name: ListItemsByTrip :many
-SELECT id, trip_id, category, title, notes, image_id, show_on_map, sort_order, created_at, updated_at FROM items
+SELECT id, trip_id, category, title, notes, image_id, show_on_map, created_at, updated_at FROM items
 WHERE trip_id = $1
   AND (CAST($2 AS text) IS NULL OR category = CAST($2 AS text))
-ORDER BY sort_order, created_at
+ORDER BY created_at, id
 `
 
 type ListItemsByTripParams struct {
@@ -160,6 +156,10 @@ type ListItemsByTripParams struct {
 // determine data type of parameter $2 (SQLSTATE 42P08). SQLite is happy either
 // way, which is why this shipped broken -- see internal/dbtest.
 // CAST rather than the :: form because both dialects have to parse this file.
+// Creation order, which is what the As added sort in the locations tab means.
+// Until migration 0012 this read ORDER BY sort_order, created_at, and the
+// sort_order column was the reason that sort was wrong. The id breaks a tie so
+// the order is total and a list does not shuffle between two reads.
 func (q *Queries) ListItemsByTrip(ctx context.Context, arg ListItemsByTripParams) ([]Item, error) {
 	rows, err := q.db.QueryContext(ctx, listItemsByTrip, arg.TripID, arg.Category)
 	if err != nil {
@@ -177,7 +177,6 @@ func (q *Queries) ListItemsByTrip(ctx context.Context, arg ListItemsByTripParams
 			&i.Notes,
 			&i.ImageID,
 			&i.ShowOnMap,
-			&i.SortOrder,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -259,7 +258,7 @@ const setItemImage = `-- name: SetItemImage :one
 UPDATE items
 SET image_id = $1, updated_at = $2
 WHERE id = $3 AND trip_id = $4
-RETURNING id, trip_id, category, title, notes, image_id, show_on_map, sort_order, created_at, updated_at
+RETURNING id, trip_id, category, title, notes, image_id, show_on_map, created_at, updated_at
 `
 
 type SetItemImageParams struct {
@@ -285,7 +284,6 @@ func (q *Queries) SetItemImage(ctx context.Context, arg SetItemImageParams) (Ite
 		&i.Notes,
 		&i.ImageID,
 		&i.ShowOnMap,
-		&i.SortOrder,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -298,10 +296,9 @@ SET category = $1,
     title = $2,
     notes = $3,
     show_on_map = $4,
-    sort_order = $5,
-    updated_at = $6
-WHERE id = $7 AND trip_id = $8
-RETURNING id, trip_id, category, title, notes, image_id, show_on_map, sort_order, created_at, updated_at
+    updated_at = $5
+WHERE id = $6 AND trip_id = $7
+RETURNING id, trip_id, category, title, notes, image_id, show_on_map, created_at, updated_at
 `
 
 type UpdateItemParams struct {
@@ -309,7 +306,6 @@ type UpdateItemParams struct {
 	Title     string         `json:"title"`
 	Notes     sql.NullString `json:"notes"`
 	ShowOnMap bool           `json:"show_on_map"`
-	SortOrder int32          `json:"sort_order"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	ID        string         `json:"id"`
 	TripID    string         `json:"trip_id"`
@@ -321,7 +317,6 @@ func (q *Queries) UpdateItem(ctx context.Context, arg UpdateItemParams) (Item, e
 		arg.Title,
 		arg.Notes,
 		arg.ShowOnMap,
-		arg.SortOrder,
 		arg.UpdatedAt,
 		arg.ID,
 		arg.TripID,
@@ -335,7 +330,6 @@ func (q *Queries) UpdateItem(ctx context.Context, arg UpdateItemParams) (Item, e
 		&i.Notes,
 		&i.ImageID,
 		&i.ShowOnMap,
-		&i.SortOrder,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

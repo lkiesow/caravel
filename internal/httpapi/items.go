@@ -36,7 +36,6 @@ type itemResponse struct {
 	// page either flickers or waits.
 	ImageCredit *imageCreditResponse `json:"image_credit"`
 	ShowOnMap   bool                 `json:"show_on_map"`
-	SortOrder   int                  `json:"sort_order"`
 	// Lat/Lng are set only on the list endpoint, and only for items that have
 	// both. The list used to carry no position at all, which meant the
 	// locations tab could not filter by distance without a second request
@@ -71,7 +70,6 @@ func (s *Server) itemToResponse(ctx context.Context, i db.Item) itemResponse {
 		NotesHTML: renderNotesHTML(i.Notes),
 		ImageID:   i.ImageID,
 		ShowOnMap: i.ShowOnMap,
-		SortOrder: i.SortOrder,
 		Tags:      []string{},
 		Dates:     []itemDateRangeResponse{},
 		CreatedAt: i.CreatedAt.UTC().Format(time.RFC3339),
@@ -185,7 +183,6 @@ type itemRequest struct {
 	Title     string  `json:"title"`
 	Notes     *string `json:"notes"`
 	ShowOnMap *bool   `json:"show_on_map"`
-	SortOrder *int    `json:"sort_order"`
 
 	// Optional nested sub-resources, so one request can commit an item and
 	// everything hanging off it in a single transaction. Each is a pointer
@@ -449,11 +446,6 @@ func (s *Server) handleUpdateItem(w http.ResponseWriter, r *http.Request) {
 	if req.ShowOnMap != nil {
 		showOnMap = *req.ShowOnMap
 	}
-	sortOrder := item.SortOrder
-	if req.SortOrder != nil {
-		sortOrder = *req.SortOrder
-	}
-
 	var updated db.Item
 	err := s.Store.WithTx(r.Context(), func(store db.Store) error {
 		saved, err := store.UpdateItem(r.Context(), db.UpdateItemParams{
@@ -463,7 +455,6 @@ func (s *Server) handleUpdateItem(w http.ResponseWriter, r *http.Request) {
 			Title:     req.Title,
 			Notes:     req.Notes,
 			ShowOnMap: showOnMap,
-			SortOrder: sortOrder,
 			UpdatedAt: time.Now().UTC(),
 		})
 		if err != nil {

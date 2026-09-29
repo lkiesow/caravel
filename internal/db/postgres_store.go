@@ -138,7 +138,6 @@ func (s *postgresStore) CreateItem(ctx context.Context, p CreateItemParams) (Ite
 		Title:     p.Title,
 		Notes:     nullString(p.Notes),
 		ShowOnMap: p.ShowOnMap,
-		SortOrder: int32(p.SortOrder),
 		CreatedAt: p.CreatedAt.UTC(),
 		UpdatedAt: p.UpdatedAt.UTC(),
 	})
@@ -179,7 +178,6 @@ func (s *postgresStore) UpdateItem(ctx context.Context, p UpdateItemParams) (Ite
 		Title:     p.Title,
 		Notes:     nullString(p.Notes),
 		ShowOnMap: p.ShowOnMap,
-		SortOrder: int32(p.SortOrder),
 		UpdatedAt: p.UpdatedAt.UTC(),
 	})
 	if err != nil {
@@ -324,7 +322,6 @@ func postgresItemToDomain(i postgresgen.Item) Item {
 		Notes:     strPtr(i.Notes),
 		ImageID:   strPtr(i.ImageID),
 		ShowOnMap: i.ShowOnMap,
-		SortOrder: int(i.SortOrder),
 		CreatedAt: i.CreatedAt,
 		UpdatedAt: i.UpdatedAt,
 	}

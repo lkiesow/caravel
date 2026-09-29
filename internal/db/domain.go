@@ -470,7 +470,6 @@ type Item struct {
 	Notes     *string
 	ImageID   *string
 	ShowOnMap bool
-	SortOrder int
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

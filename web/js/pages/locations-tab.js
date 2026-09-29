@@ -19,9 +19,14 @@ const DISTANCE_RADII_KM = [1, 2, 5, 10, 25];
 const ANY_DISTANCE = "any";
 
 // The orders the list can be read in. "added" rather than the trips list's
-// "newest": locations have no reorder UI, so items.sort_order is the order they
-// were created in, and calling that "newest" would be a lie about a list that
-// reads oldest-first.
+// "newest": the API returns locations oldest-first, in creation order, and
+// calling that "newest" would be a lie about the list.
+//
+// It really is creation order now. Until migration 0012 the list was ordered
+// by an items.sort_order column that no UI ever set and three writers disagreed
+// about, so a location added here sorted ahead of anything the assistant had
+// added -- "as added" put a new location in the middle of the list. The column
+// is gone and the order is created_at.
 //
 // A plain renderMenu, not a group in the filter menu beside it. Sorting is not
 // filtering - it changes the order of the answer, not which questions the list

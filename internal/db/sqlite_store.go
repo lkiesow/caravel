@@ -10,9 +10,27 @@ import (
 )
 
 // timeLayout is used to store timestamps as sortable, unambiguous TEXT in
-// SQLite. time.Parse(timeLayout, ...) also accepts values with no fractional
-// seconds component, so it round-trips values written by either layout.
-const timeLayout = time.RFC3339Nano
+// SQLite.
+//
+// Fixed-width on purpose, and that is the whole point of not using
+// time.RFC3339Nano here: RFC3339Nano trims trailing zeros from the fractional
+// part, so ".1Z" and ".12Z" are both valid renderings of timestamps one is
+// ahead of -- and as text ".1Z" sorts after ".12Z", because "Z" is greater
+// than "2". Every ORDER BY created_at in this dialect is a text comparison, so
+// that made rows written inside the same second come back in an order that was
+// simply wrong. Nine digits, always, compare correctly.
+//
+// Rows written before migration 0012 are still in the trimmed layout. They
+// parse fine -- see readTimeLayout -- and only compare wrongly against another
+// row in the same second, which is why they were left alone rather than
+// rewritten.
+const timeLayout = "2006-01-02T15:04:05.000000000Z07:00"
+
+// readTimeLayout parses what is stored. Separate from the write layout because
+// it has to accept both: the trimmed values written before the layout above,
+// and values with no fractional part at all. time.RFC3339Nano is tolerant of
+// any number of fractional digits on the way in, including none.
+const readTimeLayout = time.RFC3339Nano
 
 type sqliteStore struct {
 	q  *sqlitegen.Queries
@@ -28,7 +46,7 @@ func formatTime(t time.Time) string {
 }
 
 func parseTime(s string) time.Time {
-	t, err := time.Parse(timeLayout, s)
+	t, err := time.Parse(readTimeLayout, s)
 	if err != nil {
 		// Should be unreachable: every write goes through formatTime, so a
 		// parse failure here means the DB was written by something else.
@@ -394,7 +412,6 @@ func (s *sqliteStore) CreateItem(ctx context.Context, p CreateItemParams) (Item,
 		Title:     p.Title,
 		Notes:     nullString(p.Notes),
 		ShowOnMap: boolToInt64(p.ShowOnMap),
-		SortOrder: int64(p.SortOrder),
 		CreatedAt: formatTime(p.CreatedAt),
 		UpdatedAt: formatTime(p.UpdatedAt),
 	})
@@ -435,7 +452,6 @@ func (s *sqliteStore) UpdateItem(ctx context.Context, p UpdateItemParams) (Item,
 		Title:     p.Title,
 		Notes:     nullString(p.Notes),
 		ShowOnMap: boolToInt64(p.ShowOnMap),
-		SortOrder: int64(p.SortOrder),
 		UpdatedAt: formatTime(p.UpdatedAt),
 	})
 	if err != nil {
@@ -1284,7 +1300,6 @@ func sqliteItemToDomain(i sqlitegen.Item) Item {
 		Notes:     strPtr(i.Notes),
 		ImageID:   strPtr(i.ImageID),
 		ShowOnMap: i.ShowOnMap != 0,
-		SortOrder: int(i.SortOrder),
 		CreatedAt: parseTime(i.CreatedAt),
 		UpdatedAt: parseTime(i.UpdatedAt),
 	}

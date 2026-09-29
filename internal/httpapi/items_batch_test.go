@@ -66,10 +66,11 @@ func TestCreateItemsBatchCreatesEveryLocation(t *testing.T) {
 	}
 }
 
-// The list is read back in the order it was sent, which is the reason the
-// batch assigns sort_order explicitly: within one transaction every row lands
-// in the same millisecond, and created_at is stored in a layout that is not
-// lexically sortable inside a second.
+// The list is read back in the order it was sent. Until migration 0012 the batch
+// assigned items.sort_order to guarantee that; now it rests on created_at,
+// which within one transaction means several rows in the same millisecond --
+// see TestFormatTimeSortsAsTextWithinASecond for the layout that makes those
+// compare correctly in SQLite.
 func TestCreateItemsBatchKeepsRequestOrderInTheList(t *testing.T) {
 	ts := newTestServer(t)
 	cookie := ts.login("alice")

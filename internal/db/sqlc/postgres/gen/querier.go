@@ -171,6 +171,10 @@ type Querier interface {
 	// determine data type of parameter $2 (SQLSTATE 42P08). SQLite is happy either
 	// way, which is why this shipped broken -- see internal/dbtest.
 	// CAST rather than the :: form because both dialects have to parse this file.
+	// Creation order, which is what the As added sort in the locations tab means.
+	// Until migration 0012 this read ORDER BY sort_order, created_at, and the
+	// sort_order column was the reason that sort was wrong. The id breaks a tie so
+	// the order is total and a list does not shuffle between two reads.
 	ListItemsByTrip(ctx context.Context, arg ListItemsByTripParams) ([]Item, error)
 	// The days one location appears on, which is what a location date range is
 	// made of since Stage 25. There is no separate table of dates on an item any

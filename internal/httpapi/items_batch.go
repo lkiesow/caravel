@@ -97,36 +97,19 @@ func (s *Server) createItemsTx(r *http.Request, trip db.Trip, reqs []itemRequest
 	err := s.Store.WithTx(ctx, func(store db.Store) error {
 		out = out[:0]
 
-		// The batch appends to the end of the list, and says so explicitly
-		// rather than relying on the ordering that would otherwise apply.
+		// The batch appends to the end of the list, and relies on created_at
+		// to do it -- which it can, since the whole point of the ORDER BY it
+		// feeds is that creation order is the order.
 		//
-		// ListItemsByTrip orders by sort_order then created_at, and every
-		// location the single-item path creates has sort_order 0 -- so within
-		// a trip the real order is created_at, which is stored as
-		// RFC3339Nano. That layout drops trailing zeros, which makes it *not*
-		// lexically sortable inside one second: ".1Z" sorts after ".12Z" as
-		// text. Several locations written in the same millisecond by one
-		// transaction is exactly the case that would expose it, so this path
-		// does not depend on it.
-		next := 0
-		existing, err := store.ListItemsByTrip(ctx, trip.ID, nil)
-		if err != nil {
-			return err
-		}
-		for _, item := range existing {
-			if item.SortOrder >= next {
-				next = item.SortOrder + 1
-			}
-		}
-
-		for i, req := range reqs {
-			// An explicit sort_order in the body still wins: this endpoint is
-			// not the only imaginable caller, and the field is part of
-			// itemRequest's contract everywhere else.
-			if req.SortOrder == nil {
-				order := next + i
-				req.SortOrder = &order
-			}
+		// That was not always true. Until migration 0012 this picked the next
+		// items.sort_order by reading the trip first, because SQLite stores
+		// created_at as text in a layout that trimmed trailing zeros from the
+		// fractional part and so did not sort correctly inside one second --
+		// which is every row this loop writes. The layout is fixed-width now
+		// (see timeLayout in internal/db/sqlite_store.go), so the column, the
+		// read and the read-before-write that made this transaction prone to
+		// SQLITE_BUSY_SNAPSHOT are all gone.
+		for _, req := range reqs {
 			item, err := createItemInStore(ctx, store, trip, uuid.NewString(), req, nil, nil)
 			if err != nil {
 				return err

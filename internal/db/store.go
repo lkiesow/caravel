@@ -196,7 +196,6 @@ type CreateItemParams struct {
 	Title     string
 	Notes     *string
 	ShowOnMap bool
-	SortOrder int
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -208,7 +207,6 @@ type UpdateItemParams struct {
 	Title     string
 	Notes     *string
 	ShowOnMap bool
-	SortOrder int
 	UpdatedAt time.Time
 }
 

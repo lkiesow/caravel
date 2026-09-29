@@ -473,14 +473,13 @@ purpose — do not reconstruct it from an older stage plan without asking.
   ```
 
   517 is the diagnosis. `WithTx` opens a **deferred** transaction
-  (`BeginTx(ctx, nil)`, `internal/db/sqlite_store.go`), and `createItemsTx`
-  reads before it writes -- `ListItemsByTrip`, to pick the next `sort_order`. In
-  WAL mode a deferred transaction that reads first takes a read snapshot; if any
-  other writer commits before it tries to write, the lock upgrade can *never*
-  succeed, so SQLite fails immediately with SQLITE_BUSY_SNAPSHOT. **The
-  `busy_timeout(5000)` in the DSN does not apply to that case** -- there is
-  nothing to wait for -- which is why the pragma looks like it should have
-  covered this and does not.
+  (`BeginTx(ctx, nil)`, `internal/db/sqlite_store.go`), and the transaction
+  reads before it writes. In WAL mode a deferred transaction that reads first
+  takes a read snapshot; if any other writer commits before it tries to write,
+  the lock upgrade can *never* succeed, so SQLite fails immediately with
+  SQLITE_BUSY_SNAPSHOT. **The `busy_timeout(5000)` in the DSN does not apply to
+  that case** -- there is nothing to wait for -- which is why the pragma looks
+  like it should have covered this and does not.
 
   The usual fix is `BEGIN IMMEDIATE` for any transaction that will write, so the
   write lock is taken up front, where `busy_timeout` *does* apply. In Go that
@@ -488,6 +487,13 @@ purpose — do not reconstruct it from an older stage plan without asking.
   option or a raw `BEGIN IMMEDIATE`), and it needs the retry question answered
   too: an immediate transaction that times out still needs a caller that tries
   again or an honest error. Postgres has no equivalent problem.
+
+  The read this was *found* through is gone: `createItemsTx` used to call
+  `ListItemsByTrip` to pick the next `items.sort_order`, and the follow-up that
+  dropped that column (2026-09-30) removed the read with it, so the batch
+  endpoint no longer reads before it writes. That narrows the reproducer, it
+  does not fix the bug -- `writeItemNested` and every other multi-step
+  transaction still read inside `WithTx`.
 
   Scope: `internal/httpapi` calls `WithTx` in ten places, so this is not the
   batch endpoint's bug. It is user-visible on any shared trip -- two people

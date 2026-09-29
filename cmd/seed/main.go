@@ -293,6 +293,15 @@ func (s seedCtx) addItems(scenarioName, tripID string, specs []itemSpec) ([]db.I
 	items := make([]db.Item, 0, len(specs))
 	for i, spec := range specs {
 		itemID := seedID(scenarioName, "item", spec.key)
+		// A second apart, in spec order. The locations list is ordered by
+		// created_at since migration 0012 dropped items.sort_order, and one shared
+		// timestamp for the whole scenario would leave the order to the tie
+		// break on id -- which is a hash, so the seeded trips would read in an
+		// arbitrary order and the UI suite would be asserting against it.
+		// Seconds rather than nanoseconds so the gaps survive any storage
+		// layout, and backwards from now so the newest spec is still the
+		// newest row.
+		created := now.Add(time.Duration(i-len(specs)) * time.Second)
 		item, err := s.store.CreateItem(s.ctx, db.CreateItemParams{
 			ID:        itemID,
 			TripID:    tripID,
@@ -300,9 +309,8 @@ func (s seedCtx) addItems(scenarioName, tripID string, specs []itemSpec) ([]db.I
 			Title:     spec.title,
 			Notes:     ptr(spec.notes),
 			ShowOnMap: spec.onMap,
-			SortOrder: i,
-			CreatedAt: now,
-			UpdatedAt: now,
+			CreatedAt: created,
+			UpdatedAt: created,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("create item %s: %w", spec.key, err)

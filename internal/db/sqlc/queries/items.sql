@@ -1,6 +1,6 @@
 -- name: CreateItem :one
-INSERT INTO items (id, trip_id, category, title, notes, show_on_map, sort_order, created_at, updated_at)
-VALUES (sqlc.arg(id), sqlc.arg(trip_id), sqlc.arg(category), sqlc.arg(title), sqlc.arg(notes), sqlc.arg(show_on_map), sqlc.arg(sort_order), sqlc.arg(created_at), sqlc.arg(updated_at))
+INSERT INTO items (id, trip_id, category, title, notes, show_on_map, created_at, updated_at)
+VALUES (sqlc.arg(id), sqlc.arg(trip_id), sqlc.arg(category), sqlc.arg(title), sqlc.arg(notes), sqlc.arg(show_on_map), sqlc.arg(created_at), sqlc.arg(updated_at))
 RETURNING *;
 
 -- name: GetItemByID :one
@@ -16,7 +16,11 @@ SELECT * FROM items WHERE id = sqlc.arg(id);
 SELECT * FROM items
 WHERE trip_id = sqlc.arg(trip_id)
   AND (CAST(sqlc.narg(category) AS text) IS NULL OR category = CAST(sqlc.narg(category) AS text))
-ORDER BY sort_order, created_at;
+-- Creation order, which is what the As added sort in the locations tab means.
+-- Until migration 0012 this read ORDER BY sort_order, created_at, and the
+-- sort_order column was the reason that sort was wrong. The id breaks a tie so
+-- the order is total and a list does not shuffle between two reads.
+ORDER BY created_at, id;
 
 -- name: UpdateItem :one
 UPDATE items
@@ -24,7 +28,6 @@ SET category = sqlc.arg(category),
     title = sqlc.arg(title),
     notes = sqlc.arg(notes),
     show_on_map = sqlc.arg(show_on_map),
-    sort_order = sqlc.arg(sort_order),
     updated_at = sqlc.arg(updated_at)
 WHERE id = sqlc.arg(id) AND trip_id = sqlc.arg(trip_id)
 RETURNING *;

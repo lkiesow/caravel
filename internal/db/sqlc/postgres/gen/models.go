@@ -81,7 +81,6 @@ type Item struct {
 	Notes     sql.NullString `json:"notes"`
 	ImageID   sql.NullString `json:"image_id"`
 	ShowOnMap bool           `json:"show_on_map"`
-	SortOrder int32          `json:"sort_order"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 }

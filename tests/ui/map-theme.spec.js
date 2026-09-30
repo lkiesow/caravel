@@ -11,7 +11,7 @@
 // isolation problem (plans/todo.md) is worst in the specs that lean hardest on
 // the shared seed.
 import { test, expect } from "@playwright/test";
-import { login, buildRoutes, gotoRoute } from "./helpers/scenarios.js";
+import { login, buildRoutes, gotoRoute, waitForMapInstance } from "./helpers/scenarios.js";
 
 const MOBILE = { width: 324, height: 756 };
 
@@ -30,7 +30,7 @@ async function gotoTripMap(page) {
   const route = routes.find((r) => r.label === "trip map");
   expect(route, "the sweep should know a trip map route").toBeTruthy();
   await gotoRoute(page, route.path);
-  await page.waitForFunction(() => document.querySelector("map-view")?._map, null, { timeout: 20000 });
+  await waitForMapInstance(page);
 }
 
 // Clicks the first marker and waits for its popup. Markers live in the shadow

@@ -182,8 +182,14 @@ jobs:
       # about-face on the browser side -- Firefox blocklists an unrecognised
       # renderer and has to be told not to -- is SOFTWARE_GL_PREFS in
       # playwright.config.js, keyed off CI. Neither half works alone.
-      - name: Install a software OpenGL renderer and an X server for Firefox
-        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dri libglx-mesa0 libegl-mesa0 xvfb
+      # fonts-dejavu-core is not decoration: tests/ui/fonts.conf pins the suite
+      # to DejaVu Sans so that layout assertions measure the same font here and
+      # on a developer's machine, and fontconfig falls back *silently* when a
+      # family is missing -- so without the package the pin would look applied
+      # and quietly do nothing. capabilities.setup.js fails the run if that
+      # happens rather than letting it pass on the wrong font.
+      - name: Install a software OpenGL renderer, an X server and the test font
+        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dri libglx-mesa0 libegl-mesa0 xvfb fonts-dejavu-core
 
       # No server is started here: `make test-ui` goes through
       # scripts/ui_test.sh, which brings up a throwaway instance of its own --

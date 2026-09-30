@@ -17,7 +17,7 @@
 // option, so turning WebGL off means a separate instance, and test.use() below
 // gets one for this file alone rather than for the suite.
 import { test, expect } from "@playwright/test";
-import { login, buildRoutes, gotoRoute } from "./helpers/scenarios.js";
+import { login, buildRoutes, gotoRoute, waitForMapInstance } from "./helpers/scenarios.js";
 
 // webgl.force-enabled is set alongside webgl.disabled deliberately: the CI job
 // turns force-enabled ON to get a software context out of a GPU-less runner, and
@@ -73,5 +73,31 @@ test.describe("a browser with no WebGL2", () => {
 
     // The TypeError is the whole bug. Its absence is the regression test.
     expect(errors, "the failed context must not leave an uncaught error").toEqual([]);
+  });
+
+  // The other half of Milestone 1's consequence, and the reason
+  // waitForMapInstance exists: data-ready and _map now disagree on this path.
+  // A spec that drives the map still has to fail here -- there is no map to
+  // drive -- but it should do so in seconds with a sentence, not by burning the
+  // test's whole 180s budget waiting for something that is never coming, which
+  // is what one map in ~80 cost on CI before this helper.
+  test("a spec waiting for the map instance fails fast and says why", async ({ page }) => {
+    const routes = await buildRoutes(page);
+    const route = routes.find((r) => r.label === "trip map");
+    await gotoRoute(page, route.path);
+
+    const started = Date.now();
+    // A short budget on purpose: the point is the diagnosis, and this asserts
+    // that the wait is bounded by the helper rather than by the test timeout.
+    const error = await waitForMapInstance(page, "map-view", 3000).then(
+      () => null,
+      (e) => e
+    );
+    const elapsed = Date.now() - started;
+
+    expect(error, "waiting for an instance that cannot exist must reject").toBeTruthy();
+    expect(error.message).toContain("map unavailable");
+    expect(error.message).toContain("WebGL2");
+    expect(elapsed, "the helper should bound the wait, not the test timeout").toBeLessThan(30000);
   });
 });

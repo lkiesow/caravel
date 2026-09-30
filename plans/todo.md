@@ -568,6 +568,20 @@ purpose — do not reconstruct it from an older stage plan without asking.
   have aged out of GitHub's retention window. Nothing to do unless the job is
   still red once Stage 40 finishes: the next run is the cheapest way to ask.
 
+- **One map in ~80 failed to get a WebGL context on CI, and nobody knows why.**
+  (Stage 40 Milestone 4.) A single `map.spec.js` test failed with `data-ready`
+  set and `_map` still null, which is the path map-view takes when the context
+  fails. `capabilities.setup.js` had passed at the start of that run, so the
+  browser could make a context and then could not make that one -- which points
+  at exhaustion rather than absence, llvmpipe being slow to release contexts
+  under parallel workers being the likeliest reason. Firefox caps live WebGL
+  contexts (`webgl.max-contexts`), and the suite mounts a great many maps.
+  Deliberately not chased: one flake in 293 is not enough to aim at, and
+  `waitForMapInstance` now fails in seconds naming the cause, so the next
+  occurrence will say far more than speculation would. If it recurs, the things
+  to look at are whether `destroyMap` is reached on every teardown and whether
+  raising `webgl.max-contexts` changes the rate.
+
 - **The whole class of "CI-only browser capability" is unguarded.** (Stage 40.)
   WebGL2 got one in Stage 40 Milestone 2 -- `tests/ui/capabilities.setup.js` --
   because it is the one that bit. Nothing checks the others: fonts, codecs,
@@ -670,6 +684,13 @@ purpose — do not reconstruct it from an older stage plan without asking.
   MapLibre instance does. The fix is probably to wait on `_map` the way
   `gotoTripMap` does rather than to reach for it, wherever a spec touches the
   map directly.
+
+  Partly addressed in Stage 40 Milestone 4: `waitForMapInstance` in
+  `helpers/scenarios.js` is now the one way to wait for the instance, it is
+  bounded, and it says which of "the element never appeared" and "the component
+  could not get a context" happened. That is the *waiting* half. The reaching
+  half is untouched -- the specs that read `host._map` directly still do -- so
+  this entry stays open.
 
 - **The suite waits on injected plumbing, not on the app's own state.** Stage 09
   Milestone 5 gave every route a `common.loading` line, which fixes the

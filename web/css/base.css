@@ -2003,10 +2003,27 @@ button {
   gap: 0.25rem;
 }
 
+/* flex-wrap because the row is a label beside two buttons, and at 324px in
+   German there is not always room for both on one line: "Notizen" next to
+   "Schreiben" and "Vorschau" wants 260px of the 258px available, so the row
+   overflowed its card by 2px. Flex items do not shrink below min-content, so
+   without wrapping there is nowhere for those 2px to go.
+
+   Found by CI rather than here, and only once the suite pinned its font
+   (Stage 40 Milestone 4): the same row fits on Noto Sans and does not on DejaVu
+   Sans, so whether this overflowed depended on the machine looking at it. It
+   overflows for real users on any platform whose system font is a little wider
+   -- which was already true before anybody noticed.
+
+   Wrapping rather than truncating the label, or shrinking the buttons: the
+   buttons carry the 44px tap target the block below is careful about, and the
+   label is the field's accessible name. A second line is the cheapest thing to
+   give up. */
 .notes-field__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 0.5rem;
 }
 
@@ -5073,9 +5090,21 @@ button {
   color: var(--color-text);
 }
 
+/* min-height because this is a checkbox with a label, so it is something you
+   tap, and its height was previously whatever the font's default line box
+   happened to be: 44.0px on Noto Sans and 38px on DejaVu Sans. It met the
+   guideline on the developer's machine by nothing at all, and missed it on
+   CI -- and, more to the point, on any reader whose system font has a shorter
+   line box, since base.css asks for system-ui and takes what it is given.
+
+   Stating the height rather than inheriting it is the fix; the font pin the UI
+   suite now carries (tests/ui/fonts.conf) is only what made the difference
+   visible. The row is a single line of text, so this adds nothing where the
+   line box was already tall enough. */
 .suggest-page__context {
   display: flex;
   align-items: center;
+  min-height: var(--tap-min);
   gap: 0.5rem;
   margin-top: 0.75rem;
   color: var(--color-text-muted);

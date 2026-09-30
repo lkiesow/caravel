@@ -12,7 +12,7 @@
 // and one passing should not hide the other regressing.
 import { readFileSync } from "node:fs";
 import { test, expect } from "@playwright/test";
-import { login, buildRoutes, gotoRoute } from "./helpers/scenarios.js";
+import { login, buildRoutes, gotoRoute, waitForMapInstance } from "./helpers/scenarios.js";
 import {
   AT_SEA,
   COAST,
@@ -63,7 +63,7 @@ async function gotoTripMap(page) {
   const mapRoute = routes.find((r) => r.label === "trip map");
   expect(mapRoute, "the route sweep should know a trip map route").toBeTruthy();
   await gotoRoute(page, mapRoute.path);
-  await page.waitForFunction(() => document.querySelector("map-view")?._map);
+  await waitForMapInstance(page);
   return mapRoute.path;
 }
 
@@ -576,7 +576,7 @@ test.describe("the trip map with a mouse", () => {
 
     try {
       await gotoRoute(page, `/trips/${tripId}/map`);
-      await page.waitForFunction(() => document.querySelector("map-view")?._map);
+      await waitForMapInstance(page);
 
       const state = await page.evaluate(() => {
         const sr = document.querySelector("map-view").shadowRoot;
@@ -828,7 +828,7 @@ async function mountPicker(page, attrs = {}) {
     window.__picks = [];
     el.addEventListener("location-picked", (e) => window.__picks.push(e.detail));
   }, attrs);
-  await page.waitForFunction(() => document.querySelector("[data-test-picker]")?._map);
+  await waitForMapInstance(page, "[data-test-picker]");
   // The map sizes itself from the container; give it the frame it needs.
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 }

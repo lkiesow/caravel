@@ -80,3 +80,76 @@ setup("the browser can render a map", async ({ page, browserName }) => {
     ].join("\n")
   ).toBe(true);
 });
+
+// The other thing this suite needs from a browser: a known font.
+//
+// routes.spec.js asserts things the font decides -- whether a control clears
+// the 44px tap target, whether a row fits in 324px -- and base.css asks for
+// `system-ui`, which is whatever the machine offers. That made two assertions
+// pass on a Fedora workstation (Noto Sans) and fail on a GitHub runner (DejaVu
+// Sans), which is a large part of why the ui job was red. scripts/with_server.sh
+// pins it through FONTCONFIG_FILE; tests/ui/fonts.conf explains the choice.
+//
+// This check exists because fontconfig fails *silently*: ask for a family that
+// is not installed and it quietly returns the next best thing, so a pin that did
+// nothing looks exactly like a pin that worked. That is the failure mode the
+// whole stage has been about.
+setup("the pinned test font is the one in use", async ({ page }) => {
+  const PINNED = "DejaVu Sans";
+
+  const widths = await page.evaluate((pinned) => {
+    // Width of a fixed string under each family. Comparing rendered widths
+    // rather than asking which font was chosen, because there is no API for the
+    // latter: document.fonts only knows about webfonts, and getComputedStyle
+    // returns the stack that was asked for, not what answered.
+    const probe = document.createElement("span");
+    probe.style.cssText =
+      "position:absolute;visibility:hidden;white-space:nowrap;font-size:16px";
+    // Mixed widths and a diacritic, so two fonts that agree on lowercase Latin
+    // still differ here.
+    probe.textContent = "Hamburgefonstiv 0123456789 ÄÖÜß";
+    document.body.appendChild(probe);
+    const widthOf = (family) => {
+      probe.style.fontFamily = family;
+      return Math.round(probe.getBoundingClientRect().width * 100) / 100;
+    };
+    const out = {
+      systemUi: widthOf("system-ui"),
+      pinned: widthOf(`"${pinned}"`),
+      // A family that certainly does not exist, so it resolves to the default.
+      // If the pin is working, system-ui and this agree with `pinned`; if it is
+      // not, they agree with each other and not with it.
+      missing: widthOf('"No Such Font At All"'),
+    };
+    probe.remove();
+    return out;
+  }, PINNED);
+
+  console.log(
+    `capabilities: system-ui renders at ${widths.systemUi}px where ${PINNED} renders at ${widths.pinned}px`
+  );
+
+  expect(
+    widths.systemUi,
+    [
+      `system-ui does not resolve to ${PINNED}, so this run measures a different`,
+      "font from the one the layout assertions were written against.",
+      "",
+      `A fixed string renders ${widths.systemUi}px wide under system-ui and`,
+      `${widths.pinned}px under ${PINNED}. They should match.`,
+      "",
+      "scripts/with_server.sh points FONTCONFIG_FILE at tests/ui/fonts.conf,",
+      "which prepends that family to system-ui and sans-serif. Causes, likeliest",
+      "first:",
+      "",
+      `  - ${PINNED} is not installed. fontconfig then falls back silently --`,
+      "    the pin looks applied and is not. On Debian/Ubuntu the package is",
+      "    fonts-dejavu-core; on Fedora, dejavu-sans-fonts.",
+      "  - FONTCONFIG_FILE was already set and with_server.sh left it alone,",
+      "    which is the deliberate way to opt out.",
+      "  - The run did not go through with_server.sh at all.",
+      "",
+      "Check from a shell with: FONTCONFIG_FILE=tests/ui/fonts.conf fc-match sans-serif",
+    ].join("\n")
+  ).toBe(widths.pinned);
+});

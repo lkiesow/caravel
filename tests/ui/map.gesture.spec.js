@@ -19,7 +19,7 @@
 // configuration, on the engine the rest of the suite runs — and they would have
 // caught a regression in the media query itself, which these two would not.
 import { test, expect } from "@playwright/test";
-import { login, buildRoutes, gotoRoute } from "./helpers/scenarios.js";
+import { login, buildRoutes, gotoRoute, waitForMapInstance } from "./helpers/scenarios.js";
 
 // One finger down, dragged, and lifted. Several small steps rather than one
 // jump, because both the map and the browser's scroller work from deltas
@@ -76,7 +76,7 @@ test.describe("map gestures on a real touch device", () => {
     const mapRoute = routes.find((r) => r.label === "trip map");
     expect(mapRoute, "the route sweep should know a trip map route").toBeTruthy();
     await gotoRoute(page, mapRoute.path);
-    await page.waitForFunction(() => document.querySelector("map-view")?._map);
+    await waitForMapInstance(page);
 
     // The premise of the whole file: this really is a coarse pointer, with no
     // stub involved. If Chromium ever stopped reporting it, both tests below

@@ -272,6 +272,79 @@ verified locally — Xvfb is not installed on this machine and the decision was 
 push rather than install it. The bisection above is the argument for it; the run
 is the proof.
 
+## Milestone 4: the failures that were hiding behind the timeouts
+
+With the GL work done the `ui` job got as far as running, and reported 288
+passed and 5 failed in 10.5 minutes. Two unrelated causes, neither of them
+about WebGL:
+
+**Four `routes.spec.js` failures: font metrics, and two real defects.**
+`base.css` asks for `system-ui`, which Firefox resolves through fontconfig — so
+it is Noto Sans on the developer's Fedora box and DejaVu Sans on a GitHub
+runner. `routes.spec.js` asserts things the font decides. Measured locally by
+forcing each candidate family:
+
+| forced font | suggest label | German editor row |
+| --- | --- | --- |
+| local default (Noto Sans) | 258x**44**px | no overflow |
+| **DejaVu Sans** | 258x**38**px | **260 vs 258** |
+| Liberation Sans | 258x38px | no overflow |
+| Ubuntu / Cantarell | 44 / 40px | no overflow |
+
+DejaVu reproduces both CI failures to the pixel. And both are genuine bugs, not
+CI artefacts: `.suggest-page__context` had no `min-height` at all, so its 44px
+came entirely from whatever default line box the font happened to have. It met
+the tap-target guideline on one machine by *nothing*, and missed it on any
+reader whose system font has a shorter one.
+
+**One `map.spec.js` failure: `_map` null after `data-ready`.** A combination
+only Milestone 1 can produce — the unavailable path sets `data-ready` and
+returns without assigning `this._map`. So one map in ~80 failed to get a context
+under llvmpipe, and `gotoTripMap` waited the test's whole 180s budget for
+something that was never coming.
+
+**Done.** Three parts.
+
+*The font is pinned rather than inherited.* `tests/ui/fonts.conf` prepends
+DejaVu Sans to `system-ui` and `sans-serif`; `scripts/with_server.sh` exports
+`FONTCONFIG_FILE`, so `make test-ui` and `make check-contrast` both get it, and
+CI installs `fonts-dejavu-core`. DejaVu deliberately: it is the adversarial
+case, it ships on both distributions, and it is what CI was already measuring,
+so a fix verified locally is verified against the thing that failed. Production
+keeps `system-ui` — this is a statement about the test, not about what readers
+should see, and pinning the app's font would have switched off a signal that is
+telling the truth.
+
+`capabilities.setup.js` asserts the pin took, by rendering a fixed string under
+`system-ui` and under the pinned family and requiring the widths to match. That
+check paid for itself immediately: the first `fonts.conf` had a double hyphen
+inside an XML comment, fontconfig refused to load the file entirely, and
+`fc-match` still answered cheerfully with the fallback. A pin that silently does
+nothing looks exactly like one that works, which is the failure mode this whole
+stage has been about.
+
+*The two defects are fixed in CSS.* `min-height: var(--tap-min)` on
+`.suggest-page__context`, stating the height instead of inheriting it;
+`flex-wrap: wrap` on `.notes-field__header`, because flex items do not shrink
+below min-content and the buttons carry the tap target while the label is the
+field's accessible name — a second line is the cheapest thing to give up.
+
+*The map wait explains itself.* `waitForMapInstance` in `helpers/scenarios.js`
+replaces five bare `waitForFunction(... ?._map)` calls, four of which had no
+timeout and no message. It distinguishes "the element never appeared" from "the
+component rendered `map unavailable`, so there is no instance and never will
+be", and bounds the wait itself instead of leaning on the 180s test budget.
+`map-no-webgl.spec.js` drives that branch directly and asserts both the message
+and that the wait stayed bounded.
+
+Not done, deliberately: **why** that one map lost its context. One flake in 293
+is not enough to aim at, and the fast failure will say more next time than
+speculation would now. It is in `todo.md`.
+
+Verified: all four layout failures reproduced locally once the font was pinned
+— which is the point of pinning it — then all 13 layout sweeps pass, and the
+full suite under `CI=1 LIBGL_ALWAYS_SOFTWARE=1` is green.
+
 ## Build order
 
 1, 2, 3, in that order, and the order carries an argument: Milestone 1 is the

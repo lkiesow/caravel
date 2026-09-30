@@ -303,3 +303,71 @@ export async function gotoRoute(page, path) {
     `navigating to ${path} landed on ${landed} — this route pattern is probably wrong, or it redirects on purpose`
   ).toBe(path);
 }
+
+// Waits for a map-view to hold a live MapLibre instance, and explains itself
+// when it does not.
+//
+// `data-ready` and `_map` are different claims, and since Stage 40 Milestone 1
+// they can disagree. A map-view that cannot get a WebGL2 context now renders a
+// "this map could not be displayed" message and sets data-ready anyway --
+// deliberately, so a missing context is a message rather than a 15s timeout on
+// every route carrying a map. But the specs that drive the map itself need the
+// instance, not the element, and for those `_map` stays null forever.
+//
+// Four call sites used to wait on it with `page.waitForFunction` alone: no
+// timeout, so the failure was the *test's* 180s budget, and no message, so the
+// report said only that a function had not returned true. On the first CI run
+// that got this far, one map in ~80 failed to get a context and cost three
+// minutes to say nothing (Stage 40 Milestone 4). This says which of the two
+// things went wrong, in seconds.
+export async function waitForMapInstance(page, selector = "map-view", timeout = 20000) {
+  try {
+    await page.waitForFunction(
+      (sel) => document.querySelector(sel)?._map,
+      selector,
+      { timeout }
+    );
+  } catch (err) {
+    // Read the component's own state rather than guessing from the timeout.
+    const state = await page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      if (!el) return { present: false };
+      return {
+        present: true,
+        ready: el.hasAttribute("data-ready"),
+        // showMapUnavailable puts this in the shadow root. Its presence is the
+        // component saying the context failed, which is the whole distinction
+        // this helper exists to draw.
+        unavailable: !!el.shadowRoot?.querySelector(".map-wrap .empty"),
+      };
+    }, selector);
+
+    if (!state.present) {
+      throw new Error(`${selector} never appeared on the page (waited ${timeout}ms).`);
+    }
+    if (state.unavailable) {
+      throw new Error(
+        [
+          `${selector} rendered "map unavailable" instead of a map, so it never got a`,
+          "MapLibre instance for this spec to drive.",
+          "",
+          "That is map-view reporting it could not obtain a WebGL2 context. If this",
+          "is CI, capabilities.setup.js passed, so the browser could make a context",
+          "at the start of the run and could not make this one -- which points at",
+          "contexts being exhausted rather than absent, llvmpipe being slow to",
+          "release them under parallel workers being the likeliest reason.",
+          "",
+          "Reproduce the no-context path deliberately with tests/ui/map-no-webgl.spec.js.",
+        ].join("\n")
+      );
+    }
+    throw new Error(
+      [
+        `${selector} is present but still has no MapLibre instance after ${timeout}ms`,
+        `(data-ready ${state.ready ? "is" : "is not"} set, and it is not showing the`,
+        "unavailable message). The lazy import of the library or the style fetch is",
+        "the place to look.",
+      ].join("\n")
+    );
+  }
+}

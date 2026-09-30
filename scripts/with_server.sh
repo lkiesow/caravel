@@ -36,6 +36,27 @@ if [ "$#" -eq 0 ]; then
 	exit 2
 fi
 
+# The font the browser measures, pinned rather than inherited from the machine.
+#
+# base.css asks for system-ui, which Firefox resolves through fontconfig -- so
+# it was Noto Sans on a Fedora workstation and DejaVu Sans on a GitHub runner,
+# and routes.spec.js asserts things the font decides: tap target heights, and
+# whether a row fits in 324px. Two of those assertions passed locally and failed
+# on CI for exactly that reason (Stage 40 Milestone 4). tests/ui/fonts.conf
+# explains the choice of DejaVu.
+#
+# Set before the CARAVEL_TEST_URL branch below, so it applies to a run against
+# somebody else's server too: the font is a property of the browser, not of the
+# server, and that escape hatch should not quietly change what is measured.
+# Exported rather than passed, because the browser is started by the command
+# rather than by this script.
+#
+# Overridable: FONTCONFIG_FILE already set is left alone, which is how you ask
+# for "measure against whatever this machine uses" deliberately.
+if [ -z "${FONTCONFIG_FILE:-}" ]; then
+	export FONTCONFIG_FILE="$PWD/tests/ui/fonts.conf"
+fi
+
 # Run against a server somebody else is running, and start nothing.
 if [ -n "${CARAVEL_TEST_URL:-}" ]; then
 	echo "with-server: using CARAVEL_TEST_URL ($CARAVEL_TEST_URL), not starting a server"

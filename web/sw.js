@@ -18,9 +18,11 @@
 // node --check over this file as a classic script.
 const CACHE_VERSION = "caravel-shell-__CARAVEL_BUILD__";
 
-// The brand face is in the shell rather than left to runtime population: it
-// is in the first paint, so an offline load without it shows the fallback and
-// reflows once the cache warms.
+// Both faces are in the shell rather than left to runtime population: they
+// are in the first paint, so an offline load without them shows the fallback
+// and reflows once the cache warms. That matters more for the UI face than the
+// brand one -- Inter sets every label and row on the page, so it is the
+// reflow a reader would actually notice.
 const SHELL_URLS = [
   "/",
   "/index.html",
@@ -28,6 +30,9 @@ const SHELL_URLS = [
   "/manifest.webmanifest",
   "/fonts/montserrat-500.woff2",
   "/fonts/montserrat-700.woff2",
+  "/fonts/inter-400.woff2",
+  "/fonts/inter-500.woff2",
+  "/fonts/inter-600.woff2",
 ];
 
 // Dev mode (CARAVEL_WEB_DIR) serves static files with a no-store header

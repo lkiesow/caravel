@@ -1,12 +1,22 @@
-/* The brand face, self-hosted rather than loaded from a font CDN: this app is
+/* Both faces are self-hosted rather than loaded from a font CDN: this app is
    self-hosted, has to work offline, and should not make every instance
-   announce every page load to a third party. The files are a latin +
-   latin-ext subset of the OFL Montserrat build, ~17 KiB each -- see
-   scripts/gen_brand_fonts.py, which owns the coverage, and web/fonts/OFL.txt.
+   announce every page load to a third party. The files are latin + latin-ext
+   subsets of the OFL builds, ~17-20 KiB each -- see scripts/gen_brand_fonts.py,
+   which owns the coverage, and the OFL text beside them in web/fonts/.
+
+   Montserrat is the brand face: the wordmark, the hero titles, the tracked
+   small caps. Inter is the UI face -- body text, labels, fields, table rows.
+   It is shipped rather than inherited from the platform because system-ui is
+   whatever the machine happens to have, and Stage 40 measured what that costs:
+   the same element came out 44px tall under Noto Sans and 38px under DejaVu
+   Sans, and two real layout defects existed only because nothing here had ever
+   stated the metrics it was relying on.
 
    font-display: swap, so a slow or blocked font shows the fallback stack
    rather than nothing: the app is entirely readable in system-ui, only less
-   itself. */
+   itself. Note what that means and what it does not -- the fallback still
+   paints the first frame, so every layout must still survive it. Shipping a
+   face narrows the variance; it does not remove it. */
 @font-face {
   font-family: "Montserrat";
   font-style: normal;
@@ -21,6 +31,30 @@
   font-weight: 700;
   font-display: swap;
   src: url("/fonts/montserrat-700.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/inter-400.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/inter-500.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/inter-600.woff2") format("woff2");
 }
 
 :root {
@@ -84,6 +118,10 @@
      trade against a blocking load. Body text keeps the system stack (see
      `body` below): the brand face is for the places that are *branding*. */
   --font-brand: "Montserrat", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* The fallback is exactly the stack the body used before Inter was shipped,
+     so a blocked or still-loading face lands on the same platform font it
+     always did. */
+  --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
 
   --radius: 0.375rem;
   --radius-lg: 0.5rem;
@@ -136,7 +174,7 @@
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: var(--font-ui);
   background: var(--color-bg);
   color: var(--color-text);
 }

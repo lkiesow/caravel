@@ -31,6 +31,9 @@ const ASSETS = [
   ["/brand/mark.svg", "image/svg+xml"],
   ["/fonts/montserrat-500.woff2", "font/woff2"],
   ["/fonts/montserrat-700.woff2", "font/woff2"],
+  ["/fonts/inter-400.woff2", "font/woff2"],
+  ["/fonts/inter-500.woff2", "font/woff2"],
+  ["/fonts/inter-600.woff2", "font/woff2"],
 ];
 
 test.describe("brand assets", () => {
@@ -73,6 +76,61 @@ test.describe("brand assets", () => {
     expect(
       Math.abs(result.brand - result.fallback),
       "Montserrat measures the same as the fallback, so it did not actually apply"
+    ).toBeGreaterThan(1);
+  });
+
+  test("the UI face loads in every shipped weight and is what body is set in", async ({ page }) => {
+    // The companion to the wordmark test above, and the one with more at stake:
+    // Montserrat sets a handful of headings, Inter sets every label, field and
+    // table row on the page. A silent fallback here is invisible -- the app
+    // renders every word either way -- and it is exactly what the suite's own
+    // fontconfig pin would look like if it had swallowed the webfont too.
+    await blockExternalRequests(page);
+    await page.goto("/");
+
+    const result = await page.evaluate(async () => {
+      // All three separately, because they are three files: a 500 that 404s
+      // would otherwise hide behind a loaded 400 and show up as a synthesised
+      // weight nobody notices.
+      const statuses = {};
+      for (const weight of [400, 500, 600]) {
+        const faces = await document.fonts.load(`${weight} 16px Inter`, "Hamburgefonstiv Größe");
+        statuses[weight] = faces.map((f) => f.status);
+      }
+      const measure = (family) => {
+        const ctx = document.createElement("canvas").getContext("2d");
+        ctx.font = `400 16px ${family}`;
+        // Umlauts and typographic punctuation on purpose: the characters a
+        // too-narrow subset drops, and the app ships a German locale.
+        return ctx.measureText("Hamburgefonstiv Größe – „quotes“ 0123456789").width;
+      };
+      return {
+        statuses,
+        // The stack as asked for, which is what tells us body was switched to
+        // the token at all.
+        bodyFamily: getComputedStyle(document.body).fontFamily,
+        ui: measure("Inter"),
+        // Everything behind Inter in --font-ui. Under the suite's fontconfig
+        // pin this is DejaVu Sans; on a developer machine it is whatever
+        // system-ui resolves to. Either way it is not Inter.
+        fallback: measure('system-ui, -apple-system, "Segoe UI", sans-serif'),
+      };
+    });
+
+    for (const weight of [400, 500, 600]) {
+      expect(result.statuses[weight], `the ${weight} face should resolve`).toEqual(["loaded"]);
+    }
+
+    // The declaration, not just the file: base.css could serve all three and
+    // still have body on the old hard-coded stack.
+    expect(result.bodyFamily, "body is not set in the UI face").toContain("Inter");
+
+    // And the face actually applied. If it had not loaded, or the subset were
+    // missing the umlauts, the browser would fall back and the two would
+    // measure the same.
+    expect(
+      Math.abs(result.ui - result.fallback),
+      "Inter measures the same as the fallback, so it did not actually apply"
     ).toBeGreaterThan(1);
   });
 

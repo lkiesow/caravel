@@ -559,6 +559,18 @@ purpose — do not reconstruct it from an older stage plan without asking.
 
 ## Testing, CI and dev tooling
 
+- **The font generator cannot run without two distribution packages
+  installed.** (Stage 41 Milestone 1.) `scripts/gen_brand_fonts.py` reads
+  `/usr/share/fonts/julietaula-montserrat-fonts` and
+  `/usr/share/fonts/rsms-inter-fonts` by absolute path, which is deliberate --
+  it is what keeps the build off the network -- but it means a machine without
+  `sudo dnf install` cannot regenerate the faces at all, and the failure is a
+  `sys.exit` naming a path. Milestone 1 worked around it by driving `build()`
+  against an RPM extracted with `rpm2cpio`, and confirmed the committed
+  Montserrat woff2 files came out byte-identical that way. A `--source-root`
+  argument or an env override would make that a supported path rather than a
+  trick. Low priority: the script runs perhaps once a stage.
+
 - **The `ui` job was red for six weeks before MapLibre arrived, and nobody
   knows why.** (Stage 40.) `ci.yml`'s `ui` job has failed on every push since
   run 19 (2026-08-24). Stage 40 diagnosed and fixed what fails *now* -- a
@@ -747,12 +759,15 @@ else runs this.
   an emptied content block does not render). When bumping, drop the workarounds
   and re-check the landing page title and skip link.
 
-- **The site ships a font face it never loads.** (Stage 18 Milestone 9.)
-  `scripts/gen_brand_fonts.py` writes both weights to `docs/assets/fonts/`, but
-  nothing on the site uses Montserrat 500 -- `document.fonts` confirms it stays
-  unloaded, so it costs a committed 17 KiB and no request. Harmless, and the
-  cost of the alternative is a generator whose two destinations differ. Revisit
-  if a docs page ever wants the 500, or trim it if none ever does.
+- **The site ships a font face it never loads.** (Stage 18 Milestone 9;
+  re-costed in Stage 41 Milestone 1.) `scripts/gen_brand_fonts.py` writes both
+  weights to `docs/assets/fonts/`, but nothing on the site uses Montserrat 500
+  -- `document.fonts` confirms it stays unloaded, so it costs a committed 17
+  KiB and no request. What used to make this not worth fixing was that the
+  alternative meant a generator whose destinations differ per family; Stage 41
+  Milestone 1 built exactly that to keep Inter out of the docs copy, so the fix
+  is now a weight list rather than a restructure. Trim it if no docs page ever
+  wants the 500.
 
 - **Nothing tests the documentation site's rendering.** (Stage 18 Milestone 9.)
   `zensical build --strict` catches dead links and unresolved references, which

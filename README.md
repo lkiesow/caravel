@@ -71,5 +71,6 @@ see [LICENSE](LICENSE). The AGPL's network clause matters for a self-hosted web
 app: if you run a modified version and let other people use it over a network,
 they are entitled to its source.
 
-The bundled Montserrat subset is used under the SIL Open Font License — see
-`web/fonts/OFL.txt`.
+The bundled font subsets — Montserrat for the brand face, Inter for the user
+interface — are used under the SIL Open Font License; the licence text for each
+sits beside them in `web/fonts/`.

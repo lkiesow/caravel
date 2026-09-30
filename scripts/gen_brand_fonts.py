@@ -1,19 +1,26 @@
 #!/usr/bin/env python3
-"""Builds web/fonts/ — the self-hosted Montserrat subset the brand wordmark and
-headings are set in. Run manually when the weights or the character coverage
-change; output is committed, this script is not part of the build.
+"""Builds web/fonts/ — the self-hosted faces the app is set in. Run manually
+when the families, the weights or the character coverage change; output is
+committed, this script is not part of the build.
 
     python3 scripts/gen_brand_fonts.py
 
+Two families, and the split between them is the point. **Montserrat** is the
+brand face: the wordmark, the hero titles, the tracked small caps — geometric,
+wide, and deliberately not what a paragraph is set in. **Inter** is the UI
+face: body text, labels, form fields, every table row. It is drawn for
+interfaces at small sizes and carries the tabular figures the expense columns
+ask for.
+
 Why self-hosted at all: the app is self-hosted, has to work offline, and should
 not make every instance announce every page load to a font CDN. Why a subset:
-the full Montserrat covers Cyrillic and Vietnamese, which nothing here needs —
-latin plus latin-ext is ~15% of the bytes and covers both shipped locales.
+the full families cover Cyrillic, Greek and Vietnamese, which nothing here
+needs — latin plus latin-ext is a fraction of the bytes and covers both shipped
+locales.
 
-Input is the OFL build packaged by the distribution (Fedora:
-`julietaula-montserrat-fonts`), so no download is needed:
+Input is the OFL build packaged by the distribution, so no download is needed:
 
-    sudo dnf install julietaula-montserrat-fonts
+    sudo dnf install julietaula-montserrat-fonts rsms-inter-fonts
 
 Requires fonttools with brotli (`pip install 'fonttools[woff]'`).
 """
@@ -24,30 +31,64 @@ import sys
 
 from fontTools import subset
 
-SOURCE_DIR = "/usr/share/fonts/julietaula-montserrat-fonts"
-LICENSE_FILE = "/usr/share/licenses/julietaula-montserrat-fonts/OFL.txt"
-
-# Only what the design actually asks for: 700 for the wordmark and headings,
-# 500 for the tagline and the tracked small caps. Every extra weight is another
-# file every visitor downloads.
-WEIGHTS = {
-    500: "Montserrat-Medium.otf",
-    700: "Montserrat-Bold.otf",
-}
-
 # Latin + Latin-1 Supplement + Latin Extended-A, plus the punctuation the copy
 # uses (en/em dashes, curly quotes, the ellipsis). Covers English and German,
 # which is every locale under web/locales today.
 UNICODES = "U+0020-007E,U+00A0-00FF,U+0100-017F,U+2013-2014,U+2018-201A,U+201C-201E,U+2026,U+20AC"
 
+# Destinations are per family rather than global. The app serves everything
+# from web/fonts/ (embedded into the binary); the documentation site can only
+# reach files under its own docs_dir, so it needs its own copy -- but it only
+# sets the brand lockups in Montserrat and takes its body text from Material,
+# so shipping it the UI face would be dead weight in the repository and in the
+# search index. Writing the site copy here is what stops it drifting to an
+# older subset than the app.
+WEB = ("web", "fonts")
+DOCS = ("docs", "assets", "fonts")
 
-def build(source_dir, out_dir):
+FAMILIES = [
+    {
+        "slug": "montserrat",
+        "package": "julietaula-montserrat-fonts",
+        "source_dir": "/usr/share/fonts/julietaula-montserrat-fonts",
+        "license_file": "/usr/share/licenses/julietaula-montserrat-fonts/OFL.txt",
+        # Only what the design actually asks for: 700 for the wordmark and
+        # headings, 500 for the tagline and the tracked small caps. Every extra
+        # weight is another file every visitor downloads.
+        "weights": {
+            500: "Montserrat-Medium.otf",
+            700: "Montserrat-Bold.otf",
+        },
+        "destinations": [WEB, DOCS],
+    },
+    {
+        "slug": "inter",
+        "package": "rsms-inter-fonts",
+        "source_dir": "/usr/share/fonts/rsms-inter-fonts",
+        "license_file": "/usr/share/licenses/rsms-inter-fonts/LICENSE.txt",
+        # 400 is the body default, 600 is every emphasised label and amount,
+        # 500 is the three rules between them. No 700: both bold rules in
+        # base.css are on var(--font-brand), so Montserrat covers bold. No
+        # italic: two rules use it, both small muted text, and synthetic
+        # oblique is adequate there -- a real face would be another 20 KiB.
+        "weights": {
+            400: "Inter-Regular.ttf",
+            500: "Inter-Medium.ttf",
+            600: "Inter-SemiBold.ttf",
+        },
+        "destinations": [WEB],
+    },
+]
+
+
+def build(family, out_dir):
     os.makedirs(out_dir, exist_ok=True)
-    for weight, filename in sorted(WEIGHTS.items()):
-        source = os.path.join(source_dir, filename)
+    slug = family["slug"]
+    for weight, filename in sorted(family["weights"].items()):
+        source = os.path.join(family["source_dir"], filename)
         if not os.path.exists(source):
-            sys.exit(f"missing {source} — is julietaula-montserrat-fonts installed?")
-        target = os.path.join(out_dir, f"montserrat-{weight}.woff2")
+            sys.exit(f"missing {source} — is {family['package']} installed?")
+        target = os.path.join(out_dir, f"{slug}-{weight}.woff2")
         subset.main(
             [
                 source,
@@ -63,30 +104,22 @@ def build(source_dir, out_dir):
         )
         print(f"{target}  {os.path.getsize(target) / 1024:.1f} KiB  (from {filename})")
 
-    # A shipped font ships its licence. OFL section 4 also forbids using the
-    # reserved font name for a modified version, which is why the subsets keep
-    # the name and change nothing but coverage.
-    if os.path.exists(LICENSE_FILE):
-        shutil.copyfile(LICENSE_FILE, os.path.join(out_dir, "OFL.txt"))
-        print(os.path.join(out_dir, "OFL.txt"))
-    else:
-        sys.exit(f"missing {LICENSE_FILE} — the licence must ship with the fonts")
-
-
-# Two destinations, one generator. The app serves the faces from web/fonts/
-# (embedded into the binary); the documentation site can only reach files under
-# its own docs_dir, so it needs its own copy. Writing both here is what stops
-# the site drifting to an older subset than the app -- the alternative, copying
-# by hand after a coverage change, is exactly the step that gets forgotten.
-DESTINATIONS = [
-    ("web", "fonts"),
-    ("docs", "assets", "fonts"),
-]
+    # A shipped font ships its licence, and two families from two copyright
+    # holders means two files rather than one merged one -- hence the slug in
+    # the name. OFL section 4 also forbids using the reserved font name for a
+    # modified version, which is why the subsets keep the name and change
+    # nothing but coverage.
+    license_file = family["license_file"]
+    if not os.path.exists(license_file):
+        sys.exit(f"missing {license_file} — the licence must ship with the fonts")
+    shutil.copyfile(license_file, os.path.join(out_dir, f"{slug}-OFL.txt"))
+    print(os.path.join(out_dir, f"{slug}-OFL.txt"))
 
 
 if __name__ == "__main__":
     root = os.path.join(os.path.dirname(__file__), "..")
-    for parts in DESTINATIONS:
-        out = os.path.join(root, *parts)
-        build(SOURCE_DIR, out)
-        print("fonts written to", os.path.normpath(out))
+    for family in FAMILIES:
+        for parts in family["destinations"]:
+            out = os.path.join(root, *parts)
+            build(family, out)
+            print(f"{family['slug']} written to", os.path.normpath(out))

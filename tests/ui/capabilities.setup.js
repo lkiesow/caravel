@@ -84,10 +84,12 @@ setup("the browser can render a map", async ({ page, browserName }) => {
 // The other thing this suite needs from a browser: a known font.
 //
 // routes.spec.js asserts things the font decides -- whether a control clears
-// the 44px tap target, whether a row fits in 324px -- and base.css asks for
-// `system-ui`, which is whatever the machine offers. That made two assertions
-// pass on a Fedora workstation (Noto Sans) and fail on a GitHub runner (DejaVu
-// Sans), which is a large part of why the ui job was red. scripts/with_server.sh
+// the 44px tap target, whether a row fits in 324px -- and behind Inter,
+// base.css still falls back to `system-ui`, which is whatever the machine
+// offers. With font-display: swap that fallback paints the first frame, so it
+// is not hypothetical. It made two assertions pass on a Fedora workstation
+// (Noto Sans) and fail on a GitHub runner (DejaVu Sans), which is a large part
+// of why the ui job was red. scripts/with_server.sh
 // pins it through FONTCONFIG_FILE; tests/ui/fonts.conf explains the choice.
 //
 // This check exists because fontconfig fails *silently*: ask for a family that

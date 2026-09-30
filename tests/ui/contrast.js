@@ -33,6 +33,11 @@
 // This is the script that found Stage 07's 2.54:1 primary buttons and 3.08:1 error
 // text, and that proved light mode was untouched by the fix.
 import { firefox } from "@playwright/test";
+// The same prefs playwright.config.js gives the suite. This script launches its
+// own browser, so without them a CI run would measure the "map could not be
+// displayed" rectangle rather than a map -- and say nothing, since it asserts
+// contrast and not the presence of cartography. See that module.
+import { SOFTWARE_GL_PREFS } from "./helpers/software-gl.js";
 
 const DEFAULT_SELECTORS = [
   ".btn-primary",
@@ -441,7 +446,7 @@ async function main() {
   const schemes = opts.scheme === "both" ? ["light", "dark"] : [opts.scheme];
 
   if (opts.selfTest) {
-    const browser = await firefox.launch();
+    const browser = await firefox.launch({ firefoxUserPrefs: SOFTWARE_GL_PREFS });
     // Close before exiting rather than inside a finally: process.exit() does not
     // run finally blocks, so this would otherwise rely on Playwright's own
     // exit handler to reap the browser.
@@ -454,7 +459,7 @@ async function main() {
     process.exit(code);
   }
 
-  const browser = await firefox.launch();
+  const browser = await firefox.launch({ firefoxUserPrefs: SOFTWARE_GL_PREFS });
   let anyBelowMin = false;
   const failures = [];
   let measured = 0;

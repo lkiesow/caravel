@@ -20,6 +20,8 @@
 // are resolved from them — see tests/ui/helpers/scenarios.js.
 import { defineConfig, devices } from "@playwright/test";
 import { AUTH_STATE_FILE } from "./tests/ui/helpers/scenarios.js";
+// Why Firefox needs help finding a WebGL2 context on CI: see that module.
+import { SOFTWARE_GL_PREFS } from "./tests/ui/helpers/software-gl.js";
 
 const baseURL = process.env.CARAVEL_TEST_URL || "http://localhost:8080";
 
@@ -51,6 +53,7 @@ export default defineConfig({
     headless: !process.env.CARAVEL_TEST_HEADED,
     launchOptions: {
       slowMo: Number(process.env.CARAVEL_TEST_SLOWMO || 0),
+      firefoxUserPrefs: SOFTWARE_GL_PREFS,
     },
   },
   projects: [

@@ -193,6 +193,47 @@ GL stack can honestly simulate. So this milestone is verified **on CI**, on a
 branch, before it goes anywhere near `main`: push, watch the `ui` job, and read
 the result. Milestone 2's guard is what makes that read unambiguous.
 
+**Done.** Three pieces, because no two of them work without the third.
+
+`tests/ui/helpers/software-gl.js` holds the prefs, keyed off `CI`.
+`webgl.force-enabled` is the load-bearing one — Firefox blocklists WebGL when
+it does not recognise the renderer, and llvmpipe on a headless runner is
+exactly that case; `gfx.webrender.software` and `gfx.webrender.all` put
+compositing on the software path rather than leaving it to negotiate with a GPU
+process that is not there. Gated rather than unconditional because forcing
+software rendering on a workstation would slow every local run while exercising
+a path that machine never takes.
+
+`.github/workflows/ci.yml` supplies the other half: `libgl1-mesa-dri` (with
+`libglx-mesa0` and `libegl-mesa0`) installed explicitly, since `--with-deps`
+installs what Firefox needs to *start*, which is a different set; and
+`LIBGL_ALWAYS_SOFTWARE=1` on both the UI suite and the contrast step. Prefs
+without the driver would be a browser told to use a rasteriser that is not
+installed.
+
+A deviation from the plan, and the reason this is a module rather than a
+constant in the config: **`tests/ui/contrast.js` launches its own Firefox.**
+`make check-contrast` drives the same routes through `firefox.launch()`
+directly, so the config's prefs would never have reached it — on CI it would
+have measured the "map could not be displayed" rectangle instead of a map and
+reported a number for the wrong thing, silently, because it asserts contrast
+rather than the presence of cartography. Both call sites now import the one
+definition.
+
+Verified as far as this machine honestly allows, which turned out to be further
+than the plan assumed: because the prefs key off `CI`, `CI=1
+LIBGL_ALWAYS_SOFTWARE=1` locally exercises the exact configuration CI will use.
+Under it, `capabilities.setup.js` reports `llvmpipe, or similar` rather than the
+workstation's Radeon — so the software path is genuinely the one under test —
+the map specs pass, `map-no-webgl.spec.js` still passes (confirming
+`webgl.disabled` beats `webgl.force-enabled`, which that spec asserts on
+purpose), `make check-contrast` measures 728 elements all above threshold, and
+the full suite is green.
+
+What that does **not** prove is the runner's own state: this machine has a
+working Mesa install, which is the very thing that may be missing there. Hence
+the verification below.
+
 ## Build order
 
 1, 2, 3, in that order, and the order carries an argument: Milestone 1 is the

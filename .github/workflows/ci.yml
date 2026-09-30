@@ -168,14 +168,36 @@ jobs:
       - name: Install the browsers Playwright needs
         run: npx playwright install --with-deps firefox chromium
 
+      # A runner has no GPU, and Firefox -- unlike Chromium, which carries
+      # SwiftShader -- has no software renderer of its own. MapLibre v6 requires
+      # a WebGL2 context, so without this every route mounting a <map-view>
+      # waits 15s for data-ready and fails: 121 tests of 291, for five weeks,
+      # while the three chromium-gestures specs rendering the same map passed
+      # throughout and made it look like a Firefox bug rather than a missing
+      # rasteriser (Stage 40).
+      #
+      # Mesa's llvmpipe is that renderer. `--with-deps` above installs what
+      # Firefox needs to start, which is not the same set: this is explicit
+      # because the failure it prevents is silent and expensive. The matching
+      # about-face on the browser side -- Firefox blocklists an unrecognised
+      # renderer and has to be told not to -- is SOFTWARE_GL_PREFS in
+      # playwright.config.js, keyed off CI. Neither half works alone.
+      - name: Install a software OpenGL renderer for Firefox
+        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dri libglx-mesa0 libegl-mesa0
+
       # No server is started here: `make test-ui` goes through
       # scripts/ui_test.sh, which brings up a throwaway instance of its own --
       # own port, own database, own uploads, own seed -- and tears it down
       # afterwards. The assistant env vars and the "is the assistant actually
       # enabled" check that used to live in this job moved into that script, so
       # they guard a developer's run too.
+      # LIBGL_ALWAYS_SOFTWARE is what actually routes GL to llvmpipe rather than
+      # to a card that is not there. On both steps, not just the suite:
+      # check-contrast drives the same browser through the same routes.
       - name: UI suite
         run: make test-ui
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
 
       # Contrast was measurable for four stages and asserted by nobody, so a
       # regression like Stage 07's 2.54:1 primary button would only be found by
@@ -184,6 +206,8 @@ jobs:
       # palette moved" rather than as a broken test.
       - name: Colour contrast
         run: make check-contrast
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
 
       # The report is the only way to see what a headless failure looked like.
       - uses: actions/upload-artifact@v4

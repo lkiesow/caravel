@@ -146,6 +146,37 @@ miss reads as a code failure.
 Verification: with WebGL forced off the run stops early naming WebGL2; with it
 on, nothing changes and the suite is still 291 passed.
 
+**Done.** `tests/ui/capabilities.setup.js`, a second file in the existing
+`setup` project. Both real projects already depend on that project, so a failure
+there stops them instead of letting them produce the confusing output — no
+config change was needed, only a file matching `/.*\.setup\.js/`.
+
+A setup project rather than a fixture or a `beforeEach`, for three reasons
+worth stating because the last one is not obvious: it runs once per run rather
+than 293 times; the dependency edge already exists; and it gets the project's
+default launch options, whereas a per-test guard would fire inside
+`map-no-webgl.spec.js` — which turns WebGL off deliberately — and fail the very
+spec that proves Milestone 1 works.
+
+The check also logs the renderer on the way past, on the happy path too
+(`capabilities: firefox WebGL2 renderer: Radeon R9 200 Series, or similar`
+here; a software rasteriser on CI). "Which GL stack did this run use" is the
+first question any map failure raises, and it should not take a rerun to
+answer. The string is logged, never asserted on — software is a correct answer
+and is the one CI is meant to give.
+
+Verified in both directions, the failing one by temporarily adding
+`firefoxUserPrefs: { "webgl.disabled": true }` to the config's shared
+`launchOptions` and restoring it afterwards:
+
+- **WebGL off, whole suite:** `1 failed, 290 did not run, 2 passed (11.3s)`,
+  the failure being this check, its message naming WebGL2, MapLibre, the CI
+  configuration and the local diagnosis. Against the shape this stage started
+  from — 121 failed, 170 passed, 22.2 minutes, nothing mentioning WebGL.
+- **WebGL on:** the check passes in 3.1s, `map-no-webgl.spec.js` still passes
+  alongside it (confirming the deliberate WebGL-off spec is unaffected), `make
+  ci` green, and the full suite green.
+
 ## Milestone 3: CI's Firefox gets a software WebGL2
 
 The fix that turns the job green. Give the `ui` job Mesa's software rasteriser

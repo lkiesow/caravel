@@ -569,9 +569,10 @@ purpose — do not reconstruct it from an older stage plan without asking.
   still red once Stage 40 finishes: the next run is the cheapest way to ask.
 
 - **The whole class of "CI-only browser capability" is unguarded.** (Stage 40.)
-  WebGL2 gets a precondition check in Stage 40 Milestone 2 because it is the one
-  that bit. Nothing checks the others -- fonts, codecs, `structuredClone`, the
-  APIs the locate control needs -- and each would fail the same way: a
+  WebGL2 got one in Stage 40 Milestone 2 -- `tests/ui/capabilities.setup.js` --
+  because it is the one that bit. Nothing checks the others: fonts, codecs,
+  `structuredClone`, the APIs the locate control needs. Each would fail the
+  same way: a
   capability the developer's browser has and the runner's does not, surfacing as
   a pile of unrelated-looking test failures rather than as one sentence. Worth a
   single "what does this suite require of a browser" assertion if a second one

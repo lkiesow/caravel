@@ -182,8 +182,8 @@ jobs:
       # about-face on the browser side -- Firefox blocklists an unrecognised
       # renderer and has to be told not to -- is SOFTWARE_GL_PREFS in
       # playwright.config.js, keyed off CI. Neither half works alone.
-      - name: Install a software OpenGL renderer for Firefox
-        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dri libglx-mesa0 libegl-mesa0
+      - name: Install a software OpenGL renderer and an X server for Firefox
+        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dri libglx-mesa0 libegl-mesa0 xvfb
 
       # No server is started here: `make test-ui` goes through
       # scripts/ui_test.sh, which brings up a throwaway instance of its own --
@@ -191,11 +191,26 @@ jobs:
       # afterwards. The assistant env vars and the "is the assistant actually
       # enabled" check that used to live in this job moved into that script, so
       # they guard a developer's run too.
-      # LIBGL_ALWAYS_SOFTWARE is what actually routes GL to llvmpipe rather than
-      # to a card that is not there. On both steps, not just the suite:
-      # check-contrast drives the same browser through the same routes.
+      # LIBGL_ALWAYS_SOFTWARE routes GL to llvmpipe rather than to a card that
+      # is not there, and xvfb-run gives it somewhere to draw.
+      #
+      # The X server is not optional and was the part Stage 40 Milestone 3 got
+      # wrong on its first attempt: headless Firefox on Linux still reaches its
+      # GL context through GLX, so with no DISPLAY it gets none at all, whatever
+      # Mesa is installed and whatever the prefs say. That run reported
+      # `WebGL2 renderer: none` with libgl1-mesa-dri 25.2.8 present. Chromium
+      # never needed this because SwiftShader is in-process, which is exactly
+      # why its gesture specs passed throughout the five weeks the Firefox
+      # projects were failing.
+      #
+      # Headless stays on: the display is for GLX to bind to, not for anybody to
+      # look at. `-a` picks a free display number rather than assuming :99 is
+      # free.
+      #
+      # On both steps, not just the suite: check-contrast launches its own
+      # Firefox and drives the same routes.
       - name: UI suite
-        run: make test-ui
+        run: xvfb-run -a make test-ui
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
 
@@ -205,7 +220,7 @@ jobs:
       # it is a script, not a spec, and a failure here should read as "the
       # palette moved" rather than as a broken test.
       - name: Colour contrast
-        run: make check-contrast
+        run: xvfb-run -a make check-contrast
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
 

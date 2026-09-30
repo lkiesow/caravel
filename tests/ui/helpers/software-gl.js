@@ -18,10 +18,13 @@
 // how it was verified before being pushed, and is the same variable the workers,
 // reporter and forbidOnly settings in playwright.config.js already key off.
 //
-// Mesa itself comes from the `ui` job, which installs libgl1-mesa-dri and sets
-// LIBGL_ALWAYS_SOFTWARE=1. Prefs without the driver would be a browser told to
-// use a rasteriser that is not installed, so the two halves belong together --
-// see .github/workflows/ci.yml.
+// These prefs are necessary and nowhere near sufficient. The `ui` job supplies
+// the rest, and all of it is needed: libgl1-mesa-dri (the rasteriser),
+// LIBGL_ALWAYS_SOFTWARE=1 (use it), and `xvfb-run` (somewhere to draw). That
+// last one is the one that is easy to miss and was missing on this module's
+// first run -- headless Firefox on Linux still reaches its GL context through
+// GLX, so with no DISPLAY it reports no WebGL2 at all however good the driver
+// is. See .github/workflows/ci.yml.
 //
 // Its own module because there are two callers and they are easy to skew: the
 // Playwright config, and tests/ui/contrast.js, which launches Firefox itself. A

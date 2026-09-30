@@ -234,6 +234,44 @@ What that does **not** prove is the runner's own state: this machine has a
 working Mesa install, which is the very thing that may be missing there. Hence
 the verification below.
 
+**Follow-up: the display, which the above missed.** The first push failed in 78
+seconds — Milestone 2's guard doing exactly its job, one failure naming WebGL2
+instead of 121 naming nothing. Mesa was not the problem: `libgl1-mesa-dri
+25.2.8` was already on the image and `libegl-mesa0` installed cleanly. Firefox
+reported `WebGL2 renderer: none` anyway.
+
+The missing piece was an **X display**. Headless Firefox on Linux still reaches
+its GL context through GLX, so with no `DISPLAY` it gets none at all, whatever
+driver is installed and whatever the prefs say. Chromium never needed one
+because SwiftShader is in-process — which is precisely why its three gesture
+specs passed through all five weeks the Firefox projects were failing, and why
+the contrast between them was the clue that started this stage.
+
+Reproduced locally by taking the display away, which turns the workstation into
+a fair imitation of the runner after all:
+
+| condition | renderer |
+| --- | --- |
+| headless, `DISPLAY=:0`, `LIBGL_ALWAYS_SOFTWARE=1` | `llvmpipe, or similar` |
+| headless, no `DISPLAY`, `LIBGL_ALWAYS_SOFTWARE=1` | `none` |
+
+One variable, and it is the one nothing in the first attempt supplied. So the
+job installs `xvfb` and both browser steps run under `xvfb-run -a`. Headless
+stays on: the display is for GLX to bind to, not for anyone to look at.
+
+`capabilities.setup.js`'s failure message and `software-gl.js`'s header were
+rewritten to name the display first — the previous text confidently pointed at
+Mesa and the prefs, which would have sent the next reader down the path that had
+just been ruled out. The message now also carries the `env -u DISPLAY` command
+above, so the reproduction is in the failure rather than in this file.
+
+Verified with the display present (`llvmpipe`, the map specs and
+`map-no-webgl.spec.js` both passing, `make ci` green) and with it absent (the
+guard fires in seconds with the corrected message). `xvfb-run` itself is **not**
+verified locally — Xvfb is not installed on this machine and the decision was to
+push rather than install it. The bisection above is the argument for it; the run
+is the proof.
+
 ## Build order
 
 1, 2, 3, in that order, and the order carries an argument: Milestone 1 is the

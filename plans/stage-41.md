@@ -205,6 +205,118 @@ from the others. For the metric-adjusted fallback that is a layout-shift number
 loads); for `optional` it is that the face does not apply on a cold load and
 does on a warm one.
 
+**Done.** `swap` stays; the fallback was made to fit instead.
+
+*The measurement came first, and the first version of it was wrong.* A sweep
+harness rendered all 25 routes twice — once with the Inter files aborted, once
+normally — and reported a perfect zero shift on every route. It was measuring
+nothing: the service worker answered the font request from its own cache,
+straight past the interception, and a second bug meant the page-level
+catch-all route from `blockExternalRequests` shadowed the abort anyway. A
+`document.fonts.check` probe in the snapshot is what exposed it, reporting
+Inter as loaded in the pass that was supposed to be without it. Rebuilt with a
+fresh context per pass and `serviceWorkers: "block"`, the real numbers at 324px
+were: 77 to 94 percent of elements on a route move, worst single element 68px,
+page heights changing by up to 68px. Body text measured 298.4px in the fallback
+against 280.2px in Inter.
+
+*So `swap` alone was not defensible, and `optional` was rejected on a different
+ground.* It would remove the shift by never swapping, but it decides *per page
+load* whether the face is used at all, on a 100ms timer. A loaded CI runner
+that misses that window would silently render every layout assertion in the
+suite against a different font. That is precisely the class of failure Stage 40
+spent itself on, and it is not worth buying with the thing this stage exists to
+remove.
+
+*What landed is the metric-adjusted fallback.* `scripts/gen_font_fallbacks.py`
+computes, for each platform font it can measure, a `size-adjust` plus
+`ascent-override` / `descent-override` / `line-gap-override`, and writes the
+faces into `base.css` between generated-region markers. `--font-ui` now reads
+`"Inter", var(--font-ui-fallback, system-ui), system-ui, ...` — the `var()`
+default matters, because a `var()` that resolves to nothing invalidates the
+whole declaration rather than falling through to the next entry.
+
+*The interesting part is where `size-adjust` comes from.* It is a ratio of
+average character width, and the usual recipe averages a flat pass over the
+alphabet and digits. That gives 97.57% for DejaVu Sans. Weighting each
+character by how often it actually occurs in `web/locales/*.json` gives
+94.03%. The browser, measured directly, says 93.91%. Interface copy is mostly
+lowercase and spaces, which is exactly where Inter is proportionally narrowest,
+and the flat average is dominated by capitals nobody types. So the generator
+reads the app's own locale files as its corpus — which also means the numbers
+are re-derived when the copy changes.
+
+Seven faces ship: Roboto, DejaVu Sans, Noto Sans, Cantarell, Adwaita Sans,
+Liberation Sans, Open Sans. Every one was measured from a font file on the
+machine that ran the script, and the script exits rather than skipping a
+missing one, so the committed CSS cannot quietly depend on what happened to be
+installed. Segoe UI and the Apple system font are deliberately absent: they are
+almost certainly the two most common fallbacks in the world and neither can be
+measured here, and a number nobody in this repository can check is what Stage
+14 and Stage 40 were both about. Arial is absent for a different reason — it
+could be adjusted accurately through metric-compatible Liberation Sans, but it
+sits ahead of `system-ui` in the cascade, so listing it would take Windows
+readers off Segoe UI and onto Arial for the sake of one frame.
+
+*Verified.* Body text now measures 280.5px in the fallback against 280.2px in
+Inter, a 0.1% error where it was 6.5%. Worst element displacement across the
+full 25-route sweep fell from 68px to 5.4px at 324px and from 21.2px to 7.0px
+at 1280px; page heights land within 5px. `make ci`, `make docs` and the full UI
+suite all green -- 297 passed.
+
+One note for whoever sees it next: `register.spec.js`'s "registering an account
+logs the newcomer straight in" failed with a 500 on one of the intermediate
+full-suite runs and passed alone and on both later full runs. It registers a
+fixed username and nothing here touches registration, so it is an existing
+flake under parallel load rather than anything this stage did -- recorded
+because a one-off 500 that nobody wrote down is a bug that gets rediscovered.
+
+The sweep harness is gone, replaced by `tests/ui/font-metrics.spec.js` — three
+dense routes rather than 25, 8 seconds rather than 1.6 minutes. Worst
+displacement across the three: 4.2px, against a 12px ceiling.
+
+*Getting that test right took three attempts, and each failure is worth
+recording because each one passed while measuring nothing.* The first blocked
+the woff2 files with `page.route` and reported a flawless zero shift on every
+route — the service worker was answering from its own cache straight past the
+interception, and a page-level catch-all from `blockExternalRequests` was
+shadowing the abort as well. A `document.fonts.check` probe added to the
+snapshot is what exposed it. The second fixed that with a fresh context per
+pass and two navigations; it passed alone and failed in the parallel suite
+claiming a 76.5px shift, because another worker created and deleted trips
+between the two passes and it was comparing two different pages. The third
+measured both states on one page load by aborting and un-aborting the font URL
+per route, and deadlocked under parallel load into a 180s timeout.
+
+What ships does none of that. It renders the page once, reads the computed
+`--font-ui`, and re-renders with Inter stripped off the front of that stack —
+no interception, no service worker, no second navigation, nothing another
+worker can change underneath it. It reads the stack from the page rather than
+restating it, so it cannot drift from `base.css`. The two methods agree to the
+tenth of a pixel (3.4 / 4.2 / 3.1px), which is the cross-check that the simpler
+one is measuring the same thing.
+
+Three guards, all confirmed by breaking them: removing the fallback from the
+stack fails on width with a diagnostic naming the generator; an override that
+changes nothing fails on "not one box moved", because a zero shift is the
+signature of a measurement that measured nothing rather than a perfect score;
+and a `--font-ui` that does not start with Inter fails before measuring
+anything.
+
+One trap worth recording from the attempt that used the Font Loading API:
+`document.fonts.check("400 16px Inter")` cannot serve as the did-it-load
+signal while the files are blocked. The CSS-connected faces stay in the set
+permanently in status `error`, and one errored face in a family makes `check`
+answer false no matter how many working faces are added beside it — the page
+renders in Inter while the font set denies having it.
+
+*The `fonts.conf` question is answered, and the answer inverted the pin's
+purpose.* It stays, but it is no longer the adversarial case — it is the
+*known* case. `font-metrics.spec.js` has to know which font it is measuring
+against, and the pin is what tells it; pinning a family the generator has no
+numbers for would fail the shift test for a reason that is not a bug. The two
+files now move together, which is written into `fonts.conf`.
+
 ## Milestone 3: the pictures and the paperwork
 
 Everything under `docs/assets/screenshots/` is committed and every one of them

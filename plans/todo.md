@@ -559,6 +559,26 @@ purpose — do not reconstruct it from an older stage plan without asking.
 
 ## Testing, CI and dev tooling
 
+- **`register.spec.js` can 500 under parallel load.** (Seen during Stage 41
+  Milestone 2.) "registering an account logs the newcomer straight in" failed
+  once with a 500 from `POST /api/auth/register` during a full `make test-ui`,
+  and passed alone and on two later full runs. The spec registers a fixed
+  username, `uisuite-newcomer`, so a leftover row racing its own cleanup is the
+  obvious suspect -- but a duplicate should be a 409, and a 500 means the
+  server did something it did not expect. Worth reproducing with `--repeat-each`
+  before assuming it is only the test.
+
+- **Windows and macOS have no metric-adjusted fallback.** (Stage 41 Milestone
+  2.) `scripts/gen_font_fallbacks.py` ships adjusted stand-ins for the seven
+  platform fonts that could be measured from a file on a Fedora workstation,
+  which covers Linux and Android. Segoe UI and the Apple system font are what
+  `system-ui` resolves to on Windows and macOS, are almost certainly the two
+  most common fallbacks in practice, and were left out rather than guessed --
+  readers there still get the full first-paint reflow the milestone removed for
+  everyone else. Fixing it is a measurement, not a design problem: run the
+  script on one of those machines with the family added to `FALLBACKS` and
+  commit the numbers it prints.
+
 - **The font generator cannot run without two distribution packages
   installed.** (Stage 41 Milestone 1.) `scripts/gen_brand_fonts.py` reads
   `/usr/share/fonts/julietaula-montserrat-fonts` and
@@ -736,6 +756,16 @@ purpose — do not reconstruct it from an older stage plan without asking.
 ---
 
 ## Deployment and operations
+
+- **The font files are not preloaded.** (Stage 41 Milestone 2.) They are
+  requested only once `base.css` has been fetched and parsed, so on a cold load
+  the fallback is shown for about one extra round trip longer than it needs to
+  be. Three `<link rel="preload" as="font" crossorigin>` tags for
+  `inter-400`/`inter-600`/`montserrat-700` would start those fetches during the
+  HTML parse instead. Not urgent since Milestone 2 made the fallback frame land
+  in the right place and the service worker precaches the faces after the first
+  visit, but it is cheap and it shortens the window rather than just making it
+  survivable.
 
 Nothing here is needed to keep developing; all of it is needed before anyone
 else runs this.

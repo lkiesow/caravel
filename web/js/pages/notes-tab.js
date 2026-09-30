@@ -151,24 +151,16 @@ export async function renderNotesTab(container, trip) {
     const textarea = form.querySelector("textarea");
     textarea.value = draft;
 
-    // Grow with the content rather than making the user scroll a fixed box.
-    // Same arithmetic as the location form's notes field: everything is
-    // border-box, so scrollHeight (content + padding) is 2px short without the
-    // borders added back, which is enough to leave a scrollbar.
-    function autoGrow() {
-      textarea.style.height = "auto";
-      const borders = textarea.offsetHeight - textarea.clientHeight;
-      textarea.style.height = `${textarea.scrollHeight + borders}px`;
-    }
+    // The box grows with its content, but that is `field-sizing: content` in
+    // base.css now rather than anything here -- so all this listener does is
+    // keep the draft in step.
     textarea.addEventListener("input", () => {
       draft = textarea.value;
-      autoGrow();
     });
-    autoGrow();
 
     // Registered after the input listener above, and deliberately: the picker
     // inserts by firing a real input event, which is what keeps `draft` in step
-    // and regrows the box once a link has landed.
+    // once a link has landed.
     picker = bindMentionPicker(textarea, form.querySelector("#trip-notes-mentions"), {
       tripId: trip.id,
     });

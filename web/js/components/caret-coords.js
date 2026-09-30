@@ -72,8 +72,9 @@ export function caretCoords(el) {
   el.parentNode.appendChild(mirror);
   // offsetTop is measured from the offsetParent's padding edge -- the mirror
   // is the offsetParent, being the only positioned ancestor -- so the borders
-  // go back on to make this a border-box offset, matching the field's. Same
-  // arithmetic the two autoGrow functions do for the same reason.
+  // go back on to make this a border-box offset, matching the field's. (The two
+  // auto-grow handlers this used to point at did the same arithmetic; they are
+  // `field-sizing: content` in base.css now, which needs no such correction.)
   const top = marker.offsetTop + parseFloat(cs.borderTopWidth) - el.scrollTop;
   const left = marker.offsetLeft + parseFloat(cs.borderLeftWidth) - el.scrollLeft;
   // `line-height: normal` parses as NaN. 1.2 is the usual normal.

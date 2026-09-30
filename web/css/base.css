@@ -1992,7 +1992,7 @@ button {
 /* Same treatment as .itinerary-day__notes: without an explicit width and
    resize the UA default (resize: both) lets the drag handle pull the
    textarea wider than the card containing it. Vertical-only dragging still
-   works, on top of the auto-grow in location-form.js. */
+   works, on top of the `field-sizing` on .item-form textarea. */
 /* The notes field, with its Edit/Preview toggle (Stage 15 Milestone 3). The
    header is the label and the toggle on one row, so the tabs sit above the box
    they switch rather than below it. .notes-field itself is the column the
@@ -2094,9 +2094,18 @@ button {
   margin-bottom: 0;
 }
 
+/* Grows with its content rather than making the user scroll a 7rem box or drag
+   it bigger every time. This was a hand-rolled `input` handler in
+   location-form.js until Sep 2026 -- set height:auto, read scrollHeight, write
+   it back, with a border correction because everything here is border-box.
+   `field-sizing` is the browser doing the same thing without the round trip,
+   and without the failure mode that needed a re-measure on the way back from
+   the markdown preview: a display:none textarea reports scrollHeight 0, so the
+   height the JS had grown to was stale. min-height is still the floor. */
 .item-form textarea {
   width: 100%;
   min-height: 7rem;
+  field-sizing: content;
   resize: vertical;
 }
 
@@ -2893,10 +2902,13 @@ button {
 /* Width and resize are explicit for the same reason .itinerary-day__notes and
    the location form's textarea set them: the UA default (resize: both) lets
    the drag handle pull the box wider than the card holding it. Vertical
-   dragging still works, on top of the auto-grow in notes-tab.js. */
+   dragging still works, on top of the `field-sizing` below.
+   `field-sizing: content` replaced a hand-rolled auto-grow handler in
+   notes-tab.js in Sep 2026 -- see the longer note on .item-form textarea. */
 .trip-notes__form textarea {
   width: 100%;
   min-height: 12rem;
+  field-sizing: content;
   resize: vertical;
   font: inherit;
 }

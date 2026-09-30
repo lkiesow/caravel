@@ -867,7 +867,36 @@ else runs this.
   (Stage 39, Sep 2026.) The mirror is sized from `offsetWidth`, which includes
   a scrollbar the mirror itself does not have, so a field that scrolls would
   wrap slightly differently from its mirror and the caret measurement would
-  drift. Both fields it is used on auto-grow, so they do not scroll -- but
-  `resize: vertical` means a user can drag one short. The error is at most a
-  line or two on the popup's position, which is why it was left.
+  drift. Both fields it is used on size to their content (`field-sizing`, since
+  Sep 2026), so they do not scroll -- but `resize: vertical` means a user can
+  drag one short. The error is at most a line or two on the popup's position,
+  which is why it was left.
 
+- **Typing in a long note is slow, and `field-sizing` did not fix it.** (Sep
+  2026, the `field-sizing` commit.) Reported as ~16 characters taking ~3s to
+  appear in the trip notepad. Measured against the dev server with Playwright:
+  the JS is not the cause -- per-keystroke handler time is a flat 1-5ms at
+  every note length, and the `@`-picker's `readQuery` regex is under 0.05ms
+  even at 40k characters. The cost is that the textarea is as tall as the
+  whole note (a 20k-character note is a 16,926px box), so every keystroke
+  relays out and repaints all of it. Holding the height fixed at that same
+  16,926px cost the same as re-measuring it, so the old `autoGrow` measuring
+  pass was only ~10% of it -- which is why swapping it for `field-sizing:
+  content` changed nothing here: the native property produces a byte-identical
+  box height. A textarea with a fixed height and `overflow: auto` measured
+  *flat* across every length tested, so the lever is a `max-height` that lets
+  long notes scroll internally -- at the cost of the full-height box the
+  mention picker's caret positioning was designed around (`caret-coords.js`
+  explicitly assumes no scrollbar, see the entry above). Worth re-measuring in
+  a real browser first: the numbers above are headless, so they exclude paint,
+  which is likely most of the user-visible 3s.
+
+- **`caret-coords.js` lays out the whole note on every keystroke while the `@`
+  list is open.** (Sep 2026, the `field-sizing` commit.) It mirrors all text
+  before the caret into a hidden div to find the caret, and `bindSuggestInput`
+  calls it from `onOpen` for every batch of results. Measured at 11ms per
+  keystroke on a 20k-character note and 19.5ms on a 40k one. Only paid while
+  the picker list is actually showing, so it is not the typing lag above, but
+  it compounds it exactly when a mention is being typed. Caching the mirror
+  div between calls, or measuring only from the last newline before the caret,
+  would both bound it.

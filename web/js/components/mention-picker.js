@@ -73,8 +73,8 @@ export function bindMentionPicker(textarea, listEl, { tripId }) {
     // execCommand is deprecated but is still the only way to put text into a
     // textarea that keeps the browser's undo stack -- and it fires a real
     // input event, which the note editor needs: its handler is what keeps the
-    // draft and regrows the box. Assigning .value throws the undo history away,
-    // so that is the fallback, with the event dispatched by hand.
+    // draft in step. Assigning .value throws the undo history away, so that is
+    // the fallback, with the event dispatched by hand.
     let inserted = false;
     try {
       inserted = document.execCommand("insertText", false, link);

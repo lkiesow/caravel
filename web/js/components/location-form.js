@@ -81,22 +81,6 @@ export function renderItemForm(container, item, { onSubmit, tripId }) {
     form.notes.value = item.notes ?? "";
   }
 
-  // Notes grow with their content rather than making the user scroll a
-  // 6-row box or drag it bigger every time. min-height in the CSS sets the
-  // floor; clearing the height first lets it shrink again on delete. Run
-  // once after prefill so an existing long note opens fully expanded.
-  function autoGrowNotes() {
-    const notes = form.notes;
-    notes.style.height = "auto";
-    // Everything is border-box (see base.css), so the borders have to be
-    // added back: scrollHeight covers content + padding only, and leaving
-    // them out shorts the box by 2px, which is enough to keep a scrollbar.
-    const borders = notes.offsetHeight - notes.clientHeight;
-    notes.style.height = `${notes.scrollHeight + borders}px`;
-  }
-  form.notes.addEventListener("input", autoGrowNotes);
-  autoGrowNotes();
-
   // A <select> is never empty, so on a new location the category reads as
   // "site" before anybody has chosen anything. Left alone, that makes every
   // category suggestion look like it is about to replace a real decision --
@@ -133,9 +117,6 @@ export function renderItemForm(container, item, { onSubmit, tripId }) {
     form.notes.hidden = preview;
     previewEl.hidden = !preview || !previewEl.innerHTML;
     previewEmptyEl.hidden = !preview || !!previewEl.innerHTML;
-    // Coming back from a preview, the textarea has been display:none and its
-    // scrollHeight was 0 while hidden, so the height it grew to is stale.
-    if (!preview) autoGrowNotes();
   }
 
   async function showPreview() {
@@ -247,9 +228,6 @@ export function renderItemForm(container, item, { onSubmit, tripId }) {
         if (!field) continue;
         field.value = value ?? "";
       }
-      // The notes box sizes itself to its content, and a pasted-in paragraph
-      // would otherwise open as a 6-row box with a scrollbar.
-      if ("notes" in partial) autoGrowNotes();
       // Accepting a suggested category is a choice, so later runs should treat
       // it as one.
       if ("category" in partial) categoryChosen = true;

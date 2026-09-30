@@ -559,6 +559,24 @@ purpose — do not reconstruct it from an older stage plan without asking.
 
 ## Testing, CI and dev tooling
 
+- **The `ui` job was red for six weeks before MapLibre arrived, and nobody
+  knows why.** (Stage 40.) `ci.yml`'s `ui` job has failed on every push since
+  run 19 (2026-08-24). Stage 40 diagnosed and fixed what fails *now* -- a
+  missing WebGL2 context in CI's Firefox -- but MapLibre only landed in Stage 30
+  (`a8a8ba7`, around run 48), and the map was Leaflet before that, which needs
+  no WebGL. So runs 19 through 47 failed for some other reason, and those logs
+  have aged out of GitHub's retention window. Nothing to do unless the job is
+  still red once Stage 40 finishes: the next run is the cheapest way to ask.
+
+- **The whole class of "CI-only browser capability" is unguarded.** (Stage 40.)
+  WebGL2 gets a precondition check in Stage 40 Milestone 2 because it is the one
+  that bit. Nothing checks the others -- fonts, codecs, `structuredClone`, the
+  APIs the locate control needs -- and each would fail the same way: a
+  capability the developer's browser has and the runner's does not, surfacing as
+  a pile of unrelated-looking test failures rather than as one sentence. Worth a
+  single "what does this suite require of a browser" assertion if a second one
+  ever bites; not worth inventing the list speculatively.
+
 - **No seeded location for `area`, `food`, `event` or `shop`.** (Stage 37.) The
   demo trip has a site, a stay and a transport and nothing else, so four of the
   seven categories never appear in a screenshot, in the map legend with a pin

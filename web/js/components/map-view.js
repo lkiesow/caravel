@@ -1156,7 +1156,6 @@ class MapView extends HTMLElement {
         rollEnabled: false,
       });
     } catch (err) {
-      // MapLibre v6 requires WebGL2 and throws when it cannot get a context.
       // Failing here must still finish the render: data-ready is what every
       // route sweep in the UI suite blocks on, so leaving it off would turn a
       // missing GPU into a 15s timeout on every page with a map rather than
@@ -1165,6 +1164,41 @@ class MapView extends HTMLElement {
       this.setAttribute("data-ready", "");
       return;
     }
+
+    // MapLibre v6 requires WebGL2, and this used to assume that meant the
+    // constructor throws when it cannot get a context. It does not: it emits
+    // an `error` event and hands back a half-built Map. Nothing catches that,
+    // so the first property access below -- touchZoomRotate -- threw an
+    // uncaught TypeError, render() died there, and the `load` handler that
+    // sets data-ready was never even registered. The exact 15s-timeout-per-map
+    // failure the catch above was written to prevent, and what had the CI ui
+    // job red with 121 identical timeouts for five weeks (Stage 40).
+    //
+    // So the check is of what construction *returned* rather than of how it
+    // finished. Handlers are assembled only once there is a context, which
+    // makes their absence the honest signal; `error` cannot be used instead,
+    // because it is emitted during construction, before there is an object to
+    // subscribe to.
+    if (!map.touchZoomRotate || !map.keyboard) {
+      this.showMapUnavailable(new Error("no WebGL2 context"));
+      this.setAttribute("data-ready", "");
+      // Nothing holds a reference yet, so releasing it is this component's job
+      // rather than destroyMap's - and a half-built map is still holding a
+      // canvas and a resize observer. remove() is asked first and its failure
+      // ignored, because a map that never finished being built does not
+      // reliably survive being torn down either; emptying the container is
+      // what actually guarantees the result, since a context-less canvas left
+      // in place is a full-size rectangle drawing nothing, underneath the
+      // sentence explaining why there is no map.
+      try {
+        map.remove();
+      } catch {
+        // Nothing useful to do about it here - the line below is the fallback.
+      }
+      mapEl.replaceChildren();
+      return;
+    }
+
     this._map = map;
     this.mountAttribution(maplibre, map);
     map.touchZoomRotate.disableRotation();

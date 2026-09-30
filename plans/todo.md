@@ -757,6 +757,15 @@ purpose — do not reconstruct it from an older stage plan without asking.
 
 ## Deployment and operations
 
+- **The documentation site calls the GitHub API on every page load, and gets a
+  404.** (Noticed in Stage 41 Milestone 3.) The theme's repository widget
+  fetches `api.github.com/repos/lkiesow/caravel/releases/latest` to show a
+  version, and the project has published no releases, so every visitor makes an
+  off-origin request that fails. Two separate things to weigh: the failed
+  request is cosmetic, but a site whose own brand documentation makes a point
+  of never loading fonts from a third party is quietly calling GitHub on every
+  page anyway. Either publish a release, or turn the widget off.
+
 - **The font files are not preloaded.** (Stage 41 Milestone 2.) They are
   requested only once `base.css` has been fetched and parsed, so on a cold load
   the fallback is shown for about one extra round trip longer than it needs to
@@ -788,16 +797,6 @@ else runs this.
   `docs/index.md`, and the skip link pointing at a markdown-derived anchor that
   an emptied content block does not render). When bumping, drop the workarounds
   and re-check the landing page title and skip link.
-
-- **The site ships a font face it never loads.** (Stage 18 Milestone 9;
-  re-costed in Stage 41 Milestone 1.) `scripts/gen_brand_fonts.py` writes both
-  weights to `docs/assets/fonts/`, but nothing on the site uses Montserrat 500
-  -- `document.fonts` confirms it stays unloaded, so it costs a committed 17
-  KiB and no request. What used to make this not worth fixing was that the
-  alternative meant a generator whose destinations differ per family; Stage 41
-  Milestone 1 built exactly that to keep Inter out of the docs copy, so the fix
-  is now a weight list rather than a restructure. Trim it if no docs page ever
-  wants the 500.
 
 - **Nothing tests the documentation site's rendering.** (Stage 18 Milestone 9.)
   `zensical build --strict` catches dead links and unresolved references, which

@@ -332,6 +332,52 @@ about the site shipping an unloaded Montserrat 500 should be revisited — the
 family restructure in Milestone 1 makes fixing it a one-line change to a
 destination list.
 
+**Done.** Three parts, and the middle one turned out to be more than paperwork.
+
+*The screenshots are regenerated.* All 16, captured against the working tree,
+quantised 3520K down to 1004K. They were showing Noto Sans; compared against
+the committed versions the difference is unmistakable — Inter's tighter rows fit
+visibly more of the expense form into the same frame. The dates moved too, but
+only because the seeder places them relative to today.
+
+One environment note for the next person: `pngquant` was not installed, and
+without it the script still runs and says the output will be about 3x larger —
+which would have quietly committed a 3.5MB set. Fetched the package and
+extracted it with `rpm2cpio` rather than accepting that, the same trick
+Milestone 1 used for the fonts. The warning is well placed; it is also easy to
+scroll past.
+
+*The documentation site stopped shipping a face it never loads.* `todo.md` has
+carried that since Stage 18, deferred each time because the fix meant a
+generator whose destinations differ. Milestone 1 built most of that, so this
+was the rest: a destination is now `(path, weights)` rather than a path, and
+`docs/` takes 700 alone, because every Montserrat rule in
+`docs/assets/stylesheets/brand.css` is `font-weight: 700`. The dead `@font-face`
+went with it. Note the trap, which is the same one CLAUDE.md records for `sqlc`:
+the generator stopped *writing* `montserrat-500.woff2` but did not delete the
+committed one, so that needed a `git rm` by hand.
+
+Verified in a browser rather than by inspection: the built site now reports
+exactly one face, `"Montserrat"/700/loaded`, the wordmark measures 118.7px
+against a 105.8px fallback so it is genuinely rendering in it, and nothing
+requests the dropped file. `web/fonts/` came out byte-identical again, which is
+what says the weight filter did not disturb the app.
+
+*The brand documentation says where the line falls.* `docs/assets/brand/README.md`
+had a Type section that only knew about Montserrat. It now states the split —
+Montserrat for identity, Inter for everything else, `var(--font-brand)` versus
+`var(--font-ui)` for anyone adding a surface — records why bold is Montserrat
+700 and not an Inter 700, and explains why the docs site is the deliberate
+exception.
+
+*Also recorded, not fixed:* the site's theme fetches the GitHub releases API on
+every page load and gets a 404, since the project has published no releases.
+Out of scope here and now in `todo.md`, but worth naming given the same
+document makes a point of never loading fonts from a third party.
+
+*Verified overall.* `make ci` green, `make docs` green, screenshot parity check
+passing (16 committed, all shown by a page).
+
 ## Build order
 
 1. Milestone 1 — the faces, the generator, the wiring.

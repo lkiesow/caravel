@@ -59,6 +59,31 @@ The app and the documentation site render the wordmark as live text instead, in 
 self-hosted trip planner that phones out to Google on every page load would be
 the wrong trade, and the app has to work offline.
 
+### Where the line between the two faces falls
+
+Montserrat is the **brand** face and nothing else. It sets the wordmark, the
+tagline and the hero titles — the places where the type is doing identity work.
+It is geometric and wide, which is what makes it good at that and bad at
+paragraphs.
+
+Everything else in the app is **Inter**, the UI face, self-hosted from the same
+generator in three weights (400 body, 500, 600 emphasis). It is drawn for
+interfaces at small sizes and carries the tabular figures the expense columns
+need. Bold in the app is Montserrat 700, not an Inter 700, which is why no such
+file is shipped.
+
+Before Stage 41 the app simply asked for `system-ui` and got whatever the
+machine had — Segoe UI, Roboto, San Francisco, Noto Sans, DejaVu Sans. The same
+element measured 44px tall on one machine and 38px on another, and two real
+layout defects survived because nothing had ever stated the metrics it relied
+on. If you are adding a surface, use `var(--font-ui)` and reach for
+`var(--font-brand)` only when the type is the brand speaking.
+
+The documentation site is the exception, and deliberately: it takes its body
+text from Material and only ever sets the lockups, so it gets Montserrat 700
+alone. `scripts/gen_brand_fonts.py` states that per destination rather than
+copying every file everywhere.
+
 ## Rules
 
 Clear space: at least the height of the wing (≈0.35× mark height) on all sides.

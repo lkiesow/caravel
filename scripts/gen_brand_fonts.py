@@ -36,13 +36,18 @@ from fontTools import subset
 # which is every locale under web/locales today.
 UNICODES = "U+0020-007E,U+00A0-00FF,U+0100-017F,U+2013-2014,U+2018-201A,U+201C-201E,U+2026,U+20AC"
 
-# Destinations are per family rather than global. The app serves everything
-# from web/fonts/ (embedded into the binary); the documentation site can only
-# reach files under its own docs_dir, so it needs its own copy -- but it only
-# sets the brand lockups in Montserrat and takes its body text from Material,
-# so shipping it the UI face would be dead weight in the repository and in the
-# search index. Writing the site copy here is what stops it drifting to an
-# older subset than the app.
+# Destinations are per family, and carry the weights that destination actually
+# uses. The app serves everything from web/fonts/ (embedded into the binary);
+# the documentation site can only reach files under its own docs_dir, so it
+# needs its own copy -- but it only sets the brand lockups in Montserrat and
+# takes its body text from Material, so it gets neither the UI face nor the
+# weights it never asks for. Writing the site copy here is what stops it
+# drifting to an older subset than the app.
+#
+# A destination is (path parts, weights) where weights of None means all of
+# them. docs/ takes 700 alone because every Montserrat rule in
+# docs/assets/stylesheets/brand.css is font-weight: 700 -- the 500 shipped
+# there for two stages without a single rule matching it.
 WEB = ("web", "fonts")
 DOCS = ("docs", "assets", "fonts")
 
@@ -59,7 +64,7 @@ FAMILIES = [
             500: "Montserrat-Medium.otf",
             700: "Montserrat-Bold.otf",
         },
-        "destinations": [WEB, DOCS],
+        "destinations": [(WEB, None), (DOCS, (700,))],
     },
     {
         "slug": "inter",
@@ -76,15 +81,19 @@ FAMILIES = [
             500: "Inter-Medium.ttf",
             600: "Inter-SemiBold.ttf",
         },
-        "destinations": [WEB],
+        "destinations": [(WEB, None)],
     },
 ]
 
 
-def build(family, out_dir):
+def build(family, out_dir, weights=None):
     os.makedirs(out_dir, exist_ok=True)
     slug = family["slug"]
-    for weight, filename in sorted(family["weights"].items()):
+    wanted = {w: f for w, f in family["weights"].items() if weights is None or w in weights}
+    missing = set(weights or ()) - set(family["weights"])
+    if missing:
+        sys.exit(f"{slug}: destination asks for weight(s) {sorted(missing)}, which WEIGHTS does not define")
+    for weight, filename in sorted(wanted.items()):
         source = os.path.join(family["source_dir"], filename)
         if not os.path.exists(source):
             sys.exit(f"missing {source} — is {family['package']} installed?")
@@ -119,7 +128,7 @@ def build(family, out_dir):
 if __name__ == "__main__":
     root = os.path.join(os.path.dirname(__file__), "..")
     for family in FAMILIES:
-        for parts in family["destinations"]:
+        for parts, weights in family["destinations"]:
             out = os.path.join(root, *parts)
-            build(family, out)
+            build(family, out, weights)
             print(f"{family['slug']} written to", os.path.normpath(out))

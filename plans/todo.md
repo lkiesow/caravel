@@ -100,8 +100,9 @@ purpose — do not reconstruct it from an older stage plan without asking.
 
 - **The location marker has no heading.** (Stage 36 planning, Sep 2026.)
   Being built in Stage 42. Milestone 1 landed the arrow along the direction of
-  travel; the compass cone (which way the phone faces) is Milestones 2-3.
-  Remove this entry when Stage 42 closes.
+  travel and Milestone 2 the compass cone; the cone's width from accuracy, the
+  documentation and a real-device check are Milestone 3. Remove this entry
+  when Stage 42 closes.
 
 - **The dark map is a patched vendored style, and a refetch would drop that.**
   (Stage 30 follow-up.) `web/js/vendor/map-styles/dark.json` carries 32 colour

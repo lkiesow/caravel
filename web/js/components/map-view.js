@@ -8,6 +8,7 @@ import {
   locateUnavailableReason,
   watchPosition,
 } from "../geolocation.js";
+import { compassAllowed, requestCompassPermission, watchCompass } from "../heading.js";
 import { googleMapsUrl } from "../url.js";
 import { eventBus } from "../eventbus.js";
 import { resolveMapTheme } from "../map-theme.js";
@@ -270,10 +271,12 @@ function pickMarkerElement() {
 // with that.
 //
 // The arrow is a navigation chevron pointing north at rest; --course turns it.
+// The cone behind both is the compass (Milestone 2), turned by --facing.
 function hereMarkerElement() {
   const el = document.createElement("span");
   el.className = "here";
   el.innerHTML =
+    `<span class="here__cone" aria-hidden="true"></span>` +
     `<span class="here__dot"></span>` +
     `<svg class="here__arrow" viewBox="0 0 24 24" aria-hidden="true" focusable="false">` +
     `<path d="M12 2.5 19.5 20.5 12 16.5 4.5 20.5Z"/></svg>`;
@@ -694,6 +697,34 @@ const styles = `
        round, and the arrow is redrawn every few seconds anyway. */
     transform: rotate(calc(var(--course, 0) * 1deg));
   }
+  /* The compass cone: which way the phone faces. A radial fade, cut to a
+     wedge by a conic mask, so its width is one custom property (Milestone 3
+     sets --spread from the reported accuracy) rather than a path to rebuild.
+     Centred on the marker and drawn first, so the dot or arrow sits on top. */
+  .here__cone {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 7.5rem;
+    height: 7.5rem;
+    display: none;
+    border-radius: 50%;
+    background: radial-gradient(
+      closest-side,
+      color-mix(in srgb, var(--marker-here) 55%, transparent),
+      transparent
+    );
+    --spread: 30;
+    mask-image: conic-gradient(
+      from calc(var(--spread) * -1deg),
+      #000 calc(var(--spread) * 2deg),
+      transparent 0
+    );
+    transform: translate(-50%, -50%) rotate(calc(var(--facing, 0) * 1deg));
+  }
+  .here[data-facing] .here__cone {
+    display: block;
+  }
   .here[data-moving] .here__dot {
     display: none;
   }
@@ -902,6 +933,7 @@ class MapView extends HTMLElement {
     // to this element forever.
     this._locateWatch?.cancel();
     this._locateWatch = null;
+    this.stopCompass();
     // The intent has to go with it, or a visibilitychange after this element
     // is gone would start a watch for a map that no longer exists.
     this._trackingIntent = false;
@@ -1641,6 +1673,15 @@ class MapView extends HTMLElement {
     this._locateSay = say;
 
     button.addEventListener("click", () => {
+      // The compass first, and synchronously: iOS only considers the request
+      // if it is made inside the gesture itself, and anything below can await.
+      // A no-op everywhere that does not ask, and after the reader has
+      // answered. Not for the picker, which never shows a direction.
+      if (!this.hasAttribute("pick")) {
+        requestCompassPermission().then((allowed) => {
+          if (allowed && this._trackingIntent && !this._compassWatch) this.startCompass();
+        });
+      }
       // A press while tracking is "bring me back", not "start again": it takes
       // the camera back and recentres, and deliberately does not restart
       // acquisition or stop the watch. Leaving the map tab, reloading, or the
@@ -1666,6 +1707,7 @@ class MapView extends HTMLElement {
       if (document.hidden) {
         this._locateWatch?.cancel();
         this._locateWatch = null;
+        this.stopCompass();
       } else if (!this._locateWatch) {
         // Not a fresh press: no "position-found" is announced, and because
         // _locateSettled is left alone the resumed watch's fixes are treated
@@ -1726,6 +1768,7 @@ class MapView extends HTMLElement {
       },
     });
     this._locateWatch = watch;
+    if (continuous) this.startCompass();
 
     watch.promise.then(
       (position) => {
@@ -1757,6 +1800,7 @@ class MapView extends HTMLElement {
         // not be determined" for either would be a lie.
         if (err.reason === LOCATE_CANCELLED) return;
         this._trackingIntent = false;
+        this.stopCompass();
         this.setTracking(false);
         // Denied, unavailable and timed out are three different situations
         // and get three different sentences; anything else would tell the
@@ -1847,6 +1891,8 @@ class MapView extends HTMLElement {
       this._hereMarker = new maplibre.Marker({ element: hereMarkerElement() })
         .setLngLat([lng, lat])
         .addTo(this._map);
+      // The compass can answer before the first fix does.
+      this.showFacing(this._facing);
     }
 
     this._hereAccuracy = Number.isFinite(accuracy) && accuracy > 0 ? accuracy : null;
@@ -1920,6 +1966,39 @@ class MapView extends HTMLElement {
         if (Date.now() - this._courseAt >= COURSE_STALE_MS) this.clearCourse();
       }, COURSE_STALE_CHECK_MS);
     }
+  }
+
+  // The compass, alongside the position watch and on the same lifecycle:
+  // started with tracking, stopped when the page is hidden, the watch fails or
+  // the element goes. Only where it could receive anything -- on iOS that is
+  // after the reader said yes, which the click handler picks up.
+  startCompass() {
+    if (this._compassWatch || !compassAllowed()) return;
+    this._compassWatch = watchCompass({ onUpdate: (deg) => this.showFacing(deg) });
+  }
+
+  stopCompass() {
+    this._compassWatch?.cancel();
+    this._compassWatch = null;
+    // A paused compass is not a reading, and the cone must not outlive it.
+    this.showFacing(null);
+  }
+
+  // The cone: which way the phone faces, or nothing. Kept in _facing as well
+  // as on the element, so a marker created after the compass answered still
+  // gets it.
+  showFacing(deg) {
+    this._facing = Number.isFinite(deg) ? deg : null;
+    const el = this._hereMarker?.getElement();
+    if (!el) return;
+    if (this._facing === null) {
+      el.removeAttribute("data-facing");
+      return;
+    }
+    // Relative to the map's bearing, as the arrow is. See showCourse.
+    const angle = (((this._facing - this._map.getBearing()) % 360) + 360) % 360;
+    el.style.setProperty("--facing", String(angle));
+    el.dataset.facing = String(Math.round(this._facing) % 360);
   }
 
   // Back to the dot: stopped, no direction, or no news for too long.

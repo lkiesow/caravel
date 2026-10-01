@@ -158,6 +158,55 @@ Looked at once at 324x756 and 3x DPR on the dark map: dot at rest, arrow at
   `addEventListener`/`removeEventListener`); `requestPermission` called within
   the click (not after it), and a denial leaves no cone and no error text.
 
+**Done.** As planned, with two corrections to what the plan assumed.
+`web/js/heading.js` has `requestCompassPermission()` (asks at most once per
+page; a call the platform refuses, such as one outside a gesture, does not
+count as an answer), `compassAllowed()`, and `watchCompass()`. That function
+smooths readings as a unit vector, delivers at most once a frame and only for
+changes of 1 deg or more, adds `screen.orientation.angle` for landscape, and
+withdraws the direction after 5 s without a reading, checked against
+`Date.now`. In `map-view.js` the locate click asks for the compass first and
+synchronously. `startCompass`/`stopCompass` sit on the position watch's
+lifecycle: started with tracking, stopped on hidden, on a failed watch and on
+disconnect. On iOS the compass starts once the permission promise answers yes.
+The cone is a `.here__cone` span inside the marker: a radial fade cut to a
+wedge by a conic `mask-image`, so its width is one custom property (`--spread`,
+30 deg each side for now). That replaced the SVG wedge the plan named, because
+an SVG gradient `url(#id)` inside a shadow root is fragile and the CSS needs no
+id. `showFacing()` keeps the reading in `_facing` too, so a marker created
+after the compass answered still gets it.
+
+The corrections: **Firefox exposes `deviceorientationabsolute`**, so it takes
+the same path as Chrome. The plan, and this file's first draft, said Firefox
+used `deviceorientation` with `absolute: true`. That remains the fallback for
+an engine with neither event, and the tests exercise it by deleting the
+property. The first visual check found this, by dispatching the wrong event.
+Second, the plan's "count add/removeEventListener" landed as a wrapper in the
+new `tests/ui/helpers/compass.js`, which also fakes the three platforms, iOS
+`requestPermission` and a landscape `screen.orientation`.
+
+Verified: `make ci` green; full UI suite green. Ten new tests in `map.spec.js`
+("the marker shows which way the phone faces"):
+- an absolute reading turns the cone, checked by `data-facing` and the
+  computed rotation;
+- relative and null-alpha readings are never drawn;
+- crossing north never passes through anything outside 340-20 deg and settles
+  at 10;
+- the cone is withdrawn after 5 s;
+- the listener count goes 1 -> 0 hidden -> 1 visible -> 0 removed;
+- the picker never listens;
+- only the absolute event is read where it exists;
+- iOS is asked once, inside the click, and reads `webkitCompassHeading`;
+- an iOS refusal leaves no cone, no listener and no message;
+- landscape adds the screen angle.
+
+Against Milestone 1's `map-view.js`, nine of the ten fail, the picker one being
+the negative case. Removing the absolute check from `heading.js` makes the
+relative-reading test fail, so that test guards the filter rather than merely
+the cone's absence. Looked at once at 3x DPR on the dark map: the cone faces
+east, alone and together with an arrow pointing northeast. The images were not
+kept. Real-device behavior is Milestone 3's check.
+
 ## Milestone 3: honest width, and the paperwork
 
 - **Cone width shows uncertainty** -- on iOS from `webkitCompassAccuracy`

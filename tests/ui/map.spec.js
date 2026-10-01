@@ -23,6 +23,7 @@ import {
   installFakeGeolocation,
   waitForWatch,
 } from "./helpers/geolocation.js";
+import { compassState, installFakeCompass, readCompass } from "./helpers/compass.js";
 
 const MOBILE = { width: 324, height: 756 };
 
@@ -2156,6 +2157,211 @@ test.describe("the marker shows the direction of travel", () => {
     } finally {
       await page.request.delete(`/api/trips/${tripId}`);
     }
+  });
+});
+
+// Stage 42 Milestone 2. The compass cone: which way the phone faces, shown
+// whether moving or not. Driven by dispatched orientation events (see
+// helpers/compass.js) on each of the three platform shapes.
+test.describe("the marker shows which way the phone faces", () => {
+  const pressLocate = (page, selector = "map-view") =>
+    page.evaluate(
+      (sel) => document.querySelector(sel).shadowRoot.querySelector('[data-action="locate"]').click(),
+      selector
+    );
+
+  const settled = async (page) => {
+    await login(page);
+    await gotoTripMap(page);
+    await pressLocate(page);
+    await waitForWatch(page);
+    await emitFix(page, AT_SEA);
+    await waitForLocateSettled(page);
+  };
+
+  const cone = (page) =>
+    page.evaluate(() => {
+      const el = document.querySelector("map-view")._hereMarker.getElement();
+      const c = el.querySelector(".here__cone");
+      return {
+        facing: el.dataset.facing ?? null,
+        shown: getComputedStyle(c).display !== "none",
+        transform: getComputedStyle(c).transform,
+      };
+    });
+
+  // The cone's rotation, read back from its computed matrix. The translate
+  // that centres it does not affect the a/b terms.
+  const rotationOf = (transform) => {
+    const [a, b] = transform.match(/matrix\(([^)]+)\)/)[1].split(",").map(Number);
+    return ((Math.atan2(b, a) * 180) / Math.PI + 360) % 360;
+  };
+
+  const waitForFacing = (page, value) =>
+    page.waitForFunction(
+      (v) => document.querySelector("map-view")._hereMarker?.getElement().dataset.facing === v,
+      value,
+      { timeout: 5000 }
+    );
+
+  test.describe("where only deviceorientation exists, and says it is absolute", () => {
+    test.beforeEach(async ({ page }) => {
+      await installFakeGeolocation(page);
+      await installFakeCompass(page, { platform: "plain" });
+    });
+
+    test("an absolute reading turns the cone to face it", async ({ page }) => {
+      await settled(page);
+      // alpha counts anticlockwise from north, so 300 is 60 degrees east.
+      await readCompass(page, "deviceorientation", { alpha: 300, absolute: true });
+      await waitForFacing(page, "60");
+      const c = await cone(page);
+      expect(c.shown).toBe(true);
+      expect(rotationOf(c.transform)).toBeCloseTo(60, 3);
+    });
+
+    // An arbitrary zero drawn as a compass is worse than no compass.
+    test("a relative reading, or one with no sensor behind it, is never drawn", async ({ page }) => {
+      await settled(page);
+      await readCompass(page, "deviceorientation", { alpha: 300, absolute: false });
+      await readCompass(page, "deviceorientation", { alpha: null, absolute: true });
+      await page.waitForTimeout(300);
+      const c = await cone(page);
+      expect(c.facing).toBe(null);
+      expect(c.shown).toBe(false);
+    });
+
+    // Averaging 350 and 10 as angles gives 180. The cone must swing through
+    // north, never round the back.
+    test("crossing north does not swing the cone round the long way", async ({ page }) => {
+      await settled(page);
+      await readCompass(page, "deviceorientation", { alpha: 10, absolute: true }); // 350
+      await waitForFacing(page, "350");
+      await page.evaluate(() => {
+        const el = document.querySelector("map-view")._hereMarker.getElement();
+        window.__facings = [];
+        new MutationObserver(() => window.__facings.push(Number(el.dataset.facing))).observe(el, {
+          attributes: true,
+          attributeFilter: ["data-facing"],
+        });
+      });
+      for (let i = 0; i < 25; i++) {
+        await readCompass(page, "deviceorientation", { alpha: 350, absolute: true }); // 10
+        await page.evaluate(() => new Promise((r) => requestAnimationFrame(r)));
+      }
+      const seen = await page.evaluate(() => window.__facings);
+      expect(seen.length, "it should have moved in steps").toBeGreaterThan(2);
+      for (const v of seen) expect(v >= 340 || v <= 20, `went through ${v}`).toBe(true);
+      expect(seen.at(-1)).toBeGreaterThanOrEqual(9);
+      expect(seen.at(-1)).toBeLessThanOrEqual(11);
+    });
+
+    test("a compass that goes quiet withdraws the cone", async ({ page }) => {
+      await settled(page);
+      await readCompass(page, "deviceorientation", { alpha: 90, absolute: true });
+      await waitForFacing(page, "270");
+      await advanceClock(page, 6000);
+      await page.waitForFunction(
+        () => !document.querySelector("map-view")._hereMarker.getElement().hasAttribute("data-facing"),
+        null,
+        { timeout: 5000 }
+      );
+    });
+
+    test("the compass is released with the page hidden or the map gone", async ({ page }) => {
+      await settled(page);
+      expect((await compassState(page)).listeners, "tracking listens").toBe(1);
+
+      await page.evaluate(() => {
+        Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      expect((await compassState(page)).listeners, "hidden releases it").toBe(0);
+
+      await page.evaluate(() => {
+        Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      expect((await compassState(page)).listeners, "and coming back resumes it").toBe(1);
+
+      await page.evaluate(() => document.querySelector("map-view").remove());
+      expect((await compassState(page)).listeners, "a map that is gone listens to nothing").toBe(0);
+    });
+
+    test("the editor's picker never listens to the compass", async ({ page }) => {
+      await login(page);
+      const res = await page.request.post("/api/trips", { data: { title: "UI suite: compass spec" } });
+      expect(res.status()).toBe(201);
+      const tripId = (await res.json()).id;
+      try {
+        await page.goto(`/trips/${tripId}/locations/new`);
+        await page.waitForFunction(() => document.querySelector(".location-form__map")?._map, null, {
+          timeout: 20000,
+        });
+        await pressLocate(page, ".location-form__map");
+        await waitForWatch(page);
+        await emitFix(page, AT_SEA);
+        await waitForLocateSettled(page, ".location-form__map");
+        expect((await compassState(page)).listeners).toBe(0);
+      } finally {
+        await page.request.delete(`/api/trips/${tripId}`);
+      }
+    });
+  });
+
+  test.describe("where deviceorientationabsolute exists (Chrome, Firefox)", () => {
+    test.beforeEach(async ({ page }) => {
+      await installFakeGeolocation(page);
+      await installFakeCompass(page, { platform: "absolute" });
+    });
+
+    test("the absolute event is the one read", async ({ page }) => {
+      await settled(page);
+      // Where the absolute event exists it is the only one listened to: on
+      // Chrome the plain event is relative to an arbitrary zero.
+      await readCompass(page, "deviceorientation", { alpha: 200, absolute: true });
+      await readCompass(page, "deviceorientationabsolute", { alpha: 270 });
+      await waitForFacing(page, "90");
+    });
+  });
+
+  test.describe("on iOS", () => {
+    test("the compass is asked for inside the press, once, and then read", async ({ page }) => {
+      await installFakeGeolocation(page);
+      await installFakeCompass(page, { platform: "ios", answer: "granted" });
+      await settled(page);
+      await readCompass(page, "deviceorientation", { webkitCompassHeading: 200, alpha: 33 });
+      await waitForFacing(page, "200");
+
+      // A second press is "recentre"; the reader has already answered.
+      await pressLocate(page);
+      const state = await compassState(page);
+      expect(state.asked, "asked once per page").toBe(1);
+      expect(state.askedInClick, "and from inside the gesture").toEqual([true]);
+    });
+
+    test("a refusal leaves no cone and says nothing", async ({ page }) => {
+      await installFakeGeolocation(page);
+      await installFakeCompass(page, { platform: "ios", answer: "denied" });
+      await settled(page);
+      await readCompass(page, "deviceorientation", { webkitCompassHeading: 200, alpha: 33 });
+      await page.waitForTimeout(300);
+      expect((await cone(page)).facing).toBe(null);
+      expect((await compassState(page)).listeners, "nothing is listening").toBe(0);
+      const status = await page.evaluate(
+        () => document.querySelector("map-view").shadowRoot.querySelector(".locate-status").hidden
+      );
+      expect(status, "no message: the position half works regardless").toBe(true);
+    });
+  });
+
+  test("in landscape the cone faces the top of the screen, not of the device", async ({ page }) => {
+    await installFakeGeolocation(page);
+    await installFakeCompass(page, { platform: "plain", angle: 90 });
+    await settled(page);
+    // The device's top faces 60; turned a quarter, the screen's top faces 150.
+    await readCompass(page, "deviceorientation", { alpha: 300, absolute: true });
+    await waitForFacing(page, "150");
   });
 });
 

@@ -202,6 +202,21 @@ const HERE_ZOOM = 15;
 // reads as a ring rather than as the edge of the viewport.
 const ACCURACY_FIT_PADDING = 32;
 
+// When the marker turns into an arrow along the direction of travel (Stage
+// 42). Two thresholds, not one: a walker's speed hovers around any single
+// value, and the marker would flicker between dot and arrow with every fix.
+// 1.5 m/s is a brisk walk -- below it the platform's heading is mostly noise
+// -- and the lower bound is where it is clearly gone again.
+const MOVING_ON_MPS = 1.5;
+const MOVING_OFF_MPS = 0.8;
+
+// An arrow is a claim about *now*. If fixes stop arriving -- the signal went,
+// or the watch is paused -- it reverts to the dot rather than freezing at the
+// last angle. Tracking delivers at least every few seconds while fixes come
+// in, so this is well clear of the ordinary gap between two of them.
+const COURSE_STALE_MS = 10000;
+const COURSE_STALE_CHECK_MS = 1000;
+
 // Past this, a fix is worth apologising for in words. Chosen as the point
 // where a position stops being useful for "am I at the right building" -- and
 // a tower-trilaterated fix, the one that puts you ashore, is far beyond it.
@@ -247,12 +262,22 @@ function pickMarkerElement() {
   );
 }
 
+// "You are here" has two shapes since Stage 42, so unlike the other markers
+// it is styled by class (see .here in the stylesheet): which one shows is a
+// selector on data-moving, and inline styles cannot express a selector. The
+// outer element is the one MapLibre positions and writes `transform` on, so
+// the arrow's own rotation lives on the inner SVG where it cannot collide
+// with that.
+//
+// The arrow is a navigation chevron pointing north at rest; --course turns it.
 function hereMarkerElement() {
-  return styled(
-    `display:block;width:1rem;height:1rem;border-radius:50%;box-sizing:border-box;` +
-      `background:var(--marker-here);border:3px solid var(--marker-ring);` +
-      `box-shadow:0 0 4px rgba(0,0,0,.6)`
-  );
+  const el = document.createElement("span");
+  el.className = "here";
+  el.innerHTML =
+    `<span class="here__dot"></span>` +
+    `<svg class="here__arrow" viewBox="0 0 24 24" aria-hidden="true" focusable="false">` +
+    `<path d="M12 2.5 19.5 20.5 12 16.5 4.5 20.5Z"/></svg>`;
+  return el;
 }
 
 function styled(css) {
@@ -636,6 +661,45 @@ const styles = `
     stroke-linecap: round;
     stroke-linejoin: round;
   }
+  /* "You are here" (hereMarkerElement). The box is the arrow's size so the
+     anchor -- its centre -- is the position whichever shape is showing; the
+     dot sits in the middle of it at the size it has always had. */
+  .here {
+    display: block;
+    width: 1.5rem;
+    height: 1.5rem;
+    pointer-events: none;
+  }
+  .here__dot {
+    position: absolute;
+    inset: 0.25rem;
+    border-radius: 50%;
+    box-sizing: border-box;
+    background: var(--marker-here);
+    border: 3px solid var(--marker-ring);
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.6);
+  }
+  .here__arrow {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: none;
+    fill: var(--marker-here);
+    stroke: var(--marker-ring);
+    stroke-width: 2.5;
+    stroke-linejoin: round;
+    filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.6));
+    /* No transition: easing from 350deg to 10deg would sweep the long way
+       round, and the arrow is redrawn every few seconds anyway. */
+    transform: rotate(calc(var(--course, 0) * 1deg));
+  }
+  .here[data-moving] .here__dot {
+    display: none;
+  }
+  .here[data-moving] .here__arrow {
+    display: block;
+  }
   .locate-status {
     margin: 0.5rem 0 0;
     font-size: 0.8rem;
@@ -924,6 +988,8 @@ class MapView extends HTMLElement {
       eventBus.removeEventListener("map-theme-changed", this._onMapThemeChanged);
       this._onMapThemeChanged = null;
     }
+    // Before the marker goes, so the arrow's staleness poll goes with it.
+    this.clearCourse();
     this._map?.remove();
     this._map = null;
     this._markers = [];
@@ -1651,6 +1717,7 @@ class MapView extends HTMLElement {
           !this._locateSettled ? "fit" : this._followCamera ? "follow" : "none"
         );
         this.sayAccuracy(fix);
+        if (continuous) this.showCourse(fix);
       },
       // Set here rather than off the promise, because it has to be true before
       // the *next* fix arrives and a promise continuation is a microtask away.
@@ -1765,15 +1832,22 @@ class MapView extends HTMLElement {
     const maplibre = this._maplibre;
     if (!maplibre || !this._map) return;
 
-    this._hereMarker?.remove();
-
     // Not draggable, unlike the pick marker: this is a reading, not a choice,
     // so dragging it would claim to move the device. A plain element takes no
     // focus and no pointer events of its own, so Leaflet's interactive: false
     // and keyboard: false have nothing to translate to.
-    this._hereMarker = new maplibre.Marker({ element: hereMarkerElement() })
-      .setLngLat([lng, lat])
-      .addTo(this._map);
+    //
+    // Created once and moved after (Stage 42). It used to be rebuilt on every
+    // fix, which was harmless while it was a dot with nothing on it; now the
+    // element carries the direction it is showing, and a rebuild would drop
+    // it. destroyMap() nulls it, so a rebuilt map still gets a fresh one.
+    if (this._hereMarker) {
+      this._hereMarker.setLngLat([lng, lat]);
+    } else {
+      this._hereMarker = new maplibre.Marker({ element: hereMarkerElement() })
+        .setLngLat([lng, lat])
+        .addTo(this._map);
+    }
 
     this._hereAccuracy = Number.isFinite(accuracy) && accuracy > 0 ? accuracy : null;
     this._hereRingAt = this._hereAccuracy ? { lat, lng } : null;
@@ -1802,6 +1876,61 @@ class MapView extends HTMLElement {
       return;
     }
     this._map.jumpTo({ center: [lng, lat], zoom: this.zoomForAccuracy(lat, lng) });
+  }
+
+  // Dot or arrow, and which way the arrow points (Stage 42).
+  //
+  // Only the continuous watch calls this -- the editor's picker records where a
+  // place is, not where you are going -- so a pick map never shows an arrow.
+  // The direction is the platform's direction of *travel*, from GNSS: it says
+  // nothing about which way the phone is facing, and is only worth showing
+  // once you are moving fast enough for it to mean something. See
+  // MOVING_ON_MPS for why there are two thresholds.
+  showCourse(fix) {
+    const el = this._hereMarker?.getElement();
+    if (!el) return;
+
+    const speed = fix?.speed;
+    const moving =
+      Number.isFinite(fix?.heading) &&
+      Number.isFinite(speed) &&
+      speed > (this._moving ? MOVING_OFF_MPS : MOVING_ON_MPS);
+
+    if (!moving) {
+      this.clearCourse();
+      return;
+    }
+
+    this._moving = true;
+    this._courseAt = Date.now();
+    // Relative to the map's bearing, which is always 0 today -- rotation is
+    // disabled -- but an arrow that ignored it would point the wrong way the
+    // day it is not.
+    const angle = (((fix.heading - this._map.getBearing()) % 360) + 360) % 360;
+    el.style.setProperty("--course", String(angle));
+    el.dataset.course = String(Math.round(fix.heading));
+    el.setAttribute("data-moving", "");
+
+    // Polled rather than a single timeout per fix, and against Date.now rather
+    // than elapsed timer time: a phone suspends timers with the screen, and
+    // what matters on waking is how old the last direction is, not how many
+    // ticks were missed. Runs only while an arrow is showing.
+    if (!this._courseTimer) {
+      this._courseTimer = setInterval(() => {
+        if (Date.now() - this._courseAt >= COURSE_STALE_MS) this.clearCourse();
+      }, COURSE_STALE_CHECK_MS);
+    }
+  }
+
+  // Back to the dot: stopped, no direction, or no news for too long.
+  clearCourse() {
+    this._moving = false;
+    clearInterval(this._courseTimer);
+    this._courseTimer = null;
+    const el = this._hereMarker?.getElement();
+    if (!el) return;
+    el.removeAttribute("data-moving");
+    delete el.dataset.course;
   }
 
   // How far to zoom in on a fix: close, but never closer than the fix deserves.

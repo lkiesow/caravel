@@ -98,13 +98,10 @@ purpose — do not reconstruct it from an older stage plan without asking.
   bringing it to the front would be closer, and would also cover the
   freeze/resume path that bfcache adds.
 
-- **The location marker has no heading.** (Stage 36 planning, Sep 2026.) Stage
-  36 made the map follow you while you move, but the marker is a dot: it says
-  where you are and not which way you are pointing, which is the half that
-  matters when you are working out whether to turn. The direction cone other
-  map apps draw needs `deviceorientation`, which is a second permission prompt
-  with its own set of failure modes and its own calibration problems, so it
-  wants planning rather than bolting on.
+- **The location marker has no heading.** (Stage 36 planning, Sep 2026.)
+  Being built in Stage 42. Milestone 1 landed the arrow along the direction of
+  travel; the compass cone (which way the phone faces) is Milestones 2-3.
+  Remove this entry when Stage 42 closes.
 
 - **The dark map is a patched vendored style, and a refetch would drop that.**
   (Stage 30 follow-up.) `web/js/vendor/map-styles/dark.json` carries 32 colour

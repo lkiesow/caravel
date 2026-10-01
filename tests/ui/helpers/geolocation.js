@@ -33,7 +33,14 @@ export async function installFakeGeolocation(page) {
     state.emit = (fix) => {
       for (const cb of live.values()) {
         cb.success({
-          coords: { latitude: fix.lat, longitude: fix.lng, accuracy: fix.accuracy },
+          // heading and speed as a real platform spells "unknown": null.
+          coords: {
+            latitude: fix.lat,
+            longitude: fix.lng,
+            accuracy: fix.accuracy,
+            heading: fix.heading ?? null,
+            speed: fix.speed ?? null,
+          },
           timestamp: Date.now(),
         });
       }

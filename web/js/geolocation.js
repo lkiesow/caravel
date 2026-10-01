@@ -235,6 +235,7 @@ export function watchPosition({
           lat: position.coords.latitude,
           lng: position.coords.longitude,
           accuracy: position.coords.accuracy,
+          ...courseOf(position.coords),
           timestamp: position.timestamp,
         }),
       (error) => {
@@ -303,8 +304,9 @@ export function watchPosition({
   };
 }
 
-// Resolves to {lat, lng, accuracy, timestamp, final} - accuracy in metres, as
-// the browser reports it. Rejects with an Error carrying .reason, one of the
+// Resolves to {lat, lng, accuracy, heading, speed, timestamp, final} -
+// accuracy in metres, as the browser reports it; heading and speed as
+// courseOf() normalises them, so either may be null. Rejects with an Error carrying .reason, one of the
 // constants above, so callers never have to know about
 // GeolocationPositionError codes.
 //
@@ -335,6 +337,22 @@ async function permissionAlreadyDenied() {
   } catch {
     return false;
   }
+}
+
+// Direction of travel and speed, as the platform reports them -- or null.
+//
+// heading is degrees clockwise from true north and speed is metres per
+// second, both derived by the platform from GNSS, so they say which way the
+// device is *moving*, never which way it is pointing. Browsers disagree on how
+// they spell "not known": null, NaN, or a heading of 0 alongside a speed of 0.
+// Normalised here so callers only ever see a number they can use or null.
+// A heading without a positive speed is dropped for the same reason: a device
+// standing still has no direction of travel, whatever number came with it.
+function courseOf(coords) {
+  const speed = Number.isFinite(coords.speed) && coords.speed >= 0 ? coords.speed : null;
+  const heading =
+    speed > 0 && Number.isFinite(coords.heading) ? ((coords.heading % 360) + 360) % 360 : null;
+  return { heading, speed };
 }
 
 function reasonFromError(error) {

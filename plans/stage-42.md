@@ -89,6 +89,35 @@ degrades to the current behavior rather than to something wrong.
   `advanceClock` past 10 s with no fix; marker element identity unchanged
   across fixes (no recreate); pick map never shows the arrow.
 
+**Done.** As planned, with one structural note. `geolocation.js` passes
+`heading` and `speed` through on every fix via a new `courseOf()`, which turns
+NaN, negative and "heading without speed" into `null`. `showPosition()` now
+creates the marker once and `setLngLat()`s it afterwards. `destroyMap()` still
+nulls it, and also calls the new `clearCourse()`, so a rebuilt map starts from
+the dot with no poll left running. The deviation: the here marker is now styled
+by class (`.here`, `.here__dot`, `.here__arrow` in the shadow stylesheet)
+rather than inline like the other markers, because which shape shows is a
+`[data-moving]` selector and inline styles cannot express one. The arrow is an
+inline SVG chevron in the dot's colours, rotated on the inner SVG so it cannot
+collide with the `transform` MapLibre writes on the outer element. The angle is
+relative to `map.getBearing()`. `showCourse()` applies the 1.5 / 0.8 m/s
+hysteresis. While an arrow shows, a one-second poll compares `Date.now()`
+against the last direction and reverts to the dot after 10 s without one.
+Comparing against the clock rather than counting timer ticks is what lets the
+suite's clock offset drive it.
+
+Verified: `make ci` green. Six new tests in `map.spec.js` ("the marker shows
+the direction of travel"): dot at rest including a heading with zero speed;
+arrow with `data-course` and a computed `rotate(90deg)` matrix; hysteresis in
+both directions; reverting to the dot after the clock passes 10 s; the same
+element across fixes and only one `.here`; the picker never shows an arrow.
+Run against the previous `map-view.js`, five of the six fail. The picker test
+is the negative case and passes on both, as it should. The 34 existing
+geolocation, tracking and locate-control tests stay green, after
+`tests/ui/helpers/geolocation.js` learned to pass `heading`/`speed` through.
+Looked at once at 324x756 and 3x DPR on the dark map: dot at rest, arrow at
+60 deg when moving. The images were not kept.
+
 ## Milestone 2: the compass cone
 
 - **New `web/js/heading.js`** -- owns the compass, mirroring the shape of

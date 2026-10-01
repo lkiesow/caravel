@@ -2009,6 +2009,156 @@ test.describe("tracking", () => {
   });
 });
 
+// Stage 42 Milestone 1. While moving, the marker is an arrow along the
+// direction of travel; standing still it is the dot it always was.
+//
+// The direction is the platform's GNSS heading -- where you are going, not
+// where the phone points -- so these drive it through the scripted fake rather
+// than Playwright's setGeolocation, which has no way to set either a heading
+// or a speed.
+test.describe("the marker shows the direction of travel", () => {
+  test.beforeEach(async ({ page }) => {
+    await installFakeGeolocation(page);
+  });
+
+  const settled = async (page) => {
+    await login(page);
+    await gotoTripMap(page);
+    await page.evaluate(() =>
+      document.querySelector("map-view").shadowRoot.querySelector('[data-action="locate"]').click()
+    );
+    await waitForWatch(page);
+    await emitFix(page, AT_SEA);
+    await waitForLocateSettled(page);
+  };
+
+  // Each fix a little further on and four seconds later, so the tracking
+  // throttle delivers every one of them.
+  let step = 0;
+  const move = async (page, course) => {
+    step += 1;
+    await advanceClock(page, 4000);
+    await emitFix(page, { lat: AT_SEA.lat + step * 0.001, lng: AT_SEA.lng, accuracy: 20, ...course });
+  };
+
+  const marker = (page) =>
+    page.evaluate(() => {
+      const el = document.querySelector("map-view")._hereMarker.getElement();
+      const shown = (sel) => getComputedStyle(el.querySelector(sel)).display !== "none";
+      return {
+        moving: el.hasAttribute("data-moving"),
+        course: el.dataset.course ?? null,
+        dot: shown(".here__dot"),
+        arrow: shown(".here__arrow"),
+        transform: getComputedStyle(el.querySelector(".here__arrow")).transform,
+      };
+    });
+
+  test("standing still is the dot, with no direction claimed", async ({ page }) => {
+    await settled(page);
+    // A heading with no speed is what some platforms report at rest. It is
+    // not a direction of travel, and must not become an arrow.
+    await move(page, { heading: 120, speed: 0 });
+    const m = await marker(page);
+    expect(m.moving).toBe(false);
+    expect(m.dot, "the dot is showing").toBe(true);
+    expect(m.arrow, "and the arrow is not").toBe(false);
+  });
+
+  test("moving turns the dot into an arrow pointing the way you are going", async ({ page }) => {
+    await settled(page);
+    await move(page, { heading: 90, speed: 2 });
+    const m = await marker(page);
+    expect(m.moving).toBe(true);
+    expect(m.course).toBe("90");
+    expect(m.dot, "one shape at a time").toBe(false);
+    expect(m.arrow).toBe(true);
+    // rotate(90deg) as a matrix: due east on a north-up map.
+    const [a, b] = m.transform.match(/matrix\(([^)]+)\)/)[1].split(",").map(Number);
+    expect(a).toBeCloseTo(0, 5);
+    expect(b).toBeCloseTo(1, 5);
+  });
+
+  // Two thresholds so a walker near one does not flicker. 1.0 m/s is between
+  // them: from rest it is not enough to start an arrow, and once moving it is
+  // not slow enough to stop one.
+  test("the switch has hysteresis, so it does not flicker", async ({ page }) => {
+    await settled(page);
+    await move(page, { heading: 10, speed: 1.0 });
+    expect((await marker(page)).moving, "1.0 m/s from rest is not moving yet").toBe(false);
+
+    await move(page, { heading: 10, speed: 2.0 });
+    expect((await marker(page)).moving, "2.0 m/s is").toBe(true);
+
+    await move(page, { heading: 20, speed: 1.0 });
+    const slowing = await marker(page);
+    expect(slowing.moving, "1.0 m/s once moving still is").toBe(true);
+    expect(slowing.course, "and the arrow follows the new heading").toBe("20");
+
+    await move(page, { heading: 20, speed: 0.5 });
+    expect((await marker(page)).moving, "0.5 m/s is stopped").toBe(false);
+  });
+
+  test("a direction that stops arriving goes back to the dot", async ({ page }) => {
+    await settled(page);
+    await move(page, { heading: 45, speed: 3 });
+    expect((await marker(page)).moving).toBe(true);
+    // No fix for longer than the arrow is believed. The poll compares against
+    // Date.now, which the fake has just moved on; the next real tick sees it.
+    await advanceClock(page, 11000);
+    await page.waitForFunction(
+      () => !document.querySelector("map-view")._hereMarker.getElement().hasAttribute("data-moving"),
+      null,
+      { timeout: 5000 }
+    );
+  });
+
+  // The direction lives on the element, so the element has to survive fixes.
+  // It used to be rebuilt on every one.
+  test("the marker is moved, not rebuilt, on each fix", async ({ page }) => {
+    await settled(page);
+    await page.evaluate(() => {
+      window.__firstHere = document.querySelector("map-view")._hereMarker.getElement();
+    });
+    await move(page, { heading: 0, speed: 2 });
+    await move(page, { heading: 0, speed: 2 });
+    const same = await page.evaluate(() => {
+      const el = document.querySelector("map-view")._hereMarker.getElement();
+      return el === window.__firstHere && el.isConnected;
+    });
+    expect(same).toBe(true);
+    const count = await page.evaluate(
+      () => document.querySelector("map-view").shadowRoot.querySelectorAll(".here").length
+    );
+    expect(count, "and there is only ever one").toBe(1);
+  });
+
+  test("the editor's picker never shows an arrow", async ({ page }) => {
+    await login(page);
+    const res = await page.request.post("/api/trips", { data: { title: "UI suite: heading spec" } });
+    expect(res.status()).toBe(201);
+    const tripId = (await res.json()).id;
+    try {
+      await page.goto(`/trips/${tripId}/locations/new`);
+      await page.waitForFunction(() => document.querySelector(".location-form__map")?._map, null, {
+        timeout: 20000,
+      });
+      await page.evaluate(() =>
+        document.querySelector(".location-form__map").shadowRoot.querySelector('[data-action="locate"]').click()
+      );
+      await waitForWatch(page);
+      await emitFix(page, { ...AT_SEA, heading: 90, speed: 3 });
+      await waitForLocateSettled(page, ".location-form__map");
+      const moving = await page.evaluate(() =>
+        document.querySelector(".location-form__map")._hereMarker.getElement().hasAttribute("data-moving")
+      );
+      expect(moving).toBe(false);
+    } finally {
+      await page.request.delete(`/api/trips/${tripId}`);
+    }
+  });
+});
+
 // Stage 36 Milestone 4. How good the reading is, in words.
 //
 // The accuracy ring says the same thing in pixels and is the better answer

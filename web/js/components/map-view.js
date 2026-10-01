@@ -218,6 +218,16 @@ const MOVING_OFF_MPS = 0.8;
 const COURSE_STALE_MS = 10000;
 const COURSE_STALE_CHECK_MS = 1000;
 
+// How wide the compass cone is, as degrees either side of the direction
+// (Milestone 3). Where the platform reports how far off the compass may be --
+// only iOS does -- that is the width, clamped: below 15 a cone reads as a
+// laser pointer, which no phone compass deserves, and past 45 it is a
+// semicircle that says nothing. Elsewhere a fixed 30, since there is nothing
+// to go on.
+const CONE_SPREAD_DEFAULT = 30;
+const CONE_SPREAD_MIN = 15;
+const CONE_SPREAD_MAX = 45;
+
 // Past this, a fix is worth apologising for in words. Chosen as the point
 // where a position stops being useful for "am I at the right building" -- and
 // a tower-trilaterated fix, the one that puts you ashore, is far beyond it.
@@ -698,8 +708,9 @@ const styles = `
     transform: rotate(calc(var(--course, 0) * 1deg));
   }
   /* The compass cone: which way the phone faces. A radial fade, cut to a
-     wedge by a conic mask, so its width is one custom property (Milestone 3
-     sets --spread from the reported accuracy) rather than a path to rebuild.
+     wedge by a conic mask, so its width is one custom property -- --spread,
+     degrees either side, which showFacing sets on the marker from the
+     reported accuracy -- rather than a path to rebuild.
      Centred on the marker and drawn first, so the dot or arrow sits on top. */
   .here__cone {
     position: absolute;
@@ -714,10 +725,9 @@ const styles = `
       color-mix(in srgb, var(--marker-here) 55%, transparent),
       transparent
     );
-    --spread: 30;
     mask-image: conic-gradient(
-      from calc(var(--spread) * -1deg),
-      #000 calc(var(--spread) * 2deg),
+      from calc(var(--spread, 30) * -1deg),
+      #000 calc(var(--spread, 30) * 2deg),
       transparent 0
     );
     transform: translate(-50%, -50%) rotate(calc(var(--facing, 0) * 1deg));
@@ -1892,7 +1902,7 @@ class MapView extends HTMLElement {
         .setLngLat([lng, lat])
         .addTo(this._map);
       // The compass can answer before the first fix does.
-      this.showFacing(this._facing);
+      this.showFacing(this._facing, this._facingAccuracy);
     }
 
     this._hereAccuracy = Number.isFinite(accuracy) && accuracy > 0 ? accuracy : null;
@@ -1974,7 +1984,7 @@ class MapView extends HTMLElement {
   // after the reader said yes, which the click handler picks up.
   startCompass() {
     if (this._compassWatch || !compassAllowed()) return;
-    this._compassWatch = watchCompass({ onUpdate: (deg) => this.showFacing(deg) });
+    this._compassWatch = watchCompass({ onUpdate: (deg, accuracy) => this.showFacing(deg, accuracy) });
   }
 
   stopCompass() {
@@ -1987,8 +1997,9 @@ class MapView extends HTMLElement {
   // The cone: which way the phone faces, or nothing. Kept in _facing as well
   // as on the element, so a marker created after the compass answered still
   // gets it.
-  showFacing(deg) {
+  showFacing(deg, accuracy = null) {
     this._facing = Number.isFinite(deg) ? deg : null;
+    this._facingAccuracy = Number.isFinite(accuracy) ? accuracy : null;
     const el = this._hereMarker?.getElement();
     if (!el) return;
     if (this._facing === null) {
@@ -1999,6 +2010,12 @@ class MapView extends HTMLElement {
     const angle = (((this._facing - this._map.getBearing()) % 360) + 360) % 360;
     el.style.setProperty("--facing", String(angle));
     el.dataset.facing = String(Math.round(this._facing) % 360);
+    const spread =
+      this._facingAccuracy === null
+        ? CONE_SPREAD_DEFAULT
+        : Math.min(CONE_SPREAD_MAX, Math.max(CONE_SPREAD_MIN, this._facingAccuracy));
+    el.style.setProperty("--spread", String(spread));
+    el.dataset.spread = String(Math.round(spread));
   }
 
   // Back to the dot: stopped, no direction, or no news for too long.

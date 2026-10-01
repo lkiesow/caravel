@@ -98,11 +98,21 @@ purpose — do not reconstruct it from an older stage plan without asking.
   bringing it to the front would be closer, and would also cover the
   freeze/resume path that bfcache adds.
 
-- **The location marker has no heading.** (Stage 36 planning, Sep 2026.)
-  Being built in Stage 42. Milestone 1 landed the arrow along the direction of
-  travel and Milestone 2 the compass cone; the cone's width from accuracy, the
-  documentation and a real-device check are Milestone 3. Remove this entry
-  when Stage 42 closes.
+- **The heading marker has not been seen on a real phone.** (Stage 42
+  Milestone 3.) Every test of the arrow and the cone dispatches synthetic
+  readings, so the parts only hardware can answer are open: that the arrow
+  appears while walking and not while standing, that the cone turns the right
+  way (the alpha sign) and stays right in landscape (the sign of the
+  `screen.orientation.angle` correction is from documentation, not
+  observation), and that iOS really grants the compass from the locate press.
+  Wants one walk with Android Chrome and one with iOS Safari, over HTTPS.
+
+- **Heading-up map.** (Stage 42.) The map stays north-up with rotation
+  disabled; the arrow and cone already compute their angles relative to
+  `map.getBearing()`, so a rotate-to-heading mode would not break them. It
+  would conflict with the follow-camera's moveend bookkeeping and disorients
+  outside turn-by-turn navigation, which is why it was left out rather than
+  forgotten.
 
 - **The dark map is a patched vendored style, and a refetch would drop that.**
   (Stage 30 follow-up.) `web/js/vendor/map-styles/dark.json` carries 32 colour

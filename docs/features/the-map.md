@@ -37,6 +37,38 @@ Three ways, in the order most people use them:
 A location can also be deliberately kept off the map even when it has
 coordinates, for something like a home airport you do not want framing the view.
 
+## Where you are
+
+**My location**, in the map's bottom-left corner, shows your own position and
+keeps following it while the map is open. Press it again after panning away to
+come back. It needs the page to be served over HTTPS; over plain HTTP the
+browser will not hand out a position, and the button says so rather than
+waiting forever.
+
+What the marker shows:
+
+- **The dot** is where you are. The faint ring around it is how sure the device
+  is, so a large ring means a rough guess. A rough position is also spelled
+  out under the map.
+- **An arrow** replaces the dot once you are moving at walking pace or
+  faster, pointing the way you are going. It comes from GPS, so it shows your
+  path, not where the phone points, and it turns back into a dot when you stop.
+- **A translucent cone** shows which way the phone is facing, from its
+  compass, whether you are moving or not. On an iPhone it is wider when the
+  compass is unsure of itself.
+
+So "walking north, looking east" is an arrow pointing up with the cone off to
+the right.
+
+A phone without a compass, or one where you declined access to it, simply
+shows no cone; the rest works the same. On an iPhone, the first press asks two
+questions in a row, one for motion and orientation and one for your location.
+The cone needs a yes to the first.
+
+A phone compass is easily thrown off indoors, in a car, or near metal and
+magnets (including some phone cases). If the cone points somewhere implausible,
+moving the phone in a figure-eight a few times usually recalibrates it.
+
 ## On a phone
 
 ![The map on a phone](../assets/screenshots/mobile-map.png){ .screenshot-phone }

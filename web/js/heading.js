@@ -78,7 +78,10 @@ export function compassAllowed() {
 
 // The compass, continuously. Returns {cancel}. onUpdate receives degrees
 // clockwise from north for the top of the *screen*, smoothed, at most once a
-// frame -- or null when the direction has gone stale.
+// frame -- or null when the direction has gone stale -- and, as its second
+// argument, how far off the platform says that could be, in degrees, or null
+// where it does not say. Only iOS does (webkitCompassAccuracy); Android and
+// Firefox expose nothing.
 export function watchCompass({ onUpdate }) {
   const type = "ondeviceorientationabsolute" in window ? "deviceorientationabsolute" : "deviceorientation";
 
@@ -89,18 +92,36 @@ export function watchCompass({ onUpdate }) {
   let y = null;
   let lastAt = 0;
   let delivered = null;
+  let accuracy = null;
+  let deliveredAccuracy = null;
   let frame = 0;
 
   const deliver = () => {
     frame = 0;
     if (x === null) return;
     const deg = ((Math.atan2(x, y) * 180) / Math.PI + 360) % 360;
-    if (delivered !== null && angleBetween(deg, delivered) < MIN_CHANGE_DEG) return;
+    const sameAccuracy = accuracy === deliveredAccuracy;
+    if (delivered !== null && sameAccuracy && angleBetween(deg, delivered) < MIN_CHANGE_DEG) return;
     delivered = deg;
-    onUpdate(deg);
+    deliveredAccuracy = accuracy;
+    onUpdate(deg, accuracy);
+  };
+
+  const withdraw = () => {
+    const had = delivered !== null;
+    x = y = delivered = deliveredAccuracy = null;
+    if (had) onUpdate(null, null);
   };
 
   const onReading = (event) => {
+    // iOS reports -1 while the compass is uncalibrated: it is saying the
+    // heading means nothing, and it gets believed. Withdrawn at once rather
+    // than left to go stale, since the reading is arriving -- it is just
+    // worthless.
+    const reported = event.webkitCompassAccuracy;
+    if (Number.isFinite(reported) && reported < 0) return withdraw();
+    accuracy = Number.isFinite(reported) ? reported : null;
+
     const raw = compassHeading(event, type);
     if (raw === null) return;
     // The sensor reports for the top of the *device*. In landscape the top of
@@ -123,8 +144,7 @@ export function watchCompass({ onUpdate }) {
   // the arrow's staleness check: what matters is how old the last reading is.
   const staleTimer = setInterval(() => {
     if (delivered === null || Date.now() - lastAt < STALE_MS) return;
-    x = y = delivered = null;
-    onUpdate(null);
+    withdraw();
   }, STALE_CHECK_MS);
 
   window.addEventListener(type, onReading);

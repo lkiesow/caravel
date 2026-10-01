@@ -225,6 +225,34 @@ kept. Real-device behavior is Milestone 3's check.
   turns with the phone and is right in landscape; the cone points roughly the
   right way against a known street.
 
+**Done**, except the real-device check, which is handed to the user and
+tracked in `plans/todo.md` until it is made. `watchCompass()` now passes iOS's
+`webkitCompassAccuracy` to `onUpdate` as a second argument, and delivers again
+when only the accuracy changed. A reported -1 (uncalibrated) withdraws the
+direction at once instead of waiting 5 s for it to go stale; the reading is
+still arriving, it is just worthless. `showFacing()` sets `--spread` on the
+marker and mirrors it to `data-spread`: the reported accuracy clamped to
+15-45 deg, or 30 where nothing is reported. The default moved from the cone's
+own rule to a `var(--spread, 30)` fallback, so the value set on the marker
+reaches the cone instead of being shadowed by it. `docs/features/the-map.md`
+gains a "Where you are" section: the button and HTTPS, what the dot, ring,
+arrow and cone each mean, the two iOS prompts, and the figure-eight
+recalibration. The first draft gave the two iOS prompts in the wrong order (the
+compass is asked first); the sentence now does not depend on the order. In
+`plans/todo.md` the "no heading" entry is gone, replaced by the outstanding
+device check and a heading-up map, which was deliberately left out.
+
+Verified: `make ci` green; `make docs` green (strict). The 47 location,
+tracking and heading UI tests pass. Three new tests read the angle actually
+drawn from the computed `mask-image`, which resolves to plain degrees in
+Firefox:
+- 30 with no accuracy;
+- 25 -> 25, 5 -> 15 and 80 -> 45 on iOS;
+- a -1 withdraws the cone within a second.
+
+Against Milestone 2's code the two iOS ones fail. The default-width one passes
+on both, because Milestone 2 already drew 30; it is there to keep it so.
+
 ## Build order
 
 1. Milestone 1 -- the arrow, because it needs no permission and ships value on

@@ -2160,8 +2160,8 @@ test.describe("the marker shows the direction of travel", () => {
   });
 });
 
-// Stage 42 Milestone 2. The compass cone: which way the phone faces, shown
-// whether moving or not. Driven by dispatched orientation events (see
+// Stage 42 Milestones 2 and 3. The compass cone: which way the phone faces,
+// shown whether moving or not, and as wide as the compass is uncertain. Driven by dispatched orientation events (see
 // helpers/compass.js) on each of the three platform shapes.
 test.describe("the marker shows which way the phone faces", () => {
   const pressLocate = (page, selector = "map-view") =>
@@ -2197,6 +2197,15 @@ test.describe("the marker shows which way the phone faces", () => {
     return ((Math.atan2(b, a) * 180) / Math.PI + 360) % 360;
   };
 
+  // The wedge's width, read back from the computed mask rather than from the
+  // custom property: this is the angle actually drawn, either side.
+  const spreadOf = (page) =>
+    page.evaluate(() => {
+      const c = document.querySelector("map-view")._hereMarker.getElement().querySelector(".here__cone");
+      const m = getComputedStyle(c).maskImage.match(/from (-?[\d.]+)deg/);
+      return m ? -Number(m[1]) : null;
+    });
+
   const waitForFacing = (page, value) =>
     page.waitForFunction(
       (v) => document.querySelector("map-view")._hereMarker?.getElement().dataset.facing === v,
@@ -2221,6 +2230,15 @@ test.describe("the marker shows which way the phone faces", () => {
     });
 
     // An arbitrary zero drawn as a compass is worse than no compass.
+    // Nothing outside iOS says how good the compass is, so the width is a
+    // fixed default rather than a claim.
+    test("with no accuracy reported, the cone has the default width", async ({ page }) => {
+      await settled(page);
+      await readCompass(page, "deviceorientation", { alpha: 300, absolute: true });
+      await waitForFacing(page, "60");
+      expect(await spreadOf(page)).toBe(30);
+    });
+
     test("a relative reading, or one with no sensor behind it, is never drawn", async ({ page }) => {
       await settled(page);
       await readCompass(page, "deviceorientation", { alpha: 300, absolute: false });
@@ -2338,6 +2356,45 @@ test.describe("the marker shows which way the phone faces", () => {
       const state = await compassState(page);
       expect(state.asked, "asked once per page").toBe(1);
       expect(state.askedInClick, "and from inside the gesture").toEqual([true]);
+    });
+
+    // Milestone 3. iOS says how far off the compass may be, and the cone is
+    // that wide -- within bounds, because a cone narrower than 15 degrees reads
+    // as a laser pointer and one wider than 45 says nothing.
+    test("the cone is as wide as the compass is uncertain", async ({ page }) => {
+      await installFakeGeolocation(page);
+      await installFakeCompass(page, { platform: "ios", answer: "granted" });
+      await settled(page);
+      const cases = [
+        [25, 25],
+        [5, 15],
+        [80, 45],
+      ];
+      for (const [reported, drawn] of cases) {
+        await readCompass(page, "deviceorientation", { webkitCompassHeading: 200, webkitCompassAccuracy: reported });
+        await page.waitForFunction(
+          (d) => document.querySelector("map-view")._hereMarker.getElement().dataset.spread === String(d),
+          drawn,
+          { timeout: 5000 }
+        );
+        expect(await spreadOf(page), `reported ${reported}`).toBe(drawn);
+      }
+    });
+
+    // -1 is iOS saying the heading means nothing until the compass is
+    // calibrated. Believed at once, not left to go stale.
+    test("an uncalibrated compass withdraws the cone straight away", async ({ page }) => {
+      await installFakeGeolocation(page);
+      await installFakeCompass(page, { platform: "ios", answer: "granted" });
+      await settled(page);
+      await readCompass(page, "deviceorientation", { webkitCompassHeading: 200, webkitCompassAccuracy: 20 });
+      await waitForFacing(page, "200");
+      await readCompass(page, "deviceorientation", { webkitCompassHeading: 210, webkitCompassAccuracy: -1 });
+      await page.waitForFunction(
+        () => !document.querySelector("map-view")._hereMarker.getElement().hasAttribute("data-facing"),
+        null,
+        { timeout: 1000 }
+      );
     });
 
     test("a refusal leaves no cone and says nothing", async ({ page }) => {

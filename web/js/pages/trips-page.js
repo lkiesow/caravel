@@ -42,7 +42,12 @@ import { todayISO } from "../format.js";
 // than per history entry, which is the other half of this and belongs with the
 // locations tab's version of the same problem - see the todo.md entry on view
 // state and the URL.
+//
+// Name and added can be reversed as of Stage 43, by tapping the order again
+// while it is the selection (menu.js's `reversible`). Upcoming cannot: it is
+// three blocks with their own directions, and backwards it means nothing.
 const SORTS = ["upcoming", "title", "added"];
+const REVERSIBLE = ["title", "added"];
 const DEFAULT_SORT = "upcoming";
 const STORAGE_KEY = "caravel.trips.sort";
 
@@ -51,23 +56,32 @@ const STORAGE_KEY = "caravel.trips.sort";
 // to render a page over, so both accessors swallow. An unknown stored value
 // falls back too, which is what happens to a browser that still holds the
 // "newest" or "start" this stage removed.
+//
+// The value is the order, with ":reversed" appended when it runs backwards
+// (Stage 43). A value stored before then has no suffix and so loads in its
+// natural direction, which is the direction it was stored in.
 function storedSort() {
+  const fallback = { sort: DEFAULT_SORT, reversed: false };
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    return SORTS.includes(stored) ? stored : DEFAULT_SORT;
+    const stored = localStorage.getItem(STORAGE_KEY) ?? "";
+    const [sort, suffix] = stored.split(":");
+    if (!SORTS.includes(sort)) return fallback;
+    if (suffix === undefined) return { sort, reversed: false };
+    if (suffix === "reversed" && REVERSIBLE.includes(sort)) return { sort, reversed: true };
+    return fallback;
   } catch {
-    return DEFAULT_SORT;
+    return fallback;
   }
 }
 
-function storeSort(value) {
+function storeSort(value, reversed) {
   try {
     // The default is stored as the absence of a key, so "never chose" and
     // "chose the default" are one state - and a future change of default is
     // not silently stuck behind a value somebody selected once. Same reasoning
     // as theme.js and "auto".
-    if (value === DEFAULT_SORT) localStorage.removeItem(STORAGE_KEY);
-    else localStorage.setItem(STORAGE_KEY, value);
+    if (value === DEFAULT_SORT && !reversed) localStorage.removeItem(STORAGE_KEY);
+    else localStorage.setItem(STORAGE_KEY, reversed ? `${value}:reversed` : value);
   } catch {
     // Unpersisted, but applied for this page: a control that visibly does
     // nothing is worse than one that forgets.
@@ -76,7 +90,7 @@ function storeSort(value) {
 
 export async function renderTripsPage(container) {
   let query = "";
-  let sort = storedSort();
+  let { sort, reversed } = storedSort();
   let allTrips = [];
 
   container.innerHTML = `
@@ -109,6 +123,7 @@ export async function renderTripsPage(container) {
     // The remembered order, not the default one: the trigger has to say which
     // order the list is actually in.
     activeValue: sort,
+    activeReversed: reversed,
     // Sorting by anything other than the default tints the trigger, so a
     // collapsed icon-only button on a phone still says the order is not the
     // one the list normally has. Still DEFAULT_SORT rather than `sort` - the
@@ -116,10 +131,17 @@ export async function renderTripsPage(container) {
     // choice, and pinning it to the remembered value would make it mean
     // nothing at all.
     neutralValue: DEFAULT_SORT,
-    items: SORTS.map((value) => ({ value, label: t(`trips.sort.${value}`) })),
-    onSelect: (value) => {
+    // `.asc` is always oldest or A first, so for added - which starts newest
+    // first - the natural label is the `.desc` one.
+    items: [
+      { value: "upcoming", label: t("trips.sort.upcoming") },
+      { value: "title", reversible: true, label: t("trips.sort.title.asc"), reversedLabel: t("trips.sort.title.desc") },
+      { value: "added", reversible: true, label: t("trips.sort.added.desc"), reversedLabel: t("trips.sort.added.asc") },
+    ],
+    onSelect: (value, { reversed: r }) => {
       sort = value;
-      storeSort(value);
+      reversed = r;
+      storeSort(value, r);
       apply();
     },
   });
@@ -146,13 +168,16 @@ export async function renderTripsPage(container) {
     // Ties break by title, so the order is a property of the trips rather than
     // of the order the server happened to send them in.
     const tie = byTitle();
+    // -1 while the reader has flipped the order. Only the primary key flips;
+    // ties still break A-Z.
+    const dir = reversed ? -1 : 1;
     if (sort === "title") {
-      out.sort(tie);
+      out.sort((a, b) => dir * tie(a, b));
     } else if (sort === "added") {
       // Newest first. The fetch arrives in exactly this order
       // (ORDER BY t.created_at DESC), but saying so in code costs nothing and
       // survives the query changing under us.
-      out.sort((a, b) => cmp(b.created_at, a.created_at) || tie(a, b));
+      out.sort((a, b) => dir * cmp(b.created_at, a.created_at) || tie(a, b));
     } else {
       const today = todayISO();
       out.sort((a, b) => {

@@ -10,7 +10,7 @@
 // date-ordered list moves as real time passes, and a literal expected order
 // would rot a few weeks after it was written.
 import { test, expect } from "@playwright/test";
-import { login, gotoRoute } from "./helpers/scenarios.js";
+import { login, gotoRoute, fetchTrips } from "./helpers/scenarios.js";
 
 const MOBILE = { width: 324, height: 756 };
 const MIN_TAP_TARGET_PX = 44;
@@ -24,12 +24,22 @@ const SUBTITLE_ONLY_MATCH = {
   title: "Demo: New Year Crossing",
 };
 
+// Each reversible order's natural label, and its reversed one after a second
+// tap (Stage 43). Added starts newest first, so its natural label is "last".
 const SORT_LABELS = {
-  en: { upcoming: "Upcoming first", title: "By name", added: "Recently added" },
+  en: {
+    upcoming: "Upcoming first",
+    title: "Name (A–Z)",
+    titleReversed: "Name (Z–A)",
+    added: "Added (last)",
+    addedReversed: "Added (first)",
+  },
   de: {
     upcoming: "Bevorstehende zuerst",
-    title: "Nach Name",
-    added: "Zuletzt hinzugefügt",
+    title: "Name (A–Z)",
+    titleReversed: "Name (Z–A)",
+    added: "Erstellt (zuletzt)",
+    addedReversed: "Erstellt (zuerst)",
   },
 };
 
@@ -293,5 +303,90 @@ test.describe("trips sort", () => {
     await chooseSort(page, SORT_LABELS.en.upcoming);
     expect(await stored()).toBeNull();
     await expect(trigger).not.toHaveClass(/menu__trigger--active/);
+  });
+  // Stage 43: tapping the current order again reverses it. Opening the menu
+  // and choosing the checked row is what a second tap is; the trigger label
+  // then says the new direction.
+  async function tapAgain(page, current, next) {
+    await page.locator(".trips-sort-slot .menu__trigger").click();
+    await page.getByRole("menuitemradio", { name: current, exact: true }).click();
+    await expect(page.locator(".trips-sort-slot .menu__label")).toHaveText(next);
+  }
+
+  test("name and added reverse on a second tap; upcoming does not", async ({ page }) => {
+    await login(page);
+    await gotoRoute(page, "/trips");
+    const collator = new Intl.Collator("en", { sensitivity: "base", numeric: true });
+
+    // --- name, Z-A ---
+    await chooseSort(page, SORT_LABELS.en.title);
+    const byName = await cardTitles(page);
+    await tapAgain(page, SORT_LABELS.en.title, SORT_LABELS.en.titleReversed);
+    const byNameDesc = await cardTitles(page);
+    expect(byNameDesc).toEqual([...byName].sort((a, b) => collator.compare(b, a)));
+
+    // --- added, oldest first: by created_at ascending, ties still A-Z ---
+    // Switching from a reversed order starts the new one in its natural
+    // direction, so this lands on newest first before the second tap.
+    await chooseSort(page, SORT_LABELS.en.added);
+    const trips = await fetchTrips(page);
+    const newestFirst = [...trips]
+      .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0) || collator.compare(a.title, b.title))
+      .map((t) => t.title);
+    expect(await cardTitles(page)).toEqual(newestFirst);
+    await tapAgain(page, SORT_LABELS.en.added, SORT_LABELS.en.addedReversed);
+    const oldestFirst = [...trips]
+      .sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0) || collator.compare(a.title, b.title))
+      .map((t) => t.title);
+    expect(await cardTitles(page)).toEqual(oldestFirst);
+
+    // The marker is on the checked reversible row only; upcoming has none.
+    await page.locator(".trips-sort-slot .menu__trigger").click();
+    const rows = page.locator(".trips-sort-slot [role=menuitemradio]");
+    await expect(rows.nth(0).locator(".menu__reverse")).toHaveCount(0);
+    const visible = await page
+      .locator(".trips-sort-slot .menu__reverse")
+      .evaluateAll((els) => els.map((e) => getComputedStyle(e).visibility));
+    expect(visible).toEqual(["hidden", "visible"]);
+    await page.keyboard.press("Escape");
+
+    // --- upcoming: a second tap changes nothing ---
+    await chooseSort(page, SORT_LABELS.en.upcoming);
+    const upcoming = await cardTitles(page);
+    await tapAgain(page, SORT_LABELS.en.upcoming, SORT_LABELS.en.upcoming);
+    expect(await cardTitles(page)).toEqual(upcoming);
+    await expect(page.locator(".trips-sort-slot .menu__trigger")).not.toHaveClass(/menu__trigger--active/);
+  });
+
+  test("remembers a reversed order, and reads a value stored before Stage 43", async ({ page }) => {
+    await login(page);
+    await gotoRoute(page, "/trips");
+    const stored = () => page.evaluate(() => localStorage.getItem("caravel.trips.sort"));
+    const label = page.locator(".trips-sort-slot .menu__label");
+
+    await chooseSort(page, SORT_LABELS.en.title);
+    await tapAgain(page, SORT_LABELS.en.title, SORT_LABELS.en.titleReversed);
+    expect(await stored()).toBe("title:reversed");
+    const reversedTitles = await cardTitles(page);
+
+    await gotoRoute(page, "/trips");
+    await expect(label).toHaveText(SORT_LABELS.en.titleReversed);
+    expect(await cardTitles(page)).toEqual(reversedTitles);
+
+    // An old, suffix-less value loads in its natural direction.
+    await page.evaluate(() => localStorage.setItem("caravel.trips.sort", "added"));
+    await gotoRoute(page, "/trips");
+    await expect(label).toHaveText(SORT_LABELS.en.added);
+
+    // A value no build ever wrote falls back to the default rather than
+    // reversing an order that cannot be reversed.
+    await page.evaluate(() => localStorage.setItem("caravel.trips.sort", "upcoming:reversed"));
+    await gotoRoute(page, "/trips");
+    await expect(label).toHaveText(SORT_LABELS.en.upcoming);
+
+    // And the default still clears the key.
+    await chooseSort(page, SORT_LABELS.en.title);
+    await chooseSort(page, SORT_LABELS.en.upcoming);
+    expect(await stored()).toBeNull();
   });
 });

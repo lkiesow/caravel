@@ -12,8 +12,9 @@ The list opens on **Upcoming first**: the trip you are on or about to take is at
 the top, the rest of the future follows in the order it will happen, and past
 trips come after it with the most recent one first. Trips with no dates yet sort
 last, because unscheduled is not the same as imminent. The other two orders are
-**By name** and **Recently added**, and whichever order you pick is what the
-list opens on next time.
+**Name**, A–Z, and **Added**, newest first. Pick either one again and it runs
+the other way: Z–A, or oldest first. Whichever order you pick, in whichever
+direction, is what the list opens on next time.
 
 ## Inside a trip
 
@@ -39,9 +40,10 @@ Everything that narrows the list lives behind one **Filter** button: category,
 distance from you, tag, and date. Each row shows what that filter is currently
 set to, so the state of all four is readable without opening anything, and
 "Clear filters" appears at the top as soon as one of them is narrowing the list.
-Beside it, **Sort** offers the order things were added, by name, or by date —
-locations with no dates yet sort last, because unscheduled is not the same as
-imminent.
+Beside it, **Sort** offers the order things were added, by name, or by date.
+Pick the current order again to reverse it, for the newest locations first or
+the latest dates first. Locations with no dates yet sort last in both
+directions, because unscheduled is not the same as imminent.
 
 Beyond the category, a location carries **tags**: a free list of keywords whose
 meaning is yours to choose. A kind of place, a city, a region, whose idea it

@@ -171,6 +171,30 @@ again reverses it, with undated locations staying last. `make docs`.
 Regenerating the screenshots is not needed: no screenshot shows an open sort
 menu. Confirm with a grep of `scripts/gen_screenshots.mjs` for `sort`.
 
+**Done.** Landed as planned. The order of the trips menu was confirmed with
+Lars at the checkpoint: Upcoming first (still the list's default, not
+reversible, wording unchanged), Name (A–Z ⇄ Z–A), and Added (last ⇄ first),
+which starts newest first as "Recently added" did. Added therefore starts in
+the opposite direction from the locations tab's, which is deliberate. The
+items are listed explicitly in `trips-page.js` rather than mapped from
+`SORTS`, because added's natural label is its `.desc` key. Stored values are
+`<sort>` or `<sort>:reversed`. A suffix-less value from before this stage
+loads in its natural direction, and `upcoming:reversed` or an unknown suffix
+falls back to the default. `docs/features/trips-and-locations.md` describes
+the reversal on both lists. The screenshot generator never opens a sort menu,
+so the screenshots stand. The todo.md entry on in-browser trip sorting now
+notes that a server-side `sort` would need a direction.
+
+Verified: `make ci` green; `make docs` clean; full `make test-ui` green (323
+passed). New in `trips.spec.js`: name Z–A is the exact reverse collation;
+Added newest-first and oldest-first match `created_at` from `GET /api/trips`,
+with ties A–Z in both; switching from a reversed order starts the next one
+natural; the marker is on the checked reversible row only and absent from
+Upcoming; a second tap on Upcoming changes neither the order nor the tint;
+`title:reversed` is stored and survives a reload; an old `added` value loads
+as "Added (last)"; `upcoming:reversed` falls back to the default; and
+choosing the default still clears the key.
+
 ## Build order
 
 1 → 2. Milestone 1 builds the component and proves it on the screen with the

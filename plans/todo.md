@@ -415,7 +415,8 @@ purpose — do not reconstruct it from an older stage plan without asking.
   one at a few hundred, where the answer is a `q`/`sort` pair on
   `ListTripsForUser` and a page size. The three sort orders the UI offers --
   upcoming, title, added -- are all expressible in SQL, so the migration is
-  mechanical whenever it becomes worth making.
+  mechanical whenever it becomes worth making. Since Stage 43 title and added
+  can also be reversed, so a server-side `sort` has to carry a direction too.
 
 - **List view state is not in the URL, and the two lists keep it differently.**
   (Stage 26, revised Stage 35.) The locations tab's toolbar survives a Back

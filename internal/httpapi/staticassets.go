@@ -76,7 +76,7 @@ func buildAssetETags(fsys fs.FS) assetETagMap {
 
 // assetDirs are the URL prefixes under which a miss is a *missing asset*
 // rather than a client-side route.
-var assetDirs = []string{"/assets/", "/js/", "/css/", "/locales/", "/icons/", "/fonts/", "/brand/", "/vendor/"}
+var assetDirs = []string{"/v/", "/assets/", "/js/", "/css/", "/locales/", "/icons/", "/fonts/", "/brand/", "/vendor/"}
 
 // assetExts catches the handful of asset files that sit at the root rather
 // than in one of the directories above - sw.js, manifest.webmanifest, the
@@ -117,6 +117,11 @@ func (s *Server) serveStatic(fileServer http.Handler, w http.ResponseWriter, r *
 		// this is what makes an edit visible on refresh with no rebuild, and
 		// web/sw.js honours it too (see isCacheable there).
 		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	}
+
+	if rest, ok := strings.CutPrefix(r.URL.Path, versionedPrefix); ok {
+		s.serveVersioned(fileServer, w, r, rest)
+		return
 	}
 
 	// Built files live in memory, not in the tree, so they are looked up
@@ -172,9 +177,9 @@ func (s *Server) serveStatic(fileServer http.Handler, w http.ResponseWriter, r *
 // into an outage; serving the source keeps the app working, only slower, and
 // TestRealTreeBundles is what keeps a broken bundle out of a release in the
 // first place.
-func buildBundle(fsys fs.FS) *webbundle.Bundle {
+func buildBundle(fsys fs.FS, urls map[string]string) *webbundle.Bundle {
 	start := time.Now()
-	b, err := webbundle.Build(fsys)
+	b, err := webbundle.Build(fsys, urls)
 	if err != nil {
 		slog.Error("frontend bundle failed; serving the source unbundled", "err", err)
 		return nil
@@ -204,9 +209,16 @@ func (s *Server) serveBundleFile(w http.ResponseWriter, r *http.Request, f webbu
 }
 
 // pointShellAtBundle rewrites the shell's references to the entry points --
-// src="/js/app.js", href="/css/base.css" -- to the built files. The quotes are
-// part of the match so a comment that mentions a path in prose is left alone;
-// TestRealShellNamesTheBundleEntries holds index.html to that spelling.
+// src="/js/app.js", href="/css/base.css" -- to the built files, and every
+// other quoted path that has a versioned URL (the font preload, the
+// favicons) to that. The quotes are part of the match so a comment that
+// mentions a path in prose is left alone; TestRealShellNamesTheBundleEntries
+// holds index.html to that spelling.
+//
+// Versioned paths are rewritten only alongside the bundle. Without it the
+// shell loads the source stylesheet, whose url()s name the plain font paths,
+// and a preload of a different URL would be a second download of the same
+// font rather than a head start on the first.
 func (s *Server) pointShellAtBundle(shell string) string {
 	if s.bundle == nil {
 		return shell
@@ -214,7 +226,97 @@ func (s *Server) pointShellAtBundle(shell string) string {
 	for src, built := range s.bundle.Entries {
 		shell = strings.ReplaceAll(shell, `"`+src+`"`, `"`+built+`"`)
 	}
+	for p, u := range s.assetURLs {
+		shell = strings.ReplaceAll(shell, `"`+p+`"`, `"`+u+`"`)
+	}
 	return shell
+}
+
+// versionedPrefix starts a versioned URL: /v/<hash>/<path>, where <hash> is
+// the hash of every file in <path>'s directory.
+//
+// The bundle is content-hashed by esbuild, but the files the app loads by
+// path -- MapLibre, the locales, the map styles, the fonts, the icon sprite --
+// cannot be renamed: MapLibre imports its siblings by literal name and derives
+// its worker URL from its own location. Putting the version in a directory
+// segment instead leaves every name alone, and hashing per *directory* rather
+// than per file is what keeps MapLibre's relative URLs inside one prefix: its
+// entry, shared chunk and worker all resolve under the same /v/<hash>/.
+const versionedPrefix = "/v/"
+
+// versionedDirs are the directories whose files get a versioned URL: the
+// static files on the load path. The source modules are not here -- the
+// bundle replaces them -- and neither is the root, whose sw.js and manifest
+// must keep the names browsers know them by.
+var versionedDirs = []string{"/brand", "/fonts", "/icons", "/locales", "/js/vendor/maplibre", "/js/vendor/map-styles"}
+
+// buildAssetVersions derives, from the per-file ETags, a hash per directory
+// and the versioned URL of each file in versionedDirs. A directory's hash
+// changes when any file directly in it does, which over-invalidates a little
+// (a new favicon re-fetches the sprite) and never under-invalidates.
+func buildAssetVersions(tags assetETagMap) (dirs, urls map[string]string) {
+	byDir := map[string][]string{}
+	for p := range tags {
+		d := path.Dir(p)
+		byDir[d] = append(byDir[d], p)
+	}
+	dirs = make(map[string]string, len(byDir))
+	for d, files := range byDir {
+		sort.Strings(files)
+		sum := sha256.New()
+		for _, p := range files {
+			_, _ = io.WriteString(sum, path.Base(p)+"="+tags[p]+"\n")
+		}
+		dirs[d] = hex.EncodeToString(sum.Sum(nil))[:12]
+	}
+	urls = map[string]string{}
+	for _, d := range versionedDirs {
+		for _, p := range byDir[d] {
+			// Licences and READMEs sit next to the vendored files but are never
+			// loaded by the app; leaving them out keeps the table in the bundle
+			// to what it is for.
+			if ext := path.Ext(p); ext == ".md" || ext == ".txt" {
+				continue
+			}
+			urls[p] = versionedPrefix + dirs[d] + p
+		}
+	}
+	return dirs, urls
+}
+
+// assetURL is the server's own assetURL(): the versioned URL of a static
+// file, or the path unchanged when it has none (dev, or not a versioned file).
+func (s *Server) assetURL(p string) string {
+	if u, ok := s.assetURLs[p]; ok {
+		return u
+	}
+	return p
+}
+
+// serveVersioned serves /v/<hash>/<path>.
+//
+// When <hash> is the current version of <path>'s directory the bytes cannot
+// change under that URL, so it is immutable. When it is not -- a tab opened
+// before a deploy, lazily loading the map afterwards -- the file is served
+// anyway, but revalidating: a 404 would break the old tab's map, and an
+// immutable answer would pin the new bytes under the old URL.
+func (s *Server) serveVersioned(fileServer http.Handler, w http.ResponseWriter, r *http.Request, rest string) {
+	hash, p, ok := strings.Cut(rest, "/")
+	p = "/" + p
+	tag, known := s.assetETags[p]
+	if !ok || !known {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("ETag", tag)
+	if hash == s.assetDirVersions[path.Dir(p)] {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else {
+		w.Header().Set("Cache-Control", "no-cache")
+	}
+	r2 := r.Clone(r.Context())
+	r2.URL.Path = p
+	fileServer.ServeHTTP(w, r2)
 }
 
 // swVersionPlaceholder is what web/sw.js carries on disk, and what

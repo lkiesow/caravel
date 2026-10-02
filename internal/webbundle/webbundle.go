@@ -54,10 +54,21 @@ type Bundle struct {
 	Warnings []string
 }
 
+// AssetURLModule is the source module the bundle replaces with a generated one.
+// On disk it is the identity function, which is what dev serves; in the bundle
+// it maps a static file's path to the versioned URL it is served under.
+const AssetURLModule = "/js/asset-url.js"
+
 // Build bundles whichever EntryPoints exist in fsys. A tree with none of them
 // -- a test fixture, typically -- yields an empty Bundle and no error, so a
 // server built over it simply serves the source as it always did.
-func Build(fsys fs.FS) (*Bundle, error) {
+//
+// urls maps a static file's path ("/fonts/inter-400.woff2") to the URL the
+// built code should load it from instead. It is applied twice: to absolute
+// references esbuild sees -- a url() in the stylesheet -- and as the table
+// behind assetURL() in AssetURLModule, for the ones built at runtime. Nil
+// leaves every path as written.
+func Build(fsys fs.FS, urls map[string]string) (*Bundle, error) {
 	var entries []string
 	for _, e := range EntryPoints {
 		if _, err := fs.Stat(fsys, strings.TrimPrefix(e, "/")); err == nil {
@@ -88,7 +99,7 @@ func Build(fsys fs.FS) (*Bundle, error) {
 		Outdir:        "/",
 		EntryNames:    "assets/[name]-[hash]",
 		LogLevel:      api.LogLevelSilent,
-		Plugins:       []api.Plugin{fsPlugin(fsys)},
+		Plugins:       []api.Plugin{fsPlugin(fsys, urls)},
 	})
 	for _, m := range result.Warnings {
 		b.Warnings = append(b.Warnings, formatMessage(m))
@@ -133,11 +144,11 @@ func Build(fsys fs.FS) (*Bundle, error) {
 // fsPlugin resolves and loads every path from fsys.
 //
 // Relative specifiers are joined to the importer's directory. Absolute ones --
-// "/fonts/inter-400.woff2" in a url(), the MapLibre import() -- are URLs the
-// browser fetches on its own, so they are left exactly as written. Nothing in
-// web/ uses a bare specifier, and the plugin refuses one rather than guessing
-// where it should come from.
-func fsPlugin(fsys fs.FS) api.Plugin {
+// "/fonts/inter-400.woff2" in a url() -- are URLs the browser fetches on its
+// own, so they stay external, rewritten to their versioned URL when urls has
+// one. Nothing in web/ uses a bare specifier, and the plugin refuses one
+// rather than guessing where it should come from.
+func fsPlugin(fsys fs.FS, urls map[string]string) api.Plugin {
 	return api.Plugin{
 		Name: "webfs",
 		Setup: func(build api.PluginBuild) {
@@ -146,6 +157,9 @@ func fsPlugin(fsys fs.FS) api.Plugin {
 				case args.Kind == api.ResolveEntryPoint:
 					return api.OnResolveResult{Path: args.Path, Namespace: namespace}, nil
 				case strings.HasPrefix(args.Path, "/"):
+					if u, ok := urls[args.Path]; ok {
+						return api.OnResolveResult{Path: u, External: true}, nil
+					}
 					return api.OnResolveResult{Path: args.Path, External: true}, nil
 				case strings.HasPrefix(args.Path, "./"), strings.HasPrefix(args.Path, "../"):
 					return api.OnResolveResult{Path: path.Join(path.Dir(args.Importer), args.Path), Namespace: namespace}, nil
@@ -155,6 +169,10 @@ func fsPlugin(fsys fs.FS) api.Plugin {
 				return api.OnResolveResult{}, fmt.Errorf("%q is neither relative nor absolute; web/ has no package imports", args.Path)
 			})
 			build.OnLoad(api.OnLoadOptions{Filter: ".*", Namespace: namespace}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
+				if args.Path == AssetURLModule {
+					contents, err := assetURLModule(urls)
+					return api.OnLoadResult{Contents: &contents, Loader: api.LoaderJS}, err
+				}
 				data, err := fs.ReadFile(fsys, strings.TrimPrefix(args.Path, "/"))
 				if err != nil {
 					return api.OnLoadResult{}, err
@@ -168,6 +186,23 @@ func fsPlugin(fsys fs.FS) api.Plugin {
 			})
 		},
 	}
+}
+
+// assetURLModule generates the bundle's AssetURLModule: the same export as
+// the file on disk, looking each path up in urls and passing anything unknown
+// through unchanged -- which is exactly what the disk version does for
+// everything, so a path missing from the table still loads, just without the
+// long cache lifetime.
+func assetURLModule(urls map[string]string) (string, error) {
+	if urls == nil {
+		urls = map[string]string{}
+	}
+	table, err := json.Marshal(urls)
+	if err != nil {
+		return "", err
+	}
+	return "const urls = " + string(table) + ";\n" +
+		"export function assetURL(path) { return Object.hasOwn(urls, path) ? urls[path] : path; }\n", nil
 }
 
 func contentType(p string) string {

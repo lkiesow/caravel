@@ -147,6 +147,54 @@ shadow root), the locale JSON, the two map style JSONs, the fonts (CSS
   covers each path the source passes to `assetURL` (grep the source in the test
   so a new call site cannot silently miss the map).
 
+**Done.** `buildAssetVersions` derives a 12-hex hash per directory from the
+existing ETag map, plus a `/v/<hash>/<path>` URL for every file in
+`versionedDirs`: brand, fonts, icons, locales, and MapLibre and the map styles.
+Licences and READMEs are left out. `serveVersioned` serves the file with
+`immutable` when the hash is current, with `no-cache` when it is stale, and 404s
+an unknown path. The table goes to `webbundle.Build`, which applies it in two
+places. External absolute `url()`s in CSS are rewritten at build time. The
+bundle also gets a generated stand-in for the new `web/js/asset-url.js`, which
+is the identity function on disk; since the table is part of the bundle's
+content, a new MapLibre or locale gives the bundle a new name too.
+`assetURL()` now wraps the MapLibre `import()` and its shadow-root stylesheet,
+the default style URLs in `map-view.js`, the locale fetch and the icon sprite.
+`handleMapConfig` versions the vendored defaults and leaves an operator's URL
+untouched.
+
+One deviation: `pointShellAtBundle` rewrites *every* quoted path in the shell
+that has a versioned URL, not just the font preload, so the favicons are
+versioned too. One rule is simpler than a list, and it costs nothing. This only
+happens alongside a bundle. Without one, the source stylesheet loads plain
+font paths, and a versioned preload would download each font twice.
+
+Verified: `make ci` green. New tests check that the shell's preload and the
+built stylesheet name the same versioned font and that it is `immutable` with
+the right type; that a stale hash serves the current bytes `no-cache`, and an
+unknown file or malformed `/v/` path 404s; that a directory hash follows only
+its own files; that the URL table reaches both the CSS and the generated module
+and changes the bundle name; and that the map config versions the defaults but
+not an operator style. Every `assetURL()` call site in the real source, literal
+or template prefix, must have a versioned URL, so a new call site that misses
+the table fails. Behind the same 250 ms proxy, on the Iceland Map tab:
+
+| | `map-view` attached | map `data-ready` |
+|---|---|---|
+| `main`, cold / warm | 4.2 s / 4.5 s, 4.5 s | 7.7 s / 7.6 s, 7.5 s |
+| M1 (from above), cold / warm | 2.1 s / 1.4 s, 1.4 s | 5.5 s / 4.4 s, 4.3 s |
+| M2, cold / warm | 1.9 s / 1.4 s, 1.4 s | 4.8 s / 2.8 s, 2.9 s |
+
+According to the server log, across three loads every `/assets/` and `/v/`
+file reached the server exactly once. After the first load, a reload reached
+it only for the shell, `sw.js` and the four API calls (now in `todo.md`). The
+unversioned `/fonts/`, `/css/base.css` and `/index.html` hits are the service
+worker's `SHELL_URLS` precache, which is Milestone 3's to change. The map
+canvas rendered, the sprite `<use>` pointed at `/v/…`, and there were no
+console errors. A `de-DE` context loaded `/v/…/locales/de.json` and set
+`lang="de"` on the bundled build. Against `make dev` the same context loaded
+`/locales/de.json` and an unversioned MapLibre, so dev is unchanged. `curl`
+confirmed `no-cache` for a stale hash and `immutable` for the current one.
+
 ## 3. Service worker and testing the production path
 
 - `web/sw.js`: `/assets/` and `/v/` requests become **cache-first** (their

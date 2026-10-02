@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -547,5 +548,142 @@ func TestRealShellNamesTheBundleEntries(t *testing.T) {
 		if !strings.Contains(string(body), want) {
 			t.Errorf("web/index.html does not contain %s; the bundle substitution would be a no-op", want)
 		}
+	}
+}
+
+// versionedFS is bundleFS with files in versioned directories, a stylesheet
+// that names one by url(), and a shell that preloads it.
+func versionedFS() fstest.MapFS {
+	fsys := bundleFS()
+	fsys["index.html"] = &fstest.MapFile{Data: []byte(`<!doctype html><title>Caravel</title>` +
+		`<link rel="preload" href="/fonts/x.woff2" as="font" />` +
+		`<link rel="stylesheet" href="/css/base.css" />` +
+		`<script type="module" src="/js/app.js"></script>`)}
+	fsys["css/base.css"] = &fstest.MapFile{Data: []byte(`@font-face { font-family: X; src: url("/fonts/x.woff2"); }`)}
+	fsys["fonts/x.woff2"] = &fstest.MapFile{Data: []byte("font bytes")}
+	fsys["locales/en.json"] = &fstest.MapFile{Data: []byte(`{"hello":"Hello"}`)}
+	return fsys
+}
+
+var versionedFont = regexp.MustCompile(`/v/[0-9a-f]{12}/fonts/x\.woff2`)
+
+// The preload in the shell and the url() in the built stylesheet name the
+// same versioned URL -- if they differed the font would download twice -- and
+// that URL is immutable.
+func TestVersionedAssetIsImmutable(t *testing.T) {
+	ts := newTestServerWith(t, nil, func(o *Options) { o.WebFS = versionedFS() })
+
+	shell := getStatic(ts, "/", nil).Body.String()
+	preload := versionedFont.FindString(shell)
+	if preload == "" {
+		t.Fatalf("shell does not preload a versioned font:\n%s", shell)
+	}
+	css := bundleRef.FindAllStringSubmatch(shell, -1)
+	var cssURL string
+	for _, m := range css {
+		if strings.HasSuffix(m[1], ".css") {
+			cssURL = m[1]
+		}
+	}
+	if got := versionedFont.FindString(getStatic(ts, cssURL, nil).Body.String()); got != preload {
+		t.Errorf("stylesheet loads %q but the shell preloads %q", got, preload)
+	}
+
+	res := getStatic(ts, preload, nil)
+	if res.Code != http.StatusOK || res.Body.String() != "font bytes" {
+		t.Fatalf("GET %s = %d %q", preload, res.Code, res.Body.String())
+	}
+	if got := res.Header().Get("Cache-Control"); got != "public, max-age=31536000, immutable" {
+		t.Errorf("current version Cache-Control = %q, want immutable", got)
+	}
+	if got := res.Header().Get("Content-Type"); got != "font/woff2" {
+		t.Errorf("Content-Type = %q, want font/woff2", got)
+	}
+}
+
+// A version that is not the current one is what a tab opened before a deploy
+// asks for. It gets the current file -- a 404 would break that tab -- but
+// revalidating, so the new bytes are never pinned under the old URL.
+func TestStaleVersionIsServedRevalidating(t *testing.T) {
+	ts := newTestServerWith(t, nil, func(o *Options) { o.WebFS = versionedFS() })
+
+	res := getStatic(ts, "/v/000000000000/fonts/x.woff2", nil)
+	if res.Code != http.StatusOK || res.Body.String() != "font bytes" {
+		t.Fatalf("stale version = %d %q, want the current file", res.Code, res.Body.String())
+	}
+	if got := res.Header().Get("Cache-Control"); got != "no-cache" {
+		t.Errorf("stale version Cache-Control = %q, want no-cache", got)
+	}
+
+	for _, p := range []string{"/v/000000000000/fonts/missing.woff2", "/v/", "/v/nohash"} {
+		if res := getStatic(ts, p, nil); res.Code != http.StatusNotFound {
+			t.Errorf("GET %s = %d, want 404", p, res.Code)
+		}
+	}
+}
+
+// A directory's version follows the files directly in it and nothing else.
+func TestAssetVersionsFollowTheirDirectory(t *testing.T) {
+	tags := assetETagMap{"/fonts/a.woff2": `"1"`, "/locales/en.json": `"2"`, "/js/app.js": `"3"`}
+	dirs, urls := buildAssetVersions(tags)
+	tags["/fonts/a.woff2"] = `"changed"`
+	dirs2, _ := buildAssetVersions(tags)
+
+	if dirs["/fonts"] == dirs2["/fonts"] {
+		t.Error("changing a font kept the /fonts version")
+	}
+	if dirs["/locales"] != dirs2["/locales"] {
+		t.Error("changing a font changed the /locales version")
+	}
+	if urls["/fonts/a.woff2"] != "/v/"+dirs["/fonts"]+"/fonts/a.woff2" {
+		t.Errorf("font URL = %q", urls["/fonts/a.woff2"])
+	}
+	// Source modules are the bundle's business, not this table's.
+	if _, ok := urls["/js/app.js"]; ok {
+		t.Error("a source module was given a versioned URL")
+	}
+}
+
+// Every path the real source passes to assetURL() has to be in the table, or
+// it loads unversioned and revalidates on every load -- silently, since the
+// fallback is to pass the path through. A literal is checked directly; a
+// template (`/locales/${locale}.json`) by its fixed prefix.
+func TestRealAssetURLCallSitesAreVersioned(t *testing.T) {
+	web := os.DirFS(filepath.Join("..", "..", "web"))
+	_, urls := buildAssetVersions(buildAssetETags(web))
+
+	call := regexp.MustCompile("assetURL\\(([\"`])(/[^\"`$]*)(\\$\\{)?")
+	found := 0
+	err := fs.WalkDir(web, "js", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || strings.Contains(p, "/vendor/") || !strings.HasSuffix(p, ".js") {
+			return err
+		}
+		src, err := fs.ReadFile(web, p)
+		if err != nil {
+			return err
+		}
+		for _, m := range call.FindAllStringSubmatch(string(src), -1) {
+			found++
+			if m[3] == "" {
+				if _, ok := urls[m[2]]; !ok {
+					t.Errorf("%s: assetURL(%q) has no versioned URL", p, m[2])
+				}
+				continue
+			}
+			matched := false
+			for k := range urls {
+				matched = matched || strings.HasPrefix(k, m[2])
+			}
+			if !matched {
+				t.Errorf("%s: assetURL(`%s${...}`) matches no versioned URL", p, m[2])
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found < 5 {
+		t.Fatalf("found only %d assetURL() calls; is the pattern still right?", found)
 	}
 }

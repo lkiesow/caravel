@@ -3,7 +3,9 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
+	"testing/fstest"
 )
 
 func decodeMapConfig(t *testing.T, body []byte) mapConfigResponse {
@@ -105,5 +107,34 @@ func TestMapConfigRequiresAuth(t *testing.T) {
 	w := ts.do(http.MethodGet, "/api/map/config", nil, "")
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("anonymous GET /map/config: got %d, want 401 -- body %s", w.Code, w.Body.String())
+	}
+}
+
+// With the vendored styles in the tree, the defaults are handed out under
+// their versioned URL so the browser can keep them; an operator's own URL is
+// not a file of ours and goes out exactly as configured.
+func TestMapConfigVersionsTheVendoredDefaults(t *testing.T) {
+	styles := fstest.MapFS{
+		"js/vendor/map-styles/liberty.json": {Data: []byte(`{"version":8}`)},
+		"js/vendor/map-styles/dark.json":    {Data: []byte(`{"version":8,"name":"dark"}`)},
+	}
+	ts := newTestServerWithOptions(t, func(o *Options) { o.WebFS = styles })
+	cookie := ts.login("style-versioned")
+
+	got := decodeMapConfig(t, ts.do(http.MethodGet, "/api/map/config", cookie, "").Body.Bytes())
+	for _, u := range []struct{ got, path string }{{got.StyleURL, DefaultMapStyleURL}, {got.DarkStyleURL, DefaultMapStyleDarkURL}} {
+		if !strings.HasPrefix(u.got, "/v/") || !strings.HasSuffix(u.got, u.path) {
+			t.Errorf("style URL = %q, want a versioned %s", u.got, u.path)
+		}
+	}
+
+	ts = newTestServerWithOptions(t, func(o *Options) {
+		o.WebFS = styles
+		o.MapStyle = MapStyleSettings{URL: "https://tiles.example.invalid/styles/day"}
+	})
+	cookie = ts.login("style-versioned-override")
+	got = decodeMapConfig(t, ts.do(http.MethodGet, "/api/map/config", cookie, "").Body.Bytes())
+	if got.StyleURL != "https://tiles.example.invalid/styles/day" {
+		t.Errorf("operator style_url = %q, want it untouched", got.StyleURL)
 	}
 }

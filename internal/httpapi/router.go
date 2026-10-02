@@ -63,6 +63,11 @@ type Server struct {
 	// at startup. Nil in dev, which serves the source live, and nil when the
 	// build failed -- the source is then served unbundled, as it always was.
 	bundle *webbundle.Bundle
+	// assetDirVersions maps a directory ("/fonts") to the hash of the files
+	// directly in it, and assetURLs maps each file in a versioned directory to
+	// its /v/<hash>/ URL. Nil in dev. See buildAssetVersions.
+	assetDirVersions map[string]string
+	assetURLs        map[string]string
 	// Geocoder resolves place names to coordinates for /api/geocode. Nil
 	// means address search is switched off: the endpoint reports that plainly
 	// and the client hides the control. Shared with Assist below, which
@@ -203,7 +208,8 @@ func NewServer(opts Options) *Server {
 	// of it.
 	if !opts.NoCache {
 		s.assetETags = buildAssetETags(opts.WebFS)
-		s.bundle = buildBundle(opts.WebFS)
+		s.assetDirVersions, s.assetURLs = buildAssetVersions(s.assetETags)
+		s.bundle = buildBundle(opts.WebFS, s.assetURLs)
 	}
 	// The image searcher is the configured backend *if* it can do images --
 	// a type assertion rather than a second registry, so a backend that

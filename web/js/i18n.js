@@ -1,4 +1,5 @@
 import { eventBus } from "./eventbus.js";
+import { assetURL } from "./asset-url.js";
 
 export const SUPPORTED_LOCALES = ["en", "de"];
 
@@ -68,7 +69,7 @@ function storePreference(preference) {
 }
 
 async function loadLocale(locale) {
-  const res = await fetch(`/locales/${locale}.json`);
+  const res = await fetch(assetURL(`/locales/${locale}.json`));
   if (!res.ok) throw new Error(`failed to load locale ${locale}`);
   return res.json();
 }

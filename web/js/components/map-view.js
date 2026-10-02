@@ -12,6 +12,7 @@ import { compassAllowed, requestCompassPermission, watchCompass } from "../headi
 import { googleMapsUrl } from "../url.js";
 import { eventBus } from "../eventbus.js";
 import { resolveMapTheme } from "../map-theme.js";
+import { assetURL } from "../asset-url.js";
 
 // The map, as the instance has it configured. Defaults duplicated from
 // internal/httpapi/map.go on purpose: they are what the map falls back to when
@@ -23,8 +24,8 @@ import { resolveMapTheme } from "../map-theme.js";
 // resolves them -- including repeating the light one when an operator named no
 // dark counterpart -- so there is no naming convention guessed at here.
 const DEFAULT_MAP_CONFIG = {
-  style_url: "/js/vendor/map-styles/liberty.json",
-  dark_style_url: "/js/vendor/map-styles/dark.json",
+  style_url: assetURL("/js/vendor/map-styles/liberty.json"),
+  dark_style_url: assetURL("/js/vendor/map-styles/dark.json"),
 };
 
 // Memoised at module scope, not per instance: three routes mount a map and a
@@ -1233,7 +1234,7 @@ class MapView extends HTMLElement {
     // so does the "nothing has a location yet" line below.
     const chromeless = single || this._pick;
     this.shadowRoot.innerHTML = `
-      <link rel="stylesheet" href="/js/vendor/maplibre/maplibre-gl.css" />
+      <link rel="stylesheet" href="${assetURL("/js/vendor/maplibre/maplibre-gl.css")}" />
       <style>${styles}</style>
       <div class="map-stage">
         <div class="map-wrap">
@@ -1290,7 +1291,7 @@ class MapView extends HTMLElement {
     // would leave a constructed, tile-less map behind whenever this render is
     // superseded mid-fetch.
     const [maplibre, mapConfig] = await Promise.all([
-      import("/js/vendor/maplibre/maplibre-gl.mjs"),
+      import(assetURL("/js/vendor/maplibre/maplibre-gl.mjs")),
       loadMapConfig(),
     ]);
     if (generation !== this._generation) return;

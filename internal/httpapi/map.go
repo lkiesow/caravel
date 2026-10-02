@@ -80,9 +80,12 @@ type mapConfigResponse struct {
 // credit, and the instance is out of compliance with a map that still looks
 // right.
 func (s *Server) handleMapConfig(w http.ResponseWriter, r *http.Request) {
+	// The vendored defaults get their versioned URL, so the style is cached
+	// like every other file on the map's load path; an operator's own URL is
+	// not in the table and passes through as configured.
 	writeJSON(w, http.StatusOK, mapConfigResponse{
-		StyleURL:     s.MapStyle.URL,
-		DarkStyleURL: s.MapStyle.DarkURL,
+		StyleURL:     s.assetURL(s.MapStyle.URL),
+		DarkStyleURL: s.assetURL(s.MapStyle.DarkURL),
 	})
 }
 

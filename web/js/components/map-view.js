@@ -1290,7 +1290,7 @@ class MapView extends HTMLElement {
     // would leave a constructed, tile-less map behind whenever this render is
     // superseded mid-fetch.
     const [maplibre, mapConfig] = await Promise.all([
-      import("../vendor/maplibre/maplibre-gl.mjs"),
+      import("/js/vendor/maplibre/maplibre-gl.mjs"),
       loadMapConfig(),
     ]);
     if (generation !== this._generation) return;

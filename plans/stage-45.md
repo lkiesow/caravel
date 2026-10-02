@@ -79,6 +79,43 @@ the structural fix for the hard-reload problem.
   exact strings being substituted (like
   `TestRealServiceWorkerCarriesThePlaceholder`).
 
+**Done.** `internal/webbundle.Build` bundles `js/app.js` and `css/base.css`
+from the served `fs.FS` through a resolve/load plugin, with no Node involved.
+It builds whichever entries exist, so the test servers' empty `MapFS` yields
+nothing and costs nothing. Absolute URLs and `data:` stay external, and a bare
+specifier is refused. The output is one JS file, one CSS file and their two
+maps under `/assets/[name]-[hash]`. `NewServer` builds it next to the ETags
+when not `NoCache`, logs the duration (77 ms on the real tree) and falls back
+to the source on error. `serveStatic` looks built files up *before* the
+missing-file 404, because they are in memory, not in the tree; that ordering
+was a failing test first. `handleShell` swaps `"/js/app.js"` and
+`"/css/base.css"`, quotes included, so a mention in an HTML comment is left
+alone. The MapLibre `import()` is now absolute in the source. Costs: the binary
+grows 5.9 MB (31.5 → 37.4 MB unstripped).
+
+Verified: `make ci` green. New tests cover the real tree bundling with no
+warnings into exactly four files (so no chunk and MapLibre not inlined), the
+hash following content and staying stable for the same content, a broken import
+erroring, the shell pointing at the hashed URLs, `/assets/` being `immutable`
+with the right type and a map, an unknown `/assets/` file 404ing, the source
+still served `no-cache`, dev not bundling, and `index.html` keeping the spelling
+the substitution matches. Firefox could not emulate latency over CDP, so a
+small proxy added 250 ms to every request in front of a bundled build and a
+`main` build, both on the dev database. Loading the Iceland trip's Map tab:
+
+| | `map-view` attached | map `data-ready` |
+|---|---|---|
+| `main`, cold / warm | 4.3 s / 4.5 s, 4.3 s | 7.9 s / 7.6 s, 7.3 s |
+| bundled, cold / warm | 2.1 s / 1.4 s, 1.4 s | 5.5 s / 4.4 s, 4.3 s |
+
+According to the server log, `main` fetched 66 code files per load (198 over
+three), while the bundle reached the server once over three loads. What still
+reached it on every load is M2's list: the MapLibre files, the locale, the
+style JSON, the sprite and the fonts. No console errors. Deploy simulation: a
+page under service-worker control on the old bundle, a rebuild with a marker
+line, a restart, then plain `page.reload()`. That loaded `app-ETBZBXMR.js` with
+the marker, and the unchanged stylesheet kept its name.
+
 ## 2. Version every other file on the load path
 
 What still revalidates after M1: MapLibre (3 files + its CSS in the map's

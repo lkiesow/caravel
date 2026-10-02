@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -429,5 +430,122 @@ func TestShellDeepLinkGetsOrigin(t *testing.T) {
 	body := getShell(ts, "/trips/abc", "caravel.example", nil).Body.String()
 	if !strings.Contains(body, `content="http://caravel.example/brand/og-card.png"`) {
 		t.Errorf("deep-link shell was not substituted\ngot: %s", body)
+	}
+}
+
+// bundleFS is staticFS with both entry points and a shell that loads them, so
+// the server has something to bundle. Kept separate so the tests above keep
+// exercising a tree with no bundle at all.
+func bundleFS() fstest.MapFS {
+	fsys := staticFS()
+	fsys["index.html"] = &fstest.MapFile{Data: []byte(`<!doctype html><title>Caravel</title>` +
+		`<link rel="stylesheet" href="/css/base.css" />` +
+		`<!-- /js/app.js is named here in prose, and must stay as written -->` +
+		`<script type="module" src="/js/app.js"></script>`)}
+	fsys["js/app.js"] = &fstest.MapFile{Data: []byte(`import { dialog } from "./components/dialog.js"; console.log(dialog);`)}
+	fsys["css/base.css"] = &fstest.MapFile{Data: []byte(`body { color: red; }`)}
+	return fsys
+}
+
+func newBundleServer(t *testing.T, noCache bool) *testServer {
+	t.Helper()
+	return newTestServerWith(t, nil, func(o *Options) {
+		o.WebFS = bundleFS()
+		o.NoCache = noCache
+	})
+}
+
+var bundleRef = regexp.MustCompile(`"(/assets/[a-z]+-[A-Z0-9]+\.(?:js|css))"`)
+
+// The shell points at the built files, and they are served immutable: the
+// whole point is that a reload asks about nothing but the shell.
+func TestShellLoadsTheBundle(t *testing.T) {
+	ts := newBundleServer(t, false)
+
+	shell := getStatic(ts, "/", nil).Body.String()
+	refs := bundleRef.FindAllStringSubmatch(shell, -1)
+	if len(refs) != 2 {
+		t.Fatalf("shell names %d bundle files, want 2:\n%s", len(refs), shell)
+	}
+	if strings.Contains(shell, `"/js/app.js"`) || strings.Contains(shell, `"/css/base.css"`) {
+		t.Errorf("shell still loads the source:\n%s", shell)
+	}
+	if !strings.Contains(shell, "<!-- /js/app.js is named here in prose") {
+		t.Error("the substitution rewrote a path mentioned in a comment")
+	}
+
+	for _, ref := range refs {
+		res := getStatic(ts, ref[1], nil)
+		if res.Code != http.StatusOK {
+			t.Fatalf("GET %s = %d, want 200", ref[1], res.Code)
+		}
+		if got := res.Header().Get("Cache-Control"); got != "public, max-age=31536000, immutable" {
+			t.Errorf("%s Cache-Control = %q, want immutable", ref[1], got)
+		}
+		want := "text/javascript; charset=utf-8"
+		if strings.HasSuffix(ref[1], ".css") {
+			want = "text/css; charset=utf-8"
+		}
+		if got := res.Header().Get("Content-Type"); got != want {
+			t.Errorf("%s Content-Type = %q, want %q", ref[1], got, want)
+		}
+		if res.Header().Get("ETag") == "" {
+			t.Errorf("%s has no ETag", ref[1])
+		}
+		if m := getStatic(ts, ref[1]+".map", nil); m.Code != http.StatusOK {
+			t.Errorf("GET %s.map = %d, want 200", ref[1], m.Code)
+		}
+	}
+}
+
+// A built file this server does not have -- an old tab asking for the
+// previous deploy's bundle -- is a 404, not the shell: the service worker
+// would otherwise cache HTML under a script URL (see isAssetRequest).
+func TestUnknownBundleFileIsNotFound(t *testing.T) {
+	ts := newBundleServer(t, false)
+	if res := getStatic(ts, "/assets/app-NOTAHASH.js", nil); res.Code != http.StatusNotFound {
+		t.Fatalf("GET an unknown bundle file = %d, want 404", res.Code)
+	}
+}
+
+// The source is still served as it was, for a tab that loaded before the
+// deploy, with the revalidating headers rather than the bundle's.
+func TestSourceStillServedBesideTheBundle(t *testing.T) {
+	ts := newBundleServer(t, false)
+	res := getStatic(ts, "/js/app.js", nil)
+	if res.Code != http.StatusOK {
+		t.Fatalf("GET /js/app.js = %d, want 200", res.Code)
+	}
+	if got := res.Header().Get("Cache-Control"); got != "no-cache" {
+		t.Errorf("source Cache-Control = %q, want no-cache", got)
+	}
+}
+
+// Dev serves the source live, so it must not bundle: a snapshot taken at
+// startup would hide every edit after it.
+func TestDevModeDoesNotBundle(t *testing.T) {
+	ts := newBundleServer(t, true)
+	shell := getStatic(ts, "/", nil).Body.String()
+	if !strings.Contains(shell, `src="/js/app.js"`) {
+		t.Errorf("dev shell does not load the source:\n%s", shell)
+	}
+	if bundleRef.MatchString(shell) {
+		t.Errorf("dev shell names a bundle:\n%s", shell)
+	}
+}
+
+// pointShellAtBundle matches the entry paths *with their quotes*. If
+// index.html ever spells them differently -- single quotes, a query string --
+// the substitution silently does nothing and production loads the source
+// again. This holds the real shell to the spelling.
+func TestRealShellNamesTheBundleEntries(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "..", "web", "index.html"))
+	if err != nil {
+		t.Fatalf("read web/index.html: %v", err)
+	}
+	for _, want := range []string{`src="/js/app.js"`, `href="/css/base.css"`} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("web/index.html does not contain %s; the bundle substitution would be a no-op", want)
+		}
 	}
 }

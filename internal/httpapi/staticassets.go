@@ -1,10 +1,12 @@
 package httpapi
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"path"
 	"sort"
@@ -12,6 +14,7 @@ import (
 	"time"
 
 	"caravel/internal/buildinfo"
+	"caravel/internal/webbundle"
 )
 
 // Static assets ship inside the binary, and until Stage 23 they shipped with
@@ -73,7 +76,7 @@ func buildAssetETags(fsys fs.FS) assetETagMap {
 
 // assetDirs are the URL prefixes under which a miss is a *missing asset*
 // rather than a client-side route.
-var assetDirs = []string{"/js/", "/css/", "/locales/", "/icons/", "/fonts/", "/brand/", "/vendor/"}
+var assetDirs = []string{"/assets/", "/js/", "/css/", "/locales/", "/icons/", "/fonts/", "/brand/", "/vendor/"}
 
 // assetExts catches the handful of asset files that sit at the root rather
 // than in one of the directories above - sw.js, manifest.webmanifest, the
@@ -116,6 +119,15 @@ func (s *Server) serveStatic(fileServer http.Handler, w http.ResponseWriter, r *
 		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	}
 
+	// Built files live in memory, not in the tree, so they are looked up
+	// before the miss below would answer them with a 404.
+	if s.bundle != nil {
+		if f, ok := s.bundle.Files[r.URL.Path]; ok {
+			s.serveBundleFile(w, r, f)
+			return
+		}
+	}
+
 	if f, err := s.WebFS.Open(r.URL.Path); err != nil {
 		if isAssetRequest(r.URL.Path) {
 			http.NotFound(w, r)
@@ -151,6 +163,58 @@ func (s *Server) serveStatic(fileServer http.Handler, w http.ResponseWriter, r *
 	}
 
 	fileServer.ServeHTTP(w, r)
+}
+
+// buildBundle bundles the frontend for serveStatic, or returns nil to have it
+// serve the source unbundled.
+//
+// A failure is logged, not fatal. Refusing to start would turn a broken import
+// into an outage; serving the source keeps the app working, only slower, and
+// TestRealTreeBundles is what keeps a broken bundle out of a release in the
+// first place.
+func buildBundle(fsys fs.FS) *webbundle.Bundle {
+	start := time.Now()
+	b, err := webbundle.Build(fsys)
+	if err != nil {
+		slog.Error("frontend bundle failed; serving the source unbundled", "err", err)
+		return nil
+	}
+	for _, w := range b.Warnings {
+		slog.Warn("frontend bundle", "warning", w)
+	}
+	if len(b.Entries) == 0 {
+		// A tree with no entry points: a test fixture. Nothing to say.
+		return nil
+	}
+	slog.Info("frontend bundled", "files", len(b.Files), "duration", time.Since(start).Round(time.Millisecond))
+	return b
+}
+
+// serveBundleFile serves one built file. Its name carries its content hash, so
+// the bytes behind a URL can never change and the browser may keep it for a
+// year without asking again -- that is the request-per-module, on every load,
+// that Stage 45 exists to remove. The ETag is a courtesy for a client that
+// does ask anyway.
+func (s *Server) serveBundleFile(w http.ResponseWriter, r *http.Request, f webbundle.File) {
+	sum := sha256.Sum256(f.Body)
+	w.Header().Set("Content-Type", f.ContentType)
+	w.Header().Set("ETag", `"`+hex.EncodeToString(sum[:])[:16]+`"`)
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(f.Body))
+}
+
+// pointShellAtBundle rewrites the shell's references to the entry points --
+// src="/js/app.js", href="/css/base.css" -- to the built files. The quotes are
+// part of the match so a comment that mentions a path in prose is left alone;
+// TestRealShellNamesTheBundleEntries holds index.html to that spelling.
+func (s *Server) pointShellAtBundle(shell string) string {
+	if s.bundle == nil {
+		return shell
+	}
+	for src, built := range s.bundle.Entries {
+		shell = strings.ReplaceAll(shell, `"`+src+`"`, `"`+built+`"`)
+	}
+	return shell
 }
 
 // swVersionPlaceholder is what web/sw.js carries on disk, and what
@@ -293,6 +357,7 @@ func (s *Server) handleShell(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := strings.ReplaceAll(string(body), shellOriginPlaceholder, s.requestOrigin(r))
+	out = s.pointShellAtBundle(out)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if s.BaseURL == "" {

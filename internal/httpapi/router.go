@@ -18,6 +18,7 @@ import (
 	"caravel/internal/db"
 	"caravel/internal/geocode"
 	"caravel/internal/storagefs"
+	"caravel/internal/webbundle"
 	"caravel/internal/wikimedia"
 )
 
@@ -58,6 +59,10 @@ type Server struct {
 	// hashed once at startup. Nil in dev, where NoCache says not to keep
 	// anything and the files change under the process anyway.
 	assetETags assetETagMap
+	// bundle is the minified, content-hashed build of the frontend, made once
+	// at startup. Nil in dev, which serves the source live, and nil when the
+	// build failed -- the source is then served unbundled, as it always was.
+	bundle *webbundle.Bundle
 	// Geocoder resolves place names to coordinates for /api/geocode. Nil
 	// means address search is switched off: the endpoint reports that plainly
 	// and the client hides the control. Shared with Assist below, which
@@ -198,6 +203,7 @@ func NewServer(opts Options) *Server {
 	// of it.
 	if !opts.NoCache {
 		s.assetETags = buildAssetETags(opts.WebFS)
+		s.bundle = buildBundle(opts.WebFS)
 	}
 	// The image searcher is the configured backend *if* it can do images --
 	// a type assertion rather than a second registry, so a backend that

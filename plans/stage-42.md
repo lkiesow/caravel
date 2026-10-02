@@ -286,8 +286,11 @@ Verified: `make ci` green; full UI suite green. Changed and new tests:
 - in `geolocation.spec.js`, the throttle's first test: 400 ms is dropped,
   980 ms delivered, a further 1000 ms delivered.
 
-All three fail against the code before this follow-up. Re-walking it is the
-user's.
+All three fail against the code before this follow-up.
+
+Re-walked by the user after the follow-up: the arrow is steady at walking pace
+and the faster updates are a clear improvement, so the stage stops here. The
+marker animation stays deferred.
 
 ## Build order
 

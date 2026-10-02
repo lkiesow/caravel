@@ -3625,4 +3625,56 @@ test.describe("the fullscreen trip map", () => {
     await expect(enterButton(page)).toBeVisible();
     expect(await page.evaluate(() => document.querySelector("map-view").hasAttribute("data-fullscreen"))).toBe(false);
   });
+
+  // Milestone 2: in fullscreen the gestures are the map's. Configuration
+  // here; map.gesture.spec.js drives the touch half with real fingers.
+  test("touch is no longer cooperative while fullscreen, and is again after", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+    const cooperative = () => page.evaluate(() => document.querySelector("map-view")._map.cooperativeGestures.isEnabled());
+    expect(await cooperative()).toBe(true);
+    await enterButton(page).click();
+    await expect(exitButton(page)).toBeVisible();
+    expect(await cooperative(), "one finger should be the map's in fullscreen").toBe(false);
+    await exitButton(page).click();
+    await expect(enterButton(page)).toBeVisible();
+    expect(await cooperative(), "and the page's again afterwards").toBe(true);
+  });
+
+  test("a plain wheel zooms in fullscreen, and scrolls the page again after", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+    const wheel = () =>
+      page.evaluate(() => {
+        const host = document.querySelector("map-view");
+        const before = host._map.getZoom();
+        const ev = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: -240 });
+        host.shadowRoot.getElementById("map").dispatchEvent(ev);
+        return { before, prevented: ev.defaultPrevented };
+      });
+    const state = () =>
+      page.evaluate(() => {
+        const host = document.querySelector("map-view");
+        const hint = host.shadowRoot.querySelector(".gesture-hint");
+        return { zoom: host._map.getZoom(), hintShown: !!hint && !hint.hidden };
+      });
+
+    await enterButton(page).click();
+    await expect(exitButton(page)).toBeVisible();
+    const inside = await wheel();
+    expect(inside.prevented, "the wheel is the map's, so the browser's default goes").toBe(true);
+    await expect.poll(async () => (await state()).zoom, { message: "a plain wheel should zoom a fullscreen map" })
+      .toBeGreaterThan(inside.before);
+    expect((await state()).hintShown, "and there is no Ctrl hint to show").toBe(false);
+
+    await exitButton(page).click();
+    await expect(enterButton(page)).toBeVisible();
+    const outside = await wheel();
+    expect(outside.prevented, "out of fullscreen a plain wheel is left to the page").toBe(false);
+    await page.waitForTimeout(200);
+    const after = await state();
+    expect(after.zoom, "and does not zoom").toBe(outside.before);
+    expect(after.hintShown, "but says why").toBe(true);
+  });
 });
+

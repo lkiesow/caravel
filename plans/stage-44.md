@@ -153,6 +153,41 @@ so that mode is only checked by the assertions.
 - Update the long comments at the `cooperativeGestures: true` option and
   `bindGestureGate` to mention the fullscreen exception.
 
+**Done.** Landed as planned in `map-view.js`: `applyFullscreenState` turns
+`cooperativeGestures` off on entry and back on at exit, and `bindGestureGate`
+sends a plain wheel down the Ctrl path while the host carries
+`data-fullscreen`. One addition the plan did not list: the wheel listener
+that marks "the person moved this map" (`noteUserMovedMap`) had the same Ctrl
+gate, so in fullscreen a plain wheel counts there too. Otherwise a wheel zoom
+in fullscreen would not stop the locate camera following.
+
+Verified with `make ci`, the full `make test-ui`, and three new tests. The
+full run had one failure, unrelated to this milestone: `register.spec.js` got a
+500 from `/api/auth/register`. That spec passes alone (10 of 10 in the
+registration specs), and the failure fits the known concurrent-write SQLite bug
+in `todo.md`, where it is now noted. This milestone changed no server code.
+The three new tests:
+- **`map.gesture.spec.js` (real CDP touches, Chromium at 324×756):** in
+  fullscreen a one-finger sideways drag pans the map with no hint, and after
+  exit the same drag scrolls the page and leaves the map alone. Re-run with
+  the `disable()` call removed, this test fails ("one finger should pan a
+  fullscreen map"), so it is not passing for the wrong reason.
+- **`map.spec.js`:** `cooperativeGestures.isEnabled()` is false in fullscreen
+  and true again after.
+- **`map.spec.js`:** a plain wheel in fullscreen is `defaultPrevented`, zooms,
+  and shows no hint; out of fullscreen it is not prevented, does not zoom, and
+  shows the Ctrl hint.
+
+Manual pass in the Playwright MCP (Firefox 156, installed this milestone) at
+324×756 against `make dev`, with trusted input from `page.mouse`:
+- **Native fullscreen:** the stage filled the screen (1440×900, as headless
+  fullscreen resizes the window). A plain wheel zoomed one level with no hint,
+  and a mouse drag panned.
+- **After Escape:** cooperative gestures were back on, and a plain wheel
+  scrolled the page and showed the hint.
+- **In-page mode** (forced): 324×756 edge to edge in the night map theme, with
+  exit top right, locate bottom left and the credit below.
+
 ## Build order
 
 1 → 2. Milestone 2 depends on 1's `applyFullscreenState` and `data-fullscreen`.

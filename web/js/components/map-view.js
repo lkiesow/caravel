@@ -1336,6 +1336,9 @@ class MapView extends HTMLElement {
         // cooperative-gesture bypass key, which is metaKey only on a Mac user
         // agent and so would drop Meta support everywhere else.
         scrollZoom: false,
+        // Except in fullscreen (Stage 44), where there is no page to scroll:
+        // applyFullscreenState turns this off for as long as it lasts.
+        //
         // "One finger scrolls the page, two fingers work the map" - the other
         // half of Stage 07's "the map swallows the page scroll" fix, and now a
         // supported option rather than something assembled from handler flags.
@@ -1432,11 +1435,12 @@ class MapView extends HTMLElement {
     // plain wheel scrolls the *page* and deliberately leaves the map alone,
     // so treating it as "the person positioned this map" would be wrong -- and
     // would quietly undo Milestone 5, by stopping typed coordinates from
-    // zooming for anyone who had scrolled the page past the map first.
+    // zooming for anyone who had scrolled the page past the map first. In
+    // fullscreen every wheel is the zoom gesture (bindGestureGate).
     mapEl.addEventListener(
       "wheel",
       (e) => {
-        if (e.ctrlKey || e.metaKey) noteUserMovedMap();
+        if (e.ctrlKey || e.metaKey || this.hasAttribute("data-fullscreen")) noteUserMovedMap();
       },
       { passive: true }
     );
@@ -2328,6 +2332,14 @@ class MapView extends HTMLElement {
       button.title = label;
       button.innerHTML = icon(on ? "minimize" : "maximize");
     }
+    // Nothing else on the screen to scroll, so a finger on the map is meant
+    // for the map (Milestone 2). Turning cooperative gestures off is the whole
+    // switch: dragPan already accepts any finger count, and the library drops
+    // the touch-action that handed the first finger to the page. The two-finger
+    // hint needs no guard either, since it is raised by the very handler that
+    // goes quiet here. The wheel half is in bindGestureGate.
+    if (on) this._map?.cooperativeGestures.disable();
+    else this._map?.cooperativeGestures.enable();
     // The map's ResizeObserver would catch the new size a frame later; asking
     // now saves a frame of stretched canvas.
     this._map?.resize();
@@ -2361,7 +2373,8 @@ class MapView extends HTMLElement {
     map.removeSource(ACCURACY_SOURCE);
   }
 
-  // A scroll that happens to pass under the cursor must not zoom the map.
+  // A scroll that happens to pass under the cursor must not zoom the map -
+  // unless the map is fullscreen, when there is nothing else to scroll.
   //
   // A stock scroll-wheel handler zooms on *any* wheel event, so a page scroll
   // that crossed the map turned into a zoom - and on a map that is most of the
@@ -2389,7 +2402,10 @@ class MapView extends HTMLElement {
     wrap.addEventListener(
       "wheel",
       (e) => {
-        if (e.ctrlKey || e.metaKey) {
+        // Fullscreen has no page behind the map to scroll, so the reason for
+        // the Ctrl gate is gone and a plain wheel zooms too. Still through
+        // zoomByWheel, still the one place a wheel zooms.
+        if (e.ctrlKey || e.metaKey || this.hasAttribute("data-fullscreen")) {
           // Ctrl + wheel is bound to page zoom in every browser, so this has
           // to be cancelled here, in the capture phase, before anything else
           // looks at it.

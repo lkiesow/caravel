@@ -533,6 +533,16 @@ purpose — do not reconstruct it from an older stage plan without asking.
 
   Note the flake below is a *symptom* of this, not a separate issue.
 
+  **A second symptom: registration.** (Stage 44 Milestone 2.) `register.spec.js`
+  "registering an account logs the newcomer straight in" got a 500 from
+  `/api/auth/register` once in a full `make test-ui` run, and passed alone.
+  `Auth.Register` (`internal/auth/auth.go`) counts users inside `WithTx` before
+  it inserts, which is the deferred read-before-write pattern above. The server
+  log was not kept, so `database is locked` is inferred from the shape, not
+  seen. Note that `--repeat-each` is no way to chase this one: the repeats run
+  in parallel and race each other on the instance-wide open-signup setting, so
+  they fail with 403 for an unrelated reason.
+
 - **`assist-suggest.spec.js`'s first test is flaky under parallel load.** (Stage
   32 Milestone 5; revisited in Stage 33 Milestones 1 and 5.)
   "is reached from the New menu, and adds the ticked places in one go" failed

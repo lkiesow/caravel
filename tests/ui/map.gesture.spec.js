@@ -196,4 +196,46 @@ test.describe("map gestures on a real touch device", () => {
     const after = await mapState(page);
     expect(after.scrollY, "a two-finger gesture belongs to the map, not the page").toBe(before.scrollY);
   });
+
+  // Stage 44 Milestone 2. Fullscreen has no page behind the map, so one finger
+  // is the map's - and leaving fullscreen has to hand it back to the page,
+  // which is why both halves are in one test.
+  test("in fullscreen one finger pans the map, and after it scrolls the page again", async ({ page }) => {
+    await page.getByRole("button", { name: "Show map fullscreen" }).click();
+    await expect(page.getByRole("button", { name: "Exit fullscreen" })).toBeVisible();
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+
+    const before = await mapState(page);
+    const centre = { x: before.box.x + before.box.width / 2, y: before.box.y + before.box.height / 2 };
+    expect(centre.y, "the finger must land inside the viewport").toBeGreaterThan(0);
+    expect(centre.y).toBeLessThan(before.innerHeight);
+
+    // Sideways, for the reason the two-finger test gives: latitude cannot
+    // show a pan at this zoom.
+    await drag(cdp, [centre], -60, 0);
+    await expect
+      .poll(async () => (await mapState(page)).lng, { message: "one finger should pan a fullscreen map" })
+      .not.toBeCloseTo(before.lng, 6);
+    const hint = await page.evaluate(() => {
+      const el = document.querySelector("map-view").shadowRoot.querySelector(".gesture-hint");
+      return !!el && !el.hidden;
+    });
+    expect(hint, "there is nothing to explain when the gesture worked").toBe(false);
+
+    await page.getByRole("button", { name: "Exit fullscreen" }).click();
+    await expect(page.getByRole("button", { name: "Show map fullscreen" })).toBeVisible();
+
+    await showMap(page);
+    const out = await mapState(page);
+    const at = { x: out.box.x + out.box.width / 2, y: out.box.y + out.box.height / 2 };
+    const room = await page.evaluate(() => ({
+      y: window.scrollY,
+      max: document.documentElement.scrollHeight - window.innerHeight,
+    }));
+    const dy = room.y < room.max - 20 ? -120 : 120;
+    await drag(cdp, [at], -60, dy);
+    await page.waitForFunction((y) => window.scrollY !== y, out.scrollY);
+    const after = await mapState(page);
+    expect(after.lng, "out of fullscreen, one finger is the page's again").toBeCloseTo(out.lng, 6);
+  });
 });

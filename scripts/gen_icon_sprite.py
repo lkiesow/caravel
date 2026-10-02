@@ -52,6 +52,8 @@ ICONS = [
     "check-check",
     "wallet",
     "notebook-pen",
+    "maximize",
+    "minimize",
 ]
 
 

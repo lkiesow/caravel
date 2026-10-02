@@ -261,6 +261,8 @@
   "map.viewOnOpenStreetMap": "View on OpenStreetMap",
   "map.ctrlZoomHint": "Use Ctrl + scroll to zoom the map.",
   "map.twoFingerHint": "Use two fingers to move the map.",
+  "map.fullscreen.enter": "Show map fullscreen",
+  "map.fullscreen.exit": "Exit fullscreen",
   "map.locate.recentre": "Recentre on my location",
   "map.locate.label": "My location",
   "map.locate.searching": "Finding your location…",

@@ -120,6 +120,13 @@ purpose — do not reconstruct it from an older stage plan without asking.
   faster pace the user found it good enough for now, so this is optional
   polish rather than a fix.
 
+- **Category filters inside the fullscreen map.** (Stage 44.) Fullscreen is the
+  map, the locate status and the credit; the legend stays behind, so changing
+  a filter means exit, change, re-enter. Decided that way on purpose at
+  planning. If it turns out to be a nuisance, a compact funnel button in a free
+  corner could open the same checkboxes as an overlay. They live outside
+  `.map-stage` in `map-view.js` today, so the overlay would need its own copy
+  or the fieldset moved in and restyled while fullscreen.
 - **Heading-up map.** (Stage 42.) The map stays north-up with rotation
   disabled; the arrow and cone already compute their angles relative to
   `map.getBearing()`, so a rotate-to-heading mode would not break them. It

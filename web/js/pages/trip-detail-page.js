@@ -138,7 +138,7 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
       // switch pushes a fresh (empty) state, so arriving at the map anew still
       // fits the trip's bounds.
       const savedView = window.history.state?.mapView;
-      content.innerHTML = `<map-view trip-id="${trip.id}" locate${
+      content.innerHTML = `<map-view trip-id="${trip.id}" locate fullscreen-toggle${
         savedView ? ` initial-view="${savedView.lng},${savedView.lat},${savedView.zoom}"` : ""
       }></map-view>`;
       content.addEventListener("map-view-change", (e) => {

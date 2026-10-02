@@ -3442,3 +3442,187 @@ test.describe("a place with no name falls back to the coordinate link", () => {
     expect(href).toBe("https://www.google.com/maps/search/?api=1&query=64.1,-21.9");
   });
 });
+
+// Stage 44 Milestone 1. The fullscreen toggle on the trip map: the map, the
+// locate status and the credit fill the screen, and the legend stays behind
+// (its filters still apply - they are set before entering). Two ways in: the
+// Fullscreen API where the browser has element fullscreen, and an in-page
+// fixed view where it does not (iPhone Safari), forced here by stubbing
+// document.fullscreenEnabled.
+test.describe("the fullscreen trip map", () => {
+  test.use({ viewport: MOBILE });
+
+  const enterButton = (page) => page.getByRole("button", { name: "Show map fullscreen" });
+  const exitButton = (page) => page.getByRole("button", { name: "Exit fullscreen" });
+
+  function readStage(page) {
+    return page.evaluate(() => {
+      const host = document.querySelector("map-view");
+      const sr = host.shadowRoot;
+      const stage = sr.querySelector(".map-stage");
+      const r = stage.getBoundingClientRect();
+      const visible = (el) => {
+        if (!el) return false;
+        const b = el.getBoundingClientRect();
+        return b.height > 0 && b.top >= r.top - 1 && b.bottom <= r.bottom + 1;
+      };
+      return {
+        flagged: host.hasAttribute("data-fullscreen"),
+        native: sr.fullscreenElement === stage,
+        stage: { top: r.top, left: r.left, width: r.width, height: r.height },
+        mapHeight: sr.getElementById("map").getBoundingClientRect().height,
+        legendInside: stage.contains(sr.querySelector(".legend")),
+        // Inside and not cut off, rather than visible(): the suite blocks the
+        // external TileJSON the credit's text comes from, so here it is an
+        // empty line of zero height.
+        creditVisible: (() => {
+          const a = sr.querySelector(".attribution");
+          return stage.contains(a) && a.getBoundingClientRect().bottom <= r.bottom + 1;
+        })(),
+        locateVisible: visible(sr.querySelector('[data-action="locate"]')),
+        rootOverflow: document.documentElement.style.overflow,
+        scrollY: window.scrollY,
+        innerWidth: window.innerWidth,
+        innerHeight: window.innerHeight,
+      };
+    });
+  }
+
+  function expectFillsViewport(seen) {
+    expect(seen.flagged, "the host should say it is fullscreen").toBe(true);
+    expect(seen.stage.top).toBeCloseTo(0, 0);
+    expect(seen.stage.left).toBeCloseTo(0, 0);
+    expect(seen.stage.width).toBeCloseTo(seen.innerWidth, 0);
+    expect(seen.stage.height).toBeCloseTo(seen.innerHeight, 0);
+    expect(seen.legendInside, "the legend is not part of the fullscreen view").toBe(false);
+    expect(seen.creditVisible, "the credit comes along").toBe(true);
+    expect(seen.locateVisible, "and so does the locate button").toBe(true);
+    // The map is what is left once the credit has its line.
+    expect(seen.mapHeight).toBeGreaterThan(seen.innerHeight * 0.85);
+  }
+
+  test("only the trip map offers it", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+    await expect(enterButton(page)).toBeVisible();
+
+    const res = await page.request.post("/api/trips", { data: { title: "UI suite: fullscreen mounts" } });
+    const tripId = (await res.json()).id;
+    try {
+      const created = await page.request.post(`/api/trips/${tripId}/items`, {
+        data: { category: "site", tags: [], title: "Somewhere", location: { lat: 64.9631, lng: -19.0208, address: null } },
+      });
+      const itemId = (await created.json()).id;
+      for (const [route, selector] of [
+        [`/trips/${tripId}/locations/${itemId}`, "map-view"],
+        [`/trips/${tripId}/locations/new`, ".location-form__map"],
+      ]) {
+        await gotoRoute(page, route);
+        await page.waitForFunction((s) => document.querySelector(s)?.hasAttribute("data-ready"), selector);
+        const count = await page.evaluate(
+          (s) => document.querySelector(s).shadowRoot.querySelectorAll('[data-action="fullscreen"]').length,
+          selector
+        );
+        expect(count, `${route} should have no fullscreen toggle`).toBe(0);
+      }
+    } finally {
+      await page.request.delete(`/api/trips/${tripId}`);
+    }
+  });
+
+  test("the Fullscreen API: enter, then leave by button and by Escape", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+    const before = await readStage(page);
+
+    await enterButton(page).click();
+    await expect(exitButton(page)).toBeVisible();
+    await page.waitForFunction(() => document.querySelector("map-view").shadowRoot.fullscreenElement !== null);
+    const inside = await readStage(page);
+    expect(inside.native, "a browser with element fullscreen should use it").toBe(true);
+    expectFillsViewport(inside);
+
+    await exitButton(page).click();
+    await expect(enterButton(page)).toBeVisible();
+    let after = await readStage(page);
+    expect(after.flagged).toBe(false);
+    expect(after.native).toBe(false);
+    expect(after.mapHeight, "the map goes back to its page height").toBeCloseTo(before.mapHeight, 0);
+    expect(after.scrollY, "and the page is where it was").toBe(before.scrollY);
+
+    // Escape belongs to the browser here, and the button has to follow it.
+    await enterButton(page).click();
+    await expect(exitButton(page)).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(enterButton(page)).toBeVisible();
+    after = await readStage(page);
+    expect(after.flagged).toBe(false);
+    expect(after.mapHeight).toBeCloseTo(before.mapHeight, 0);
+  });
+
+  test("without element fullscreen it fills the page instead", async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(Document.prototype, "fullscreenEnabled", { get: () => false, configurable: true });
+    });
+    await login(page);
+    await gotoTripMap(page);
+    const before = await readStage(page);
+
+    await enterButton(page).click();
+    await expect(exitButton(page)).toBeVisible();
+    const inside = await readStage(page);
+    expect(inside.native, "there is no Fullscreen API to use").toBe(false);
+    expectFillsViewport(inside);
+    expect(inside.rootOverflow, "the page underneath must not scroll").toBe("hidden");
+    // Nothing on the page may paint over it - the tab panel's z-index: 0 cap
+    // is the thing that could have got in the way.
+    const top = await page.evaluate(() => {
+      const el = document.elementFromPoint(window.innerWidth / 2, 5);
+      return el === document.querySelector("map-view");
+    });
+    expect(top, "the fullscreen map should be the topmost thing at the top of the screen").toBe(true);
+
+    await page.keyboard.press("Escape");
+    await expect(enterButton(page)).toBeVisible();
+    const after = await readStage(page);
+    expect(after.flagged).toBe(false);
+    expect(after.rootOverflow).toBe(before.rootOverflow);
+    expect(after.mapHeight).toBeCloseTo(before.mapHeight, 0);
+  });
+
+  test("the filters set before entering still apply", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+    const pins = () =>
+      page.evaluate(() => document.querySelector("map-view").shadowRoot.querySelectorAll(".maplibregl-marker").length);
+    const all = await pins();
+    await page.evaluate(() => document.querySelector("map-view").shadowRoot.querySelector('[data-category="site"]').click());
+    await expect.poll(pins).toBeLessThan(all);
+    const filtered = await pins();
+
+    await enterButton(page).click();
+    await expect(exitButton(page)).toBeVisible();
+    expect(await pins(), "entering fullscreen must not re-plot the unfiltered set").toBe(filtered);
+  });
+
+  test("a popup link leaves fullscreen, and Back returns to the normal view", async ({ page }) => {
+    await login(page);
+    const mapPath = await gotoTripMap(page);
+    await enterButton(page).click();
+    await expect(exitButton(page)).toBeVisible();
+
+    await openFirstPopup(page);
+    await page.evaluate(() => {
+      document.querySelector("map-view").shadowRoot.querySelector(".maplibregl-popup-content [data-item-id]").click();
+    });
+    await page.waitForFunction((p) => window.location.pathname !== p, mapPath);
+    await expect(page.locator("h1")).toBeVisible();
+    expect(await page.evaluate(() => document.fullscreenElement), "nothing should still be fullscreen").toBe(null);
+    expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe("");
+
+    await page.goBack();
+    await waitForMapInstance(page);
+    await expect(enterButton(page)).toBeVisible();
+    expect(await page.evaluate(() => document.querySelector("map-view").hasAttribute("data-fullscreen"))).toBe(false);
+  });
+});

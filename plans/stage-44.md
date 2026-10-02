@@ -105,6 +105,37 @@ beenden") in `en.json` and `de.json`.
 Gestures are deliberately unchanged in this milestone: still two fingers and
 Ctrl+wheel in fullscreen. It is reviewable as "the view works" on its own.
 
+**Done.** Landed as planned in `map-view.js` (`.map-stage`, the
+`fullscreen-toggle` attribute, `bindFullscreen` / `enterFullscreen` /
+`enterPseudoFullscreen` / `exitFullscreen` / `applyFullscreenState` /
+`teardownFullscreen`, the button and the fullscreen CSS),
+`trip-detail-page.js`, the sprite (`maximize`, `minimize`: additions only,
+existing symbols byte-identical) and both locales. Two things the plan did not
+spell out: while fullscreen the host holds its own height (`min-height` from
+`offsetHeight`), because the stage leaves the flow and the page would
+otherwise shrink under the reader and exit at a different scroll position;
+and when the map cannot be built at all (no WebGL) `showMapUnavailable`
+removes the toggle, since there is nothing to enlarge. The stacking check came
+out as predicted: no `:has()` lift on `.trip-tab-content` was needed (asserted
+with `elementFromPoint` at the top of the screen in the in-page mode).
+
+Verified with `make ci` and six new tests in `map.spec.js` ("the fullscreen
+trip map", Firefox at 324×756): toggle only on the trip map; native
+fullscreen fills the viewport with the credit and locate button inside and the
+legend outside, and leaves by button and by Escape with the map height and
+scroll position restored; the in-page path (stubbed `fullscreenEnabled`) the
+same, plus the root overflow lock and Escape; filters set before entering
+survive; a popup link out of fullscreen leaves nothing fullscreen or locked,
+and Back returns to the normal view. The credit check is "inside the stage and
+not clipped" rather than "visible", because the suite blocks the TileJSON the
+credit's text comes from and it is zero-height there. Full `make test-ui` was
+run as well. The manual pass did **not** happen through the Playwright MCP:
+its Firefox build (`firefox-1553`) is not installed. A scripted Playwright run
+against `make dev` stood in for it and showed the in-page mode at 324×756 with
+real tiles (map edge to edge, exit top right, locate bottom left, credit
+below). Headless native fullscreen resizes the window to the 1366×768 screen,
+so that mode is only checked by the assertions.
+
 ## 2. One finger and a plain wheel in fullscreen
 
 **`web/js/components/map-view.js`**

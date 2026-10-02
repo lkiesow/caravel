@@ -472,6 +472,57 @@ const styles = `
      floor and the height have to move together: 24rem under a 20rem picker
      would silently inflate it to 24rem, which is the trap the old
      min-height: 0 overrides on :host existed to avoid. */
+  /* Everything that goes fullscreen with the map: the map itself, the locate
+     status and the credit - i.e. everything but the legend (Stage 44). The
+     status has to come along because a locate error would otherwise happen
+     off screen, and the credit because the tile licences ask for it to be
+     visible wherever the map is. The legend stays behind on purpose: the
+     filters are set before entering, and the fullscreen view is the map.
+
+     A column flex box like :host, so outside fullscreen the wrapper changes
+     nothing about how the three stack. */
+  .map-stage {
+    display: flex;
+    flex-direction: column;
+  }
+  /* Two ways in, one look. :fullscreen is the Fullscreen API (the UA already
+     makes the element fixed and viewport-sized, with !important); the
+     attribute is the in-page fallback for browsers without element
+     fullscreen - iPhone Safari - which has to do the positioning itself.
+     z-index only matters for that one: the top layer is above everything
+     anyway. It does not need to beat the tab panel's z-index: 0 cap
+     (base.css), because nothing outside the panel is positioned above it.
+
+     The padding keeps the status and credit off the screen edge, and the
+     map's corner radius goes because a rounded rectangle filling the screen
+     reads as a card that did not quite fit. */
+  .map-stage:fullscreen,
+  :host([data-fullscreen]) .map-stage {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    box-sizing: border-box;
+    padding: 0 0 0.5rem;
+    background: var(--color-bg, #fff);
+  }
+  .map-stage:fullscreen .map-wrap,
+  :host([data-fullscreen]) .map-wrap {
+    flex: 1;
+    height: auto;
+    min-height: 0;
+  }
+  .map-stage:fullscreen #map,
+  :host([data-fullscreen]) #map {
+    border-radius: 0;
+  }
+  .map-stage:fullscreen .locate-status,
+  .map-stage:fullscreen .attribution,
+  :host([data-fullscreen]) .locate-status,
+  :host([data-fullscreen]) .attribution {
+    /* The credit's max-width: 100% would otherwise be 100% plus this. */
+    box-sizing: border-box;
+    padding: 0 0.75rem;
+  }
   .map-wrap {
     position: relative;
     height: var(--map-height);
@@ -635,9 +686,9 @@ const styles = `
     border-left-color: var(--popup-surface);
   }
   /* The locate control, overlaid on the map like a map control should be.
-     Bottom left: the zoom control sits top left, the legend top right and the
-     attribution bottom right, so this is the one free corner. Unchanged by the
-     MapLibre swap -- it puts its controls in the same corners. */
+     Bottom left. There is no zoom control and the legend and the credit both
+     live under the map now, so the only other corner in use is the fullscreen
+     toggle's, top right. */
   .locate {
     position: absolute;
     bottom: 0.5rem;
@@ -673,7 +724,30 @@ const styles = `
     color: var(--color-accent, #2563eb);
     border-color: var(--color-accent, #2563eb);
   }
-  .locate .icon {
+  /* The fullscreen toggle (Stage 44), top right and only on the trip map.
+     The locate button's chrome and tap size, icon-only: the two words of
+     "Show map fullscreen" would not fit beside the legendless corner at
+     324px, and a maximise/minimise glyph is the convention every video player
+     and map has taught. The name is on aria-label and title. */
+  .fullscreen {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--tap-min, 2.75rem);
+    min-height: var(--tap-min, 2.75rem);
+    padding: 0;
+    border: 1px solid var(--color-border, #ccc);
+    border-radius: 0.375rem;
+    background: var(--color-surface, #fff);
+    color: var(--color-text, #111);
+    cursor: pointer;
+  }
+  .locate .icon,
+  .fullscreen .icon {
     width: 1.1rem;
     height: 1.1rem;
     /* The sprite's symbols are strokes with no fill, so they are invisible
@@ -1029,6 +1103,7 @@ class MapView extends HTMLElement {
   }
 
   destroyMap() {
+    this.teardownFullscreen();
     // Explicitly, and before the map goes: a control added by hand is not in
     // the map's own control list, so map.remove() does not tear it down and
     // its five map listeners would outlive the map they point at.
@@ -1058,6 +1133,8 @@ class MapView extends HTMLElement {
     const wrap = this.shadowRoot.querySelector(".map-wrap");
     if (!wrap) return;
     wrap.querySelector(".empty")?.remove();
+    // Nothing to make bigger, and it was never bound.
+    wrap.querySelector('[data-action="fullscreen"]')?.remove();
     const p = document.createElement("p");
     p.className = "empty";
     p.textContent = t("map.unavailable");
@@ -1158,17 +1235,24 @@ class MapView extends HTMLElement {
     this.shadowRoot.innerHTML = `
       <link rel="stylesheet" href="/js/vendor/maplibre/maplibre-gl.css" />
       <style>${styles}</style>
-      <div class="map-wrap">
-        <div id="map"></div>
-        <p class="gesture-hint" role="status" aria-live="polite" hidden></p>
-        ${
-          this.hasAttribute("locate")
-            ? `<button type="button" class="locate" data-action="locate">${icon("locate-fixed")}<span>${t("map.locate.label")}</span></button>`
-            : ""
-        }
+      <div class="map-stage">
+        <div class="map-wrap">
+          <div id="map"></div>
+          <p class="gesture-hint" role="status" aria-live="polite" hidden></p>
+          ${
+            this.hasAttribute("locate")
+              ? `<button type="button" class="locate" data-action="locate">${icon("locate-fixed")}<span>${t("map.locate.label")}</span></button>`
+              : ""
+          }
+          ${
+            this.hasAttribute("fullscreen-toggle")
+              ? `<button type="button" class="fullscreen" data-action="fullscreen" aria-label="${t("map.fullscreen.enter")}" title="${t("map.fullscreen.enter")}">${icon("maximize")}</button>`
+              : ""
+          }
+        </div>
+        ${this.hasAttribute("locate") ? `<p class="locate-status" role="status" hidden></p>` : ""}
+        <div class="attribution"></div>
       </div>
-      ${this.hasAttribute("locate") ? `<p class="locate-status" role="status" hidden></p>` : ""}
-      <div class="attribution"></div>
       ${
         chromeless
           ? ""
@@ -1443,6 +1527,7 @@ class MapView extends HTMLElement {
     });
 
     if (this.hasAttribute("locate")) this.bindLocate();
+    if (this.hasAttribute("fullscreen-toggle")) this.bindFullscreen();
 
     // Sources and layers do not survive a style change, so everything the
     // component draws through the style is re-added from here. Bound before
@@ -2147,6 +2232,123 @@ class MapView extends HTMLElement {
       source: ACCURACY_SOURCE,
       paint: { "line-color": HERE_MARKER_COLOR, "line-width": 1 },
     });
+  }
+
+  // The fullscreen toggle (Stage 44). Our own button rather than MapLibre's
+  // FullscreenControl: that one brings a background-image icon, English-only
+  // strings and its own control box, next to a locate button that has none of
+  // those. What it would have done for us is small enough to do here.
+  //
+  // The element that goes fullscreen is .map-stage, not the map: see the CSS
+  // for why the locate status and the credit come along and the legend does
+  // not.
+  bindFullscreen() {
+    const button = this.shadowRoot.querySelector('[data-action="fullscreen"]');
+    const stage = this.shadowRoot.querySelector(".map-stage");
+    if (!button || !stage) return;
+    button.addEventListener("click", () => {
+      if (this.hasAttribute("data-fullscreen")) this.exitFullscreen();
+      else this.enterFullscreen();
+    });
+    // The Fullscreen API's state is the browser's, not ours: Esc, Android's
+    // back and F11-style exits all end it without asking. So the button reads
+    // the state from the event rather than assuming its own click did it.
+    // fullscreenElement on the *shadow root*, because the document's is
+    // retargeted to the <map-view> host.
+    this._onFullscreenChange = () => {
+      if (this._pseudoFullscreen) return;
+      this.applyFullscreenState(this.shadowRoot?.fullscreenElement === stage);
+    };
+    document.addEventListener("fullscreenchange", this._onFullscreenChange);
+  }
+
+  enterFullscreen() {
+    const stage = this.shadowRoot.querySelector(".map-stage");
+    if (!stage) return;
+    if (document.fullscreenEnabled && stage.requestFullscreen) {
+      // A refusal (a permissions policy, an iframe without allowfullscreen)
+      // still gets the reader a big map, just with the browser's bars.
+      stage.requestFullscreen().catch(() => this.enterPseudoFullscreen());
+      return;
+    }
+    this.enterPseudoFullscreen();
+  }
+
+  // The fallback for browsers without element fullscreen, which in practice
+  // means iPhone Safari: the stage is fixed over the viewport by CSS instead.
+  // It gets Esc by hand, since only the real thing has it for free, and the
+  // page underneath is kept from scrolling.
+  enterPseudoFullscreen() {
+    this._pseudoFullscreen = true;
+    this._onFullscreenKey = (e) => {
+      if (e.key === "Escape") this.exitFullscreen();
+    };
+    document.addEventListener("keydown", this._onFullscreenKey);
+    this._rootOverflow = document.documentElement.style.overflow;
+    document.documentElement.style.overflow = "hidden";
+    this.applyFullscreenState(true);
+  }
+
+  exitFullscreen() {
+    if (this._pseudoFullscreen) {
+      this.leavePseudoFullscreen();
+      this.applyFullscreenState(false);
+      return;
+    }
+    const stage = this.shadowRoot?.querySelector(".map-stage");
+    if (stage && this.shadowRoot.fullscreenElement === stage) {
+      document.exitFullscreen().catch(() => {});
+    }
+  }
+
+  leavePseudoFullscreen() {
+    this._pseudoFullscreen = false;
+    if (this._onFullscreenKey) {
+      document.removeEventListener("keydown", this._onFullscreenKey);
+      this._onFullscreenKey = null;
+    }
+    document.documentElement.style.overflow = this._rootOverflow ?? "";
+  }
+
+  // The one place both ways in and out land, so the button, the host
+  // attribute and the map's size cannot disagree.
+  applyFullscreenState(on) {
+    if (on === this.hasAttribute("data-fullscreen")) return;
+    // The stage leaves the flow while fullscreen, which would collapse the
+    // host to just its legend: the page would get shorter under the reader and
+    // exiting would land them at a different scroll position. Holding the
+    // host at its current height keeps the page where it was.
+    if (on) this.style.minHeight = `${this.offsetHeight}px`;
+    else this.style.minHeight = "";
+    this.toggleAttribute("data-fullscreen", on);
+    const button = this.shadowRoot?.querySelector('[data-action="fullscreen"]');
+    if (button) {
+      const label = t(on ? "map.fullscreen.exit" : "map.fullscreen.enter");
+      button.setAttribute("aria-label", label);
+      button.title = label;
+      button.innerHTML = icon(on ? "minimize" : "maximize");
+    }
+    // The map's ResizeObserver would catch the new size a frame later; asking
+    // now saves a frame of stretched canvas.
+    this._map?.resize();
+  }
+
+  // Called from destroyMap, so a re-render or a navigation never leaves the
+  // page locked or a listener behind. Native fullscreen also ends by itself
+  // when its element leaves the DOM, but only once the element has actually
+  // gone, and destroyMap runs first.
+  teardownFullscreen() {
+    if (this._onFullscreenChange) {
+      document.removeEventListener("fullscreenchange", this._onFullscreenChange);
+      this._onFullscreenChange = null;
+    }
+    if (this._pseudoFullscreen) this.leavePseudoFullscreen();
+    const stage = this.shadowRoot?.querySelector(".map-stage");
+    if (stage && this.shadowRoot.fullscreenElement === stage) {
+      document.exitFullscreen().catch(() => {});
+    }
+    this.style.minHeight = "";
+    this.removeAttribute("data-fullscreen");
   }
 
   removeAccuracyRing() {

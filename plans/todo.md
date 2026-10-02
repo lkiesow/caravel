@@ -106,6 +106,18 @@ purpose — do not reconstruct it from an older stage plan without asking.
   `screen.orientation.angle` correction is from documentation, not
   observation), and that iOS really grants the compass from the locate press.
   Wants one walk with Android Chrome and one with iOS Safari, over HTTPS.
+  A first walk was made after Milestone 3: both work in general, and the
+  arrow's flicker it found was fixed in the follow-up. What is still open is a
+  walk at the new thresholds, the landscape sign, and iOS.
+
+- **The here marker jumps from fix to fix.** (Stage 42 Milestone 3 follow-up.)
+  Tracking now shows about one fix a second, but each one moves the marker
+  and the follow-camera in a single step. Easing the marker (and the arrow's
+  angle, the short way round) towards each new fix would make it glide. That
+  is more than a CSS transition: MapLibre writes the marker's transform, so it
+  means interpolating `setLngLat` per frame, and the follow-camera's moveend
+  bookkeeping (`_followTarget`) would need to agree. Deferred until the user
+  has walked with the faster pace and decided whether it is still wanted.
 
 - **Heading-up map.** (Stage 42.) The map stays north-up with rotation
   disabled; the arrow and cone already compute their angles relative to

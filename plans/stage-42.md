@@ -253,6 +253,42 @@ Firefox:
 Against Milestone 2's code the two iOS ones fail. The default-width one passes
 on both, because Milestone 2 already drew 30; it is there to keep it so.
 
+**Follow-up: the arrow flickered on a real walk, and tracking felt slow.**
+The user's first walk with Milestones 1-3 confirmed the arrow and cone work in
+general. Two problems showed up. The marker kept switching between dot and
+arrow while walking, and the position updated slowly. There were three
+causes, and all three are fixed in one follow-up:
+- **The thresholds sat on top of walking pace.** On at 1.5 m/s and off at
+  0.8 m/s put the switch just above ordinary walking (1.2-1.4 m/s). They are
+  now on at 1.0 and off at 0.5.
+- **One fix that disagreed ended the arrow.** A single fix with no heading, or
+  one speed dip, dropped straight back to the dot. Now the arrow keeps its last
+  angle until nothing has supported it for 5 s (`COURSE_HOLD_MS`). That one
+  rule also replaces the 10 s staleness timeout: no fixes at all is just the
+  limiting case of no supporting ones.
+- **Tracking showed one fix every 3-4 s.** `TRACK_THROTTLE_MS` was 3000, and
+  fixes inside the window were dropped rather than deferred. At walking pace
+  the 10 m skip rule never fired, so a ~1 Hz platform was shown at a third of
+  its rate. Now 900 ms: about the platform's own pace, with slack so that a
+  fix arriving at 990 ms is not dropped (that would halve the rate again). This
+  changes Stage 36 behavior; the user decided it.
+
+Animating the marker between fixes was proposed too, and deferred until the
+user has walked with this. It is in `plans/todo.md`.
+
+Verified: `make ci` green; full UI suite green. Changed and new tests:
+- the hysteresis test, at the new numbers: 0.8 from rest is a dot, 1.2 starts
+  an arrow, 0.8 keeps it;
+- "a fix that disagrees is ridden out": a null heading and a 0.2 m/s dip each
+  hold the arrow at its last angle, and the next good fix picks it up again;
+  four seconds stopped is still held, 5.5 s is the dot;
+- the staleness test, now at 6 s;
+- in `geolocation.spec.js`, the throttle's first test: 400 ms is dropped,
+  980 ms delivered, a further 1000 ms delivered.
+
+All three fail against the code before this follow-up. Re-walking it is the
+user's.
+
 ## Build order
 
 1. Milestone 1 -- the arrow, because it needs no permission and ships value on

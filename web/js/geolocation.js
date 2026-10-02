@@ -68,9 +68,15 @@ const TRACKING_ACCURACY_FLOOR_M = 500;
 const DEGRADED_GRACE_MS = 15000;
 
 // Rendering pace while tracking. The platform pushes about 1Hz under GNSS,
-// which is more DOM churn than anyone needs; a fix that moved meaningfully
-// jumps the queue so a fast boat is not shown lagging.
-const TRACK_THROTTLE_MS = 3000;
+// and since Stage 42 that is close to what gets shown: three seconds, the
+// original pace, made a walker's marker visibly hop behind them, and every
+// fix is cheap to draw (one marker moved, one ring redrawn, one pan). The
+// throttle is still here for a platform that pushes faster than that.
+// Slightly under a second rather than exactly one, because a 1Hz platform
+// does not deliver at exactly 1000ms; with a 1000ms floor, a fix arriving
+// at 990ms would be dropped and the real pace would halve. A fix that moved
+// meaningfully jumps the queue regardless.
+const TRACK_THROTTLE_MS = 900;
 const TRACK_MOVE_M = 10;
 
 // Our own most recent fix, for maxAgeMs. Deliberately ours rather than the

@@ -177,6 +177,30 @@ test.describe("once tracking", () => {
     expect(seen.updates.at(-1).accuracy).toBe(2800);
   });
 
+  // Stage 42. Tracking used to show a fix every three seconds at most, which
+  // made a walker's marker hop behind them. Now it is the platform's own ~1Hz,
+  // with a little slack for a platform that does not keep exact time.
+  test("tracking shows about one fix a second, not one every three", async ({ page }) => {
+    await settle(page);
+    const before = (await record(page)).updates.length;
+    // A metre or so on each time, well under the 10m that skips the throttle.
+    const near = (i) => ({ lat: AT_SEA.lat + i * 0.00001, lng: AT_SEA.lng, accuracy: 20 });
+
+    await advanceClock(page, 400);
+    await emit(page, near(1));
+    expect((await record(page)).updates, "faster than the platform's pace is dropped").toHaveLength(before);
+
+    await advanceClock(page, 580);
+    await emit(page, near(2));
+    expect((await record(page)).updates, "a 1Hz fix that came a little early still lands").toHaveLength(
+      before + 1
+    );
+
+    await advanceClock(page, 1000);
+    await emit(page, near(3));
+    expect((await record(page)).updates).toHaveLength(before + 2);
+  });
+
   test("the watch keeps running past settle, and cancel releases it", async ({ page }) => {
     await settle(page);
     expect((await counters(page)).clears, "continuous means continuous").toBe(0);

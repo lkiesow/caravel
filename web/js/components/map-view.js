@@ -206,16 +206,26 @@ const ACCURACY_FIT_PADDING = 32;
 // When the marker turns into an arrow along the direction of travel (Stage
 // 42). Two thresholds, not one: a walker's speed hovers around any single
 // value, and the marker would flicker between dot and arrow with every fix.
-// 1.5 m/s is a brisk walk -- below it the platform's heading is mostly noise
-// -- and the lower bound is where it is clearly gone again.
-const MOVING_ON_MPS = 1.5;
-const MOVING_OFF_MPS = 0.8;
+//
+// 1.0 m/s is a slow walk. The first version used 1.5 -- a *brisk* walk, on
+// the theory that the heading is noise below it -- and on a real walk that
+// put the switch right on top of ordinary walking pace (1.2-1.4 m/s), so the
+// marker flickered exactly where it was meant to be steady.
+const MOVING_ON_MPS = 1.0;
+const MOVING_OFF_MPS = 0.5;
 
-// An arrow is a claim about *now*. If fixes stop arriving -- the signal went,
-// or the watch is paused -- it reverts to the dot rather than freezing at the
-// last angle. Tracking delivers at least every few seconds while fixes come
-// in, so this is well clear of the ordinary gap between two of them.
-const COURSE_STALE_MS = 10000;
+// How long the arrow survives without a fix that supports it -- one too slow,
+// one with no heading, or no fix at all. Platforms drop the heading from the
+// odd fix mid-walk, and GNSS speed dips for a second at a time; reverting to
+// the dot on any single one of those was the other half of the flicker seen
+// on a real walk. Long enough to ride out a few bad fixes at the ~1Hz
+// tracking pace, short enough that stopping at a crossing shows as stopping.
+//
+// This is also the staleness rule: an arrow is a claim about *now*, so when
+// fixes stop arriving altogether -- the signal went, the watch is paused -- it
+// goes back to the dot after the same time rather than freezing at the last
+// angle.
+const COURSE_HOLD_MS = 5000;
 const COURSE_STALE_CHECK_MS = 1000;
 
 // How wide the compass cone is, as degrees either side of the direction
@@ -1941,7 +1951,8 @@ class MapView extends HTMLElement {
   // The direction is the platform's direction of *travel*, from GNSS: it says
   // nothing about which way the phone is facing, and is only worth showing
   // once you are moving fast enough for it to mean something. See
-  // MOVING_ON_MPS for why there are two thresholds.
+  // MOVING_ON_MPS for why there are two thresholds, and COURSE_HOLD_MS for
+  // why one fix that disagrees does not end an arrow.
   showCourse(fix) {
     const el = this._hereMarker?.getElement();
     if (!el) return;
@@ -1953,7 +1964,10 @@ class MapView extends HTMLElement {
       speed > (this._moving ? MOVING_OFF_MPS : MOVING_ON_MPS);
 
     if (!moving) {
-      this.clearCourse();
+      // Held, not dropped: the arrow keeps its last angle and the poll below
+      // ends it once nothing has supported it for COURSE_HOLD_MS. Checked
+      // here too, so a held arrow does not wait for the next poll tick.
+      if (this._moving && Date.now() - this._courseAt >= COURSE_HOLD_MS) this.clearCourse();
       return;
     }
 
@@ -1973,7 +1987,7 @@ class MapView extends HTMLElement {
     // ticks were missed. Runs only while an arrow is showing.
     if (!this._courseTimer) {
       this._courseTimer = setInterval(() => {
-        if (Date.now() - this._courseAt >= COURSE_STALE_MS) this.clearCourse();
+        if (Date.now() - this._courseAt >= COURSE_HOLD_MS) this.clearCourse();
       }, COURSE_STALE_CHECK_MS);
     }
   }

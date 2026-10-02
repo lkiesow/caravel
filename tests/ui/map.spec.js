@@ -2033,12 +2033,12 @@ test.describe("the marker shows the direction of travel", () => {
     await waitForLocateSettled(page);
   };
 
-  // Each fix a little further on and four seconds later, so the tracking
-  // throttle delivers every one of them.
+  // Each fix a little further on and, by default, a second later -- the real
+  // tracking pace, and past the throttle, so every one is delivered.
   let step = 0;
-  const move = async (page, course) => {
+  const move = async (page, course, ms = 1000) => {
     step += 1;
-    await advanceClock(page, 4000);
+    await advanceClock(page, ms);
     await emitFix(page, { lat: AT_SEA.lat + step * 0.001, lng: AT_SEA.lng, accuracy: 20, ...course });
   };
 
@@ -2080,24 +2080,50 @@ test.describe("the marker shows the direction of travel", () => {
     expect(b).toBeCloseTo(1, 5);
   });
 
-  // Two thresholds so a walker near one does not flicker. 1.0 m/s is between
+  // Two thresholds so a walker near one does not flicker. 0.8 m/s is between
   // them: from rest it is not enough to start an arrow, and once moving it is
-  // not slow enough to stop one.
+  // not slow enough to stop one. 1.2 m/s -- ordinary walking -- is enough to
+  // start one; the first version's 1.5 was not, which is what flickered on a
+  // real walk.
   test("the switch has hysteresis, so it does not flicker", async ({ page }) => {
     await settled(page);
-    await move(page, { heading: 10, speed: 1.0 });
-    expect((await marker(page)).moving, "1.0 m/s from rest is not moving yet").toBe(false);
+    await move(page, { heading: 10, speed: 0.8 });
+    expect((await marker(page)).moving, "0.8 m/s from rest is not moving yet").toBe(false);
 
-    await move(page, { heading: 10, speed: 2.0 });
-    expect((await marker(page)).moving, "2.0 m/s is").toBe(true);
+    await move(page, { heading: 10, speed: 1.2 });
+    expect((await marker(page)).moving, "1.2 m/s, an ordinary walk, is").toBe(true);
 
-    await move(page, { heading: 20, speed: 1.0 });
+    await move(page, { heading: 20, speed: 0.8 });
     const slowing = await marker(page);
-    expect(slowing.moving, "1.0 m/s once moving still is").toBe(true);
+    expect(slowing.moving, "0.8 m/s once moving still is").toBe(true);
     expect(slowing.course, "and the arrow follows the new heading").toBe("20");
+  });
 
-    await move(page, { heading: 20, speed: 0.5 });
-    expect((await marker(page)).moving, "0.5 m/s is stopped").toBe(false);
+  // The other half of the flicker: platforms drop the heading from the odd
+  // fix mid-walk, and speed dips for a second. One such fix must not end an
+  // arrow; a run of them lasting COURSE_HOLD_MS (5 s) does.
+  test("a fix that disagrees is ridden out, a run of them is not", async ({ page }) => {
+    await settled(page);
+    await move(page, { heading: 30, speed: 1.3 });
+    expect((await marker(page)).moving).toBe(true);
+
+    await move(page, { heading: null, speed: 1.3 });
+    let m = await marker(page);
+    expect(m.moving, "one fix with no heading is held through").toBe(true);
+    expect(m.course, "at the last angle there was").toBe("30");
+
+    await move(page, { heading: 30, speed: 0.2 });
+    expect((await marker(page)).moving, "one slow fix is held through too").toBe(true);
+
+    await move(page, { heading: 35, speed: 1.3 });
+    m = await marker(page);
+    expect(m.course, "a good fix picks it up again").toBe("35");
+
+    // Now stopped for real: slow fixes, once a second, for more than 5 s.
+    for (let i = 0; i < 4; i++) await move(page, { heading: 35, speed: 0.1 });
+    expect((await marker(page)).moving, "four seconds stopped is still held").toBe(true);
+    await move(page, { heading: 35, speed: 0.1 }, 1500);
+    expect((await marker(page)).moving, "past five, it is the dot").toBe(false);
   });
 
   test("a direction that stops arriving goes back to the dot", async ({ page }) => {
@@ -2106,7 +2132,7 @@ test.describe("the marker shows the direction of travel", () => {
     expect((await marker(page)).moving).toBe(true);
     // No fix for longer than the arrow is believed. The poll compares against
     // Date.now, which the fake has just moved on; the next real tick sees it.
-    await advanceClock(page, 11000);
+    await advanceClock(page, 6000);
     await page.waitForFunction(
       () => !document.querySelector("map-view")._hereMarker.getElement().hasAttribute("data-moving"),
       null,

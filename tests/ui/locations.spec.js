@@ -607,7 +607,7 @@ test.describe("the location editor, end to end", () => {
     // The default order is not "sorted", so the trigger stays neutral.
     await expect(menu.locator('[data-action="toggle"]')).not.toHaveClass(/menu__trigger--active/);
 
-    await choose("By name");
+    await choose("Name (A–Z)");
     expect(await titles(), "collated: Ä with A, case-insensitive, 2 before 10").toEqual([
       "Älvsborg",
       "apple orchard",
@@ -619,7 +619,7 @@ test.describe("the location editor, end to end", () => {
     // cue left once the label is hidden.
     await expect(menu.locator('[data-action="toggle"]')).toHaveClass(/menu__trigger--active/);
 
-    await choose("By date");
+    await choose("Date (first)");
     expect(await titles(), "earliest first; the two undated go last, not first").toEqual([
       "Hut 10",
       "Zebra crossing",
@@ -633,9 +633,92 @@ test.describe("the location editor, end to end", () => {
     // sorted() copies -- applyFilters already passes it a fresh array from
     // .filter(), so this assertion passes even with the spread removed. It was
     // checked that way rather than assumed.
-    await choose("As added");
+    await choose("Added (first)");
     expect(await titles()).toEqual(added);
     await expect(menu.locator('[data-action="toggle"]')).not.toHaveClass(/menu__trigger--active/);
+  });
+
+  // Stage 43: tapping the current order again reverses it. Same seed as the
+  // test above, so every order and its reverse are distinguishable.
+  test("tapping the current order again reverses it, and undated stay last", async ({ page }) => {
+    const mk = (title, dates) =>
+      page.request.post(`/api/trips/${tripId}/items`, {
+        data: { title, category: "site", dates },
+      });
+    await mk("Zebra crossing", [{ start_date: "2026-09-05", end_date: "2026-09-05" }]);
+    await mk("Älvsborg", [{ start_date: "2026-09-20", end_date: "2026-09-20" }]);
+    await mk("apple orchard", []);
+    await mk("Hut 10", [{ start_date: "2026-09-01", end_date: "2026-09-01" }]);
+    await mk("Hut 2", []);
+
+    await gotoRoute(page, `/trips/${tripId}/locations`);
+
+    const menu = page.locator(".locations-sort-slot .menu");
+    const trigger = menu.locator('[data-action="toggle"]');
+    const label = menu.locator(".menu__label");
+    const titles = () =>
+      page.locator("item-card").evaluateAll((els) => els.map((e) => e.getAttribute("title")));
+    const choose = async (name) => {
+      await trigger.click();
+      await page.getByRole("menuitemradio", { name, exact: true }).click();
+      await expect(menu.locator(".menu__dropdown")).toBeHidden();
+    };
+
+    const added = await titles();
+
+    // --- as added: the default, reversed, is the fetch order backwards ---
+    await choose("Added (first)");
+    await expect(label).toHaveText("Added (last)");
+    expect(await titles()).toEqual([...added].reverse());
+    // A reversed default is not the normal order, so it tints.
+    await expect(trigger).toHaveClass(/menu__trigger--active/);
+    await choose("Added (last)");
+    expect(await titles()).toEqual(added);
+    await expect(trigger).not.toHaveClass(/menu__trigger--active/);
+
+    // --- by name: Z-A ---
+    await choose("Name (A–Z)");
+    await choose("Name (A–Z)");
+    await expect(label).toHaveText("Name (Z–A)");
+    expect(await titles()).toEqual(["Zebra crossing", "Hut 10", "Hut 2", "apple orchard", "Älvsborg"]);
+
+    // --- switching away from a reversed order starts the new one in its
+    // natural direction ---
+    await choose("Date (first)");
+    await expect(label).toHaveText("Date (first)");
+    expect(await titles()).toEqual(["Hut 10", "Zebra crossing", "Älvsborg", "apple orchard", "Hut 2"]);
+
+    // --- by date, reversed: latest first, and the undated are *still* last ---
+    await choose("Date (first)");
+    await expect(label).toHaveText("Date (last)");
+    expect(await titles()).toEqual(["Älvsborg", "Zebra crossing", "Hut 10", "apple orchard", "Hut 2"]);
+
+    // The marker hinting at a second tap is on the checked row only.
+    await trigger.click();
+    const markers = await menu
+      .locator(".menu__reverse")
+      .evaluateAll((els) => els.map((e) => getComputedStyle(e).visibility));
+    expect(markers).toEqual(["hidden", "hidden", "visible"]);
+    // The direction is in the accessible name, not only in an arrow.
+    await expect(page.getByRole("menuitemradio", { name: "Date (last)", exact: true })).toHaveAttribute(
+      "aria-checked",
+      "true"
+    );
+    // The longest labels still fit a 324px screen.
+    const box = await menu.locator(".menu__dropdown").boundingBox();
+    // Inside the 16px page gutter, not merely on screen.
+    expect(box.x, "the dropdown must stay inside the left gutter").toBeGreaterThanOrEqual(16);
+    expect(box.x + box.width).toBeLessThanOrEqual(MOBILE.width - 16);
+    await page.keyboard.press("Escape");
+
+    // --- the direction rides on the history entry like the rest of the toolbar ---
+    const reversedDate = await titles();
+    await page.locator("item-card").first().click();
+    await expect(page).not.toHaveURL(/\/locations$/);
+    await page.goBack();
+    await expect(page.locator("item-card").first()).toBeVisible();
+    await expect(label).toHaveText("Date (last)");
+    expect(await titles()).toEqual(reversedDate);
   });
 
   // Sorting orders what the filters left, rather than replacing them.
@@ -655,7 +738,7 @@ test.describe("the location editor, end to end", () => {
     await page.locator('[data-value="stay"]').click();
 
     await page.locator('.locations-sort-slot [data-action="toggle"]').click();
-    await page.getByRole("menuitemradio", { name: "By name", exact: true }).click();
+    await page.getByRole("menuitemradio", { name: "Name (A–Z)", exact: true }).click();
 
     const titles = await page
       .locator("item-card")

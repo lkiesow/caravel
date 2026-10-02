@@ -58,6 +58,19 @@ import { bindPopup } from "./popup.js";
 // visually hidden under 640px - still shows that a filter is narrowing the
 // list. Omit it and the trigger never highlights.
 //
+// An item may be `reversible` (Stage 43), for the sort menus: tapping it while
+// it is already the selection flips its direction instead of doing nothing.
+// The item then carries `reversedLabel` beside `label`, and the row and the
+// trigger show whichever one is in force - the direction is said in words
+// ("Name (Z–A)"), since an arrow is read as ascending by some people and as
+// "smallest on top" by others. `activeReversed` is the starting direction, and
+// onSelect receives `{ reversed }` as its second argument. Selecting a
+// *different* item always starts it unreversed: each order has a natural
+// direction, and that is the one a new choice begins in. The checked
+// reversible row carries a trailing two-way arrow as the hint that a second
+// tap does something. A reversed selection counts as non-neutral for the
+// tint, so a reversed default still says "not the normal order".
+//
 // The remaining options exist for the trip tab bar's "More" menu (Stage 09
 // Milestone 6 follow-up), which is the same popup with a different shape:
 //
@@ -84,9 +97,10 @@ import { bindPopup } from "./popup.js";
 // inert was never deliberate.
 export function renderMenu(
   container,
-  { iconName, items, activeValue, neutralValue, ariaLabel, onSelect, label, chevron = true, triggerClass = "btn btn-secondary btn-collapse", className = "", triggerPrefixHtml = "" }
+  { iconName, items, activeValue, activeReversed = false, neutralValue, ariaLabel, onSelect, label, chevron = true, triggerClass = "btn btn-secondary btn-collapse", className = "", triggerPrefixHtml = "" }
 ) {
   let active = activeValue;
+  let reversed = activeReversed;
 
   container.innerHTML = `
     <div class="menu${className ? ` ${className}` : ""}">
@@ -116,6 +130,7 @@ export function renderMenu(
                     : icon("check", { className: "menu__check" })
               }
               <span></span>
+              ${item.reversible ? icon("arrow-down-up", { className: "menu__reverse" }) : ""}
             </button>
           </li>
         `
@@ -130,16 +145,25 @@ export function renderMenu(
   const dropdown = container.querySelector(".menu__dropdown");
   const labelEl = container.querySelector(".menu__label");
 
-  // Labels are set as textContent rather than interpolated into the
-  // template above so no escaping is needed for user-facing copy.
-  items.forEach((item, i) => {
-    dropdown.querySelectorAll("[data-value] span")[i].textContent = item.label;
-  });
+  const rowLabels = dropdown.querySelectorAll("[data-value] span");
   syncLabel();
 
+  // The label an item shows right now: its reversed one only while it is the
+  // reversed selection.
+  function labelOf(item) {
+    return item.reversible && reversed && item.value === active ? item.reversedLabel : item.label;
+  }
+
   function syncLabel() {
-    labelEl.textContent = label ?? items.find((item) => item.value === active)?.label ?? "";
-    trigger.classList.toggle("menu__trigger--active", neutralValue !== undefined && active !== neutralValue);
+    // Labels are set as textContent rather than interpolated into the
+    // template above so no escaping is needed for user-facing copy. Every
+    // sync rather than once, since a reversible row's label changes with it.
+    items.forEach((item, i) => {
+      rowLabels[i].textContent = labelOf(item);
+    });
+    const current = items.find((item) => item.value === active);
+    labelEl.textContent = label ?? (current ? labelOf(current) : "");
+    trigger.classList.toggle("menu__trigger--active", neutralValue !== undefined && (active !== neutralValue || reversed));
     // Only the radio items carry a checked state; an action item has none to
     // sync, and stamping aria-checked on it would invent one.
     dropdown.querySelectorAll('[role="menuitemradio"]').forEach((btn) => {
@@ -174,13 +198,19 @@ export function renderMenu(
       if (items[i].action) {
         return guard.run(() => onSelect?.(value));
       }
-      if (value === active) return;
+      if (value === active) {
+        if (!items[i].reversible) return;
+        reversed = !reversed;
+      } else {
+        // A newly chosen order starts in its natural direction.
+        active = value;
+        reversed = false;
+      }
       // Still optimistic, and still before the call: the selection is what the
       // user just chose, and a caller that cannot honor it says so through
       // setActive() below.
-      active = value;
       syncLabel();
-      return guard.run(() => onSelect?.(value));
+      return guard.run(() => onSelect?.(value, { reversed }));
     });
   });
 
@@ -191,9 +221,10 @@ export function renderMenu(
   // active. Returned rather than exposed as an option so a caller that never
   // needs it carries no extra API.
   return {
-    setActive(value) {
-      if (value === active) return;
+    setActive(value, toReversed = false) {
+      if (value === active && toReversed === reversed) return;
       active = value;
+      reversed = toReversed;
       syncLabel();
     },
   };

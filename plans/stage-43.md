@@ -107,6 +107,35 @@ visible only on the checked reversible row, the accessible name
 (`menuitemradio`) carries the direction words, and a non-reversible checked
 row ignores a second tap.
 
+**Done.** Landed as planned in `menu.js`, `base.css` and
+`locations-tab.js`, with one deviation, in the copy. The planned
+"As added · oldest first" style did not fit: measured at 324px the German
+dropdown was 322px wide and ran 66px off the left edge, and the English one
+ended 8px into the 16px gutter. The text budget for the longest row is about
+158px (the menu opens leftwards from the trigger, whose right edge sits at
+256px, and about 82px goes to padding, the check and the marker). The labels
+were re-chosen with Lars at the checkpoint:
+`Added (first) / Added (last)`, `Name (A–Z) / Name (Z–A)`,
+`Date (first) / Date (last)`; German `Erstellt (zuerst) / Erstellt (zuletzt)`,
+`Name (A–Z) / Name (Z–A)`, `Datum (zuerst) / Datum (zuletzt)`. The widest is
+under 130px. Milestone 2's locale paragraph above was updated to match.
+
+`menu.js` re-syncs every row label on each change, since a reversible row's
+label changes with its direction, and `setActive` takes an optional
+`reversed`. Verified: `make ci` green; full `make test-ui` green (321 passed).
+New in `locations.spec.js`: reversing "as added" gives the exact reverse of
+the fetch order and tints the trigger, while a second tap restores the order
+and removes the tint; name Z–A; switching from a reversed order starts the
+next one in its natural direction; date reversed keeps the two undated
+locations last; the marker is visible on the checked row only; the direction
+is in the `menuitemradio` accessible name; the dropdown stays inside the 16px
+gutter at 324px; the reversed order survives opening a location and pressing
+Back. New in `menu.spec.js`: the tab bar's More menu has no marker and a
+second tap on its current row does not navigate (history length unchanged),
+and the German sort labels fit at 324px. The manual MCP browser pass was not
+possible because the MCP Firefox is not installed. The specs above run the
+same checks in Firefox at 324×756.
+
 ## 2. The trips list: "As added" and a reversible name order
 
 **`web/js/pages/trips-page.js`**
@@ -122,10 +151,11 @@ row ignores a second tap.
   first); `upcoming` untouched.
 - Menu items as in Milestone 1.
 
-**Locales** — replace `trips.sort.title|added` with `.asc`/`.desc` pairs:
-`By name · A–Z / Z–A` (`Nach Name · A–Z / Z–A`) and
-`As added · newest first / oldest first`
-(`Wie hinzugefügt · neueste zuerst / älteste zuerst`). `trips.sort.upcoming`
+**Locales** — replace `trips.sort.title|added` with `.asc`/`.desc` pairs in
+the copy Milestone 1 settled on: `Name (A–Z) / Name (Z–A)` (same in German)
+and `Added (first) / Added (last)` (`Erstellt (zuerst) / Erstellt (zuletzt)`).
+`.asc` always means oldest/A first, so on trips the *natural* label for added
+is `.desc` ("Added (last)") and the reversed one `.asc`. `trips.sort.upcoming`
 stays.
 
 **Tests — `tests/ui/trips.spec.js`**: update `SORT_LABELS`; add reversal

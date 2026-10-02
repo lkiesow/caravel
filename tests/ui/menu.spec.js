@@ -773,3 +773,54 @@ test.describe("locations filter menu", () => {
     expect(doc.scrollWidth, "no horizontal overflow").toBeLessThanOrEqual(doc.clientWidth);
   });
 });
+
+// Stage 43: reversible items are opt-in. A menu that has none - the tab bar's
+// More - must show no reverse marker and must still ignore a tap on the row
+// that is already current, which is the behaviour every other caller relies on.
+test.describe("reversible items are opt-in", () => {
+  test.use({ viewport: MOBILE });
+
+  test("a menu without them has no marker, and a second tap on the current row does nothing", async ({ page }) => {
+    const tripId = await openTripLocations(page);
+    const trigger = page.locator(`${MORE} .menu__trigger`);
+    const dropdown = page.locator(`${MORE} .menu__dropdown`);
+
+    await trigger.click();
+    await dropdown.locator('[role="menuitemradio"]').last().click();
+    await expect(page).toHaveURL(`/trips/${tripId}/settings`);
+    const depth = await page.evaluate(() => history.length);
+
+    await trigger.click();
+    await expect(dropdown.locator(".menu__reverse")).toHaveCount(0);
+    await dropdown.locator('[role="menuitemradio"]').last().click();
+    await expect(dropdown).toBeHidden();
+    await expect(page).toHaveURL(`/trips/${tripId}/settings`);
+    expect(await page.evaluate(() => history.length), "re-selecting must not navigate").toBe(depth);
+  });
+});
+
+// The German sort labels are the longest copy any reversible menu carries.
+// The dropdown is right-anchored to its trigger and does not wrap, so it is
+// measured at phone width rather than assumed to fit.
+test.describe("sort menu (de)", () => {
+  test.use({ viewport: MOBILE, locale: "de" });
+
+  test("names the direction in German and fits a 324px screen", async ({ page }) => {
+    await openTripLocations(page);
+    const menu = page.locator(".locations-sort-slot .menu");
+    await menu.locator('[data-action="toggle"]').click();
+    await expect(menu.locator('[role="menuitemradio"]')).toHaveText([
+      "Erstellt (zuerst)",
+      "Name (A–Z)",
+      "Datum (zuerst)",
+    ]);
+    await menu.locator('[role="menuitemradio"]').first().click();
+    await menu.locator('[data-action="toggle"]').click();
+    await expect(menu.locator('[role="menuitemradio"]').first()).toHaveText("Erstellt (zuletzt)");
+
+    const box = await menu.locator(".menu__dropdown").boundingBox();
+    // Inside the 16px page gutter, not merely on screen.
+    expect(box.x, "the dropdown must stay inside the left gutter").toBeGreaterThanOrEqual(16);
+    expect(box.x + box.width).toBeLessThanOrEqual(MOBILE.width - 16);
+  });
+});

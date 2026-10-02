@@ -34,6 +34,10 @@ const ANY_DISTANCE = "any";
 // trigger with this icon. Consistency between the app two list screens is
 // worth more than one fewer control, and collapsing the filters into one
 // trigger is exactly what made room for this one.
+//
+// Every order can be reversed as of Stage 43, by tapping it again while it is
+// the selection (menu.js's `reversible`). Each one starts in the direction
+// listed in sorted() below; only the primary key flips.
 const SORTS = ["added", "title", "date"];
 const DEFAULT_SORT = "added";
 
@@ -76,6 +80,7 @@ export async function renderItemsTab(container, trip) {
   let allItems = [];
   let radiusKm = null;
   let sort = saved.sort ?? DEFAULT_SORT;
+  let reversed = saved.reversed ?? false;
   let activeTag = saved.tag ?? ANY_TAG;
   // The date filter has more states than a value: three presets plus a range,
   // so it carries a small object rather than a string. `mode` is what the
@@ -189,11 +194,19 @@ export async function renderItemsTab(container, trip) {
   // itself if a later caller skips the filter. Same shape as trips-page.js.
   function sorted(items) {
     const out = [...items];
-    if (sort === "title") {
+    // -1 while the reader has flipped the order. It multiplies the primary
+    // comparison only: whatever a rule puts last (undated locations) stays
+    // last in both directions.
+    const dir = reversed ? -1 : 1;
+    if (sort === "added") {
+      // Oldest first is the fetch order itself, so newest first is simply
+      // that order backwards.
+      if (reversed) out.reverse();
+    } else if (sort === "title") {
       // Under the active locale, so German umlauts sort where a German reader
       // expects rather than after z. numeric so "Hut 2" precedes "Hut 10".
       const collator = new Intl.Collator(getLocale(), { sensitivity: "base", numeric: true });
-      out.sort((a, b) => collator.compare(a.title, b.title));
+      out.sort((a, b) => dir * collator.compare(a.title, b.title));
     } else if (sort === "date") {
       // Earliest first, by the first range - the ranges arrive already sorted
       // from collapseDateRanges, so dates[0] is the earliest without sorting
@@ -211,7 +224,7 @@ export async function renderItemsTab(container, trip) {
         if (!x && !y) return 0;
         if (!x) return 1;
         if (!y) return -1;
-        return x < y ? -1 : x > y ? 1 : 0;
+        return dir * (x < y ? -1 : x > y ? 1 : 0);
       });
     }
     return out;
@@ -243,6 +256,7 @@ export async function renderItemsTab(container, trip) {
     if (activeFilter !== "all") state.category = activeFilter;
     if (query) state.query = query;
     if (sort !== DEFAULT_SORT) state.sort = sort;
+    if (reversed) state.reversed = true;
     if (activeTag !== ANY_TAG) state.tag = activeTag;
     if (dateFilter.mode !== ANY_DATE) state.date = dateFilter;
     return state;
@@ -515,13 +529,21 @@ export async function renderItemsTab(container, trip) {
     iconName: "arrow-down-up",
     ariaLabel: "locations.sort.label",
     activeValue: sort,
+    activeReversed: reversed,
     // Sorting by anything other than the default tints the trigger, so a
     // collapsed icon-only button on a phone still says the order is not the
-    // one the list normally has - the same cue the filter funnel carries.
+    // one the list normally has - the same cue the filter funnel carries. A
+    // reversed default tints too; menu.js counts that as non-neutral.
     neutralValue: DEFAULT_SORT,
-    items: SORTS.map((value) => ({ value, label: t(`locations.sort.${value}`) })),
-    onSelect: (value) => {
+    items: SORTS.map((value) => ({
+      value,
+      reversible: true,
+      label: t(`locations.sort.${value}.asc`),
+      reversedLabel: t(`locations.sort.${value}.desc`),
+    })),
+    onSelect: (value, { reversed: r }) => {
       sort = value;
+      reversed = r;
       applyFilters();
     },
   });

@@ -930,6 +930,21 @@ textarea {
   visibility: hidden;
 }
 
+/* A reversible row's two-way arrow (menu.js's items[].reversible) is the hint
+   that tapping the current order again flips it, so it shows on the checked
+   row only - on any other row a tap selects rather than reverses, and the
+   arrow would promise the wrong thing. Trailing, so the label stays aligned
+   with the rows that have none. */
+.menu__reverse {
+  flex: none;
+  margin-inline-start: auto;
+  color: var(--color-text-muted);
+}
+
+.menu__dropdown button:not([aria-checked="true"]) .menu__reverse {
+  visibility: hidden;
+}
+
 /* An item's own icon (menu.js's items[].iconName) sits in the same slot the
    checkmark would, and stays visible on every row - it identifies the
    destination rather than marking the selection. */

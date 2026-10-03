@@ -12,6 +12,19 @@
 // PNG captures are, and a PNG re-render carries none of a JPEG's metadata.
 // (Caravel strips it anyway: every upload is re-encoded from decoded pixels, so
 // EXIF, GPS included, never reaches disk. See internal/imaging.)
+//
+// Traps when editing this, each of which has cost time before:
+// - Every API call goes through must(). readJSON refuses unknown fields (the
+//   trip body field is `subtitle`, not `description`), and an unchecked 400
+//   fails silently.
+// - share_user_ids comes back as the *effective* set, so echoing an expense
+//   back on PATCH pins "split with everyone" to today's members. Forward it
+//   only when it is a genuine subset.
+// - Tab captures need `scrollTo`, or the cover banner fills the frame; a card
+//   at the very bottom of a page needs `element`, since the page runs out of
+//   scroll first.
+// - The stub provider (internal/assist/stub.go) answers with the same canned
+//   place whatever it is asked, so the assistant prompt has to match it.
 import { firefox } from "playwright";
 import { readdir, mkdir } from "node:fs/promises";
 import { readFileSync } from "node:fs";

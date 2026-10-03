@@ -82,15 +82,6 @@ without asking.
     handler already has the `errItineraryEntryVanished` -> 409 shape
     (`internal/httpapi/itinerary.go:308`) to copy.
 
-- **An unknown /api path answers 200 with the SPA shell.** **(soon)** (Stage 25
-  Milestone 2.) `POST /api/items/{id}/nonsense` and `GET /api/does-not-exist`
-  both return 200 and the index page rather than a 404, because the static
-  handler is the router's only `NotFound` (`internal/httpapi/router.go`) and
-  catches everything the `/api` subrouter did not match. It makes a client typo
-  look like a success, and it is why `ownership_test.go` asserts on the body
-  rather than only the status. An /api-scoped NotFound handler that writes the
-  usual JSON error would fix it.
-
 - **Map pins are hard to hit.** **(soon)** (notes.md, reviewed 2026-10-03.) A
   trip-map pin is a 1rem dot with a 2px ring -- about 20x20 px in all
   (`markerElement` in `web/js/components/map-view.js`) -- below WCAG 2.5.8's

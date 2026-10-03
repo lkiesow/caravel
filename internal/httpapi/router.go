@@ -274,6 +274,17 @@ func (s *Server) buildRouter() chi.Router {
 	r.Use(s.Auth.Middleware)
 
 	r.Route("/api", func(r chi.Router) {
+		// Set here rather than inherited from the root: chi hands a parent's
+		// NotFound to every subrouter that has none, so without this an
+		// unknown API path fell through to serveStatic and got the SPA shell
+		// with a 200 -- a client typo that looked like a success. Every
+		// nested Route below inherits this one instead. MethodNotAllowed is
+		// left as chi's default on purpose: a custom one would lose the Allow
+		// header, which chi only sets in its own handler.
+		r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+			writeError(w, http.StatusNotFound, "not found")
+		})
+
 		r.Get("/health", s.handleHealth)
 
 		r.Route("/auth", func(r chi.Router) {

@@ -192,6 +192,49 @@ func TestStaticRouteStillFallsBackToShell(t *testing.T) {
 	}
 }
 
+// A path no client route matches still gets the shell, so the app can render
+// its own not-found page, but with a 404: the status must not claim the page
+// exists. Checked with and without NoCache, since the two set headers apart,
+// and as HEAD and conditional GET, which must not turn the 404 into a 200 or
+// a 304.
+func TestStaticUnknownRouteIsShellWith404(t *testing.T) {
+	for _, noCache := range []bool{false, true} {
+		ts := newStaticServer(t, noCache)
+		tag := getStatic(ts, "/", nil).Header().Get("ETag")
+
+		for _, path := range []string{"/does-not-exist", "/trips/abc/nonsense", "/settings/x"} {
+			res := getStatic(ts, path, nil)
+			if res.Code != http.StatusNotFound {
+				t.Errorf("noCache=%v: GET %s = %d, want 404", noCache, path, res.Code)
+				continue
+			}
+			if !strings.Contains(res.Body.String(), "<title>Caravel</title>") {
+				t.Errorf("noCache=%v: GET %s did not serve the shell, got %q", noCache, path, res.Body.String())
+			}
+			if strings.Contains(res.Body.String(), shellOriginPlaceholder) {
+				t.Errorf("noCache=%v: GET %s left the origin placeholder in", noCache, path)
+			}
+			if res.Header().Get("ETag") != "" {
+				t.Errorf("noCache=%v: GET %s carried an ETag on a 404", noCache, path)
+			}
+
+			if tag != "" {
+				cond := getStatic(ts, path, map[string]string{"If-None-Match": tag})
+				if cond.Code != http.StatusNotFound {
+					t.Errorf("noCache=%v: conditional GET %s = %d, want 404", noCache, path, cond.Code)
+				}
+			}
+
+			r := httptest.NewRequest(http.MethodHead, path, nil)
+			w := httptest.NewRecorder()
+			ts.ServeHTTP(w, r)
+			if w.Code != http.StatusNotFound || w.Body.Len() != 0 {
+				t.Errorf("noCache=%v: HEAD %s = %d with %d body bytes, want 404 and none", noCache, path, w.Code, w.Body.Len())
+			}
+		}
+	}
+}
+
 // Dev serves from a live directory, so a startup hash would be wrong by the
 // first edit. NoCache keeps its no-store header and grows no validator.
 func TestStaticDevModeKeepsNoStoreAndNoETag(t *testing.T) {

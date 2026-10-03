@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -134,13 +135,20 @@ func (s *Server) serveStatic(fileServer http.Handler, w http.ResponseWriter, r *
 		}
 	}
 
+	status := http.StatusOK
 	if f, err := s.WebFS.Open(r.URL.Path); err != nil {
 		if isAssetRequest(r.URL.Path) {
 			http.NotFound(w, r)
 			return
 		}
 		// SPA fallback: serve index.html for any non-API path so client-side
-		// routing (History API) works on a hard refresh/deep link.
+		// routing (History API) works on a hard refresh/deep link. A path no
+		// client route matches still gets the shell -- it renders the app's
+		// own not-found page -- but with a 404, so the status does not claim
+		// the page exists. Matched escaped, as location.pathname is.
+		if !isClientRoute(r.URL.EscapedPath()) {
+			status = http.StatusNotFound
+		}
 		r.URL.Path = "/"
 	} else {
 		f.Close()
@@ -152,7 +160,7 @@ func (s *Server) serveStatic(fileServer http.Handler, w http.ResponseWriter, r *
 	// to "/" -- the explicit routes only catch "/" and "/index.html" asked for
 	// by name.
 	if r.URL.Path == "/" || r.URL.Path == "/index.html" {
-		s.handleShell(w, r)
+		s.handleShell(w, r, status)
 		return
 	}
 
@@ -480,7 +488,11 @@ func (s *Server) requestOrigin(r *http.Request) string {
 // and https -- could otherwise hand one host a card pointing at the other.
 // The tag is computed from the substituted output, and Vary names the headers
 // that decided it.
-func (s *Server) handleShell(w http.ResponseWriter, r *http.Request) {
+//
+// A status other than 200 is the not-found shell: the same body, sent as is.
+// It skips the ETag and http.ServeContent, whose conditional and range
+// handling would answer 304 or 206 in place of the 404.
+func (s *Server) handleShell(w http.ResponseWriter, r *http.Request, status int) {
 	f, err := s.WebFS.Open("/index.html")
 	if err != nil {
 		http.NotFound(w, r)
@@ -505,9 +517,19 @@ func (s *Server) handleShell(w http.ResponseWriter, r *http.Request) {
 	if s.NoCache {
 		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	} else {
+		w.Header().Set("Cache-Control", "no-cache")
+	}
+	if status != http.StatusOK {
+		w.Header().Set("Content-Length", strconv.Itoa(len(out)))
+		w.WriteHeader(status)
+		if r.Method != http.MethodHead {
+			_, _ = io.WriteString(w, out)
+		}
+		return
+	}
+	if !s.NoCache {
 		sum := sha256.Sum256([]byte(out))
 		w.Header().Set("ETag", `"`+hex.EncodeToString(sum[:])[:16]+`"`)
-		w.Header().Set("Cache-Control", "no-cache")
 	}
 	http.ServeContent(w, r, "index.html", time.Time{}, strings.NewReader(out))
 }

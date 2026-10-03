@@ -108,6 +108,14 @@ without asking.
   not a link at all), not how to find one. Stale link *text* after a rename was
   considered in the same review and dropped.
 
+- **A deep link to a missing record still answers 200.** (Unknown-path 404 fix,
+  2026-10-03.) The SPA fallback now sends the shell with a 404 for any path no
+  client route matches (`isClientRoute`, `internal/httpapi/clientroutes.go`),
+  but `/trips/<missing id>` has a valid shape and stays a 200: only the API call
+  the page makes finds out the trip is gone. Fixing it means a database lookup
+  (and an access check) while serving the shell. Probably not worth it; kept so
+  the gap is known.
+
 ---
 
 ## Planned features

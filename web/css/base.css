@@ -4155,10 +4155,20 @@ button {
 /* A link to a place that has since been deleted, which rendered-markdown.js
    turns back into text: a span, not a muted anchor, because there is nowhere
    left for it to go. Struck through so it reads as gone rather than as prose
-   that happens to be grey; the pin is dropped with the link. */
+   that happens to be grey. The pin stays, since it is still a place, but
+   text-decoration never paints across an inline SVG, so the pin gets the same
+   line drawn as a background -- and its gap becomes padding, which the
+   background covers, so the line runs on into the text unbroken. */
 .rendered-link--dead {
   color: var(--color-text-muted);
   text-decoration: line-through;
+}
+
+.rendered-link--dead .rendered-link__pin {
+  margin-inline-end: 0;
+  padding-inline-end: 0.15em;
+  /* Nudged below the icon's middle to meet the font's own strike line. */
+  background: linear-gradient(currentColor, currentColor) no-repeat 0 calc(50% + 0.1em) / 100% 1px;
 }
 
 /* Anchored to the caret's line rather than the bottom of the field. The two

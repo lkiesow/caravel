@@ -98,6 +98,8 @@ function unlinkDeleted(link) {
   span.className = "rendered-link--dead";
   span.title = label;
   span.append(...link.childNodes);
+  // Still a place, so still the pin -- struck through with the text, by CSS.
+  span.insertAdjacentHTML("afterbegin", icon("map-pin", { className: "rendered-link__pin" }));
   const sr = document.createElement("span");
   sr.className = "sr-only";
   sr.textContent = ` (${label})`;

@@ -323,11 +323,18 @@ test.describe("linking a location from the notepad", () => {
     await expect(dead).toContainText("Blue Lagoon");
     await expect(dead).toContainText("deleted location");
     await expect(dead).toHaveAttribute("title", "deleted location");
-    await expect(dead.locator("svg")).toHaveCount(0);
     expect(
       await dead.evaluate((el) => getComputedStyle(el).textDecorationLine),
       "struck through",
     ).toContain("line-through");
+    // Still a place, so still the pin -- struck through as well, by a drawn
+    // line, since text-decoration does not paint across an inline SVG.
+    const deadPin = dead.locator("svg.rendered-link__pin");
+    await expect(deadPin).toHaveCount(1);
+    expect(
+      await deadPin.evaluate((el) => getComputedStyle(el).backgroundImage),
+      "the pin carries the strike line",
+    ).toContain("linear-gradient");
     // The place that still exists is untouched.
     const live = rendered.locator(`a[href$="${kept}"]`);
     await expect(live).toHaveAttribute("data-link", "");

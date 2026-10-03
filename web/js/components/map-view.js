@@ -251,6 +251,17 @@ const CONE_SPREAD_MAX = 45;
 // a tower-trilaterated fix, the one that puts you ashore, is far beyond it.
 const COARSE_ACCURACY_M = 200;
 
+// A pin's dot is about 20px across, under WCAG 2.5.8's 24px floor and well
+// under a finger. A tap on the map within this radius of a pin counts as a
+// tap on it - 44px across, the usual finger target - while the dot itself
+// stays the size it is. This is resolved in JS (see nearestMarker) rather than
+// by padding each marker with a transparent hit area: MapLibre gives every
+// marker its own stacking context, so a later pin's invisible padding would
+// cover an earlier pin's visible dot and steal taps aimed squarely at it.
+// Here a tap on a dot always goes to that dot, and a near miss goes to the
+// closest pin.
+const MARKER_HIT_RADIUS_PX = 22;
+
 // Every marker in this component is drawn as a CSS dot rather than an image,
 // and under MapLibre that is simply what a marker *is*: `new Marker({element})`
 // takes a DOM node and positions it. The library's own default marker is an
@@ -1527,6 +1538,21 @@ class MapView extends HTMLElement {
       // already projected - and it does not fire on a marker drag, which has
       // its own handler in syncPickMarker.
       map.on("click", (e) => this.emitPick(e.lngLat));
+    } else {
+      // A tap that misses every dot but lands near a pin opens that pin. A tap
+      // on a dot (or in a popup) is MapLibre's own: the marker toggles itself.
+      // Registered before any marker or popup listener, and Evented fires a
+      // copy of its listener list, so a popup opened here is not closed again
+      // by its own closeOnClick on this same click.
+      map.on("click", (e) => {
+        if (e.originalEvent.target.closest?.(".maplibregl-marker, .maplibregl-popup")) return;
+        this.nearestMarker(e.point)?.togglePopup();
+      });
+      // Show the larger target to a mouse as well.
+      map.on("mousemove", (e) => {
+        if (e.originalEvent.target !== map.getCanvas()) return;
+        map.getCanvas().style.cursor = this.nearestMarker(e.point) ? "pointer" : "";
+      });
     }
 
     // The touch half of the gesture hint, now driven by the handler that
@@ -1697,6 +1723,22 @@ class MapView extends HTMLElement {
   // there is now wrapped 20px earlier than it used to be.
   popup(html) {
     return new this._maplibre.Popup({ offset: 12, focusAfterOpen: false, maxWidth: "200px" }).setHTML(html);
+  }
+
+  // The pin whose centre is closest to `point` (map container pixels), if any
+  // lies within MARKER_HIT_RADIUS_PX - see that constant for why this exists.
+  nearestMarker(point) {
+    let best = null;
+    let bestDist = MARKER_HIT_RADIUS_PX;
+    for (const marker of this._markers) {
+      const p = this._map.project(marker.getLngLat());
+      const dist = Math.hypot(p.x - point.x, p.y - point.y);
+      if (dist <= bestDist) {
+        best = marker;
+        bestDist = dist;
+      }
+    }
+    return best;
   }
 
   // Pick mode's one marker. Deliberately not part of plotMarkers' other two

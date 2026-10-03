@@ -827,6 +827,109 @@ test.describe("a marker popup shows the location photo", () => {
 });
 
 
+// A pin's dot is about 20px, so a tap that misses it by a few pixels still has
+// to open it - and of two close pins, the nearer one, never one whose target
+// merely sits on top in the DOM. Real mouse clicks throughout: the near-miss
+// path runs off the map's own click event, which a dispatched event on a
+// marker would bypass.
+test.describe("a near miss still opens the pin", () => {
+  // Viewport coordinates of every pin's centre, in marker (DOM) order.
+  function pinCentres(page) {
+    return page.evaluate(() =>
+      [...document.querySelector("map-view").shadowRoot.querySelectorAll(".maplibregl-marker")].map((m) => {
+        const r = m.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2, width: r.width, height: r.height };
+      })
+    );
+  }
+
+  // Which marker's popup is open, by index; -1 for none.
+  function openPin(page) {
+    return page.evaluate(() => document.querySelector("map-view")._markers.findIndex((m) => m.getPopup().isOpen()));
+  }
+
+  function closePopups(page) {
+    return page.evaluate(() => {
+      for (const m of document.querySelector("map-view")._markers) if (m.getPopup().isOpen()) m.togglePopup();
+    });
+  }
+
+  // Moves the second pin to sit `dx` pixels right of the first, so the two
+  // tap targets overlap. The second is the later one in the DOM, so its
+  // marker is the one stacked on top.
+  function crowdSecondPin(page, dx) {
+    return page.evaluate((dx) => {
+      const host = document.querySelector("map-view");
+      const [a, b] = host._markers;
+      const p = host._map.project(a.getLngLat());
+      b.setLngLat(host._map.unproject([p.x + dx, p.y]));
+    }, dx);
+  }
+
+  for (const [label, viewport] of [
+    ["with a mouse", null],
+    ["at phone width", MOBILE],
+  ]) {
+    test(`a click beside a pin opens it, ${label}`, async ({ page }) => {
+      if (viewport) await page.setViewportSize(viewport);
+      await login(page);
+      await gotoTripMap(page);
+      const [first, ...rest] = await pinCentres(page);
+      expect(first, "the seed trip should put pins on the map").toBeTruthy();
+      // The dot keeps its size: the larger target is not drawn.
+      expect(first.width).toBeLessThanOrEqual(21);
+
+      // Pick a side with no other pin within reach, so the click is a near
+      // miss on this pin only.
+      const side = [16, -16].find((dx) => rest.every((p) => Math.hypot(p.x - (first.x + dx), p.y - first.y) > 30));
+      expect(side, "the first pin should have a clear side").toBeTruthy();
+      await page.mouse.click(first.x + side, first.y);
+      await expect.poll(() => openPin(page), "a click 16px off the dot should open the pin").toBe(0);
+
+      await closePopups(page);
+      await page.mouse.click(first.x + side * 2.5, first.y);
+      await page.waitForTimeout(200);
+      expect(await openPin(page), "a click 40px away should open nothing").toBe(-1);
+    });
+  }
+
+  test("of two close pins, the nearer one gets the click", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+    expect((await pinCentres(page)).length, "the seed trip should have two pins").toBeGreaterThanOrEqual(2);
+    await crowdSecondPin(page, 16);
+    const [a, b] = await pinCentres(page);
+
+    // Above the gap between them: off both dots, within reach of both, and
+    // each click a little nearer one of the two.
+    await page.mouse.click(a.x + 5, a.y - 13);
+    await expect.poll(() => openPin(page), "a near miss nearer A should open A").toBe(0);
+    await closePopups(page);
+    await page.mouse.click(b.x - 5, b.y - 13);
+    await expect.poll(() => openPin(page), "a near miss nearer B should open B").toBe(1);
+    await closePopups(page);
+
+    // On A's dot but nearer B's centre: the dot you can see wins.
+    await page.mouse.click(a.x + 4, a.y);
+    await expect.poll(() => openPin(page), "a click on A's dot should open A").toBe(0);
+  });
+
+  test("the cursor says a pin is in reach", async ({ page }) => {
+    await login(page);
+    await gotoTripMap(page);
+    const [first, ...rest] = await pinCentres(page);
+    const side = [16, -16].find((dx) => rest.every((p) => Math.hypot(p.x - (first.x + dx), p.y - first.y) > 30));
+    const cursor = () =>
+      page.evaluate(() => getComputedStyle(document.querySelector("map-view")._map.getCanvas()).cursor);
+
+    await page.mouse.move(first.x + side, first.y);
+    await expect.poll(cursor).toBe("pointer");
+    await page.mouse.move(first.x + side * 3, first.y);
+    await expect.poll(cursor).not.toBe("pointer");
+  });
+});
+
+
 // Milestone 3. Pick mode: the first time map-view.js has been anything but
 // read-only. No page mounts it yet (the location editor picks it up in
 // Milestone 4), so these tests mount one themselves.

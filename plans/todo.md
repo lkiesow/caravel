@@ -27,14 +27,6 @@ without asking.
 
 ## Bugs and rough edges
 
-- **Map pins are hard to hit.** **(soon)** (notes.md, reviewed 2026-10-03.) A
-  trip-map pin is a 1rem dot with a 2px ring -- about 20x20 px in all
-  (`markerElement` in `web/js/components/map-view.js`) -- below WCAG 2.5.8's
-  24px minimum and well below a comfortable finger target. Wrap the visible dot
-  in a transparent hit area of about 44px so the look does not change. Mind
-  pins that sit close together: bigger invisible targets overlap sooner, and
-  the one on top should be the one that gets the tap.
-
 - **`checklists.spec.js` "clears the message once a tick succeeds" is flaky.**
   (Concurrent-writes fix, 2026-10-03.) Failed once in a full `make test-ui` run
   with "Clicking the checkbox did not change its state", then passed 5 of 5

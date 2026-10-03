@@ -830,14 +830,24 @@ purpose — do not reconstruct it from an older stage plan without asking.
 Nothing here is needed to keep developing; all of it is needed before anyone
 else runs this.
 
-- **Going offline during the first load after a deploy loses the code cache.**
-  (Stage 23 Milestone 2.) The new worker's `activate` purges the previous
-  cache, and the modules that load *during* that first post-deploy navigation
-  went into the outgoing one -- so a client that goes offline in that window has
-  only the six precached shell URLs and cannot boot. The next online load
-  repopulates all 54 entries. This is ordinary purge-on-activate behaviour and
-  it converges after one load; fixing it would mean precaching the module graph
-  on install, which is the brittle enumeration `web/sw.js` was written to avoid.
+- **Offline, the map needs one online visit after a deploy.** (Stage 23
+  Milestone 2; narrowed in Stage 45 Milestone 3.) The worker now precaches the
+  shell, the app bundle, its stylesheet and the fonts on install, so the app
+  boots offline straight after a deploy, which it used to fail to do. MapLibre,
+  the map style and the locale are still cached at runtime, so a client that
+  goes offline before opening a map on the new version has no map. Precaching
+  them too is a short list now that the URLs are known on install (they are in
+  the worker's built-URL table). It would cost about 1 MB per client per
+  MapLibre upgrade, for people who may never open the map offline.
+
+- **Precompress the bundle instead of gzipping it per request.** (Stage 45
+  Milestone 3.) `middleware.Compress(5)` gzips the 233 KB bundle again on every
+  request that misses the browser cache. The bundle is built once at startup,
+  so its gzip (and, with a Go brotli encoder, a brotli copy about 15-20%
+  smaller) could be built once too and served by `Accept-Encoding`. It matters
+  more for MapLibre, about 1 MB served through the same middleware. This is
+  CPU and a few KB per first visit; not urgent, and the long cache lifetime
+  already removed the repeat cost.
 
 - **The Zensical pin needs periodic review, in two files.** (Stage 18 Milestone
   9.) `zensical==0.0.57` is pinned in `.github/workflows/docs.yml` and in

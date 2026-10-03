@@ -1,8 +1,14 @@
 # MapLibre GL JS 6.6.0 (vendored)
 
 Like `../leaflet/` before it, this is committed by hand rather than pulled by a
-build step -- the app ships hand-written ES modules served straight from `web/`
-with no bundler and no runtime npm dependencies (see `package.json`).
+build step -- the app has no runtime npm dependencies (see `package.json`).
+
+It is also deliberately **not** part of the app bundle the server builds at
+startup (Stage 45, `internal/webbundle`): it is already minified, and it is
+loaded lazily, only when a map is shown. In production it is served under a
+versioned directory, `/v/<hash>/js/vendor/maplibre/`, through `assetURL()` in
+`map-view.js`. The hash is per *directory*, which is what keeps the filenames
+below resolving against each other.
 
 Licence: 3-Clause BSD, `LICENSE.txt`, retained as the licence requires. The
 entry file carries the same notice in its header.
@@ -52,7 +58,9 @@ elsewhere.
 
 - **`.mjs` is a served extension now.** `web/sw.js`'s `isCodeRequest()` had to
   learn about it; without that these files would fall into
-  `staleWhileRevalidate` and a deploy would take two reloads to pick up.
+  `staleWhileRevalidate` and a deploy would take two reloads to pick up. In
+  production they are requested under `/v/` and take the worker's cache-first
+  path instead; `isCodeRequest()` still matters in dev.
 - **`scripts/check_js.sh` does not see these files** -- it walks
   `web/js -name '*.js'`. That is accepted rather than worked around: the files
   are unmodified upstream output, and the checksums above are stronger

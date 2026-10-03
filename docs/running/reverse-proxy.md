@@ -125,6 +125,25 @@ HSTS belongs at the proxy, which is the thing that knows whether TLS is set up
 and permanent; adding it is a good idea once your certificate renewal is
 reliable. A CSP is simply not implemented.
 
+## Leave the caching headers alone
+
+Caravel decides how long a browser may keep each file, and the scheme only
+works if the proxy passes those decisions through:
+
+- The app's code lives under `/assets/`, and the files it loads by path (fonts,
+  icons, locales, the map library and styles) under `/v/<hash>/`. A new version
+  is always a new URL, so these are sent with
+  `Cache-Control: public, max-age=31536000, immutable` and a browser never asks
+  about them again.
+- The page itself and `/sw.js` are sent with `Cache-Control: no-cache` and an
+  `ETag`. That is what lets a browser find out about a new version on the next
+  load, without a forced reload.
+
+So **do not override `Cache-Control`**, and do not let a caching proxy serve
+`/`, a page route, or `/sw.js` from its own cache without revalidating. That
+would hold every visitor on the previous version after an upgrade. Compression
+at the proxy is fine; Caravel gzips its responses itself as well.
+
 ## Sessions and CSRF, so you know what you are proxying
 
 Sessions are opaque random tokens in an `HttpOnly`, `SameSite=Lax` cookie, and

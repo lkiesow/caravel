@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -685,5 +686,78 @@ func TestRealAssetURLCallSitesAreVersioned(t *testing.T) {
 	}
 	if found < 5 {
 		t.Fatalf("found only %d assetURL() calls; is the pattern still right?", found)
+	}
+}
+
+var swTable = regexp.MustCompile(`JSON\.parse\(("(?:[^"\\]|\\.)*")\)`)
+
+// swBuiltURLs fetches /sw.js and decodes the table substituted into it, the
+// way the worker's JSON.parse will.
+func swBuiltURLs(t *testing.T, ts *testServer) map[string]string {
+	t.Helper()
+	body := getStatic(ts, "/sw.js", nil).Body.String()
+	m := swTable.FindStringSubmatch(body)
+	if m == nil {
+		t.Fatalf("no JSON.parse(...) literal in the served worker:\n%s", body)
+	}
+	var raw string
+	if err := json.Unmarshal([]byte(m[1]), &raw); err != nil {
+		t.Fatalf("the substituted literal is not a string: %v\n%s", err, m[1])
+	}
+	table := map[string]string{}
+	if err := json.Unmarshal([]byte(raw), &table); err != nil {
+		t.Fatalf("the string does not hold a JSON table: %v\n%s", err, raw)
+	}
+	return table
+}
+
+func workerFS() fstest.MapFS {
+	fsys := versionedFS()
+	fsys["sw.js"] = &fstest.MapFile{Data: []byte(`const BUILT_URLS = JSON.parse("__CARAVEL_ASSET_URLS__");`)}
+	return fsys
+}
+
+// The worker precaches what the pages of this build load: the bundle for each
+// entry point and the versioned URL of each static file.
+func TestServiceWorkerCarriesTheBuiltURLs(t *testing.T) {
+	ts := newTestServerWith(t, nil, func(o *Options) { o.WebFS = workerFS() })
+	table := swBuiltURLs(t, ts)
+
+	if !bundleRef.MatchString(`"` + table["/js/app.js"] + `"`) {
+		t.Errorf("/js/app.js -> %q, want its bundle", table["/js/app.js"])
+	}
+	if !bundleRef.MatchString(`"` + table["/css/base.css"] + `"`) {
+		t.Errorf("/css/base.css -> %q, want its bundle", table["/css/base.css"])
+	}
+	if !versionedFont.MatchString(table["/fonts/x.woff2"]) {
+		t.Errorf("/fonts/x.woff2 -> %q, want its versioned URL", table["/fonts/x.woff2"])
+	}
+	// The same URLs the shell names, or the precache warms files no page asks for.
+	shell := getStatic(ts, "/", nil).Body.String()
+	for _, p := range []string{"/js/app.js", "/css/base.css", "/fonts/x.woff2"} {
+		if !strings.Contains(shell, `"`+table[p]+`"`) {
+			t.Errorf("the worker precaches %s but the shell does not load it", table[p])
+		}
+	}
+}
+
+// Dev bundles nothing, so the table is empty and the worker keeps every path.
+func TestServiceWorkerTableIsEmptyInDev(t *testing.T) {
+	ts := newTestServerWith(t, nil, func(o *Options) {
+		o.WebFS = workerFS()
+		o.NoCache = true
+	})
+	if table := swBuiltURLs(t, ts); len(table) != 0 {
+		t.Errorf("dev worker table = %v, want empty", table)
+	}
+}
+
+func TestRealServiceWorkerCarriesTheURLTablePlaceholder(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "..", "web", "sw.js"))
+	if err != nil {
+		t.Fatalf("read web/sw.js: %v", err)
+	}
+	if !strings.Contains(string(body), "JSON.parse("+swAssetURLsPlaceholder+")") {
+		t.Fatalf("web/sw.js does not parse %s; the precache would never see the bundle", swAssetURLsPlaceholder)
 	}
 }

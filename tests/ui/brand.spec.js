@@ -138,9 +138,11 @@ test.describe("brand assets", () => {
     await blockExternalRequests(page);
     await page.goto("/");
 
+    // Versioned (/v/<hash>/icons/...) when the server runs the bundle, plain in
+    // dev -- either way, the SVG favicon.
     await expect(page.locator('link[rel="icon"][type="image/svg+xml"]')).toHaveAttribute(
       "href",
-      "/icons/favicon.svg"
+      /\/icons\/favicon\.svg$/
     );
     await expect(page.locator('meta[property="og:image"]')).toHaveAttribute("content", /og-card\.png$/);
 

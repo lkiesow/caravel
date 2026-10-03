@@ -217,6 +217,50 @@ confirmed `no-cache` for a stale hash and `immutable` for the current one.
   request in `middleware.Compress(5)`) and brotli; note that API round trips
   are the remaining latency from far away.
 
+**Done.** `web/sw.js` serves `/assets/` and `/v/` cache-first, and stores a
+response only when it says `immutable`, so a stale-hash answer is never pinned.
+Its precache comes from a table the server substitutes:
+`JSON.parse("__CARAVEL_ASSET_URLS__")`, where the whole quoted token is replaced
+by a JSON string literal holding the JSON. It maps each `SHELL_URLS` path to
+the URL the page really loads, and adds the app bundle. In dev it is `{}`. With
+the bundle in the precache, an offline load straight after a deploy can boot
+now. `todo.md`'s Stage 23 entry about losing the code cache is narrowed to the
+map, which is still cached at runtime. `with_server.sh` (so `make test-ui` and
+`make check-contrast`) and `gen_screenshots.sh` now `unset CARAVEL_WEB_DIR`. They
+already built a binary from the working tree, so they now serve its bundle.
+
+The suite surfaced one thing the plan had not foreseen. Eight spec call sites
+imported `/js/theme.js`, `/js/map-theme.js` and `/js/i18n.js` into the page to
+call `setTheme`, `setMapTheme`, `rememberPosition` and `setLocale`. Against the
+bundle that import is a second module copy with its own event bus and its own
+messages, so the app never hears the change. Decided at the checkpoint question:
+`app.js` exposes those four as a frozen `window.caravel`, and the specs
+destructure from it; the remaining imports are pure helpers. Two smaller
+fixes. The favicon `href` assertion became a suffix match, since it is
+versioned now. The "no app JS" theme test aborts `/assets/*.js` as well as
+`/js/**`. Its first version aborted all of `/assets/**`, which took the bundled
+stylesheet with it and failed the background check. That was the run's only
+failure, and narrowing it fixed it. Docs: README's stack line,
+`docs/running/reverse-proxy.md` (a new "Leave the caching headers alone"
+section), the `CARAVEL_WEB_DIR` row, `package.json`, the MapLibre README and a
+`CLAUDE.md` gotcha covering the four rules.
+
+Verified: `make ci` green, with new tests that the served worker's table is
+valid twice-encoded JSON mapping the entries to their bundles and the font to
+its `/v/` URL, that those are the same URLs the shell loads, that dev's table is
+empty, and that the real `sw.js` carries the placeholder. `make test-ui` on the
+bundled build: 330 passed and 1 failed (the stylesheet abort above). After the
+fix, `make test-ui GREP="appearance|Language|theme"` gave 29 passed.
+`make check-contrast`: 728 elements, all at or above threshold. `make
+screenshots` ran clean on the bundled build; the regenerated PNGs were
+discarded, not committed. `make docs` built with no issues. By hand in Firefox
+against a bundled build: after one load, the worker cache held the shell, both
+bundle files, the five versioned fonts and the MapLibre files. A warm reload of
+the Map tab reached the server only for the shell (304), `sw.js` (304, twice)
+and the four API calls. With the context offline, navigating to `/trips` booted
+the precached bundle and rendered the page chrome; its only error was the
+offline API fetch.
+
 ## Build order
 
 1 → 2 → 3. M1 alone already removes the module waterfall and most

@@ -103,9 +103,13 @@ trap 'cleanup; exit 131' QUIT
 
 export CARAVEL_DB_DSN="$work/ui.db"
 export CARAVEL_UPLOAD_DIR="$work/uploads"
-# Served from disk, matching `make dev`: the suite should test the working tree,
-# not the last build.
-export CARAVEL_WEB_DIR=web
+# Served from the binary, *not* from disk as `make dev` does: production bundles
+# and minifies the frontend at startup (Stage 45) and dev does not, so this is
+# the only place the bundled build gets a browser pointed at it. It is still the
+# working tree, not the last build -- the binary below is built from it, and
+# embeds web/ as it is now. CARAVEL_WEB_DIR is unset explicitly in case the
+# calling shell exported it.
+unset CARAVEL_WEB_DIR
 # The assistant, pointed at its in-process fakes. assist.spec.js skips itself
 # without these, and a skip reads as a pass -- so they are set here rather than
 # only in CI, and the check further down refuses to run the suite if they did

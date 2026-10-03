@@ -56,9 +56,9 @@ fi
 export CARAVEL_PORT="$PORT"
 export CARAVEL_DB_DSN="$work/screenshots.db"
 export CARAVEL_UPLOAD_DIR="$work/uploads"
-# Served from disk so a CSS change is picked up without rebuilding, matching
-# `make dev`. The screenshots should show the working tree, not the last build.
-export CARAVEL_WEB_DIR=web
+# Served from the binary built below, which embeds the working tree -- so the
+# screenshots show what a production instance serves: the bundle (Stage 45).
+unset CARAVEL_WEB_DIR
 # No assistant: a real key would put a live model in the loop of a screenshot
 # run, and the stub is what the UI suite uses to render the panel.
 export CARAVEL_LLM_URL=stub

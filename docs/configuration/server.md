@@ -12,7 +12,7 @@ change when the defaults do not fit.
 | `CARAVEL_DB_DRIVER` | `sqlite` | `sqlite` or `postgres`. Anything else is refused at startup |
 | `CARAVEL_DB_DSN` | `data/caravel.db` | SQLite file path, or a Postgres connection string |
 | `CARAVEL_UPLOAD_DIR` | `uploads` | Where uploaded images and documents are stored |
-| `CARAVEL_WEB_DIR` | *(unset)* | Serve the frontend live from this directory instead of the copy embedded in the binary. A development setting — see `make dev` |
+| `CARAVEL_WEB_DIR` | *(unset)* | Serve the frontend live from this directory instead of the copy embedded in the binary — unbundled, unminified and uncached. A development setting — see `make dev` |
 | `CARAVEL_GEOCODER_URL` | OpenStreetMap Nominatim | Address-search endpoint — see [Address search](address-search.md) |
 | `CARAVEL_MAP_STYLE_URL` | the bundled Liberty style | The vector map style the browser draws — see [Map style](map-style.md) |
 | `CARAVEL_MAP_STYLE_DARK_URL` | the bundled dark style | The same, for readers who chose a dark map |

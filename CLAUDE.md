@@ -196,6 +196,30 @@ check, i18n key parity, `go test`. Don't rely on CI to catch it first.
   `podman build --platform linux/amd64,linux/arm64 --manifest caravel:multi .`
   (docker uses `buildx build --platform ...`, which is what CI does).
 
+- **Production bundles the frontend; `make dev` does not.** Since Stage 45 the
+  server bundles and minifies `web/js/app.js` and `web/css/base.css` with
+  esbuild's Go API at startup (`internal/webbundle`, ~70 ms), serves the output
+  under `/assets/<name>-<hash>`, and serves the other static files on the load
+  path under `/v/<dir-hash>/<path>`, all `immutable`. `CARAVEL_WEB_DIR` (so
+  `make dev`) skips all of it and serves the source live. `make test-ui`,
+  `make check-contrast` and `make screenshots` run the **bundled** build, built
+  from the working tree; `make run` shows it by hand. Four rules follow:
+  - A static file the JS names by absolute path (a `fetch`, an `import()`, an
+    `href` in built markup) goes through `assetURL()` from
+    `web/js/asset-url.js`, or it revalidates on every load.
+    `TestRealAssetURLCallSitesAreVersioned` checks every call site has a
+    versioned URL; a `url()` in `base.css` needs nothing.
+  - `index.html` must keep loading the entries as exactly `src="/js/app.js"` and
+    `href="/css/base.css"`. The shell substitution matches the quoted strings,
+    and a test holds the file to them.
+  - **UI specs must not `import("/js/…")` a stateful module** (theme, map theme,
+    i18n): against the bundle that is a second copy with its own event bus, so
+    the app never hears the change. Use `window.caravel.setTheme` and the other
+    setters `app.js` exposes. Pure helpers (`format.js`, `sun.js`) are fine to
+    import.
+  - `web/js` cannot use bare package specifiers; the bundler refuses them.
+    `TestRealTreeBundles` must stay warning-free.
+
 - **Brand assets are generated, not hand-edited.** Two scripts own them, both
   run by hand with committed output (like the icon sprite below):
 

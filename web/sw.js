@@ -35,6 +35,22 @@ const SHELL_URLS = [
   "/fonts/inter-600.woff2",
 ];
 
+// What a production server built from those paths: the bundle for each entry
+// point, and the versioned /v/<hash>/ URL of each static file (Stage 45).
+// Substituted by handleServiceWorker, like CACHE_VERSION, as a JSON string;
+// an empty table in dev, where nothing is bundled and every path stays as it
+// is. The token sits inside a string literal so check_js.sh can parse the file.
+const BUILT_URLS = JSON.parse("__CARAVEL_ASSET_URLS__");
+
+// The precache, in the URLs this build's pages actually load. The bundle joins
+// it because it is the whole app: with it cached on install, the first offline
+// load after a deploy can still boot, which it could not while the code was 46
+// modules populated at runtime into whichever cache was live at the time.
+const PRECACHE_URLS = [
+  ...SHELL_URLS.map((url) => BUILT_URLS[url] || url),
+  ...(BUILT_URLS["/js/app.js"] ? [BUILT_URLS["/js/app.js"]] : []),
+];
+
 // Dev mode (CARAVEL_WEB_DIR) serves static files with a no-store header
 // specifically so live-reload works; honor that here too, or the service
 // worker would defeat it by serving stale cached files.
@@ -71,7 +87,7 @@ self.addEventListener("install", (event) => {
       .open(CACHE_VERSION)
       .then((cache) =>
         Promise.all(
-          SHELL_URLS.map((url) =>
+          PRECACHE_URLS.map((url) =>
             fetch(url)
               .then((response) => (isCacheable(response, true) ? cache.put(url, response) : null))
               .catch(() => null)
@@ -173,6 +189,28 @@ function isCodeRequest(pathname) {
   );
 }
 
+// A bundle file (/assets/) or a versioned one (/v/<hash>/) is named by its
+// content, so a cached copy can never be out of date: it is served from the
+// cache without asking. This is what makes a reload cost one request for the
+// shell rather than one per file.
+function isImmutableRequest(pathname) {
+  return pathname.startsWith("/assets/") || pathname.startsWith("/v/");
+}
+
+// Stored only when the server says immutable. A /v/ URL with a stale hash -- a
+// tab from before a deploy -- is answered with the current bytes and no-cache,
+// and keeping that would pin the new file under the old name.
+async function cacheFirst(request) {
+  const cache = await caches.open(CACHE_VERSION);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+  const response = await fetch(request);
+  if (isCacheable(response, false) && (response.headers.get("Cache-Control") || "").includes("immutable")) {
+    cache.put(request, response.clone());
+  }
+  return response;
+}
+
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
@@ -181,6 +219,10 @@ self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   if (url.origin !== self.location.origin) return;
 
+  if (isImmutableRequest(url.pathname)) {
+    event.respondWith(cacheFirst(event.request));
+    return;
+  }
   if (event.request.mode === "navigate" || isCodeRequest(url.pathname)) {
     event.respondWith(networkFirst(event.request));
     return;

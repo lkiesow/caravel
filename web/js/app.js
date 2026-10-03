@@ -1,4 +1,4 @@
-import { initI18n, t, translatePage } from "./i18n.js";
+import { initI18n, t, translatePage, setLocale } from "./i18n.js";
 import { eventBus } from "./eventbus.js";
 import { api } from "./api.js";
 import { renderLoginPage } from "./pages/login-page.js";
@@ -14,8 +14,8 @@ import { renderSuggestPage } from "./pages/suggest-page.js";
 import { renderLoading } from "./components/loading.js";
 import { renderUserMenu } from "./components/user-menu.js";
 import { createRouter, navigate } from "./router.js";
-import { initTheme } from "./theme.js";
-import { initMapTheme } from "./map-theme.js";
+import { initTheme, setTheme } from "./theme.js";
+import { initMapTheme, setMapTheme, rememberPosition } from "./map-theme.js";
 import { TRIP_TABS } from "./trip-tabs.js";
 import { setCurrentUser } from "./session.js";
 
@@ -130,6 +130,14 @@ initTheme();
 // day/night mode has a timer to arm and a position to look for, neither of
 // which should wait for a map to be opened.
 initMapTheme();
+
+// The running app's own setters, for the UI suite. The specs used to import
+// /js/theme.js and friends into the page, which worked while the page ran
+// those very modules; against the bundle (Stage 45) such an import is a second
+// copy with its own event bus and its own messages, so a theme change made
+// through it never reaches the app. These are the same settings a reader
+// changes from the settings page, so naming them here gives nothing away.
+window.caravel = Object.freeze({ setTheme, setMapTheme, rememberPosition, setLocale });
 
 initI18n().then(boot);
 

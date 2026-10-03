@@ -80,7 +80,7 @@ function sunProbes(now = new Date()) {
 
 const setMode = async (page, mode) => {
   await page.evaluate(async (m) => {
-    const { setMapTheme } = await import("/js/map-theme.js");
+    const { setMapTheme } = window.caravel;
     setMapTheme(m);
   }, mode);
 };
@@ -209,7 +209,7 @@ test.describe("the map's own light and dark", () => {
     // The interface is left dark throughout: the light map below therefore
     // cannot be the popup borrowing app tokens, which is the actual bug.
     await page.evaluate(async () => {
-      const { setTheme } = await import("/js/theme.js");
+      const { setTheme } = window.caravel;
       setTheme("dark");
     });
 
@@ -289,13 +289,13 @@ test.describe("the map's own light and dark", () => {
     await setMode(page, "app");
 
     await page.evaluate(async () => {
-      const { setTheme } = await import("/js/theme.js");
+      const { setTheme } = window.caravel;
       setTheme("dark");
     });
     await waitForScheme(page, "dark", DARK_BG);
 
     await page.evaluate(async () => {
-      const { setTheme } = await import("/js/theme.js");
+      const { setTheme } = window.caravel;
       setTheme("light");
     });
     await waitForScheme(page, "light", LIGHT_BG);
@@ -317,7 +317,7 @@ test.describe("the map's own light and dark", () => {
     // Light interface throughout, and nothing remembered: whatever happens
     // below cannot be the app's theme leaking through.
     await page.evaluate(async () => {
-      const { setTheme } = await import("/js/theme.js");
+      const { setTheme } = window.caravel;
       setTheme("light");
       localStorage.removeItem("caravel.lastPosition");
     });
@@ -379,7 +379,7 @@ test.describe("the map's own light and dark", () => {
     // The app is left in light mode throughout, so anything that happens below
     // cannot be it following the interface.
     await page.evaluate(async () => {
-      const { setTheme } = await import("/js/theme.js");
+      const { setTheme } = window.caravel;
       setTheme("light");
     });
 
@@ -391,7 +391,7 @@ test.describe("the map's own light and dark", () => {
     const place = async (lat, lng) => {
       await page.evaluate(
         async ([la, ln]) => {
-          const { rememberPosition } = await import("/js/map-theme.js");
+          const { rememberPosition } = window.caravel;
           rememberPosition({ lat: la, lng: ln });
         },
         [lat, lng]

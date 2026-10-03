@@ -59,8 +59,10 @@ beyond a database:
 
 - **Backend** — Go 1.26, `net/http` with chi for routing, `sqlc`-generated
   queries against SQLite (default) or Postgres, migrations run at startup.
-- **Frontend** — vanilla JS modules, no framework and no build step. Served
-  from the binary in production, from disk in development.
+- **Frontend** — vanilla JS modules, no framework and no npm build step. In
+  production the binary bundles and minifies them with esbuild's Go API when it
+  starts, and serves them under content-hashed URLs that browsers cache for good.
+  In development they are served unbundled, straight from disk.
 - **Storage** — uploaded images and documents on local disk, not in the
   database.
 

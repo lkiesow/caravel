@@ -3182,7 +3182,7 @@ test.describe("map labels follow the reader's language", () => {
     ]);
 
     await page.evaluate(async () => {
-      const { setLocale } = await import("/js/i18n.js");
+      const { setLocale } = window.caravel;
       await setLocale("de");
     });
     await page.waitForFunction(

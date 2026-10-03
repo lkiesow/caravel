@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -325,6 +326,28 @@ func (s *Server) serveVersioned(fileServer http.Handler, w http.ResponseWriter, 
 // node --check and a bare token would not be valid JavaScript.
 const swVersionPlaceholder = "__CARAVEL_BUILD__"
 
+// swAssetURLsPlaceholder is the worker's table of built URLs, quotes included:
+// the whole string literal is replaced by another one holding the JSON, so
+// whatever the table contains, the file stays a valid script.
+const swAssetURLsPlaceholder = `"__CARAVEL_ASSET_URLS__"`
+
+// builtURLs is the table web/sw.js precaches through: each entry point to its
+// bundle and each versioned file to its URL. Empty without a bundle, for the
+// reason pointShellAtBundle gives -- the source stylesheet loads plain paths.
+func (s *Server) builtURLs() map[string]string {
+	table := map[string]string{}
+	if s.bundle == nil {
+		return table
+	}
+	for p, u := range s.assetURLs {
+		table[p] = u
+	}
+	for src, built := range s.bundle.Entries {
+		table[src] = built
+	}
+	return table
+}
+
 // assetTreeFingerprint hashes the whole asset tree down to one short string:
 // the ETags of every file, in path order, hashed again.
 //
@@ -387,6 +410,17 @@ func (s *Server) handleServiceWorker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := strings.ReplaceAll(string(body), swVersionPlaceholder, s.serviceWorkerVersion())
+	table, err := json.Marshal(s.builtURLs())
+	if err == nil {
+		// Marshalled twice: once to JSON, then that JSON to a JSON *string*,
+		// which is also a valid JavaScript string literal for JSON.parse.
+		table, err = json.Marshal(string(table))
+	}
+	if err != nil {
+		http.Error(w, "could not build service worker", http.StatusInternalServerError)
+		return
+	}
+	out = strings.ReplaceAll(out, swAssetURLsPlaceholder, string(table))
 
 	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 	if s.NoCache {

@@ -151,8 +151,12 @@ test.describe("appearance: no flash of the wrong theme", () => {
     // The app's own modules never load, so the inline <head> script in
     // index.html is the only thing that can have set the attribute. That is
     // exactly the pre-paint path a real load takes, and the reason a
-    // dark-themed app doesn't flash white on the way in.
+    // dark-themed app doesn't flash white on the way in. Both trees: /js/ is
+    // the source a dev server loads, /assets/*.js the bundle a built one does.
+    // Only the script -- the bundled stylesheet sits in /assets/ too, and the
+    // background below is read from it.
     await page.route("**/js/**", (route) => route.abort());
+    await page.route("**/assets/*.js", (route) => route.abort());
     await page.goto("/");
 
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");

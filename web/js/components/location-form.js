@@ -2,7 +2,7 @@ import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
 import { renderTagField } from "./tag-field.js";
-import { markInternalLinks } from "../rendered-markdown.js";
+import { loadTripItemIds, markInternalLinks } from "../rendered-markdown.js";
 
 const CATEGORIES = ["site", "stay", "transport", "area", "food", "event", "shop"];
 
@@ -110,6 +110,9 @@ export function renderItemForm(container, item, { onSubmit, tripId }) {
   const previewEmptyEl = container.querySelector(".notes-field__empty");
   const tabs = [...container.querySelectorAll(".notes-field__tab")];
   let previewedSource = null;
+  // Fetched on the first preview and kept: which links in the notes point at a
+  // deleted place (rendered-markdown.js). Nothing is deleted from in here.
+  let itemIdsPromise = null;
 
   function setMode(mode) {
     const preview = mode === "preview";
@@ -134,9 +137,13 @@ export function renderItemForm(container, item, { onSubmit, tripId }) {
     try {
       // Trusted: the server sanitized it (bluemonday, in internal/markdown),
       // which is the entire reason the preview is a round trip.
-      const { html } = await api.post("/markdown/preview", { markdown: source });
+      itemIdsPromise ??= loadTripItemIds(tripId);
+      const [{ html }, itemIds] = await Promise.all([
+        api.post("/markdown/preview", { markdown: source }),
+        itemIdsPromise,
+      ]);
       previewEl.innerHTML = html;
-      markInternalLinks(previewEl);
+      markInternalLinks(previewEl, { tripId, itemIds });
       previewedSource = source;
       setMode("preview");
     } catch (err) {

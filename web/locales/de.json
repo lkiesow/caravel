@@ -478,5 +478,6 @@
   "tripNotes.empty": "Noch nichts notiert.",
   "tripNotes.saveFailed": "Die Notiz konnte nicht gespeichert werden.",
   "tripNotes.mentions": "Orte",
-  "tripNotes.loadFailed": "Die Notiz konnte nicht geladen werden."
+  "tripNotes.loadFailed": "Die Notiz konnte nicht geladen werden.",
+  "tripNotes.deletedLocation": "gelöschter Ort"
 }

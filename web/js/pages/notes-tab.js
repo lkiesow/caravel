@@ -4,7 +4,7 @@ import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
 import { renderLoading } from "../components/loading.js";
 import { bindMentionPicker } from "../components/mention-picker.js";
-import { markInternalLinks } from "../rendered-markdown.js";
+import { loadTripItemIds, markInternalLinks } from "../rendered-markdown.js";
 import { canEdit } from "../trip-role.js";
 
 // The trip notepad: one markdown document per trip, written in a textarea and
@@ -33,9 +33,12 @@ export async function renderNotesTab(container, trip) {
   const editable = canEdit(trip);
 
   renderLoading(container);
-  let note;
+  // The item ids come along so a link to a deleted place is unlinked on the
+  // first render rather than after it (rendered-markdown.js); they cannot fail
+  // the load. Fetched once: nothing is deleted from inside the notepad.
+  let note, itemIds;
   try {
-    note = await api.get(`/trips/${trip.id}/notes`);
+    [note, itemIds] = await Promise.all([api.get(`/trips/${trip.id}/notes`), loadTripItemIds(trip.id)]);
   } catch {
     container.innerHTML = `<p class="trip-notes__error" role="alert"></p>`;
     container.querySelector(".trip-notes__error").textContent = t("tripNotes.loadFailed");
@@ -133,7 +136,7 @@ export async function renderNotesTab(container, trip) {
     if (rendered) {
       rendered.innerHTML = note.body_html;
       // The links in it are bare: see rendered-markdown.js.
-      markInternalLinks(rendered);
+      markInternalLinks(rendered, { tripId: trip.id, itemIds });
     }
 
     const editBtn = container.querySelector(".trip-notes__edit");

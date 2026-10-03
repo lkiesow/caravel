@@ -4,7 +4,7 @@ import { navigate } from "../router.js";
 import { icon } from "../icon.js";
 import "../components/map-view.js";
 import { renderLoading } from "../components/loading.js";
-import { markInternalLinks } from "../rendered-markdown.js";
+import { loadTripItemIds, markInternalLinks } from "../rendered-markdown.js";
 import { canEdit, isShared } from "../trip-role.js";
 import { renderFileList } from "../components/file-list.js";
 import { formatDateRange } from "../format.js";
@@ -59,10 +59,16 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
   // The trip comes along for its `role` — this page has no other use for it,
   // but the Edit button has to know whether editing is possible, and the role
   // lives on the trip rather than on the item. In parallel with the item so it
-  // costs latency rather than a second round trip.
-  let item, trip;
+  // costs latency rather than a second round trip. So do the trip's item ids,
+  // which say which links in the notes point at a deleted place; that call
+  // cannot fail the page, loadTripItemIds resolves null instead.
+  let item, trip, itemIds;
   try {
-    [item, trip] = await Promise.all([api.get(`/items/${itemId}`), api.get(`/trips/${tripId}`)]);
+    [item, trip, itemIds] = await Promise.all([
+      api.get(`/items/${itemId}`),
+      api.get(`/trips/${tripId}`),
+      loadTripItemIds(tripId),
+    ]);
   } catch {
     renderNotFoundPage(container, { href: `/trips/${tripId}`, labelKey: "common.back" });
     return;
@@ -234,7 +240,7 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
   if (item.notes) {
     const notes = container.querySelector(".location-view__notes");
     notes.innerHTML = item.notes_html;
-    markInternalLinks(notes);
+    markInternalLinks(notes, { tripId, itemIds });
   }
   if (hasAddress) container.querySelector(".location-view__address").textContent = item.location.address;
 

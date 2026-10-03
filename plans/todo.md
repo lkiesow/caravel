@@ -44,16 +44,6 @@ without asking.
   avoids the race; "puts the box back and says so" uses `check()` the same way
   and is exposed to it too.
 
-- **A link to a deleted location renders as a live link that 404s.** **(soon)**
-  (Stage 39.) The `@` picker inserts a plain markdown link --
-  `[Kex Hostel](/trips/T/locations/I)` -- so nothing checks the target still
-  exists. The client already has the trip's item list when it renders a note,
-  and `markInternalLinks` (`web/js/rendered-markdown.js`) already walks every
-  anchor in a rendered note, so that walk is where the check goes. The open
-  question is what a dead reference should *look* like (struck through, muted,
-  not a link at all), not how to find one. Stale link *text* after a rename was
-  considered in the same review and dropped.
-
 - **A deep link to a missing record still answers 200.** (Unknown-path 404 fix,
   2026-10-03.) The SPA fallback now sends the shell with a 404 for any path no
   client route matches (`isClientRoute`, `internal/httpapi/clientroutes.go`),

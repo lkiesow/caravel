@@ -478,5 +478,6 @@
   "tripNotes.empty": "Nothing written down yet.",
   "tripNotes.saveFailed": "Could not save the note.",
   "tripNotes.mentions": "Locations",
-  "tripNotes.loadFailed": "Could not load the note."
+  "tripNotes.loadFailed": "Could not load the note.",
+  "tripNotes.deletedLocation": "deleted location"
 }

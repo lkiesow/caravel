@@ -295,6 +295,57 @@ test.describe("linking a location from the notepad", () => {
     ).toBe(true);
   });
 
+  test("a link to a deleted location renders as muted text, not a link", async ({ page }) => {
+    const gone = ids["Blue Lagoon"];
+    const kept = ids["Kex Hostel"];
+    const body = [
+      `Swim: [Blue Lagoon](/trips/${tripId}/locations/${gone})`,
+      "",
+      `Sleep: [Kex Hostel](/trips/${tripId}/locations/${kept})`,
+    ].join("\n");
+    const saved = await page.request.put(`/api/trips/${tripId}/notes`, { data: { body } });
+    expect(saved.ok(), "save the note").toBe(true);
+    // The same link in a place's own notes, which render on the location page.
+    // The PATCH is a full update, so the title and category go along.
+    const noted = await page.request.patch(`/api/items/${kept}`, {
+      data: { title: "Kex Hostel", category: "stay", notes: body },
+    });
+    expect(noted.ok(), "write the location's notes").toBe(true);
+    const deleted = await page.request.delete(`/api/items/${gone}`);
+    expect(deleted.ok(), "delete Blue Lagoon").toBe(true);
+
+    await page.goto(`/trips/${tripId}/notes`);
+    const rendered = page.locator(".trip-notes__rendered");
+    await expect(rendered).toBeVisible();
+    await expect(rendered.locator(`a[href$="${gone}"]`)).toHaveCount(0);
+    const dead = rendered.locator(".rendered-link--dead");
+    await expect(dead).toHaveCount(1);
+    await expect(dead).toContainText("Blue Lagoon");
+    await expect(dead).toContainText("deleted location");
+    await expect(dead).toHaveAttribute("title", "deleted location");
+    await expect(dead.locator("svg")).toHaveCount(0);
+    expect(
+      await dead.evaluate((el) => getComputedStyle(el).textDecorationLine),
+      "struck through",
+    ).toContain("line-through");
+    // The place that still exists is untouched.
+    const live = rendered.locator(`a[href$="${kept}"]`);
+    await expect(live).toHaveAttribute("data-link", "");
+    await expect(live.locator("svg.rendered-link__pin")).toHaveCount(1);
+
+    await page.goto(`/trips/${tripId}/locations/${kept}`);
+    const notes = page.locator(".location-view__notes");
+    await expect(notes.locator(".rendered-link--dead")).toContainText("Blue Lagoon");
+    await expect(notes.locator(`a[href$="${gone}"]`)).toHaveCount(0);
+
+    // And the form's Preview, which renders the same notes from the textarea.
+    await page.goto(`/trips/${tripId}/locations/${kept}/edit`);
+    await page.locator('.notes-field__tab[data-mode="preview"]').click();
+    const preview = page.locator(".notes-field__preview");
+    await expect(preview.locator(".rendered-link--dead")).toContainText("Blue Lagoon");
+    await expect(preview.locator(`a[href$="${kept}"]`)).toHaveAttribute("data-link", "");
+  });
+
   test("a modified click is still the browser's to handle", async ({ page }) => {
     await page.goto(`/trips/${tripId}/notes`);
     const textarea = page.locator("#trip-notes-body");

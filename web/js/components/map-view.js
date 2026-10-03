@@ -158,6 +158,13 @@ const SINGLE_MARKER_ZOOM = 14;
 // enough that it is gone before it becomes the thing you are looking at.
 const GESTURE_HINT_MS = 1500;
 
+// Whether the wheel hint should name Cmd rather than Ctrl. On a Mac, Ctrl +
+// wheel is the operating system's screen zoom, so the key the hint names has
+// to be the other one. userAgentData where the browser has it, the older
+// navigator.platform otherwise. iPadOS reports a Mac too, which is right: an
+// iPad with a trackpad uses Cmd as well.
+const isMac = () => /mac/i.test(navigator.userAgentData?.platform ?? navigator.platform ?? "");
+
 // Wheel pixels per zoom level, and the ceiling on what a single flick may
 // bank. 60 is Leaflet's own wheelPxPerZoomLevel, so one mouse notch (which
 // Firefox reports as 3 lines, i.e. 60px) is exactly one level.
@@ -2391,6 +2398,9 @@ class MapView extends HTMLElement {
   // the *touch* half, where it is the only supported way to get one-finger
   // page scroll with two-finger pan.
   //
+  // Both keys work on every platform; only the hint is platform-specific, and
+  // names Cmd on a Mac (see isMac).
+  //
   // The listener sits on .map-wrap, in the capture phase, and that placement
   // is load-bearing. The library registers its own listeners on the map
   // container itself, and on a shared target the capture/bubble distinction
@@ -2418,7 +2428,7 @@ class MapView extends HTMLElement {
         // that the page scrolls the way it would anywhere else. Only the map
         // is kept from seeing it.
         e.stopPropagation();
-        this.showGestureHint(t("map.ctrlZoomHint"));
+        this.showGestureHint(t(isMac() ? "map.metaZoomHint" : "map.ctrlZoomHint"));
       },
       // passive: false explicitly. A wheel listener is one of the types
       // browsers may treat as passive by default, and a passive listener's

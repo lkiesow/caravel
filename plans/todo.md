@@ -90,14 +90,6 @@ without asking.
   pins that sit close together: bigger invisible targets overlap sooner, and
   the one on top should be the one that gets the tap.
 
-- **The zoom hint names Ctrl on every platform.** **(soon)** (Stage 23 Milestone
-  6.) The gate accepts Ctrl *or* Meta, so Cmd + wheel zooms on a Mac, but
-  `map.ctrlZoomHint` says "Ctrl" everywhere -- Google Maps shows the Mac key
-  instead. And macOS binds Ctrl + wheel to its own screen zoom, so a Mac user
-  pressing the key the hint names may get the operating system rather than the
-  map. Needs platform detection in the component, or two strings chosen at
-  render time.
-
 - **A link to a deleted location renders as a live link that 404s.** **(soon)**
   (Stage 39.) The `@` picker inserts a plain markdown link --
   `[Kex Hostel](/trips/T/locations/I)` -- so nothing checks the target still

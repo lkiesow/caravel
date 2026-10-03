@@ -260,6 +260,7 @@
   "map.viewOnGoogleMaps": "View on Google Maps",
   "map.viewOnOpenStreetMap": "View on OpenStreetMap",
   "map.ctrlZoomHint": "Use Ctrl + scroll to zoom the map.",
+  "map.metaZoomHint": "Use ⌘ + scroll to zoom the map.",
   "map.twoFingerHint": "Use two fingers to move the map.",
   "map.fullscreen.enter": "Show map fullscreen",
   "map.fullscreen.exit": "Exit fullscreen",

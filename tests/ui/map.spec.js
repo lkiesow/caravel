@@ -469,6 +469,24 @@ test.describe("the trip map with a mouse", () => {
     expect(after.hintText).toContain("Ctrl");
   });
 
+  // On a Mac, Ctrl + wheel is the operating system's screen zoom, so the hint
+  // has to name Cmd instead. The gate takes either key everywhere; only the
+  // wording follows the platform.
+  test("on a Mac the hint names Cmd, not Ctrl", async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(Navigator.prototype, "platform", { get: () => "MacIntel" });
+      Object.defineProperty(Navigator.prototype, "userAgentData", { get: () => ({ platform: "macOS" }) });
+    });
+    await login(page);
+    await gotoTripMap(page);
+
+    await wheelOverMap(page, { ctrl: false });
+    const after = await zoomAndHint(page);
+    expect(after.hintShown).toBe(true);
+    expect(after.hintText).toContain("⌘");
+    expect(after.hintText).not.toContain("Ctrl");
+  });
+
   test("Ctrl and the wheel still zoom, with no hint in the way", async ({ page }) => {
     await login(page);
     await gotoTripMap(page);

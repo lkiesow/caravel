@@ -154,6 +154,41 @@ test.describe("linking a location from the notepad", () => {
     // The @ is mid-word, so it is not a trigger.
     await textarea.pressSequentially("write to lars@kex");
     await expect(options(page)).toHaveCount(0);
+
+    // Nor does a profile URL: a slash is not a separator.
+    await textarea.fill("");
+    await textarea.pressSequentially("see https://mastodon.social/@kex");
+    await expect(options(page)).toHaveCount(0);
+  });
+
+  test("an @ after punctuation opens the list", async ({ page }) => {
+    await page.goto(`/trips/${tripId}/notes`);
+    const textarea = page.locator("#trip-notes-body");
+    await textarea.click();
+
+    for (const before of ["(", "„", "“", '"', ",", ".", ";", ":", "[", "«", "*"]) {
+      await textarea.fill("");
+      await textarea.pressSequentially(`x${before}@kex`);
+      await expect(options(page), `after ${before}`).toHaveCount(1);
+      await textarea.press("Escape");
+    }
+  });
+
+  test("typing @ between a pair of brackets links inside them", async ({ page }) => {
+    await page.goto(`/trips/${tripId}/notes`);
+    const textarea = page.locator("#trip-notes-body");
+    await textarea.click();
+
+    // The closing bracket after the caret is left alone by both the trigger
+    // and the insertion.
+    await textarea.pressSequentially("We slept here ()");
+    await textarea.press("ArrowLeft");
+    await textarea.pressSequentially("@kex");
+    await expect(options(page)).toHaveText([/Kex Hostel/]);
+    await textarea.press("Enter");
+    await expect(textarea).toHaveValue(
+      `We slept here ([Kex Hostel](/trips/${tripId}/locations/${ids["Kex Hostel"]}))`,
+    );
   });
 
   test("the list follows the caret rather than the bottom of a tall field", async ({ page }) => {

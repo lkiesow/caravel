@@ -18,9 +18,15 @@ import { caretCoords } from "./caret-coords.js";
 // replaces it, onOpen puts the list next to the caret instead of under the
 // field.
 
-// `@` at the start of the text or after whitespace, so an email address in a
-// note never opens this, then a run containing no second @ and no newline.
-const TRIGGER = /(?:^|\s)@([^@\n]{0,40})$/;
+// `@` at the start of the text or after whitespace or an opening/closing
+// punctuation mark, so an email address in a note never opens this but
+// "(@kex" or "„@kex" does, then a run containing no second @ and no newline.
+// An allow-list rather than "anything but a letter": a slash is deliberately
+// missing, or every pasted mastodon.social/@user URL would open the list, and
+// so are - and +, which do occur in the local part of an address. Only the
+// character before the @ matters -- what follows the caret is never read, so
+// typing @ between a pair of brackets already works.
+const TRIGGER = /(?:^|[\s()[\]{}<,.;:"„“”'‚‘’«»*_~])@([^@\n]{0,40})$/;
 
 // Interior spaces are allowed because location titles are phrases -- "Blue
 // Lagoon" has to be reachable by typing it -- but a whole sentence after a

@@ -20,8 +20,7 @@ import { todayISO } from "../format.js";
 // decision as locations-tab.js, for the same reason: the API returns every trip
 // unconditionally, so typing gives instant feedback and changing the sort costs
 // no round trip. A `q`/`sort` pair on ListTripsForUser is the version that
-// matters once somebody has hundreds of trips, and is a todo.md entry rather
-// than something to build blind.
+// matters once somebody has hundreds of trips, not something to build blind.
 //
 // The toolbar is the same one-non-wrapping-row shape the locations tab uses, on
 // the shared .list-toolbar/.list-search rules - which is why "New trip" moved

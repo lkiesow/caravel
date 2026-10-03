@@ -11,490 +11,26 @@ of one, rewrite it. A stale "still outstanding" item that was quietly built is
 worse than a missing one, so both directions matter.
 
 Entries tagged **(soon)** are the ones marked as wanted in one of the next few
-stages. Everything else is untagged and unordered — worth keeping, not worth
-scheduling.
+stages, and are listed first in each section. Everything else is unordered —
+worth keeping, not worth scheduling.
 
-**Reviewed 2026-08-29** (the second full review; the first was in Stage 15).
-Every entry was read out and kept, tagged, or dropped deliberately. Roughly half
-the file went: fixes already made in all the ways that mattered, decisions that
-were settled and only being re-litigated by being written down, and notes about
-things nobody intends to change. Anything deleted in that review was deleted on
-purpose — do not reconstruct it from an older stage plan without asking.
+**Reviewed 2026-10-03** (the third full review, after Stage 45; the earlier ones
+were in Stage 15 and on 2026-08-29). Every entry, and every idea in
+`plans/notes.md`, was read out and kept, tagged, folded or dropped deliberately.
+About two thirds of the file went: watch-notes with no action, decisions already
+settled, test-suite tidiness with no failure behind it, and features nobody
+intends to build. Anything deleted in that review was deleted on purpose — do
+not reconstruct it from an older stage plan or an earlier version of this file
+without asking.
 
 ---
 
 ## Bugs and rough edges
 
-- **An unknown /api path answers 200 with the SPA shell.** (Noticed in Stage 25
-  Milestone 2, while confirming a deleted route was gone.) `POST
-  /api/items/{id}/nonsense` and `GET /api/does-not-exist` both return 200 and
-  the index page rather than a 404, because the static handler is the fallback
-  for everything the router did not match. Pre-existing and unrelated to that
-  milestone -- a route that never existed behaves the same as one just removed
-  -- but it makes a client typo look like a success, and it is why
-  `ownership_test.go` asserts on the body rather than only the status. An
-  /api-scoped NotFound handler that writes the usual JSON error would fix it.
-
-- **Creating an itinerary day can 500 on a race.** (Stage 25 planning.)
-  `EnsureItineraryDay` (`internal/db/store.go:333`) is get-then-insert, so two
-  clients adding the same day at the same time lose one to the `(trip_id, date)`
-  unique constraint, and the handler reports it as a 500. Pre-existing, but
-  Stage 25 makes it reachable from saving a location rather than only from
-  moving an itinerary entry, which is a much more common act. A 409 with
-  "the itinerary changed, please try again" is the honest answer, and the
-  handler already has the `errItineraryEntryVanished` -> 409 shape
-  (`internal/httpapi/itinerary.go:313`) to copy.
-
-- **The zoom hint names Ctrl on every platform.** (Stage 23 Milestone 6.) The
-  gate accepts Ctrl *or* Meta, so Cmd + wheel zooms on a Mac, but the string
-  `map.ctrlZoomHint` says "Ctrl" everywhere -- Google Maps shows the Mac key
-  instead. Fixing it means either platform detection in the component or two
-  strings chosen at render time, and neither is worth it until somebody runs
-  this on a Mac and says so. Note also that macOS binds Ctrl + wheel to its own
-  screen zoom, so a Mac user pressing the key the hint names may get the
-  operating system rather than the map -- which is the other half of the reason
-  the string should probably follow the platform.
-
-- **A card's overflow tag badge can still wrap, in one narrow case.** (Stage 30
-  follow-up.) `fitTags()` frees exactly one chip to make room for the `+N`
-  badge, on the reasoning that a badge is never wider than a chip. That holds
-  for every realistic tag, but a one-character tag (`x`) is narrower than `+2`,
-  so a row ending in one could still push the badge onto a second line. The fix
-  is to keep freeing chips until the badge stops wrapping, at the cost of a
-  layout read per iteration on every card; not worth it until somebody tags a
-  location with a single letter.
-
-- **A reverse lookup over water finds nothing.** (Stage 36 planning, Sep 2026.)
-  `geocode.Reverse` sends no `zoom`, so Nominatim uses its default of 18 --
-  building level -- and a point in the middle of a sea or a large lake comes
-  back as "Unable to geocode", which becomes `ErrNoResult`, a 404, and "No
-  address found for this point." Correct as far as it goes, and deliberate, but
-  now that the locate control works on the water it is reachable by ordinary
-  use: press My location on a boat, save the place, press Look up address, get
-  nothing. Retrying once at a coarse zoom (3 to 8) would answer "North Sea"
-  rather than nothing. Kept out of Stage 36 on purpose -- it is a different
-  complaint from the one that stage was opened for.
-
----
-
-## Planned features
-
-- **A rough fix is only reachable through a fifteen-second wait.** (Stage 36
-  Milestone 6, Sep 2026.) The editor's picker settles early only on a
-  place-grade fix (50m), so a 300m reading spends the full deadline refining
-  before it settles and admits how rough it is. The status line reports
-  progress throughout, so it is not a dead wait -- but somebody indoors, where
-  a 300m fix is the best there is, waits fifteen seconds every time. Settling
-  early once the accuracy has visibly stopped improving would fix it, and needs
-  a rule for what "stopped improving" means that does not fire on ordinary
-  jitter.
-
-- **A UI test cannot pause the page the way a phone does.** (Stage 36 Milestone
-  3, Sep 2026.) The tracking tests fake `document.hidden` with a redefined
-  getter and a synthetic `visibilitychange`, which proves the listener is wired
-  but not that a real backgrounded tab behaves the same -- browsers also freeze
-  timers and may suspend the geolocation watch themselves. Playwright has no
-  background-a-tab primitive; opening a second page in the same context and
-  bringing it to the front would be closer, and would also cover the
-  freeze/resume path that bfcache adds.
-
-- **The heading marker has not been seen on a real phone.** (Stage 42
-  Milestone 3.) Every test of the arrow and the cone dispatches synthetic
-  readings, so the parts only hardware can answer are open: that the arrow
-  appears while walking and not while standing, that the cone turns the right
-  way (the alpha sign) and stays right in landscape (the sign of the
-  `screen.orientation.angle` correction is from documentation, not
-  observation), and that iOS really grants the compass from the locate press.
-  Wants one walk with Android Chrome and one with iOS Safari, over HTTPS.
-  Two walks were made: one after Milestone 3, whose flicker the follow-up
-  fixed, and one after the follow-up, which was good. What has not been
-  confirmed is the landscape sign and iOS.
-
-- **The here marker jumps from fix to fix.** (Stage 42 Milestone 3 follow-up.)
-  Tracking now shows about one fix a second, but each one moves the marker
-  and the follow-camera in a single step. Easing the marker (and the arrow's
-  angle, the short way round) towards each new fix would make it glide. That
-  is more than a CSS transition: MapLibre writes the marker's transform, so it
-  means interpolating `setLngLat` per frame, and the follow-camera's moveend
-  bookkeeping (`_followTarget`) would need to agree. After walking with the
-  faster pace the user found it good enough for now, so this is optional
-  polish rather than a fix.
-
-- **Category filters inside the fullscreen map.** (Stage 44.) Fullscreen is the
-  map, the locate status and the credit; the legend stays behind, so changing
-  a filter means exit, change, re-enter. Decided that way on purpose at
-  planning. If it turns out to be a nuisance, a compact funnel button in a free
-  corner could open the same checkboxes as an overlay. They live outside
-  `.map-stage` in `map-view.js` today, so the overlay would need its own copy
-  or the fieldset moved in and restyled while fullscreen.
-- **Heading-up map.** (Stage 42.) The map stays north-up with rotation
-  disabled; the arrow and cone already compute their angles relative to
-  `map.getBearing()`, so a rotate-to-heading mode would not break them. It
-  would conflict with the follow-camera's moveend bookkeeping and disorients
-  outside turn-by-turn navigation, which is why it was left out rather than
-  forgotten.
-
-- **The dark map is a patched vendored style, and a refetch would drop that.**
-  (Stage 30 follow-up.) `web/js/vendor/map-styles/dark.json` carries 32 colour
-  substitutions, because upstream it failed WCAG AA for text -- 3.36:1 place
-  names -- and drew water at dE 6.7 from land. It is the only dark style
-  OpenFreeMap serves, so there was nothing to switch to. The README records
-  the upstream hash, what changed and the warning, but nothing enforces it: a
-  future re-vendor that forgets would silently reintroduce an accessibility
-  failure. Worth turning into a small script that fetches upstream and applies
-  the substitutions, the way `gen_icon_sprite.py` does for icons, if the style
-  is ever refetched. The alternative is deriving a dark variant from liberty,
-  which means owning 111 layers of cartography.
-
-- **Panning across the terminator does not re-light the map.** (Stage 30
-  Milestone 5.) The day/night mode takes its coordinate from a remembered fix
-  first and the map's viewport centre only as a fallback, and it re-resolves
-  when something announces a change -- a preference edit, a new fix, the
-  scheduled sunrise or sunset -- but not on `moveend`. So panning a map from
-  Europe to a night-time Pacific leaves it light until one of those happens.
-  Deliberate rather than missed: re-resolving on every pan would make the
-  cartography flip mid-drag, which is a worse experience than a slightly stale
-  answer, and the viewport is the *fallback* coordinate rather than the
-  intended one. Revisit if anyone reports it, probably by re-resolving on
-  `moveend` with a debounce and only when there is no remembered fix.
-
-- **Right-to-left map labels are unshaped.** (Stage 30 Milestone 4.) MapLibre
-  renders Arabic and Hebrew correctly only with `setRTLTextPlugin`, which is a
-  separate ~200KB JS+WASM download it fetches from unpkg -- a third-party
-  runtime dependency in a project that vendors everything, for a case the label
-  chain already mostly covers: `name:latin` means an en or de reader sees
-  Cairo, not an unshaped attempt at the Arabic. What is left uncovered is a
-  place that has no Latin name at all, where the local name renders with its
-  letters in isolated forms. Worth doing if the app ever supports an RTL
-  interface language, at which point vendoring the plugin is the smaller
-  question.
-
-- **A time on an itinerary entry.** (Stage 25.) `item_dates` carried
-  `all_day`, `start_time` and `end_time` from Stage 01 and never grew a UI for
-  any of them; Stage 25 dropped the table without replacing them, so a 09:40
-  ferry can only say so in the entry note. If they come back they belong on
-  `itinerary_entries`, not on the location: a time is a property of being
-  somewhere on a *day*, which is the whole point of that stage. Needs columns on
-  both dialects, a time formatter in `web/js/format.js` (which has none), new
-  i18n keys, and entry-row layout work at 324px, where the row is already
-  a thumbnail, a title and a menu.
-
-- **Per-file notes before the upload, and upload progress.** (The files-tab
-  staging patch after Stage 29.) That patch made a pick wait in a pending list
-  until the Upload button is pressed, and the note and visibility controls are
-  read for the whole batch at that moment. Two things it deliberately did not
-  do. A pending row has no note of its own, so uploading three files with three
-  different notes is still three uploads -- the staging mode the location create
-  page uses *does* carry a per-row note, so the shape exists and it is the batch
-  controls, the row menu and the copy that would need reconciling. And there is
-  still no progress indication beyond `.file-drop--busy` dimming the zone: the
-  upload uses `fetch`, so a 40 MB file on a slow connection shows nothing at all
-  for a minute. `XMLHttpRequest` and its `upload.onprogress` is the only way to
-  measure it, per file, which is a real change of shape for the request loop.
-
-- **Multi-select tag filtering.** (Stage 26.) The tag filter that stage builds
-  is single-select, so it sits inside the `menuitemradio` model every menu in
-  the app shares. Combining tags -- Reykjavik AND for-kids -- is where tags
-  actually start paying off, but it needs `menuitemcheckbox` rows, a trigger
-  label that can say "2 tags" rather than naming one, and a way to clear the
-  set. Worth doing once there is evidence people tag densely enough to want it.
-
-- **Tag management across a trip: rename, merge, delete.** (Stage 26.) Tags are
-  stored as text on `item_tags` with no tags table, so a rename is an `UPDATE`
-  over one column and a merge is the same statement -- there is no schema work
-  here, only UI and a place to put it. Deliberately deferred until tag drift is
-  observed rather than predicted: the editor suggests the trip's existing tags,
-  which is the cheap defence against it. Note the stage stores tags as typed and
-  dedupes case-insensitively only *within* one location, so `Museum` and
-  `museum` can coexist on two different ones.
-
-- **Whether a suggestion run needs a longer deadline than an enrichment one.**
-  (Stage 27 Milestone 3.) `RunDuration` is 90s for both, and a trip-level run
-  researches up to six places rather than one -- a search and a page read each,
-  plus a serialised geocoder lookup per candidate. It was left alone
-  deliberately: against the stub a run takes about four seconds, which measures
-  the loop and not the model, so there was nothing to decide it with. What this
-  needs is a handful of real runs against a real endpoint and the wall times
-  they report, not a guess. If it does need its own value, note that `Limits`
-  is one struct shared by both tasks today, so a per-task deadline is a small
-  change to `withDefaults` and a new environment variable.
-
-- **A way into the itinerary from a location.** (Stage 25.) The location page
-  shows the days it is on but does not link to them, so the way to see a
-  location in context is to go back to the trip and pick the tab.
-
-- **`ambiguousMetres` is a first guess and wants watching in real use.** (Stage
-  33 Milestone 3 follow-up.) 150m, set against ten live places where everything
-  that plainly agreed came in under 75m. The one borderline case was Sensoji in
-  Tokyo at 183m -- a temple complex whose main hall and gate really are that far
-  apart -- so a large site with several entrances is the shape of false question
-  to expect. Raise it if the question starts firing on places nobody is confused
-  about; the harness for deciding is already written and needs no rebuilding:
-  `CARAVEL_LIVE_PROBE=1 CARAVEL_SEARCH_KEY=... go test ./internal/assist/ -run
-  TestLiveSourceAgreement -v`. Note Google coverage varies between identical
-  calls, so one run is a sample and not a measurement.
-
-- **Serper reports a website and a phone number for every place it finds.**
-  (Stage 33 Milestone 3.) `/places` carries `website` and `phoneNumber`
-  alongside the position, and `PlaceResult` deliberately drops both. An
-  official site found this way needs no liveness check and no model to have
-  proposed it, which makes it a better link than most of what the run
-  currently offers -- but it is a different feature from positioning a place,
-  and folding it in would mean a link nobody asked for arriving from a source
-  the sources list does not mention.
-
-- **The maps lookup is not offered to the model as a tool.** (Stage 33
-  Milestone 3.) `toolGeocode` still describes OpenStreetMap only, so a model
-  trying to confirm that a restaurant exists gets the source that is worst at
-  restaurants. Left alone because the coordinates that reach a proposal never
-  come from the model's tool use anyway -- it is a verification aid -- and
-  because every tool call the model can make is a paid call it can make
-  repeatedly.
-
-- **The address search could say when a result is only street-accurate.**
-  (Stage 33 Milestone 2.) `/api/geocode` now reports `class`, `kind` and
-  `address_type` for every result, and `geocode.Result.Precise()` reduces them
-  to the one question that matters -- is this the building or the road outside
-  it. The assistant reads it; the editor's own address search does not, and it
-  is the surface where a person picks a result by hand from a list where a
-  street and a building look identical. A badge on the coarse ones, or sorting
-  precise matches first, would use what is already on the wire. Left out
-  because Stage 33 is about the assistant and the editor was working as it was.
-
-- **A location's OpenStreetMap identity, for places that predate it.** (Stage
-  29 Milestone 3.) `osm_type`/`osm_id` are captured from the address search from
-  that milestone onward, so the OpenStreetMap feature link appears only on
-  locations saved since. Everything older, and anything positioned by dropping a
-  pin or pasting a Google Maps link, has no identity and shows no link. A
-  backfill would mean re-searching each stored address through Nominatim and
-  accepting a match, which is a guess made on the user's behalf; an "is this the
-  right OSM feature?" affordance in the editor would be honest but is a screen
-  nobody has asked for. Worth doing only if the link turns out to be one people
-  use.
-
-- **The outbound map link could be in the reader's language.** (Stage 29
-  Milestone 2.) Appending `hl=de` to the link that milestone builds returns a
-  fully German Google place card -- measured, so this is a known-working
-  parameter and not a guess. Note it contradicts nothing from Stage 22, which
-  found Google ignoring `Accept-Language`: that was a server-side fetch of a
-  page, this is a query parameter on a link a browser opens.
-
-  It was dropped because the server cannot know the app locale. It lives in
-  `localStorage` (`web/js/i18n.js`), never reaches the backend, so the
-  server-built `google_maps_url` could not carry it -- and adding it on the
-  client link only would mean the two twins (`googleMapsUrl` in `web/js/url.js`
-  and `googleMapsURL` in `internal/httpapi/map.go`) stop producing the same URL,
-  which Stage 29 Milestone 1 spent a whole milestone establishing and asserts in
-  `tests/ui/map.spec.js`. Two honest ways out, both bigger than the feature:
-  send the locale to the server (it has no reason to know it otherwise), or drop
-  `google_maps_url` from the API and let the browser build all three links --
-  which is now nearly possible, since the map payload carries the address as of
-  that milestone. The second is tempting and would make the JS helper the single
-  source outright.
-
-- **Apple Maps and `geo:` links beside the Google one.** (Stage 29 planning.)
-  Apple's URL form gets right what Google's does not: `q` for the name and `ll`
-  for the coordinates are separate documented parameters, so name-plus-coordinate
-  biasing is a one-liner rather than an undocumented path segment. A `geo:` URI
-  opens whichever map app the reader actually chose and sends nothing to anyone,
-  but has no handler on desktop browsers or iOS Safari. Both are additions to a
-  link list rather than fixes to a broken link, which is why Stage 29 left them
-  out; worth revisiting if the location view ever grows a row of map handoffs.
-
-- **Prompt caching for the assistant.** (Stage 21 Milestone 4; the two companion
-  levers -- a reasoning-effort knob and mechanical conversation compaction --
-  were measured and dropped in the 2026-08-29 review.) Every turn resends the
-  whole conversation, and OpenRouter and others can cache the repeated prefix.
-  Never measured, so the size of the prize is unknown; it is the one lever that
-  would help every request in a run rather than one of them. Context for
-  expectations: 85% of a run is the model, spread over roughly 4.4 sequential
-  requests, and switching the instance to `nvidia/nemotron-3.5-lightning` took a
-  Tokyo Tower run from 59.1s to 16.4s -- more than any code change is likely to.
-
-  **Two findings from Stage 27 planning that change where this starts.** First,
-  the prefix is *not* stable across runs: `systemPrompt` embeds the trip's tag
-  vocabulary and the user locale (`internal/assist/prompt.go:54-65`), so two
-  runs on different trips share nothing. Moving those into the first user
-  message would make the system block plus the tool definitions a genuinely
-  cacheable prefix, and that is the first move -- before any cache directive.
-  Second, a hit is currently invisible *to Caravel*, though not on the wire:
-  `usage` (`internal/assist/provider.go:110-116`) decodes only
-  prompt/completion/total, so neither the budget nor the run trace could tell
-  you whether caching happened. A real OpenRouter response observed on
-  2026-08-30 carries `usage.prompt_tokens_details.cached_tokens` and
-  `cache_write_tokens` alongside a `cost` breakdown, so making a hit visible is
-  a few struct fields rather than a protocol problem -- and it is the cheapest
-  first step, since it turns the whole question into something measurable
-  before any behaviour changes. Within a run the message list is
-  already append-only and never rewritten, which is the good news -- and the
-  composing turn, which resends everything, is the single biggest beneficiary.
-  Note also that `chatMessage` is a flat {role, content, ...} shape:
-  OpenAI-style automatic prefix caching needs no wire change, Anthropic-style
-  explicit breakpoints would need content blocks in `provider.go`.
-
-- **SearXNG as a search backend.** (Stage 16 Milestone 8.) Planned for that
-  milestone and dropped: nobody had an instance to test against, and a backend
-  verified only against a fake is a backend nobody should trust. Everything
-  needed already exists -- the `Searcher` interface in `internal/assist` takes
-  a ~60-line implementation, `CARAVEL_SEARCH_URL` already carries a
-  self-hosted address (ddgs uses it), and `config.SearchProviders` is one
-  string longer. What it needs is somebody with a running SearXNG. Three things
-  to know when picking it up: the JSON output format is disabled by default and
-  has to be added to `search.formats` in `settings.yml`; it overlaps heavily
-  with ddgs, which shipped -- both are self-hosted keyless metasearch, so this
-  is for people who already run one rather than a gap in coverage; and since
-  Stage 21 Milestone 7 image search is an optional capability a `Searcher` may
-  also implement, so a SearXNG backend should do its images category too rather
-  than only the text half.
-
-- **Web search may want to leave `internal/assist`.** (Stage 21 Milestone 7.)
-  `Searcher` and its four backends live in that package because the assistant
-  was their only consumer. It no longer is: the image picker uses the same
-  backend, `cmd/caravel` builds it and `internal/httpapi` type-asserts
-  `assist.ImageSearcher` off it, so a package named for the assistant is now
-  imported for something with no LLM in it. An `internal/websearch` in the shape
-  of `internal/geocode` would be the honest arrangement. Mechanical but wide --
-  every test in `internal/assist` names one of these types.
-
-- **Account settings: a profile picture.** (Stage 12; the screen, appearance and
-  language controls and password changing all landed there in Milestones 2-5.)
-  It has a schema wrinkle: `media_assets.trip_id` is `NOT NULL` and cascades
-  from `trips`, so a user-scoped image has no valid home today and deleting a
-  trip would take an avatar with it. Needs a migration — nullable `trip_id`, a
-  `user_id` column, or a separate table — before the existing upload pipeline
-  can be reused.
-
-- **A trip journal with photos.** (Stage 01.) A `journal_entries` table
-  (trip_id, date, body markdown) reusing the existing `media_assets` pipeline
-  for photos.
-- **Federation between self-hosted instances.** (Stage 01.) Real sync-protocol
-  design still needed; v1 only avoided the integer-PK and local-only-ID mistakes
-  that would have made it harder later.
-- **Per-field review of a suggested candidate.** (Assist tag cleanup,
-  2026-09-03.) The location editor reviews an AI proposal field by field, with
-  its own accept and reject per field; `/suggest` shows a candidate whole and
-  takes its tags and notes wholesale on save (`web/js/pages/suggest-page.js`).
-  The tag normalisation now applies to both paths, so this is about control
-  rather than quality -- five candidates times five fields is a lot of UI for
-  a small gain, which is why it was left.
-
-- **A place only the maps backend can find gets no city tag.** (Stage 33
-  follow-up, the city tag.) `Position.City` is filled from OpenStreetMap's
-  structured address, and Serper's /places answers with a formatted address
-  string instead -- so a restaurant OSM has never heard of resolves fine and
-  is tagged with everything except where it is. Two ways out: parse the
-  city out of the Google address string (cheap, guesswork, the comma count
-  varies by country), or reverse-geocode the chosen coordinates through
-  Nominatim (accurate, one more request per place, and it works for every
-  source there will ever be). The second is the right one if it becomes
-  worth a request.
-
----
-
-## Multi-user and sharing
-
-- **Invite links / joining by token.** Adding a member needs their exact username
-  today (Stage 14 Milestone 3), which is fine on a self-hosted instance where you
-  know who you are inviting. This only becomes genuinely interesting **after
-  federation**, where the person you are inviting is not a user of your instance
-  at all — so treat it as a federation follow-on.
-
----
-
-## Consistency and cleanup
-
-- **The category palette lives in four files.** (Surfaced adding the `area`
-  category.) `CATEGORY_COLORS` is copy-pasted into `map-view.js`,
-  `location-card.js`, `itinerary-tab.js` and `location-view-page.js`, and the
-  list of category *names* into `location-form.js`, `locations-tab.js` and
-  `suggest-page.js` -- seven places that must agree, with nothing checking that
-  they do. Adding a fifth category means finding all seven again. One module
-  exporting both the names and the colours would end it; the only wrinkle is
-  that map-view needs the hexes to build its custom properties while the other
-  three want a plain lookup, which is not much of a wrinkle.
-
-- **The trips list is filtered and sorted entirely in the browser.** (Stage 15,
-  restated Stage 35 -- `trips-page.js` has claimed this was a todo.md entry
-  since Stage 15 and it was never actually written down.) `GET /trips` returns
-  every trip the user can see, unconditionally, and the page searches and
-  orders that array. Instant feedback and no round trip per keystroke, which is
-  the right trade for the number of trips anybody has today; it is the wrong
-  one at a few hundred, where the answer is a `q`/`sort` pair on
-  `ListTripsForUser` and a page size. The three sort orders the UI offers --
-  upcoming, title, added -- are all expressible in SQL, so the migration is
-  mechanical whenever it becomes worth making. Since Stage 43 title and added
-  can also be reversed, so a server-side `sort` has to carry a direction too.
-
-- **List view state is not in the URL, and the two lists keep it differently.**
-  (Stage 26, revised Stage 35.) The locations tab's toolbar survives a Back
-  press -- its filters, search text and sort ride on the history entry, one
-  entry deep, the same way the map tab's camera does. The trips list instead
-  remembers its sort per *browser*, in localStorage, which survives a reload
-  and a new tab but is one setting rather than per-view state. Neither is in
-  the query string, so a filtered list still cannot be shared or bookmarked,
-  and the same idea now has two mechanisms. Doing the URL half wants deciding
-  for both lists together, since nothing in the app puts view state in the URL
-  today; whichever way that goes, it should also settle which of the two
-  existing mechanisms survives.
-
-- **Identifier sweep: "item" → "location".** Stage 05 fixed the user-visible
-  copy, so what's left is entirely below the surface: the whole
-  `item.detail.*`/`item.category.*`/`item.deleteConfirm` i18n namespace is still
-  item-flavoured despite `location.form.*`/`location.editor.*` having migrated,
-  and on the JS side `location-form.js` exports `renderItemForm`,
-  `locations-tab.js` exports `renderItemsTab` and uses `data-action="new-item"`,
-  and the list renders `<item-card>`. The API and schema say `items` too
-  (`/api/items/{id}`, the `items` table), so this has a choose-your-depth
-  question. Precedent for going all the way down: Stage 11 Milestone 1's
-  "documents" → "files" rename included a `0006` table rename and dropped the
-  `/trips/:id/documents` URL outright rather than redirecting it. Stage 26
-  considered folding this in -- it was already inside `renderItemsTab`,
-  `<item-card>` and the `item.category.*` keys -- and declined: a mechanical
-  rename through every diff of that stage would have hidden the real changes.
-
-- **Number and date formatting follows the *browser* locale, not the app's.**
-  **(soon)** -- Stage 26 made this considerably more visible: `formatDateRange`
-  now renders on every location card and inside the locations filter menu, not
-  only on a location page, so a reader whose app is in German and whose browser
-  is in English sees English dates all over the locations tab.
-  (Stage 17 Milestone 3; narrowed by the Milestone 6 follow-up, which fixed the
-  one case that was not merely cosmetic -- `Intl.ListFormat` now takes
-  `getLocale()`, because it rendered "Nur für Other User *and* dich", an English
-  conjunction inside German copy. What is left is the money and date formatters,
-  where the browser locale is a defensible choice rather than a bug.)
-  `format.js` calls `Intl` with an undefined locale throughout --
-  `formatDateRange`, the itinerary day headings, and now `formatMoney` -- which
-  is a deliberate, pre-existing decision, documented in that file. Money makes
-  the consequence louder than dates did: with the app switched to German, a
-  total still renders as EUR 97.55 rather than 97,55 EUR, and a day heading
-  still reads Thu 20 Aug. Nothing is *wrong* -- the numbers and dates are right
-  and unambiguous -- but the app claims to be in German while formatting as
-  though it were not. The fix is to pass `getLocale()` (or the resolved locale
-  behind "auto") to every `Intl` constructor, which is a handful of call sites
-  in one file. What it needs first is a decision: the browser locale is arguably
-  the *better* source for number formats, because it is what the rest of that
-  person's computer does, and someone reading a German UI may still want their
-  own separators.
-
-- **A route registered before `login()` is silently shadowed.** (Stage 33
-  Milestone 1.) `login()` installs `blockExternalRequests()`, a catch-all
-  `page.route("**/*")` that continues every same-origin request, and Playwright
-  runs handlers in reverse registration order -- so any `page.route` registered
-  earlier in the same test never fires, with no warning and no failure. One
-  spec had been in that state since Stage 13 and only surfaced when the suite
-  stopped talking to the real Nominatim, because the un-intercepted request was
-  being answered correctly by accident. Every spec was checked and that was the
-  only one, so this is a note rather than a bug: the ordering is a real trap and
-  the next person to add an interception will not know about it. A guard is
-  possible -- `blockExternalRequests` could refuse to install over an existing
-  handler, or `login` could take the routes a test wants -- but both are more
-  machinery than one comment, and the comment is now in `map.spec.js`.
-
-- **Concurrent writes to one SQLite database return 500, and it is not a test
-  problem.** (Found in Stage 33 Milestone 5, chasing what looked like a flaky
-  spec.) **10 of 12** concurrent `POST /items/batch` requests into one trip fail
-  with HTTP 500. Reproduced outside the browser suite, against a plain server,
-  with the error surfaced temporarily:
+- **Concurrent writes to one SQLite database return 500.** **(soon)** (Found in
+  Stage 33 Milestone 5, chasing what looked like a flaky spec.) **10 of 12**
+  concurrent `POST /items/batch` requests into one trip fail with HTTP 500.
+  Reproduced against a plain server, with the error surfaced temporarily:
 
   ```
   database is locked (517)          <- SQLITE_BUSY_SNAPSHOT
@@ -502,506 +38,346 @@ purpose — do not reconstruct it from an older stage plan without asking.
   ```
 
   517 is the diagnosis. `WithTx` opens a **deferred** transaction
-  (`BeginTx(ctx, nil)`, `internal/db/sqlite_store.go`), and the transaction
-  reads before it writes. In WAL mode a deferred transaction that reads first
-  takes a read snapshot; if any other writer commits before it tries to write,
-  the lock upgrade can *never* succeed, so SQLite fails immediately with
-  SQLITE_BUSY_SNAPSHOT. **The `busy_timeout(5000)` in the DSN does not apply to
-  that case** -- there is nothing to wait for -- which is why the pragma looks
-  like it should have covered this and does not.
+  (`conn.BeginTx(ctx, nil)`, `internal/db/sqlite_store.go:1252`), and the
+  transaction reads before it writes. In WAL mode a deferred transaction that
+  reads first takes a read snapshot; if any other writer commits before it
+  tries to write, the lock upgrade can *never* succeed, so SQLite fails
+  immediately with SQLITE_BUSY_SNAPSHOT. **The `busy_timeout(5000)` in the DSN
+  does not apply to that case** -- there is nothing to wait for -- which is why
+  the pragma looks like it should have covered this and does not.
 
   The usual fix is `BEGIN IMMEDIATE` for any transaction that will write, so the
   write lock is taken up front, where `busy_timeout` *does* apply. In Go that
-  means a SQLite-specific `WithTx` (the driver takes it via a connection-level
-  option or a raw `BEGIN IMMEDIATE`), and it needs the retry question answered
-  too: an immediate transaction that times out still needs a caller that tries
-  again or an honest error. Postgres has no equivalent problem.
+  means a SQLite-specific `WithTx` (a connection-level option or a raw `BEGIN
+  IMMEDIATE`), and it needs the retry question answered too: an immediate
+  transaction that times out still needs a caller that tries again or an honest
+  error. Postgres has no equivalent problem; run `make test-postgres` alongside.
 
-  The read this was *found* through is gone: `createItemsTx` used to call
-  `ListItemsByTrip` to pick the next `items.sort_order`, and the follow-up that
-  dropped that column (2026-09-30) removed the read with it, so the batch
-  endpoint no longer reads before it writes. That narrows the reproducer, it
-  does not fix the bug -- `writeItemNested` and every other multi-step
-  transaction still read inside `WithTx`.
+  Scope: `internal/httpapi` calls `WithTx` in ten places (`writeItemNested` in
+  `items.go` among them), so this is not the batch endpoint's bug. It is
+  user-visible on any shared trip -- two people adding locations at the same
+  time -- and presents as "could not be saved, try again", which usually works
+  on the retry and so reads as a glitch. Worth its own milestone. Symptoms seen
+  so far, all expected to go with the fix:
 
-  Scope: `internal/httpapi` calls `WithTx` in ten places, so this is not the
-  batch endpoint's bug. It is user-visible on any shared trip -- two people
-  adding locations at the same time, or one person adding a batch while another
-  writes -- and it presents as "could not be saved, try again", which usually
-  works on the retry and so reads as a glitch. Worth its own milestone, with
-  `make test-postgres` run alongside since the fix is dialect-specific.
+  - **Registration.** `register.spec.js` "registering an account logs the
+    newcomer straight in" has answered 500 from `/api/auth/register` in full
+    `make test-ui` runs (Stages 30, 41, 44) and passed alone. `Auth.Register`
+    (`internal/auth/auth.go:75`) counts users inside `WithTx` before it inserts
+    -- the read-before-write pattern above. Not a duplicate username (that is a
+    409), not the login rate limit. The server log was never caught, because
+    `scripts/with_server.sh` deletes its temp directory, log included, on exit;
+    and `--repeat-each` is no way to chase it, since the repeats race each
+    other on the instance-wide open-signup setting and fail with 403.
+  - **The suggest batch add.** `assist-suggest.spec.js`'s first test has failed
+    under parallel load with "The locations could not be added"; the response
+    capture added in Stage 33 Milestone 5 showed SQLITE_BUSY_SNAPSHOT.
+  - **Creating an itinerary day.** `EnsureItineraryDay`
+    (`internal/db/sqlite_store.go:706`, `postgres_store.go:908`) is
+    get-then-insert, so two clients adding the same day at once lose one to the
+    `(trip_id, date)` unique constraint, reported as a 500 -- on *both*
+    dialects, so this one is not only the SQLite locking. Reachable from saving
+    a location since Stage 25. A 409 with "the itinerary changed, please try
+    again" is the honest answer (or `ON CONFLICT DO NOTHING` then select); the
+    handler already has the `errItineraryEntryVanished` -> 409 shape
+    (`internal/httpapi/itinerary.go:308`) to copy.
 
-  Note the flake below is a *symptom* of this, not a separate issue.
+- **An unknown /api path answers 200 with the SPA shell.** **(soon)** (Stage 25
+  Milestone 2.) `POST /api/items/{id}/nonsense` and `GET /api/does-not-exist`
+  both return 200 and the index page rather than a 404, because the static
+  handler is the router's only `NotFound` (`internal/httpapi/router.go`) and
+  catches everything the `/api` subrouter did not match. It makes a client typo
+  look like a success, and it is why `ownership_test.go` asserts on the body
+  rather than only the status. An /api-scoped NotFound handler that writes the
+  usual JSON error would fix it.
 
-  **A second symptom: registration.** (Stage 44 Milestone 2.) `register.spec.js`
-  "registering an account logs the newcomer straight in" got a 500 from
-  `/api/auth/register` once in a full `make test-ui` run, and passed alone.
-  `Auth.Register` (`internal/auth/auth.go`) counts users inside `WithTx` before
-  it inserts, which is the deferred read-before-write pattern above. The server
-  log was not kept, so `database is locked` is inferred from the shape, not
-  seen. Note that `--repeat-each` is no way to chase this one: the repeats run
-  in parallel and race each other on the instance-wide open-signup setting, so
-  they fail with 403 for an unrelated reason.
+- **Map pins are hard to hit.** **(soon)** (notes.md, reviewed 2026-10-03.) A
+  trip-map pin is a 1rem dot with a 2px ring -- about 20x20 px in all
+  (`markerElement` in `web/js/components/map-view.js`) -- below WCAG 2.5.8's
+  24px minimum and well below a comfortable finger target. Wrap the visible dot
+  in a transparent hit area of about 44px so the look does not change. Mind
+  pins that sit close together: bigger invisible targets overlap sooner, and
+  the one on top should be the one that gets the tap.
 
-- **`assist-suggest.spec.js`'s first test is flaky under parallel load.** (Stage
-  32 Milestone 5; revisited in Stage 33 Milestones 1 and 5.)
-  "is reached from the New menu, and adds the ticked places in one go" failed
-  once at Stage 32, on `expect(page).toHaveURL(/\/suggest$/)` after 25.6s -- the
-  New menu click did not reach the suggest page in time. It failed in *both*
-  full runs during Stage 33 Milestone 1, and in a second place: the batch add
-  came back an error, so the page stayed on `/suggest` showing "The locations
-  could not be added". It passes alone in ~8s every time.
+- **The zoom hint names Ctrl on every platform.** **(soon)** (Stage 23 Milestone
+  6.) The gate accepts Ctrl *or* Meta, so Cmd + wheel zooms on a Mac, but
+  `map.ctrlZoomHint` says "Ctrl" everywhere -- Google Maps shows the Mac key
+  instead. And macOS binds Ctrl + wheel to its own screen zoom, so a Mac user
+  pressing the key the hint names may get the operating system rather than the
+  map. Needs platform detection in the component, or two strings chosen at
+  render time.
 
-  **The batch half now has a cause**: it is the concurrent-write 500 in the
-  entry above -- SQLITE_BUSY_SNAPSHOT from a deferred transaction that reads
-  before it writes. The response capture added in Milestone 5 produced that
-  diagnosis on the very next full run, after two stages of the failure arriving
-  as a translated sentence with nothing attached. Fixing the transaction should
-  remove this symptom; the *menu* half is a separate, slower timeout and is not
-  explained by it.
-
-  Not a regression from the stub geocoder, and that was checked rather than
-  assumed: the whole flow was driven through the API against a stub-configured
-  server -- suggest, then `POST /items/batch` with the exact candidates and the
-  exact fixture coordinates -- and answered 200 and 201. `items/batch` has no
-  rate limiter. So this is contention, and two different symptoms of it.
-
-  Stage 33 Milestone 5 fixed the *diagnosis* half rather than the flake. The
-  spec now waits on the `/items/batch` response and puts its body in the
-  assertion message, so the next failure says what the server actually answered
-  instead of only what the page told the user -- `suggest-page.js` logs the
-  cause to a console nobody collects, which is why two stages of failures
-  arrived as a translated sentence with nothing attached. Milestone 5 also
-  re-checked it through a real browser against a stub-configured server: five
-  candidates proposed, three added, 201. The menu half probably still wants an
-  explicit wait on the menu being open before the row is clicked, rather than a
-  longer timeout.
+- **A link to a deleted location renders as a live link that 404s.** **(soon)**
+  (Stage 39.) The `@` picker inserts a plain markdown link --
+  `[Kex Hostel](/trips/T/locations/I)` -- so nothing checks the target still
+  exists. The client already has the trip's item list when it renders a note,
+  and `markInternalLinks` (`web/js/rendered-markdown.js`) already walks every
+  anchor in a rendered note, so that walk is where the check goes. The open
+  question is what a dead reference should *look* like (struck through, muted,
+  not a link at all), not how to find one. Stale link *text* after a rename was
+  considered in the same review and dropped.
 
 ---
 
-- **`escapeAttr` promises attribute safety and delivers entity escaping.**
-  (Stage 27 Milestone 4a; the count corrected in Stage 29.) **Eight** files
-  define `escapeAttr` -- the entry said five and `web/js/url.js:12` says seven,
-  both undercounts -- and in most of them
-  it is a bare alias of `escapeHtml`, which escapes `&<>"'` and says nothing
-  whatever about what the value *means* in the attribute it lands in. Quoting a
-  `javascript:` URL into an `href` produces a perfectly well-formed dangerous
-  link, which is exactly the bug that milestone fixed -- and the name is part
-  of why it went unnoticed for so long. The fix landed a `safeHref` in
-  `web/js/url.js` for the two link render sites; what is left is the name.
-  Renaming it to `escapeHtmlAttr`, or collapsing the duplicates into one shared
-  helper, would stop the next person reading `escapeAttr(url)` as "this is
-  safe". Note the duplication is deliberate elsewhere in this codebase and
-  fine for entity escaping; it is the *promise in the name* that is the
-  problem here.
+## Planned features
 
+- **Mark places as visited.** **(soon)** (notes.md, reviewed 2026-10-03.) A
+  per-location "visited" flag, shown on the card and the pin, with a filter in
+  the locations toolbar ("what have we not seen yet"). Needs a column on both
+  dialects, a toggle on the card or the view page, and the filter. Fits beside
+  the itinerary: a day's entries are the places you mean to visit.
+
+- **A brief summary in the map popup.** **(soon)** (notes.md, reviewed
+  2026-10-03.) A pin's popup shows the title, a photo if there is one, "Open
+  location" and "View on Google Maps" -- nothing about what the place is. Add a
+  short summary: the category, the days it is on, perhaps the first line of the
+  notes. Most of it is already in the map payload (`mapItemResponse` in
+  `internal/httpapi/map.go`). The popup is capped at 200px wide
+  (`popup()` in `map-view.js`), so it has to stay brief.
+
+- **Offline mode for the PWA, read-only first.** **(soon)** (notes.md, reviewed
+  2026-10-03; absorbs the Stage 23 / Stage 45 "offline map needs one online
+  visit" entry.) The worker precaches the shell, the bundle, its stylesheet and
+  the fonts, so the app *boots* offline -- but `/api/*` is never cached
+  (`web/sw.js`), so an offline app shows no trips, and map tiles come from
+  OpenFreeMap uncached. Two steps:
+
+  1. **Read-only offline.** Cache API responses network-first, so the last-seen
+     trips, locations, itinerary and notes show without signal. Precache
+     MapLibre, the map style and the locale too (their URLs are in the
+     worker's built-URL table since Stage 45; about 1 MB per client per
+     MapLibre upgrade), so the map works offline straight after a deploy.
+     Optionally download a trip's tiles and photos ahead of time.
+  2. **Offline edits.** A write queue with sync and conflict handling. Much
+     larger; a separate decision.
+
+- **Remove "My location" from the location editor's map.** **(soon)** (Review
+  2026-10-03.) Never used there; the trip map keeps it. The editor's picker is
+  the `pick` branch of the locate control in `map-view.js` (non-continuous,
+  15s settle deadline, place-grade 50m target), which also carries the "a rough
+  fix is only reachable through a fifteen-second wait" complaint -- removing it
+  removes that too. After the removal, check what in `web/js/geolocation.js`
+  and the picker code has become dead: the locations tab's distance filter
+  still uses `getCurrentPosition` (500m target), the trip map uses the
+  continuous watch.
+
+- **Mark street-only results in the address search.** **(soon)** (Stage 33
+  Milestone 2.) `/api/geocode` reports `class`, `kind` and `address_type` for
+  every result, and `geocode.Result.Precise()` reduces them to the one question
+  that matters -- is this the building or the road outside it. The assistant
+  reads it; the editor's own address search does not, and it is where a person
+  picks a result by hand from a list in which a street and a building look
+  identical. A badge on the coarse ones, or precise matches sorted first, would
+  use what is already on the wire.
+
+- **Does the assistant's `geocode` tool earn its keep?** **(soon)** (Review
+  2026-10-03; replaces "the maps lookup is not offered to the model as a
+  tool".) The model may call `geocode` (OpenStreetMap, `internal/assist/tools.go`)
+  while researching, to check that a place exists and is unambiguous. Its
+  result never reaches the proposal directly: the coordinates come from
+  `resolvePosition` (`locate.go`), which looks up the model's final
+  `place_name` and `address` in OSM and Google itself. So the tool can only
+  help indirectly -- a dropped non-existent place, a better-chosen name or
+  address -- while every call costs a full model round trip, which is most of
+  a run's time. Measure how often real runs call it and whether results differ
+  with it removed; remove it if it does not help.
+
+- **Per-trip feature toggles.** (notes.md, reviewed 2026-10-03.) Let a trip
+  switch off what it does not use -- expenses, the itinerary, notes, files, the
+  assistant -- in its settings tab, so a weekend trip is not eight tabs. Hidden,
+  not deleted: switching a feature back on shows its data again. Needs a
+  per-trip settings column or table and the trip page honouring it.
+
+- **Locations with a shape: lines and areas.** (notes.md, reviewed 2026-10-03.)
+  A road is a line through several points, perhaps with a start and an end; an
+  area is a polygon. Today a location is exactly one lat/lng, and the `area`
+  category (Stage 37) is still a pin. A whole stage: a geometry column (GeoJSON
+  text, both dialects), line and fill layers in `map-view.js`, a decision on
+  what the distance filter, the Google Maps link and the itinerary do with a
+  shape (probably a representative point), and -- the expensive part -- a
+  drawing UI. The cheap way in is *showing* a shape obtained elsewhere before
+  drawing one by hand: Nominatim can return a park's or a district's outline
+  with the search result.
+
+- **Serper reports a website and a phone number for every place it finds.**
+  (Stage 33 Milestone 3.) `/places` carries `website` and `phoneNumber`
+  alongside the position, and `PlaceResult` (`internal/assist/search.go`)
+  deliberately drops both. An official site found this way needs no liveness
+  check and no model to have proposed it, which makes it a better link than
+  most of what a run currently offers -- but it is a different feature from
+  positioning a place, and folding it in would mean a link nobody asked for
+  arriving from a source the sources list does not mention.
+
+- **An assistant-proposed place found only by Google gets no city tag.** (Stage
+  33 follow-up, the city tag; reworded 2026-10-03.) The automatic city tag
+  comes from `Position.City` (`internal/assist/locate.go`), and only the OSM
+  answer fills it, because Nominatim returns a structured address with a city
+  field. Serper's `/places` returns a single formatted string ("Laugavegur 1,
+  101 Reykjavík, Iceland") -- shown as the pin's label, and the saved location
+  still gets the model's address -- with no city field to take. So the tag is
+  missing when OSM did not find the place at all (common for restaurants and
+  shops), and also, deliberately, when the two sources disagree. Parsing the
+  city out of Google's string is guesswork (the order varies by country); one
+  Nominatim *reverse* lookup on the chosen coordinates is accurate, works for
+  every source, and costs one request per place.
+
+- **Outbound map links: build them in the browser, then widen them.** (Stage 29;
+  two entries folded 2026-10-03.) The Google Maps link exists twice --
+  server-built `google_maps_url` (`googleMapsURL`, `internal/httpapi/map.go`)
+  and client-built `googleMapsUrl` (`web/js/url.js`) -- held equal by
+  `tests/ui/map.spec.js`. Dropping the server copy and letting the browser
+  build every link (the map payload has carried the address since Stage 29
+  Milestone 2) would make the JS helper the single source, and unlock two
+  things:
+  - **The reader's language.** Appending `hl=de` returns a fully German Google
+    place card (measured). The server cannot do it: the app locale lives in
+    `localStorage` and never reaches the backend.
+  - **Apple Maps and `geo:` links.** Apple's form takes the name (`q`) and the
+    coordinates (`ll`) as separate documented parameters. A `geo:` URI opens
+    whichever map app the reader chose and sends nothing to anyone, but has no
+    handler on desktop browsers or iOS Safari.
+
+- **Federation between self-hosted instances, with invite links.** (Stage 01;
+  invite links Stage 14 Milestone 3.) Real sync-protocol design still needed;
+  v1 only avoided the integer-PK and local-only-ID mistakes that would have made
+  it harder later. Joining a trip by token rather than by exact username
+  belongs here too: on one instance you know who you are inviting, and invite
+  links only become genuinely interesting when the invitee is not a user of
+  your instance at all.
+
+---
+
+## Consistency and cleanup
+
+- **The category palette lives in seven places.** **(soon)** (Surfaced adding
+  the `area` category.) `CATEGORY_COLORS` is copy-pasted into `map-view.js`,
+  `location-card.js`, `itinerary-tab.js` and `location-view-page.js`, and the
+  list of category *names* into `location-form.js`, `locations-tab.js` and
+  `suggest-page.js` (and `map-view.js` again) -- with nothing checking that
+  they agree. One module exporting both the names and the colours would end
+  it; map-view needs the hexes to build its custom properties while the others
+  want a plain lookup, which is not much of a wrinkle. Pairs with the
+  `escapeAttr` entry below: both collapse duplicated helpers into one module.
+
+- **`escapeAttr` promises attribute safety and delivers entity escaping.**
+  **(soon)** (Stage 27 Milestone 4a.) **Eight** files define `escapeAttr` --
+  menu, location-card, image-field, itinerary-tab, trip-card,
+  location-view-page, location-editor-page and map-view; the comment at
+  `web/js/url.js:12` says seven -- and in most it is a bare alias of
+  `escapeHtml`, which escapes `&<>"'` and says nothing about what the value
+  *means* in the attribute it lands in. Quoting a `javascript:` URL into an
+  `href` produces a well-formed dangerous link, which is the bug that milestone
+  fixed with `safeHref` in `url.js`; what is left is the name. Renaming it to
+  `escapeHtmlAttr`, or collapsing the copies into one shared helper, would stop
+  the next person reading `escapeAttr(url)` as "this is safe".
+
+- **Web search should leave `internal/assist`.** **(soon)** (Stage 21 Milestone
+  7.) `Searcher` and its backends live in that package because the assistant
+  was their only consumer. It no longer is: the image picker uses the same
+  backend, `cmd/caravel` builds it and `internal/httpapi` type-asserts
+  `assist.ImageSearcher` off it (`router.go`), so a package named for the
+  assistant is imported for something with no LLM in it. An `internal/websearch`
+  in the shape of `internal/geocode` would be the honest arrangement.
+  Mechanical but wide -- every test in `internal/assist` names one of these
+  types.
+
+- **Identifier sweep: "item" → "location", all the way down.** (Stage 05; depth
+  decided 2026-10-03.) The user-visible copy says "location"; below it, the
+  `item.*` i18n namespace (27 keys in `en.json`) is still item-flavoured while
+  `location.form.*`/`location.editor.*` migrated, `location-form.js` exports
+  `renderItemForm`, `locations-tab.js` exports `renderItemsTab` and uses
+  `data-action="new-item"`, the list renders `<item-card>`, and the API and
+  schema say `items` (`/api/items/{id}`, the `items` table and its satellites).
+  Decided: go all the way, API routes and a table-rename migration included --
+  precedent is Stage 11 Milestone 1's "documents" → "files" rename, which
+  renamed the table in `0006` and dropped the old URL outright. Do it as its
+  own milestone (or stage): a mechanical rename inside any other diff hides the
+  real changes, which is why Stage 26 declined to fold it in.
+
+---
 
 ## Testing, CI and dev tooling
 
-- **`register.spec.js` can 500 under parallel load.** (Seen during Stage 41
-  Milestone 2.) "registering an account logs the newcomer straight in" failed
-  once with a 500 from `POST /api/auth/register` during a full `make test-ui`,
-  and passed alone and on two later full runs. The spec registers a fixed
-  username, `uisuite-newcomer`, so a leftover row racing its own cleanup is the
-  obvious suspect -- but a duplicate should be a 409, and a 500 means the
-  server did something it did not expect. Worth reproducing with `--repeat-each`
-  before assuming it is only the test.
+- **No seeded location for `area`, `food`, `event` or `shop`.** **(soon)**
+  (Stage 37.) The demo trip in `cmd/seed/main.go` has only a site and a stay,
+  so most of the seven categories never appear in a screenshot, in the map
+  legend with a pin behind it, or in any UI assertion. Adding them is a
+  line each, but specs count cards on the seeded trips (e.g.
+  `assist-suggest.spec.js` around line 121), so it wants doing together with
+  those specs.
 
-- **Windows and macOS have no metric-adjusted fallback.** (Stage 41 Milestone
-  2.) `scripts/gen_font_fallbacks.py` ships adjusted stand-ins for the seven
-  platform fonts that could be measured from a file on a Fedora workstation,
-  which covers Linux and Android. Segoe UI and the Apple system font are what
-  `system-ui` resolves to on Windows and macOS, are almost certainly the two
-  most common fallbacks in practice, and were left out rather than guessed --
-  readers there still get the full first-paint reflow the milestone removed for
-  everyone else. Fixing it is a measurement, not a design problem: run the
-  script on one of those machines with the family added to `FALLBACKS` and
-  commit the numbers it prints.
+- **`scripts/check_js.sh` cannot see a `.mjs` file.** **(soon)** (Stage 30
+  Milestone 1.) It walks `find web/js -name '*.js'` (line 42), so the vendored
+  MapLibre `.mjs` modules go unparsed -- acceptable for them, since
+  `web/js/vendor/maplibre/README.md` records a sha256 each, but a trap the day
+  a hand-written module is named `.mjs`. Widen the `find` now rather than
+  document the trap.
 
-- **The font generator cannot run without two distribution packages
-  installed.** (Stage 41 Milestone 1.) `scripts/gen_brand_fonts.py` reads
-  `/usr/share/fonts/julietaula-montserrat-fonts` and
-  `/usr/share/fonts/rsms-inter-fonts` by absolute path, which is deliberate --
-  it is what keeps the build off the network -- but it means a machine without
-  `sudo dnf install` cannot regenerate the faces at all, and the failure is a
-  `sys.exit` naming a path. Milestone 1 worked around it by driving `build()`
-  against an RPM extracted with `rpm2cpio`, and confirmed the committed
-  Montserrat woff2 files came out byte-identical that way. A `--source-root`
-  argument or an env override would make that a supported path rather than a
-  trick. Low priority: the script runs perhaps once a stage.
-
-- **The `ui` job was red for six weeks before MapLibre arrived, and nobody
-  knows why.** (Stage 40.) `ci.yml`'s `ui` job has failed on every push since
-  run 19 (2026-08-24). Stage 40 diagnosed and fixed what fails *now* -- a
-  missing WebGL2 context in CI's Firefox -- but MapLibre only landed in Stage 30
-  (`a8a8ba7`, around run 48), and the map was Leaflet before that, which needs
-  no WebGL. So runs 19 through 47 failed for some other reason, and those logs
-  have aged out of GitHub's retention window. Nothing to do unless the job is
-  still red once Stage 40 finishes: the next run is the cheapest way to ask.
-
-- **One map in ~80 failed to get a WebGL context on CI, and nobody knows why.**
-  (Stage 40 Milestone 4.) A single `map.spec.js` test failed with `data-ready`
-  set and `_map` still null, which is the path map-view takes when the context
-  fails. `capabilities.setup.js` had passed at the start of that run, so the
-  browser could make a context and then could not make that one -- which points
-  at exhaustion rather than absence, llvmpipe being slow to release contexts
-  under parallel workers being the likeliest reason. Firefox caps live WebGL
-  contexts (`webgl.max-contexts`), and the suite mounts a great many maps.
-  Deliberately not chased: one flake in 293 is not enough to aim at, and
-  `waitForMapInstance` now fails in seconds naming the cause, so the next
-  occurrence will say far more than speculation would. If it recurs, the things
-  to look at are whether `destroyMap` is reached on every teardown and whether
-  raising `webgl.max-contexts` changes the rate.
-
-- **The whole class of "CI-only browser capability" is unguarded.** (Stage 40.)
-  WebGL2 got one in Stage 40 Milestone 2 -- `tests/ui/capabilities.setup.js` --
-  because it is the one that bit. Nothing checks the others: fonts, codecs,
-  `structuredClone`, the APIs the locate control needs. Each would fail the
-  same way: a
-  capability the developer's browser has and the runner's does not, surfacing as
-  a pile of unrelated-looking test failures rather than as one sentence. Worth a
-  single "what does this suite require of a browser" assertion if a second one
-  ever bites; not worth inventing the list speculatively.
-
-- **No seeded location for `area`, `food`, `event` or `shop`.** (Stage 37.) The
-  demo trip has a site, a stay and a transport and nothing else, so four of the
-  seven categories never appear in a screenshot, in the map legend with a pin
-  behind it, or in any UI assertion. Adding them is a one-line-each change to
-  `cmd/seed/main.go`, but the full scenario's item count is asserted in several
-  places (`map.spec.js:2471` pins it at three cards), so it wants doing together
-  with the specs that count cards -- which is why Stage 37 left it.
-
-- **The committed screenshots are three stages out of date.** (Noticed in Stage
-  38.) `docs/assets/screenshots/` was last regenerated in Stage 31
-  (`30b3430`). Since then Stage 34 moved the map credit out from over the
-  cartography, Stage 37 took the categories from four to seven, and Stage 38
-  moved the legend below the map -- so `map.png` and `mobile-map.png` show a
-  three-item legend floating over the map's corner and a credit inside it,
-  none of which the app does any more. Regenerating wants a machine with
-  `pngquant` installed and a `images/` photo directory; without them the run
-  still works but every image is the seeder's 343x200 test-sheet crop and the
-  set comes out roughly 3x larger, which is why Stage 38 did not do it.
-  `check_screenshots.py` only checks that every committed file is *shown* by a
-  page, never that it is current, so nothing fails while they rot.
-
-- **Map attribution is not asserted anywhere.** (Stage 30 Milestone 6.)
-  Removing the attribution variable made the credit a property of loaded map
-  data -- a style's source metadata, or the TileJSON it points at -- and the UI
-  suite blocks every request for map data, so the attribution control has no
-  loaded source to report and there is nothing to read. Three routes round it
-  were tried and rejected; the reasoning is in `map.spec.js` where the test
-  would otherwise sit. Verified by hand instead: a running instance credits
-  "OpenFreeMap (c) OpenMapTiles Data from OpenStreetMap" with all three links
-  live. It matters because a silent regression here is a licence-compliance
-  problem rather than a cosmetic one, so it is worth an assertion the day the
-  suite gains a way to let one source load -- a stubbed vector tile, most
-  likely, which the "UI suite reaches the real Nominatim" entry below would
-  also benefit from.
-
-  **Narrowed by Stage 34.** Moving the credit out of the map's corner and into
-  the page added the assertion that *can* be made with no map data -- it is
-  mounted in the box under the map, not inside `.map-wrap`, transparent, and
-  within the map's width. What is still unasserted is the only part that
-  matters for compliance: the credit's *text*, which needs a loaded source.
-
-- **A vertical two-finger pan cannot move the trip map, by design.** (Stage 30
-  Milestone 2.) MapLibre pins the camera when the world already fits the
-  viewport, and at the trip map's `fitBounds` zoom the world height and the
-  container height agree to within a pixel (measured: 643 and 643). That is
-  correct behaviour and an improvement on Leaflet, which would drag the world
-  off the top of the screen -- but it means latitude is the one axis that
-  cannot demonstrate a pan there, and both gesture tests had to move to
-  longitude to keep asserting anything. Worth knowing before writing any
-  further gesture test against that route.
-
-- **`scripts/check_js.sh` cannot see a `.mjs` file.** (Stage 30 Milestone 1.)
-  It walks `find web/js -name '*.js'`, so the three vendored MapLibre modules
-  go unparsed where `leaflet.esm.js` was covered by virtue of its extension.
-  Accepted at the time rather than worked around: the files are unmodified
-  upstream output and `web/js/vendor/maplibre/README.md` records a sha256 for
-  each, which catches a corrupted copy that a syntax parse would not. It stops
-  being a fair trade the moment any hand-written module in this project is
-  named `.mjs` -- at that point widen the `find` rather than renaming the file.
-
-- **A UI spec can still 500 on register in a full run.** (Stage 30 Milestone 4
-  first saw it; still open.) `register.spec.js`'s "logs the newcomer straight
-  in" answered 500 to `POST /api/auth/register` in one full `make test-ui` run
-  and passed alone, and passed in the immediately preceding full run. Not a
-  duplicate username, which is a 409 (`internal/httpapi/auth.go:126`), and not
-  the shared login rate limit, which the test checks for by name. SQLite runs
-  with WAL and a 5s busy timeout, so a plain lock storm is not the obvious
-  answer either. Undiagnosed: `scripts/with_server.sh` deletes its temp
-  directory with the server log on exit, so catching it means a run that keeps
-  the log.
-
-  This entry used to also cover `map.spec.js`'s two distance-filter tests and
-  `itinerary-order.spec.js`'s move-an-entry test as one shared-seed problem.
-  The distance-filter half turned out to be a single specific collision and is
-  fixed (2026-09-03): `locations.spec.js`'s OSM-link tests created two
-  locations on the shared `full` trip and never removed them, one of them under
-  a kilometre from the hotel the 5km filter centres on. They have their own
-  trip now. Whether the itinerary-order case has its own cause or is more of
-  the same is unknown -- it has not been seen since.
-
-- **Two map specs race the map itself under a full parallel run.** (Seen
-  2026-09-03, in the run that confirmed the distance-filter fix below.)
-  `map.spec.js`'s label-localisation test failed with `host._map is null`, and
-  `map-theme.spec.js`'s appearance-setting test with `page.reload: <unknown
-  error>`; both pass when the two files are run together on their own, and
-  neither is a count on the shared seed. `mapState` in `map-theme.spec.js`
-  already carries a guard for the sibling case -- `getStyle()` returning
-  undefined mid-swap, which its comment says showed up only under a full
-  parallel run -- so the shape is known: a map-view that exists before its
-  MapLibre instance does. The fix is probably to wait on `_map` the way
-  `gotoTripMap` does rather than to reach for it, wherever a spec touches the
-  map directly.
-
-  Partly addressed in Stage 40 Milestone 4: `waitForMapInstance` in
-  `helpers/scenarios.js` is now the one way to wait for the instance, it is
-  bounded, and it says which of "the element never appeared" and "the component
-  could not get a context" happened. That is the *waiting* half. The reaching
-  half is untouched -- the specs that read `host._map` directly still do -- so
-  this entry stays open.
-
-- **The suite waits on injected plumbing, not on the app's own state.** Stage 09
-  Milestone 5 gave every route a `common.loading` line, which fixes the
-  user-facing half of the old "empty shell" problem but not the suite's: a
-  loading line carries no `<h1>`, so `gotoRoute` must wait for fetches to settle
-  before asserting heading outlines, and that wait is a `window.fetch` wrapper
-  injected by `tests/ui/helpers/scenarios.js`. A `data-loading` attribute on
-  `#app`, or a "ready" event, would let the suite wait on a contract the app
-  publishes. Half a step closer since the loader landed (Sep 2026): both probes
-  now wait on the *absence of* `.loader` in `#app` rather than on a regex over
-  the boot sentence, which is a DOM contract rather than a string -- but it is
-  still the suite reading the app's markup, and the fetch wrapper is still what
-  decides when a route is done. One component already does exactly that: `leaflet-map.js` sets
-  `data-ready` once the map has laid out (Stage 13 Milestone 3), and `gotoRoute`
-  waits for it — Leaflet is lazily imported *after* a route's fetches settle, so
-  "fetches quiet plus two frames" did not mean the map was up. That is the shape
-  the app-wide version wants.
-
-- **`scripts/i18n.py`'s dynamic-prefix rule only fires inside a `t()` call.**
-  (Stage 13 Milestone 8.) `DYNAMIC_CALL_RE` matches a template literal as the
-  argument of `t(`, so a key composed anywhere else is invisible: Milestone 6's
-  `locateErrorKey()` returned `` `map.locate.${reason}` `` from a helper, and all
-  five real reason keys were reported as unused. They were not deleted — the
-  report's own warning did its job — but the next person might, and the fix that
-  milestone applied (spell the keys out in a lookup object, which the bare-string
-  pass *does* see) is a workaround at the call site rather than in the tool.
-  Teaching the scan to follow a function that returns a composed key is hard;
-  recognising a template literal assigned to a `const` whose name ends in `Key`,
-  or an explicit allowlist comment, would cover the realistic cases.
+- **The font generator should download its sources.** (Stage 41 Milestone 1;
+  reworded 2026-10-03.) `scripts/gen_brand_fonts.py` reads Montserrat and Inter
+  from the Fedora packages' `/usr/share/fonts/...` paths, so a machine without
+  `sudo dnf install julietaula-montserrat-fonts rsms-inter-fonts` cannot
+  regenerate the faces; twice now the workaround was an RPM unpacked with
+  `rpm2cpio`. The script is run by hand and is not part of the build, so the
+  network is no objection: fetch a pinned upstream release (`rsms/inter`,
+  `JulietaUla/Montserrat`) and check its sha256, the way MapLibre is vendored.
+  The packaged version may not match an upstream release byte for byte, so the
+  first run after the switch wants its output diffed once.
 
 ---
 
 ## Deployment and operations
 
-- **The documentation site calls the GitHub API on every page load, and gets a
-  404.** (Noticed in Stage 41 Milestone 3.) The theme's repository widget
-  fetches `api.github.com/repos/lkiesow/caravel/releases/latest` to show a
-  version, and the project has published no releases, so every visitor makes an
-  off-origin request that fails. Two separate things to weigh: the failed
-  request is cosmetic, but a site whose own brand documentation makes a point
-  of never loading fonts from a third party is quietly calling GitHub on every
-  page anyway. Either publish a release, or turn the widget off.
-
-- **The font files are not preloaded.** (Stage 41 Milestone 2.) They are
-  requested only once `base.css` has been fetched and parsed, so on a cold load
-  the fallback is shown for about one extra round trip longer than it needs to
-  be. Three `<link rel="preload" as="font" crossorigin>` tags for
-  `inter-400`/`inter-600`/`montserrat-700` would start those fetches during the
-  HTML parse instead. Not urgent since Milestone 2 made the fallback frame land
-  in the right place and the service worker precaches the faces after the first
-  visit, but it is cheap and it shortens the window rather than just making it
-  survivable. Since Stage 45 Milestone 2 the shell rewrites any quoted path that
-  has a versioned URL, so the new tags can name the plain `/fonts/…` paths and
-  still match what the bundled stylesheet loads.
-
 - **A warm load of a trip still waits on its API calls, one after another.**
-  (Stage 45 Milestone 2.) With every static file served immutable, a reload of
-  the Map tab reaches the server for the shell, `sw.js` and four API calls:
-  `/api/auth/me`, then the trip, then the map config and the map items. Behind a
-  250 ms-per-request proxy the map view attached at ~1.4 s warm, and nearly all
-  of that is those requests waiting on each other. Candidates: starting
-  `/auth/me` from the shell rather than after the bundle runs, fetching the trip
-  and the map data in parallel, or folding the map config into a response the
-  page already makes.
+  **(soon)** (Stage 45 Milestone 2.) With every static file served immutable, a
+  reload of the Map tab reaches the server for the shell, `sw.js` and four API
+  calls: `/api/auth/me`, then the trip, then the map config and the map items.
+  Behind a 250 ms-per-request proxy the map view attached at ~1.4 s warm, and
+  nearly all of that is those requests waiting on each other. Candidates:
+  starting `/auth/me` from the shell rather than after the bundle runs,
+  fetching the trip and the map data in parallel, or folding the map config
+  into a response the page already makes.
 
-Nothing here is needed to keep developing; all of it is needed before anyone
-else runs this.
+- **Two of the three UI font files are not preloaded.** **(soon)** (Stage 41
+  Milestone 2.) `web/index.html` preloads `montserrat-700`, but not
+  `inter-400` or `inter-600`, the body faces -- they are requested only once
+  `base.css` has been fetched and parsed, so on a cold load body text sits in
+  the fallback about one round trip longer than it needs to. Two
+  `<link rel="preload" as="font" crossorigin>` tags; since Stage 45 Milestone 2
+  the shell rewrites any quoted path that has a versioned URL, so they can name
+  the plain `/fonts/…` paths.
 
-- **Offline, the map needs one online visit after a deploy.** (Stage 23
-  Milestone 2; narrowed in Stage 45 Milestone 3.) The worker now precaches the
-  shell, the app bundle, its stylesheet and the fonts on install, so the app
-  boots offline straight after a deploy, which it used to fail to do. MapLibre,
-  the map style and the locale are still cached at runtime, so a client that
-  goes offline before opening a map on the new version has no map. Precaching
-  them too is a short list now that the URLs are known on install (they are in
-  the worker's built-URL table). It would cost about 1 MB per client per
-  MapLibre upgrade, for people who may never open the map offline.
+- **Prometheus/OpenMetrics metrics.** **(soon)** A `GET /metrics` endpoint via
+  `promhttp.Handler()`, outside `/api` and outside the session-auth middleware.
+  Stage 01's plan described that routing reservation as already in place, but
+  there is no `metrics` reference anywhere in `internal/` or `cmd/` -- the route
+  needs adding along with the instrumentation (HTTP request count, duration and
+  status; DB query duration; upload counts and sizes; session counts). Decide
+  whether it needs its own listen address or a token, since it sits outside
+  auth.
 
-- **Precompress the bundle instead of gzipping it per request.** (Stage 45
-  Milestone 3.) `middleware.Compress(5)` gzips the 233 KB bundle again on every
-  request that misses the browser cache. The bundle is built once at startup,
-  so its gzip (and, with a Go brotli encoder, a brotli copy about 15-20%
-  smaller) could be built once too and served by `Accept-Encoding`. It matters
-  more for MapLibre, about 1 MB served through the same middleware. This is
-  CPU and a few KB per first visit; not urgent, and the long cache lifetime
-  already removed the repeat cost.
+- **The documentation site has no social preview.** **(soon)** (Surfaced fixing
+  the app's, Aug 2026.) `zensical.toml` sets `site_description` and `site_url`
+  but nothing emits `og:image`, so a link to the project site previews as bare
+  text. `site_url` is a fixed absolute URL, so the tags can be written
+  literally into `overrides/home.html`. Use `og-card-cta.png` --
+  `docs/assets/brand/README.md` explains why that one. Wanted before the first
+  release is announced.
 
 - **The Zensical pin needs periodic review, in two files.** (Stage 18 Milestone
   9.) `zensical==0.0.57` is pinned in `.github/workflows/docs.yml` and in
   `ci.yml`'s `docs` job, deliberately, because a 0.0.x generator can change its
-  output between patch releases. That means the site silently stops receiving
-  fixes until somebody bumps it -- including the two 0.0.57 bugs `home.html`
-  currently works around (the `page.is_homepage` flag being falsy for
-  `docs/index.md`, and the skip link pointing at a markdown-derived anchor that
-  an emptied content block does not render). When bumping, drop the workarounds
-  and re-check the landing page title and skip link.
-
-- **Nothing tests the documentation site's rendering.** (Stage 18 Milestone 9.)
-  `zensical build --strict` catches dead links and unresolved references, which
-  is what CI gates on, but the landing page's layout, contrast and both-palette
-  behaviour were verified by hand with the Playwright MCP tools -- there is no
-  committed assertion, unlike `tests/ui/brand.spec.js` for the app. A spec
-  would need the built site served, which the Playwright config does not do
-  today. Worth it if the landing page grows; overkill for one page.
+  output between patch releases. So the site gets no fixes until somebody bumps
+  it -- including for the two 0.0.57 bugs `overrides/home.html` works around
+  (the `page.is_homepage` flag being falsy for `docs/index.md`, and the skip
+  link pointing at a markdown-derived anchor that an emptied content block does
+  not render). When bumping, drop the workarounds and re-check the landing page
+  title and skip link.
 
 - **S3-compatible object storage.** Swap the `internal/storagefs` `Blob`
   implementation from local filesystem to S3-compatible (MinIO, Backblaze, and
   so on); the interface already isolates callers from the backend.
-- **Prometheus/OpenMetrics metrics.** A `GET /metrics` endpoint via
-  `promhttp.Handler()`, outside `/api` and outside the session-auth middleware.
-  Note: Stage 01's plan described that routing reservation as already in place,
-  but there is no `metrics` reference anywhere in `internal/` or `cmd/` today —
-  the route needs adding along with the instrumentation (HTTP request
-  count/duration/status, DB query duration, upload counts/sizes, session counts).
+
 - **OpenID Connect / external auth providers.** `auth_identities` already
   supports a `provider` column beyond `'local'` for exactly this; no provider
   integration exists yet.
-- **The documentation site has no social preview.** (Surfaced fixing the app's,
-  Aug 2026.) `zensical.toml` sets `site_description` and `site_url` but nothing
-  emits `og:image`, so a link to the project site previews as bare text the way
-  a link to an instance used to. Easier than the app's was: `site_url` is a
-  fixed absolute URL, so the tags can be written literally into
-  `overrides/home.html` with no substitution. Use `og-card-cta.png` --
-  `docs/assets/brand/README.md` explains why that is the right one of the two
-  there and the plain card is the right one in the app.
-
-- **Day/night guesses a latitude of zero.** (Stage 30 follow-up, Sep 2026.)
-  With no remembered fix, `map-theme.js` derives the reader's longitude from
-  the browser's UTC offset and uses latitude 0, so the switch happens near
-  06:00 and 18:00 local in every season -- up to about 90 minutes off a real
-  sunset at European latitudes, and wrong about polar summer entirely. A
-  timezone-to-representative-coordinate table (`Intl` already gives the zone
-  name) would fix it for a few kilobytes; the locate control already fixes it
-  exactly for anyone who uses it once.
-
-- **The trip note records who saved it, and nobody shows it.** (Stage 31
-  Milestone 1, Sep 2026.) `trip_notes.updated_by` and `updated_at` are written
-  on every save and `updated_at` reaches the client, but the Notes tab renders
-  no byline. Written from the first save on purpose -- a column added later
-  records only edits made after it exists -- so the data will be there whenever
-  "last edited by Anna, Tuesday" is wanted. Needs a display-name lookup in the
-  response, which the note payload deliberately does not do yet.
-
-- **The notes tab has no preview while you type.** (Stage 31 Milestone 2, Sep
-  2026.) The location form's notes field has an Edit/Preview toggle
-  (`.notes-field__toggle`, backed by `POST /api/markdown/preview`); the trip
-  notepad deliberately does not, because there Save *is* the switch to the
-  rendered view. That is the right call for a short note and a doubtful one for
-  a long one, where you would rather check a table renders before committing to
-  it. If it is added, it must go through the same preview endpoint -- a second
-  client-side renderer would be a second sanitizer.
-
-- **The docs build does not catch a missing image.** (Stage 31 Milestone 3, Sep
-  2026.) `zensical build --strict` fails on a dead *internal link* -- which is
-  the whole reason CLAUDE.md calls the flag load-bearing -- but an
-  `![alt](../assets/whatever.png)` pointing at a file that does not exist
-  builds clean and exits 0. Reproduced deliberately with a made-up filename,
-  and hit for real: `make docs` passed while the new Notes page referenced
-  `notes.png` before the screenshot run had created it. `check_screenshots.py`
-  covers only the other direction (every committed screenshot is shown by some
-  page). The missing half is cheap -- walk the image references in `docs/` and
-  assert each target exists -- and belongs next to that script in `make ci`.
-
-
-- **Back after deleting a location lands on the deleted location.** (Editor
-  history follow-up, Sep 2026.) `leaveEditor` in `web/js/router.js` keeps the
-  editors out of the back stack, but Delete cannot use it: the entry behind the
-  editor is the view page for the item that has just been deleted, so popping
-  to it renders not-found. It replaces the editor entry with the locations
-  overview instead, which leaves that dead entry one press of Back away --
-  no worse than before (Back then returned to the editor for the same deleted
-  item, which 404s identically), and still wrong. The History API only allows
-  rewriting an entry from inside the popstate that lands on it, so a fix means
-  back() plus a one-shot popstate handler that replaces the URL and suppresses
-  the router's own render for that event -- deliberately not built for a path
-  this rare.
-
-
-- **A renamed location leaves stale link text in notes that point at it.**
-  (Stage 39, Sep 2026.) The `@` picker inserts a plain markdown link --
-  `[Kex Hostel](/trips/T/locations/I)` -- which is what keeps `internal/markdown`
-  and its sanitizer out of the feature entirely. The id in the href keeps
-  working after a rename; the label does not follow. A fix means either
-  resolving titles at render time (a goldmark extension plus a batch lookup
-  threaded through all three render call sites, including the trip-less
-  `/markdown/preview`) or a rename-time rewrite of the notes that mention the
-  item. Neither is obviously worth it until somebody is actually bitten.
-
-- **A link to a deleted location renders as a live link that 404s.** (Stage 39,
-  Sep 2026.) Same root as the entry above: the link is plain markdown, so
-  nothing checks the target still exists. The client already has the trip's
-  item list when it renders a note, so marking dead ones is cheap -- the open
-  question is what a dead reference should *look* like, not how to find it. Now
-  that `markInternalLinks` (`web/js/rendered-markdown.js`) already walks every
-  anchor in a rendered note, that walk is where the check would go.
-
-- **The `@` picker is only in the trip notepad.** (Stage 39, Sep 2026.) The
-  location form's notes field (`web/js/components/location-form.js`) is the
-  other markdown textarea and would want it too, letting one place reference
-  another. `bindMentionPicker` was built to be wired in with a few lines: the
-  wrapper markup, the bind, `picker.destroy()` alongside `tagField.destroy()`,
-  and a `picker.close()` in `setMode("preview")`, which hides the textarea and
-  could otherwise leave the list open. Left out of Stage 39 deliberately, to
-  see whether the notepad version earns its keep first. Itinerary day notes are
-  plain text rather than markdown, so they would need rendering first.
-
-- **`caret-coords.js` assumes the textarea has no vertical scrollbar.**
-  (Stage 39, Sep 2026.) The mirror is sized from `offsetWidth`, which includes
-  a scrollbar the mirror itself does not have, so a field that scrolls would
-  wrap slightly differently from its mirror and the caret measurement would
-  drift. Both fields it is used on size to their content (`field-sizing`, since
-  Sep 2026), so they do not scroll -- but `resize: vertical` means a user can
-  drag one short. The error is at most a line or two on the popup's position,
-  which is why it was left.
-
-- **Typing in a long note is slow, and `field-sizing` did not fix it.** (Sep
-  2026, the `field-sizing` commit.) Reported as ~16 characters taking ~3s to
-  appear in the trip notepad. Measured against the dev server with Playwright:
-  the JS is not the cause -- per-keystroke handler time is a flat 1-5ms at
-  every note length, and the `@`-picker's `readQuery` regex is under 0.05ms
-  even at 40k characters. The cost is that the textarea is as tall as the
-  whole note (a 20k-character note is a 16,926px box), so every keystroke
-  relays out and repaints all of it. Holding the height fixed at that same
-  16,926px cost the same as re-measuring it, so the old `autoGrow` measuring
-  pass was only ~10% of it -- which is why swapping it for `field-sizing:
-  content` changed nothing here: the native property produces a byte-identical
-  box height. A textarea with a fixed height and `overflow: auto` measured
-  *flat* across every length tested, so the lever is a `max-height` that lets
-  long notes scroll internally -- at the cost of the full-height box the
-  mention picker's caret positioning was designed around (`caret-coords.js`
-  explicitly assumes no scrollbar, see the entry above). Worth re-measuring in
-  a real browser first: the numbers above are headless, so they exclude paint,
-  which is likely most of the user-visible 3s.
-
-- **`caret-coords.js` lays out the whole note on every keystroke while the `@`
-  list is open.** (Sep 2026, the `field-sizing` commit.) It mirrors all text
-  before the caret into a hidden div to find the caret, and `bindSuggestInput`
-  calls it from `onOpen` for every batch of results. Measured at 11ms per
-  keystroke on a 20k-character note and 19.5ms on a 40k one. Only paid while
-  the picker list is actually showing, so it is not the typing lag above, but
-  it compounds it exactly when a mention is being typed. Caching the mirror
-  div between calls, or measuring only from the last newline before the caret,
-  would both bound it.

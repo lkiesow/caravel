@@ -179,7 +179,7 @@ const (
 //
 // Expected to move. It is one number and the thing to do with it is watch how
 // often the question actually fires in use, then raise it if the answer is
-// "constantly". plans/todo.md carries that as an open item.
+// "constantly". TestLiveSourceAgreement is the harness for deciding.
 //
 // Note it happens to equal samePlaceMetres in agent.go, and the two are not
 // related: that one asks whether two *candidates* are the same place, this one

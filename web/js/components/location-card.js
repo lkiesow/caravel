@@ -1,14 +1,5 @@
 import { formatDateRange } from "../format.js";
-
-const CATEGORY_COLORS = {
-  site: "#16a34a",
-  stay: "#7c3aed",
-  transport: "#2563eb",
-  area: "#e11d48",
-  food: "#a16207",
-  event: "#a21caf",
-  shop: "#3f6212",
-};
+import { categoryColor } from "../categories.js";
 
 const styles = `
   :host {
@@ -174,7 +165,7 @@ class ItemCard extends HTMLElement {
   render() {
     const title = this.getAttribute("title") || "";
     const category = this.getAttribute("category") || "site";
-    const color = CATEGORY_COLORS[category] || "#71717a";
+    const color = categoryColor(category);
     const imageUrl = this.getAttribute("image-url");
     // JSON rather than a separator, because a tag may contain anything --
     // including whatever separator would have been picked.

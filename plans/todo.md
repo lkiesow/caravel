@@ -176,16 +176,6 @@ without asking.
 
 ## Consistency and cleanup
 
-- **The category palette lives in seven places.** **(soon)** (Surfaced adding
-  the `area` category.) `CATEGORY_COLORS` is copy-pasted into `map-view.js`,
-  `location-card.js`, `itinerary-tab.js` and `location-view-page.js`, and the
-  list of category *names* into `location-form.js`, `locations-tab.js` and
-  `suggest-page.js` (and `map-view.js` again) -- with nothing checking that
-  they agree. One module exporting both the names and the colours would end
-  it; map-view needs the hexes to build its custom properties while the others
-  want a plain lookup, which is not much of a wrinkle. Pairs with the
-  `escapeAttr` entry below: both collapse duplicated helpers into one module.
-
 - **`escapeAttr` promises attribute safety and delivers entity escaping.**
   **(soon)** (Stage 27 Milestone 4a.) **Eight** files define `escapeAttr` --
   menu, location-card, image-field, itinerary-tab, trip-card,

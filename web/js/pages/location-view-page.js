@@ -8,6 +8,7 @@ import { loadTripItemIds, markInternalLinks } from "../rendered-markdown.js";
 import { canEdit, isShared } from "../trip-role.js";
 import { renderFileList } from "../components/file-list.js";
 import { formatDateRange } from "../format.js";
+import { categoryColor } from "../categories.js";
 import { googleMapsUrl, openStreetMapUrl, safeHref } from "../url.js";
 
 // A URL reduced to its host, for a credit that has a source page but no named
@@ -20,16 +21,6 @@ function hostOf(raw) {
   }
 }
 import { renderNotFoundPage } from "./not-found-page.js";
-
-const CATEGORY_COLORS = {
-  site: "#16a34a",
-  stay: "#7c3aed",
-  transport: "#2563eb",
-  area: "#e11d48",
-  food: "#a16207",
-  event: "#a21caf",
-  shop: "#3f6212",
-};
 
 // Read-only detail view for an item: image, category badge, notes,
 // location as address text plus an embedded single-marker map (map-view
@@ -74,7 +65,7 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
     return;
   }
 
-  const color = CATEGORY_COLORS[item.category] || "#71717a";
+  const color = categoryColor(item.category);
   const files = await api.get(`/items/${itemId}/files`);
   const editable = canEdit(trip);
   const hasCoords = item.location?.lat != null && item.location?.lng != null;

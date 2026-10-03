@@ -8,6 +8,7 @@ import { renderLoading } from "../components/loading.js";
 import { renderNotFoundPage } from "./not-found-page.js";
 import { createRunTrace, progressKey, errorKey, renderSources } from "../components/assist-run.js";
 import { safeHref } from "../url.js";
+import { CATEGORIES } from "../categories.js";
 
 // Asking the assistant for several places at once, and reviewing them.
 //
@@ -29,11 +30,6 @@ import { safeHref } from "../url.js";
 //
 // Nothing is written until that button is pressed, which is the same guarantee
 // internal/assist makes: the agent proposes and a person decides.
-
-// The categories a candidate may carry, for rendering its label. The server
-// validates against the same set and sends an empty string rather than a
-// guess, which renders as no category at all.
-const CATEGORIES = ["site", "stay", "transport", "area", "food", "event", "shop"];
 
 export async function renderSuggestPage(container, { tripId }) {
   if (!hasCapability("assist")) {
@@ -206,6 +202,8 @@ export async function renderSuggestPage(container, { tripId }) {
     body.appendChild(title);
 
     const meta = [];
+    // The server validates against the same set and sends an empty string
+    // rather than a guess, which renders as no category at all.
     if (CATEGORIES.includes(candidate.category)) meta.push(t(`item.category.${candidate.category}`));
     if (candidate.tags) meta.push(candidate.tags);
     if (meta.length) {

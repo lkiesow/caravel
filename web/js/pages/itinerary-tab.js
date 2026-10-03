@@ -9,16 +9,7 @@ import { renderLoading } from "../components/loading.js";
 import { canEdit } from "../trip-role.js";
 import { byTitle } from "../sort.js";
 import { todayISO } from "../format.js";
-
-const CATEGORY_COLORS = {
-  site: "#16a34a",
-  stay: "#7c3aed",
-  transport: "#2563eb",
-  area: "#e11d48",
-  food: "#a16207",
-  event: "#a21caf",
-  shop: "#3f6212",
-};
+import { categoryColor } from "../categories.js";
 
 export async function renderItineraryTab(container, trip) {
   // Four things on this tab write: removing a day, editing a day's notes,
@@ -265,7 +256,7 @@ export async function renderItineraryTab(container, trip) {
           ${
             entry.item_image_url
               ? `<img class="itinerary-entry__thumb" src="${escapeAttr(entry.item_image_url)}" alt="" />`
-              : `<span class="dot" style="background:${CATEGORY_COLORS[entry.item_category] || "#71717a"}"></span>`
+              : `<span class="dot" style="background:${categoryColor(entry.item_category)}"></span>`
           }
           <span>${escapeHtml(entry.item_title)}</span>
         </a>

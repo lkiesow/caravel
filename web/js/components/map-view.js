@@ -10,6 +10,7 @@ import {
 } from "../geolocation.js";
 import { compassAllowed, requestCompassPermission, watchCompass } from "../heading.js";
 import { googleMapsUrl } from "../url.js";
+import { CATEGORIES, CATEGORY_COLORS, FALLBACK_CATEGORY_COLOR } from "../categories.js";
 import { eventBus } from "../eventbus.js";
 import { resolveMapTheme } from "../map-theme.js";
 import { assetURL } from "../asset-url.js";
@@ -132,21 +133,6 @@ function readsAName(expr) {
   return expr.some((part) => readsAName(part));
 }
 
-const CATEGORY_COLORS = {
-  site: "#16a34a",
-  stay: "#7c3aed",
-  transport: "#2563eb",
-  area: "#e11d48",
-  food: "#a16207",
-  event: "#a21caf",
-  shop: "#3f6212",
-};
-
-// The categories, in legend order. Derived from the palette above so that the
-// legend, the filter set and the marker colours cannot disagree about what the
-// categories are.
-const CATEGORIES = Object.keys(CATEGORY_COLORS);
-
 // Zoom used when the view can't be derived from spread-out markers - a
 // single marker, or a set of markers that all sit in the same place. Close
 // enough to read street names, and shallow enough that any tile provider has
@@ -171,13 +157,8 @@ const isMac = () => /mac/i.test(navigator.userAgentData?.platform ?? navigator.p
 const WHEEL_PX_PER_ZOOM = 60;
 const WHEEL_ACCUM_CAP = 240;
 
-// Category colour for a marker, for items whose category is unknown or not
-// one of the seven the app defines (the single-marker mode gets it from an
-// attribute, so it can legitimately be absent).
-const FALLBACK_MARKER_COLOR = "#71717a";
-
 // The marker being *placed* in pick mode. Amber deliberately: none of the
-// category colours above, and not --color-accent either, which is the
+// category colours (categories.js), and not --color-accent either, which is the
 // same #2563eb transport already uses. It is also drawn as a ring with a
 // centre dot rather than as a plain disc, so it reads as "the point you are
 // setting" rather than as one more category.
@@ -289,7 +270,7 @@ function markerElement(category) {
 }
 
 export function markerColorVar(category) {
-  return Object.prototype.hasOwnProperty.call(CATEGORY_COLORS, category)
+  return Object.hasOwn(CATEGORY_COLORS, category)
     ? `var(--marker-${category})`
     : "var(--marker-fallback)";
 }
@@ -410,7 +391,7 @@ const styles = `
     --marker-food: ${CATEGORY_COLORS.food};
     --marker-event: ${CATEGORY_COLORS.event};
     --marker-shop: ${CATEGORY_COLORS.shop};
-    --marker-fallback: ${FALLBACK_MARKER_COLOR};
+    --marker-fallback: ${FALLBACK_CATEGORY_COLOR};
     --marker-pick: ${PICK_MARKER_COLOR};
     --marker-pick-fill: rgba(255, 255, 255, 0.85);
     --marker-here: ${HERE_MARKER_COLOR};

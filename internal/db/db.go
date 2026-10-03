@@ -44,7 +44,18 @@ func openSQLite(path string) (*sql.DB, error) {
 	}
 	// foreign_keys must be enabled explicitly per-connection in SQLite, or
 	// ON DELETE CASCADE (used throughout the schema) silently does nothing.
-	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)", path)
+	//
+	// _txlock=immediate makes every BeginTx a BEGIN IMMEDIATE, which takes the
+	// write lock up front. The default, a deferred transaction, takes a WAL
+	// read snapshot at its first read and upgrades at its first write; if
+	// another writer committed in between, that upgrade can never succeed and
+	// SQLite fails at once with SQLITE_BUSY_SNAPSHOT (517) - busy_timeout does
+	// not apply, because there is nothing to wait for. Almost every
+	// transaction here reads before it writes, so concurrent saves to one
+	// trip answered 500. An immediate transaction waits on busy_timeout for
+	// the lock instead. Every WithTx caller writes, so none of them loses
+	// anything by it.
+	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_txlock=immediate", path)
 	conn, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)

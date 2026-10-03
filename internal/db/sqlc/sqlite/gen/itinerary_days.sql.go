@@ -98,6 +98,26 @@ func (q *Queries) InsertItineraryDay(ctx context.Context, arg InsertItineraryDay
 	return i, err
 }
 
+const insertItineraryDayIfAbsent = `-- name: InsertItineraryDayIfAbsent :exec
+INSERT INTO itinerary_days (id, trip_id, date, notes)
+VALUES (?1, ?2, ?3, NULL)
+ON CONFLICT (trip_id, date) DO NOTHING
+`
+
+type InsertItineraryDayIfAbsentParams struct {
+	ID     string `json:"id"`
+	TripID string `json:"trip_id"`
+	Date   string `json:"date"`
+}
+
+// For EnsureItineraryDay. A day that already exists is left alone rather
+// than reported as a unique violation, so two requests creating the same
+// day at once both succeed; the caller reads the row back afterwards.
+func (q *Queries) InsertItineraryDayIfAbsent(ctx context.Context, arg InsertItineraryDayIfAbsentParams) error {
+	_, err := q.db.ExecContext(ctx, insertItineraryDayIfAbsent, arg.ID, arg.TripID, arg.Date)
+	return err
+}
+
 const listItineraryDaysByTrip = `-- name: ListItineraryDaysByTrip :many
 SELECT id, trip_id, date, notes FROM itinerary_days WHERE trip_id = ?1 ORDER BY date
 `

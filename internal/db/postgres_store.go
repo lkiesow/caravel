@@ -911,23 +911,22 @@ func (s *postgresStore) EnsureItineraryDay(ctx context.Context, newID, tripID, d
 		return ItineraryDay{}, err
 	}
 
-	row, err := s.q.GetItineraryDayByTripAndDate(ctx, postgresgen.GetItineraryDayByTripAndDateParams{TripID: tripID, Date: parsedDate})
-	if err == nil {
-		return postgresItineraryDayToDomain(row), nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return ItineraryDay{}, err
-	}
-	inserted, err := s.q.InsertItineraryDay(ctx, postgresgen.InsertItineraryDayParams{
+	// A conflicting insert from a transaction that has not committed yet
+	// waits for it, and the read that follows sees its row: each statement
+	// takes a fresh snapshot under READ COMMITTED.
+	err = s.q.InsertItineraryDayIfAbsent(ctx, postgresgen.InsertItineraryDayIfAbsentParams{
 		ID:     newID,
 		TripID: tripID,
 		Date:   parsedDate,
-		Notes:  nullString(nil),
 	})
 	if err != nil {
 		return ItineraryDay{}, err
 	}
-	return postgresItineraryDayToDomain(inserted), nil
+	row, err := s.q.GetItineraryDayByTripAndDate(ctx, postgresgen.GetItineraryDayByTripAndDateParams{TripID: tripID, Date: parsedDate})
+	if err != nil {
+		return ItineraryDay{}, err
+	}
+	return postgresItineraryDayToDomain(row), nil
 }
 
 func (s *postgresStore) ListItineraryDaysByTrip(ctx context.Context, tripID string) ([]ItineraryDay, error) {

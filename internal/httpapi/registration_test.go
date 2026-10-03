@@ -2,8 +2,10 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 )
 
@@ -209,5 +211,47 @@ func TestOpenSignupFailsClosed(t *testing.T) {
 				t.Errorf("with open_signup=%q: got %d, want 200 — body %s", value, w.Code, w.Body.String())
 			}
 		})
+	}
+}
+
+// Registrations arriving together all succeed, and exactly one of them becomes
+// the administrator.
+//
+// Register counts the users and then inserts, in one transaction. On SQLite
+// that used to be a deferred transaction, so whichever registrations read
+// before another one committed failed with "database is locked" and answered
+// 500 -- the intermittent register.spec.js failure. See the _txlock comment
+// in db.openSQLite.
+func TestConcurrentRegistrationsAllSucceedWithOneAdmin(t *testing.T) {
+	ts := newTestServer(t)
+
+	const requests = 12
+	recorders := make([]*httptest.ResponseRecorder, requests)
+	var wg sync.WaitGroup
+	for i := range requests {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// Each from its own address, so the per-address registration
+			// rate limit stays out of it.
+			recorders[i] = ts.doFrom(http.MethodPost, "/api/auth/register", nil,
+				fmt.Sprintf(`{"username":"newcomer%d","password":"password123"}`, i),
+				fmt.Sprintf("192.0.2.%d:1234", i+1), nil)
+		}()
+	}
+	wg.Wait()
+
+	admins := 0
+	for i, w := range recorders {
+		if w.Code != http.StatusOK {
+			t.Errorf("registration %d: got %d, want 200 — body %s", i, w.Code, w.Body.String())
+			continue
+		}
+		if decode[map[string]any](t, w)["is_admin"] == true {
+			admins++
+		}
+	}
+	if admins != 1 {
+		t.Errorf("admins = %d, want exactly 1", admins)
 	}
 }

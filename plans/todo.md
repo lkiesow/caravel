@@ -27,61 +27,6 @@ without asking.
 
 ## Bugs and rough edges
 
-- **Concurrent writes to one SQLite database return 500.** **(soon)** (Found in
-  Stage 33 Milestone 5, chasing what looked like a flaky spec.) **10 of 12**
-  concurrent `POST /items/batch` requests into one trip fail with HTTP 500.
-  Reproduced against a plain server, with the error surfaced temporarily:
-
-  ```
-  database is locked (517)          <- SQLITE_BUSY_SNAPSHOT
-  database is locked (5)            <- SQLITE_BUSY
-  ```
-
-  517 is the diagnosis. `WithTx` opens a **deferred** transaction
-  (`conn.BeginTx(ctx, nil)`, `internal/db/sqlite_store.go:1252`), and the
-  transaction reads before it writes. In WAL mode a deferred transaction that
-  reads first takes a read snapshot; if any other writer commits before it
-  tries to write, the lock upgrade can *never* succeed, so SQLite fails
-  immediately with SQLITE_BUSY_SNAPSHOT. **The `busy_timeout(5000)` in the DSN
-  does not apply to that case** -- there is nothing to wait for -- which is why
-  the pragma looks like it should have covered this and does not.
-
-  The usual fix is `BEGIN IMMEDIATE` for any transaction that will write, so the
-  write lock is taken up front, where `busy_timeout` *does* apply. In Go that
-  means a SQLite-specific `WithTx` (a connection-level option or a raw `BEGIN
-  IMMEDIATE`), and it needs the retry question answered too: an immediate
-  transaction that times out still needs a caller that tries again or an honest
-  error. Postgres has no equivalent problem; run `make test-postgres` alongside.
-
-  Scope: `internal/httpapi` calls `WithTx` in ten places (`writeItemNested` in
-  `items.go` among them), so this is not the batch endpoint's bug. It is
-  user-visible on any shared trip -- two people adding locations at the same
-  time -- and presents as "could not be saved, try again", which usually works
-  on the retry and so reads as a glitch. Worth its own milestone. Symptoms seen
-  so far, all expected to go with the fix:
-
-  - **Registration.** `register.spec.js` "registering an account logs the
-    newcomer straight in" has answered 500 from `/api/auth/register` in full
-    `make test-ui` runs (Stages 30, 41, 44) and passed alone. `Auth.Register`
-    (`internal/auth/auth.go:75`) counts users inside `WithTx` before it inserts
-    -- the read-before-write pattern above. Not a duplicate username (that is a
-    409), not the login rate limit. The server log was never caught, because
-    `scripts/with_server.sh` deletes its temp directory, log included, on exit;
-    and `--repeat-each` is no way to chase it, since the repeats race each
-    other on the instance-wide open-signup setting and fail with 403.
-  - **The suggest batch add.** `assist-suggest.spec.js`'s first test has failed
-    under parallel load with "The locations could not be added"; the response
-    capture added in Stage 33 Milestone 5 showed SQLITE_BUSY_SNAPSHOT.
-  - **Creating an itinerary day.** `EnsureItineraryDay`
-    (`internal/db/sqlite_store.go:706`, `postgres_store.go:908`) is
-    get-then-insert, so two clients adding the same day at once lose one to the
-    `(trip_id, date)` unique constraint, reported as a 500 -- on *both*
-    dialects, so this one is not only the SQLite locking. Reachable from saving
-    a location since Stage 25. A 409 with "the itinerary changed, please try
-    again" is the honest answer (or `ON CONFLICT DO NOTHING` then select); the
-    handler already has the `errItineraryEntryVanished` -> 409 shape
-    (`internal/httpapi/itinerary.go:308`) to copy.
-
 - **Map pins are hard to hit.** **(soon)** (notes.md, reviewed 2026-10-03.) A
   trip-map pin is a 1rem dot with a 2px ring -- about 20x20 px in all
   (`markerElement` in `web/js/components/map-view.js`) -- below WCAG 2.5.8's
@@ -89,6 +34,15 @@ without asking.
   in a transparent hit area of about 44px so the look does not change. Mind
   pins that sit close together: bigger invisible targets overlap sooner, and
   the one on top should be the one that gets the tap.
+
+- **`checklists.spec.js` "clears the message once a tick succeeds" is flaky.**
+  (Concurrent-writes fix, 2026-10-03.) Failed once in a full `make test-ui` run
+  with "Clicking the checkbox did not change its state", then passed 5 of 5
+  alone. The route answers the PATCH with a 503 in the browser, the app puts the
+  box back at once, and `box.check()` can read the state after the revert. The
+  server is never involved. `box.click()` plus an assertion on the error message
+  avoids the race; "puts the box back and says so" uses `check()` the same way
+  and is exposed to it too.
 
 - **A link to a deleted location renders as a live link that 404s.** **(soon)**
   (Stage 39.) The `@` picker inserts a plain markdown link --

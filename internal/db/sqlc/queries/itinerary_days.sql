@@ -3,6 +3,14 @@ INSERT INTO itinerary_days (id, trip_id, date, notes)
 VALUES (sqlc.arg(id), sqlc.arg(trip_id), sqlc.arg(date), sqlc.arg(notes))
 RETURNING *;
 
+-- name: InsertItineraryDayIfAbsent :exec
+-- For EnsureItineraryDay. A day that already exists is left alone rather
+-- than reported as a unique violation, so two requests creating the same
+-- day at once both succeed; the caller reads the row back afterwards.
+INSERT INTO itinerary_days (id, trip_id, date, notes)
+VALUES (sqlc.arg(id), sqlc.arg(trip_id), sqlc.arg(date), NULL)
+ON CONFLICT (trip_id, date) DO NOTHING;
+
 -- name: UpdateItineraryDayNotes :execrows
 UPDATE itinerary_days
 SET notes = sqlc.arg(notes)

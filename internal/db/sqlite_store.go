@@ -704,23 +704,19 @@ func (s *sqliteStore) UpsertItineraryDayNotes(ctx context.Context, newID, tripID
 }
 
 func (s *sqliteStore) EnsureItineraryDay(ctx context.Context, newID, tripID, date string) (ItineraryDay, error) {
-	row, err := s.q.GetItineraryDayByTripAndDate(ctx, sqlitegen.GetItineraryDayByTripAndDateParams{TripID: tripID, Date: date})
-	if err == nil {
-		return sqliteItineraryDayToDomain(row), nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return ItineraryDay{}, err
-	}
-	inserted, err := s.q.InsertItineraryDay(ctx, sqlitegen.InsertItineraryDayParams{
+	err := s.q.InsertItineraryDayIfAbsent(ctx, sqlitegen.InsertItineraryDayIfAbsentParams{
 		ID:     newID,
 		TripID: tripID,
 		Date:   date,
-		Notes:  nullString(nil),
 	})
 	if err != nil {
 		return ItineraryDay{}, err
 	}
-	return sqliteItineraryDayToDomain(inserted), nil
+	row, err := s.q.GetItineraryDayByTripAndDate(ctx, sqlitegen.GetItineraryDayByTripAndDateParams{TripID: tripID, Date: date})
+	if err != nil {
+		return ItineraryDay{}, err
+	}
+	return sqliteItineraryDayToDomain(row), nil
 }
 
 func (s *sqliteStore) ListItineraryDaysByTrip(ctx context.Context, tripID string) ([]ItineraryDay, error) {

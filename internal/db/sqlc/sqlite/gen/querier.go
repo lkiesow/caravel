@@ -113,6 +113,10 @@ type Querier interface {
 	GetUserByUsername(ctx context.Context, username string) (User, error)
 	InsertItemLocation(ctx context.Context, arg InsertItemLocationParams) (ItemLocation, error)
 	InsertItineraryDay(ctx context.Context, arg InsertItineraryDayParams) (ItineraryDay, error)
+	// For EnsureItineraryDay. A day that already exists is left alone rather
+	// than reported as a unique violation, so two requests creating the same
+	// day at once both succeed; the caller reads the row back afterwards.
+	InsertItineraryDayIfAbsent(ctx context.Context, arg InsertItineraryDayIfAbsentParams) error
 	InsertTripNote(ctx context.Context, arg InsertTripNoteParams) (TripNote, error)
 	ListChecklistItemsByChecklist(ctx context.Context, checklistID string) ([]ChecklistItem, error)
 	// A personal list belongs to whoever created it and never appears in anyone

@@ -351,10 +351,9 @@ type Store interface {
 	// to nothing" and wrong for "make sure this day is there". newID is used
 	// only if a row must be inserted.
 	//
-	// Two callers racing to create the same day is a unique-constraint
-	// violation on (trip_id, date) rather than a silent second row, and the
-	// error is returned as-is: inside a transaction there is nothing useful to
-	// do with it locally, so the caller rolls back and the client retries.
+	// Two callers racing to create the same day both get the one row: the
+	// insert skips a day that already exists instead of failing on the
+	// (trip_id, date) unique constraint, and the row is read back afterwards.
 	EnsureItineraryDay(ctx context.Context, newID, tripID, date string) (ItineraryDay, error)
 	ListItineraryDaysByTrip(ctx context.Context, tripID string) ([]ItineraryDay, error)
 	GetItineraryDayByID(ctx context.Context, id string) (ItineraryDay, error)

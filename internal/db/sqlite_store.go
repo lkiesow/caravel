@@ -174,20 +174,20 @@ func (s *sqliteStore) InstanceCounts(ctx context.Context) (InstanceCounts, error
 	if err != nil {
 		return InstanceCounts{}, err
 	}
-	cats, err := s.q.CountItemsByCategory(ctx)
+	cats, err := s.q.CountLocationsByCategory(ctx)
 	if err != nil {
 		return InstanceCounts{}, err
 	}
 	c := InstanceCounts{
-		Users:           row.Users,
-		Trips:           row.Trips,
-		Files:           row.Files,
-		FileBytes:       row.FileBytes,
-		Expenses:        row.Expenses,
-		ItemsByCategory: make(map[string]int64, len(cats)),
+		Users:               row.Users,
+		Trips:               row.Trips,
+		Files:               row.Files,
+		FileBytes:           row.FileBytes,
+		Expenses:            row.Expenses,
+		LocationsByCategory: make(map[string]int64, len(cats)),
 	}
 	for _, r := range cats {
-		c.ItemsByCategory[r.Category] = r.ItemCount
+		c.LocationsByCategory[r.Category] = r.LocationCount
 	}
 	return c, nil
 }

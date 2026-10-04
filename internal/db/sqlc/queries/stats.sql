@@ -9,8 +9,8 @@ SELECT
     CAST((SELECT COALESCE(SUM(size_bytes), 0) FROM files) AS BIGINT) AS file_bytes,
     CAST((SELECT COUNT(*) FROM expenses) AS BIGINT) AS expenses;
 
--- name: CountItemsByCategory :many
-SELECT category, CAST(COUNT(*) AS BIGINT) AS item_count
+-- name: CountLocationsByCategory :many
+SELECT category, CAST(COUNT(*) AS BIGINT) AS location_count
 FROM items
 GROUP BY category
 ORDER BY category;

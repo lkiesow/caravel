@@ -27,7 +27,7 @@ type Querier interface {
 	// type differs per dialect, so the assertion would be right in one and panic
 	// in the other. Same trick as the role column in ListTripsForUser.
 	CountExpensesByCurrency(ctx context.Context, tripID string) ([]CountExpensesByCurrencyRow, error)
-	CountItemsByCategory(ctx context.Context) ([]CountItemsByCategoryRow, error)
+	CountLocationsByCategory(ctx context.Context) ([]CountLocationsByCategoryRow, error)
 	CountTripMembers(ctx context.Context, tripID string) (int64, error)
 	// Used for exactly one decision, in two places: whether this is the first
 	// account on the instance, which both makes it an admin and is the one case

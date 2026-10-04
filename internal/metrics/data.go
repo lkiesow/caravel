@@ -13,7 +13,7 @@ import (
 var (
 	usersDesc     = prometheus.NewDesc("caravel_users", "User accounts.", nil, nil)
 	tripsDesc     = prometheus.NewDesc("caravel_trips", "Trips.", nil, nil)
-	itemsDesc     = prometheus.NewDesc("caravel_items", "Trip items (locations, stays, transport, ...), by category.", []string{"category"}, nil)
+	locationsDesc = prometheus.NewDesc("caravel_locations", "Locations on trips (sites, stays, transport, ...), by category.", []string{"category"}, nil)
 	filesDesc     = prometheus.NewDesc("caravel_files", "Uploaded documents.", nil, nil)
 	fileBytesDesc = prometheus.NewDesc("caravel_files_size_bytes", "Total size of the uploaded documents.", nil, nil)
 	expensesDesc  = prometheus.NewDesc("caravel_expenses", "Expenses.", nil, nil)
@@ -26,7 +26,7 @@ type dataCollector struct {
 }
 
 func (c dataCollector) Describe(ch chan<- *prometheus.Desc) {
-	for _, d := range []*prometheus.Desc{usersDesc, tripsDesc, itemsDesc, filesDesc, fileBytesDesc, expensesDesc} {
+	for _, d := range []*prometheus.Desc{usersDesc, tripsDesc, locationsDesc, filesDesc, fileBytesDesc, expensesDesc} {
 		ch <- d
 	}
 }
@@ -51,7 +51,7 @@ func (c dataCollector) Collect(ch chan<- prometheus.Metric) {
 	gauge(filesDesc, counts.Files)
 	gauge(fileBytesDesc, counts.FileBytes)
 	gauge(expensesDesc, counts.Expenses)
-	for category, n := range counts.ItemsByCategory {
-		gauge(itemsDesc, n, category)
+	for category, n := range counts.LocationsByCategory {
+		gauge(locationsDesc, n, category)
 	}
 }

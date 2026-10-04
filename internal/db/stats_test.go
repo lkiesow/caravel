@@ -25,7 +25,7 @@ func TestInstanceCounts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("counts on empty db: %v", err)
 	}
-	if got.Users != 0 || got.Trips != 0 || got.Files != 0 || got.FileBytes != 0 || got.Expenses != 0 || len(got.ItemsByCategory) != 0 {
+	if got.Users != 0 || got.Trips != 0 || got.Files != 0 || got.FileBytes != 0 || got.Expenses != 0 || len(got.LocationsByCategory) != 0 {
 		t.Fatalf("empty db counts = %+v, want all zero", got)
 	}
 
@@ -64,7 +64,7 @@ func TestInstanceCounts(t *testing.T) {
 		t.Errorf("counts = %+v, want 2 users, 3 trips, 2 files of 3500 bytes, 1 expense", got)
 	}
 	want := map[string]int64{"stay": 2, "site": 1, "food": 1}
-	if !maps.Equal(got.ItemsByCategory, want) {
-		t.Errorf("ItemsByCategory = %v, want %v", got.ItemsByCategory, want)
+	if !maps.Equal(got.LocationsByCategory, want) {
+		t.Errorf("LocationsByCategory = %v, want %v", got.LocationsByCategory, want)
 	}
 }

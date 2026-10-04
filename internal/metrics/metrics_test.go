@@ -181,7 +181,7 @@ func grepLine(s, prefix string) string {
 func TestDataGauges(t *testing.T) {
 	counts := db.InstanceCounts{
 		Users: 2, Trips: 5, Files: 3, FileBytes: 123456, Expenses: 7,
-		ItemsByCategory: map[string]int64{"stay": 4, "site": 9},
+		LocationsByCategory: map[string]int64{"stay": 4, "site": 9},
 	}
 	var err error
 	m := newMetrics(t, fakeSource{counts: func() (db.InstanceCounts, error) { return counts, err }})
@@ -190,8 +190,8 @@ func TestDataGauges(t *testing.T) {
 	for _, want := range []string{
 		"caravel_users 2",
 		"caravel_trips 5",
-		`caravel_items{category="site"} 9`,
-		`caravel_items{category="stay"} 4`,
+		`caravel_locations{category="site"} 9`,
+		`caravel_locations{category="stay"} 4`,
 		"caravel_files 3",
 		"caravel_files_size_bytes 123456",
 		"caravel_expenses 7",

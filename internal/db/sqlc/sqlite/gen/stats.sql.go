@@ -9,28 +9,28 @@ import (
 	"context"
 )
 
-const countItemsByCategory = `-- name: CountItemsByCategory :many
-SELECT category, CAST(COUNT(*) AS BIGINT) AS item_count
+const countLocationsByCategory = `-- name: CountLocationsByCategory :many
+SELECT category, CAST(COUNT(*) AS BIGINT) AS location_count
 FROM items
 GROUP BY category
 ORDER BY category
 `
 
-type CountItemsByCategoryRow struct {
-	Category  string `json:"category"`
-	ItemCount int64  `json:"item_count"`
+type CountLocationsByCategoryRow struct {
+	Category      string `json:"category"`
+	LocationCount int64  `json:"location_count"`
 }
 
-func (q *Queries) CountItemsByCategory(ctx context.Context) ([]CountItemsByCategoryRow, error) {
-	rows, err := q.db.QueryContext(ctx, countItemsByCategory)
+func (q *Queries) CountLocationsByCategory(ctx context.Context) ([]CountLocationsByCategoryRow, error) {
+	rows, err := q.db.QueryContext(ctx, countLocationsByCategory)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []CountItemsByCategoryRow
+	var items []CountLocationsByCategoryRow
 	for rows.Next() {
-		var i CountItemsByCategoryRow
-		if err := rows.Scan(&i.Category, &i.ItemCount); err != nil {
+		var i CountLocationsByCategoryRow
+		if err := rows.Scan(&i.Category, &i.LocationCount); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

@@ -518,7 +518,7 @@ type InstanceCounts struct {
 	Files     int64
 	FileBytes int64 // total size of every uploaded file
 	Expenses  int64
-	// ItemsByCategory has one entry per category in use; a category with no
-	// items is absent rather than zero.
-	ItemsByCategory map[string]int64
+	// LocationsByCategory has one entry per category in use; a category with no
+	// locations is absent rather than zero.
+	LocationsByCategory map[string]int64
 }

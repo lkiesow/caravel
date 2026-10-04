@@ -27,15 +27,6 @@ without asking.
 
 ## Bugs and rough edges
 
-- **`checklists.spec.js` "clears the message once a tick succeeds" is flaky.**
-  (Concurrent-writes fix, 2026-10-03.) Failed once in a full `make test-ui` run
-  with "Clicking the checkbox did not change its state", then passed 5 of 5
-  alone. The route answers the PATCH with a 503 in the browser, the app puts the
-  box back at once, and `box.check()` can read the state after the revert. The
-  server is never involved. `box.click()` plus an assertion on the error message
-  avoids the race; "puts the box back and says so" uses `check()` the same way
-  and is exposed to it too.
-
 - **A deep link to a missing record still answers 200.** (Unknown-path 404 fix,
   2026-10-03.) The SPA fallback now sends the shell with a 404 for any path no
   client route matches (`isClientRoute`, `internal/httpapi/clientroutes.go`),

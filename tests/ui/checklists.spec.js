@@ -273,7 +273,9 @@ test.describe("a checklist tick that fails", () => {
     const text = page.locator(".checklist-item__text--done");
     await expect(box).not.toBeChecked();
 
-    await box.check();
+    // click(), not check(): check() reads the box back after its click and
+    // throws if it is unticked, which races the app putting it back.
+    await box.click();
 
     // The box goes back to what the server holds, rather than staying where the
     // click put it.
@@ -300,7 +302,8 @@ test.describe("a checklist tick that fails", () => {
 
     await page.goto(`/trips/${tripId}/checklists`);
     const box = page.locator(".checklist-item input[type=checkbox]");
-    await box.check();
+    // click(), not check(), for the failing tick: see "puts the box back".
+    await box.click();
     await expect(page.locator(".checklist-item__error")).toBeVisible();
 
     // A message that outlived the problem would be its own kind of lie.

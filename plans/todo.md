@@ -208,15 +208,6 @@ without asking.
 
 ## Deployment and operations
 
-- **Two of the three UI font files are not preloaded.** **(soon)** (Stage 41
-  Milestone 2.) `web/index.html` preloads `montserrat-700`, but not
-  `inter-400` or `inter-600`, the body faces -- they are requested only once
-  `base.css` has been fetched and parsed, so on a cold load body text sits in
-  the fallback about one round trip longer than it needs to. Two
-  `<link rel="preload" as="font" crossorigin>` tags; since Stage 45 Milestone 2
-  the shell rewrites any quoted path that has a versioned URL, so they can name
-  the plain `/fonts/…` paths.
-
 - **Prometheus/OpenMetrics metrics.** **(soon)** A `GET /metrics` endpoint via
   `promhttp.Handler()`, outside `/api` and outside the session-auth middleware.
   Stage 01's plan described that routing reservation as already in place, but

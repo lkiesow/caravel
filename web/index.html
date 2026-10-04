@@ -47,10 +47,18 @@
   <meta name="twitter:title" content="Caravel" />
   <meta name="twitter:description" content="Self-hosted trip planning that keeps the map, the plan and the group in sync." />
   <meta name="twitter:image" content="__CARAVEL_ORIGIN__/brand/og-card.png" />
-  <!-- Preloaded rather than left to the CSS: the wordmark is in the first
-       paint, and discovering the face only after base.css parses is a visible
-       swap on every load. -->
+  <!-- Preloaded rather than left to the CSS: the wordmark and the body text
+       are in the first paint, and discovering their faces only after base.css
+       parses is a visible swap on every load. Only the faces the signed-in
+       screens all set text in: Inter 500 and Montserrat 500 are a few labels.
+       The login screen does not use Inter 600 and warns about it; that is
+       accepted, since the service worker precaches every face on that visit
+       anyway. The crossorigin is not optional: fonts are fetched in CORS
+       mode, and a preload without it does not match and downloads the face
+       twice. -->
   <link rel="preload" href="/fonts/montserrat-700.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/fonts/inter-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/fonts/inter-600.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="/css/base.css" />
   <!-- Applied here, before the first paint, so a dark-themed app never flashes
        white while /js/app.js loads. web/js/theme.js owns the same rule and is

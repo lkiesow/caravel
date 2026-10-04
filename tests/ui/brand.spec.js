@@ -298,3 +298,50 @@ test.describe("the app header", () => {
     expect(await page.evaluate(() => window.__stillTheSameDocument)).toBe(true);
   });
 });
+
+// The font preloads in the shell (index.html). They are for the screens a
+// returning reader loads cold, which are the signed-in ones -- the login screen
+// sets nothing in Inter 600, so it is not the place to check them.
+test.describe("the font preloads", () => {
+  test("name the first-paint faces, each fetched once and used", async ({ page }) => {
+    // Two ways a preload goes wrong without anything looking broken: the
+    // preload and the stylesheet name different URLs (or CORS modes), so each
+    // face downloads twice; or it names a face the screen never sets text in,
+    // which is a wasted download.
+    const PRELOADED = [
+      ["montserrat-700", "Montserrat", "700"],
+      ["inter-400", "Inter", "400"],
+      ["inter-600", "Inter", "600"],
+    ];
+    const face = (url) => url.match(/\/fonts\/([a-z]+-\d+)\.woff2$/)?.[1];
+    const fetched = {};
+    page.on("request", (request) => {
+      const name = face(request.url());
+      if (name) fetched[name] = (fetched[name] || 0) + 1;
+    });
+
+    await blockExternalRequests(page);
+    await page.goto("/trips");
+    await page.locator(".app-header").waitFor();
+
+    // Versioned (/v/<hash>/fonts/...) in the bundle, plain in dev.
+    const hrefs = await page
+      .locator('link[rel="preload"][as="font"]')
+      .evaluateAll((links) => links.map((l) => l.getAttribute("href")));
+    expect(hrefs.map(face).sort()).toEqual(PRELOADED.map(([name]) => name).sort());
+
+    // No document.fonts.load() here: that fetches the face itself and would
+    // pass whether or not the page needed it. Only the faces the page's own
+    // text asked for are loaded once the font set settles.
+    const loaded = await page.evaluate(async () => {
+      await document.fonts.ready;
+      return [...document.fonts]
+        .filter((f) => f.status === "loaded")
+        .map((f) => `${f.family.replace(/"/g, "")} ${f.weight}`);
+    });
+    for (const [name, family, weight] of PRELOADED) {
+      expect(fetched[name], `${name} should be fetched exactly once`).toBe(1);
+      expect(loaded, `the trip list should set text in ${name}`).toContain(`${family} ${weight}`);
+    }
+  });
+});

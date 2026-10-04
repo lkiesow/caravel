@@ -1,12 +1,30 @@
-# Dependabot version updates. Only the documentation site's Python pin for now
-# (requirements.txt, next to this file): it is the dependency that otherwise
-# goes stale silently, since nothing else bumps it. Monthly, because the review
-# is by hand -- see the checklist in requirements.txt.
+# Dependabot version updates, for the two dependencies that otherwise go stale
+# silently because nothing else bumps them. Both monthly: each bump is
+# reviewed by hand.
 version: 2
 updates:
+  # The documentation site's Python pin (requirements.txt, next to this file).
+  # Its header has the checklist for reviewing a bump.
   - package-ecosystem: pip
     directory: /.github
     schedule:
       interval: monthly
     commit-message:
       prefix: docs
+
+  # The actions used by .github/workflows/. They are referenced by major tag
+  # (actions/checkout@v7), so this only proposes new major versions -- the ones
+  # that can change inputs or defaults, so read the release notes. Grouped
+  # into one pull request. Its CI run exercises only ci.yml's actions: the
+  # Pages ones in docs.yml run on a push to main, the release.yml ones on a
+  # tag, so check those against their release notes before merging.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns:
+          - "*"

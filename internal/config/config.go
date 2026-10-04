@@ -183,7 +183,7 @@ const TrustedProxiesNone = "none"
 // SearchProviders are the valid values for CARAVEL_SEARCH_PROVIDER. "stub" is
 // an in-process fake for tests; the rest are real. Empty is also valid and
 // means no web search.
-var SearchProviders = []string{"stub", "ollama", "ddgs", "serper"}
+var SearchProviders = []string{"stub", "ollama", "ddgs", "serper", "brave"}
 
 // LLMStub is the CARAVEL_LLM_URL sentinel selecting the in-process fake
 // provider rather than a real HTTP endpoint.

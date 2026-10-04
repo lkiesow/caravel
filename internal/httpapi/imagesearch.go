@@ -28,8 +28,8 @@ import (
 // arrive with an author and a licence, which is the only kind of provenance
 // worth storing. A web image search when the configured backend can do one:
 // far better coverage of hotels and restaurants, and no licence information
-// whatsoever -- neither Serper nor ddgs knows on what terms any of it may be
-// used.
+// whatsoever -- none of Serper, Brave and ddgs knows on what terms any of it
+// may be used.
 //
 // They are returned as separate groups rather than one merged list precisely
 // because of that difference. A merged list would have to either invent a

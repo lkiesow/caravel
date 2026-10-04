@@ -25,8 +25,8 @@ unencumbered one, and the attribution cannot be recovered later if it is not kep
 at the moment the picture is saved.
 
 **A web image search** runs as well when the [web search
-provider](web-search.md) can do one — `serper` or `ddgs`; Ollama Cloud has no
-images endpoint and simply contributes nothing. Its coverage is far better for hotels and
+provider](web-search.md) can do one — `serper`, `brave` or `ddgs`; Ollama Cloud
+has no images endpoint and simply contributes nothing. Its coverage is far better for hotels and
 restaurants, which Wikipedia has never heard of.
 
 What it cannot tell you is the licence: a search engine reports where a picture

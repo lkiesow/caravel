@@ -192,9 +192,19 @@ func TestAllBackendsSkipResultsWithNoURL(t *testing.T) {
 			t.Errorf("got %+v, err %v", got, err)
 		}
 	})
+	t.Run("brave", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprint(w, `{"web":{"results":[{"title":"No link","url":"","description":"x"},{"title":"Fine","url":"https://example.com/","description":"y"}]}}`)
+		}))
+		defer srv.Close()
+		got, err := newBraveSearcher("k", srv.URL).Search(context.Background(), "q")
+		if err != nil || len(got) != 1 || got[0].Title != "Fine" {
+			t.Errorf("got %+v, err %v", got, err)
+		}
+	})
 }
 
-// The point of the interface: four implementations, no changes anywhere else.
+// The point of the interface: five implementations, no changes anywhere else.
 func TestNewKnowsEveryProvider(t *testing.T) {
 	cases := []struct {
 		provider, key, url, wantName string
@@ -203,9 +213,11 @@ func TestNewKnowsEveryProvider(t *testing.T) {
 		{provider: "stub", wantName: "stub"},
 		{provider: "ollama", key: "k", wantName: "ollama"},
 		{provider: "serper", key: "k", wantName: "serper"},
+		{provider: "brave", key: "k", wantName: "brave"},
 		{provider: "ddgs", url: "http://localhost:8000", wantName: "ddgs"},
 		{provider: "ollama", wantErr: true},                   // needs a key
 		{provider: "serper", wantErr: true},                   // needs a key
+		{provider: "brave", wantErr: true},                    // needs a key
 		{provider: "ddgs", wantErr: true},                     // needs an address
 		{provider: "searxng", url: "http://x", wantErr: true}, // deferred, not supported
 	}
@@ -368,5 +380,124 @@ func TestOnlySerperOffersPlaces(t *testing.T) {
 	}
 	if _, ok := any(newOllamaSearcher("k", "")).(PlaceLocator); ok {
 		t.Error("Ollama Cloud has no places endpoint and should not claim one")
+	}
+}
+
+// Brave's web shape, cut down from a live response (Stage 46). The HTML is
+// verbatim: <strong> around the matched words and an escaped ampersand, in the
+// title as well as the description.
+const braveResponse = `{
+  "type": "search",
+  "query": {"original": "Kex Hostel Reykjavik"},
+  "web": {
+    "type": "search",
+    "results": [
+      {"title": "KEX Hostel &amp; Hotel", "url": "https://www.kexrvk.is/",
+       "description": "Welcome to KEX Hostel &amp; Hotel in downtown Reykjavík. Housed in an <strong>old biscuit factory</strong>.",
+       "type": "search_result", "language": "en"},
+      {"title": "KEX Hostel and Hotel, Reykjavik - 2026 Prices & Reviews", "url": "https://www.hostelworld.com/hostels/p/48573/",
+       "description": "KEX Hostel and Hotel in Reykjavik <strong>offers a fantastic location right by the water</strong>",
+       "type": "search_result"}
+    ]
+  }
+}`
+
+func TestBraveSearcherMapsResults(t *testing.T) {
+	var gotKey, gotMethod string
+	var gotQuery map[string][]string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotKey = r.Header.Get("X-Subscription-Token")
+		gotMethod = r.Method
+		gotQuery = r.URL.Query()
+		fmt.Fprint(w, braveResponse)
+	}))
+	defer srv.Close()
+
+	got, err := newBraveSearcher("test-key", srv.URL).Search(context.Background(), "kex hostel")
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d results, want 2", len(got))
+	}
+	if got[0].Title != "KEX Hostel & Hotel" || got[0].URL != "https://www.kexrvk.is/" {
+		t.Errorf("result[0] = %+v", got[0])
+	}
+	// The reason stripHTML exists: tags would reach the model as markup to
+	// read past, and entities as noise.
+	if got[0].Snippet != "Welcome to KEX Hostel & Hotel in downtown Reykjavík. Housed in an old biscuit factory." {
+		t.Errorf("snippet = %q", got[0].Snippet)
+	}
+	if strings.Contains(got[1].Snippet, "<") {
+		t.Errorf("snippet still has markup: %q", got[1].Snippet)
+	}
+	// A GET with its own header name: a bearer token or Serper's X-API-KEY
+	// would be a 401 that looks like a bad key.
+	if gotMethod != http.MethodGet {
+		t.Errorf("method = %s, want GET", gotMethod)
+	}
+	if gotKey != "test-key" {
+		t.Errorf("X-Subscription-Token = %q", gotKey)
+	}
+	if q := gotQuery["q"]; len(q) != 1 || q[0] != "kex hostel" {
+		t.Errorf("q = %v", q)
+	}
+	if c := gotQuery["count"]; len(c) != 1 || c[0] != fmt.Sprint(MaxResults) {
+		t.Errorf("count = %v, want %d", c, MaxResults)
+	}
+}
+
+func TestStripHTML(t *testing.T) {
+	for in, want := range map[string]string{
+		"plain":                           "plain",
+		"an <strong>old</strong> factory": "an old factory",
+		"KEX Hostel &amp; Hotel":          "KEX Hostel & Hotel",
+		"&lt;b&gt; is how you write bold": "<b> is how you write bold",
+		"Reykjav&#237;k <em>harbour</em>": "Reykjavík harbour",
+		"":                                "",
+	} {
+		if got := stripHTML(in); got != want {
+			t.Errorf("stripHTML(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// Brave meters per second as well as per month, so a 429 is an answer an
+// operator will actually see, and it is neither a bad key nor an empty wallet.
+func TestBraveSearcherNamesEachFailure(t *testing.T) {
+	cases := map[int]string{
+		http.StatusUnauthorized:        "API key",
+		http.StatusForbidden:           "API key",
+		http.StatusPaymentRequired:     "out of credit",
+		http.StatusTooManyRequests:     "rate limiting",
+		http.StatusInternalServerError: "500",
+	}
+	for status, want := range cases {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(status)
+		}))
+		_, err := newBraveSearcher("k", srv.URL).Search(context.Background(), "q")
+		srv.Close()
+		if err == nil {
+			t.Errorf("status %d: Search succeeded", status)
+			continue
+		}
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("status %d: error = %v, want it to mention %q", status, err, want)
+		}
+	}
+}
+
+func TestBraveDerivesItsSiblingEndpoints(t *testing.T) {
+	s := newBraveSearcher("k", "")
+	if s.url != braveSearchURL {
+		t.Errorf("url = %q, want the hosted endpoint", s.url)
+	}
+	if s.imageURL != "https://api.search.brave.com/res/v1/images/search" {
+		t.Errorf("imageURL = %q", s.imageURL)
+	}
+	proxied := newBraveSearcher("k", "http://proxy.example/brave/res/v1/web/search")
+	if proxied.imageURL != "http://proxy.example/brave/res/v1/images/search" {
+		t.Errorf("proxied imageURL = %q", proxied.imageURL)
 	}
 }

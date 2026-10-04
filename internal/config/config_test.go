@@ -71,6 +71,17 @@ func TestLoadAssistValidation(t *testing.T) {
 			},
 		},
 		{
+			name: "brave is a known search provider",
+			env: map[string]string{
+				"CARAVEL_SEARCH_PROVIDER": "brave", "CARAVEL_SEARCH_KEY": "k",
+			},
+			check: func(t *testing.T, c Config) {
+				if c.SearchProvider != "brave" {
+					t.Errorf("SearchProvider = %q", c.SearchProvider)
+				}
+			},
+		},
+		{
 			name: "an unknown search provider names the valid ones",
 			env: map[string]string{
 				"CARAVEL_LLM_URL": "stub", "CARAVEL_LLM_MODEL": "stub",

@@ -1,12 +1,12 @@
 // Package websearch is web search, behind an interface.
 //
-// Four backends are supported and they disagree about almost everything --
+// Five backends are supported and they disagree about almost everything --
 // auth, request shape, response shape, whether they are hosted or something you
 // run yourself, and even what the three fields are called (`url`/`content`,
-// `href`/`body`, `link`/`snippet`). What they agree on is what a result *is*,
-// so that is the interface: a title, a URL and a snippet, which is the lowest
-// common denominator every one of them returns and the most the model needs to
-// decide what to read.
+// `href`/`body`, `link`/`snippet`, `url`/`description`). What they agree on is
+// what a result *is*, so that is the interface: a title, a URL and a snippet,
+// which is the lowest common denominator every one of them returns and the
+// most the model needs to decide what to read.
 //
 // The normalisation matters beyond tidiness. No caller ever sees
 // provider-shaped JSON, so swapping providers is a change to one file and
@@ -50,8 +50,8 @@ type Searcher interface {
 // ImageResult is one image hit, normalised the same way Result is.
 //
 // Note what is *not* here: a licence. A web image search finds pictures on
-// pages, and neither Serper nor ddgs knows on what terms any of them may be
-// used -- so an honest result carries where it was found and nothing more.
+// pages, and none of Serper, Brave and ddgs knows on what terms any of them
+// may be used -- so an honest result carries where it was found and nothing more.
 // The Wikipedia half of the image picker does carry a licence, which is
 // exactly why the two are kept apart in the response rather than merged into
 // one list.
@@ -73,8 +73,8 @@ type ImageResult struct {
 // ImageSearcher is an *optional* capability a Searcher may also implement,
 // discovered by type assertion rather than by a second provider registry.
 //
-// Optional because the backends genuinely differ: Serper and ddgs both have
-// an images endpoint, Ollama Cloud has web_search and nothing else, and the
+// Optional because the backends genuinely differ: Serper, Brave and ddgs all
+// have an images endpoint, Ollama Cloud has web_search and nothing else, and the
 // stub has no images at all. A backend that cannot do this simply does not
 // implement it and the picker falls back to Wikipedia, which needs no
 // configuration and is always there.
@@ -162,6 +162,11 @@ func New(provider, key, searchURL string) (Searcher, error) {
 			return nil, fmt.Errorf("websearch: search provider %q needs CARAVEL_SEARCH_KEY", provider)
 		}
 		return newSerperSearcher(key, searchURL), nil
+	case "brave":
+		if key == "" {
+			return nil, fmt.Errorf("websearch: search provider %q needs CARAVEL_SEARCH_KEY", provider)
+		}
+		return newBraveSearcher(key, searchURL), nil
 	case "ddgs":
 		// Self-hosted, so there is no address to fall back on. config.Load
 		// already refuses this combination; the check is here too because this

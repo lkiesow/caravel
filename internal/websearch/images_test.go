@@ -56,6 +56,52 @@ func TestSerperAsksItsImagesEndpoint(t *testing.T) {
 	}
 }
 
+// Brave keeps the picture under properties and the page at the top level, and
+// its thumbnail is its own proxy. The response is cut down from a live one
+// (Stage 46), including the HTML entity in a title.
+func TestBraveAsksItsImagesEndpoint(t *testing.T) {
+	var path, key string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		key = r.Header.Get("X-Subscription-Token")
+		_, _ = w.Write([]byte(`{"type":"images","results":[
+			{"type":"image_result","title":"KEX Hostel &amp; Hotel","url":"https://hostelgeeks.com/kex-hostel-reykjavik-iceland-review/",
+			 "source":"hostelgeeks.com",
+			 "thumbnail":{"src":"https://imgs.search.brave.com/QaSq/rs:fit:500:0:1:0/g:ce/aHR0","width":500,"height":313},
+			 "properties":{"url":"https://hostelgeeks.com/wp-content/uploads/2019/08/KEX.jpg","placeholder":"https://imgs.search.brave.com/_dn","width":900,"height":563},
+			 "confidence":"high"},
+			{"type":"image_result","title":"no image url","url":"https://site.example/other","properties":{}}
+		]}`))
+	}))
+	defer srv.Close()
+
+	got, err := newBraveSearcher("k", srv.URL+"/res/v1/web/search").SearchImages(context.Background(), "Kex Hostel")
+	if err != nil {
+		t.Fatalf("SearchImages: %v", err)
+	}
+	if path != "/res/v1/images/search" {
+		t.Errorf("asked %q, want the images endpoint", path)
+	}
+	if key != "k" {
+		t.Errorf("X-Subscription-Token = %q", key)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d results, want the one with an image URL", len(got))
+	}
+	r := got[0]
+	if r.URL != "https://hostelgeeks.com/wp-content/uploads/2019/08/KEX.jpg" ||
+		r.SourceURL != "https://hostelgeeks.com/kex-hostel-reykjavik-iceland-review/" {
+		t.Errorf("URL/SourceURL = %q / %q", r.URL, r.SourceURL)
+	}
+	// The size of the picture, not of the 500px thumbnail.
+	if r.ThumbURL != "https://imgs.search.brave.com/QaSq/rs:fit:500:0:1:0/g:ce/aHR0" || r.Width != 900 || r.Height != 563 {
+		t.Errorf("thumbnail or size wrong: %+v", r)
+	}
+	if r.Title != "KEX Hostel & Hotel" {
+		t.Errorf("title = %q", r.Title)
+	}
+}
+
 // The one thing no documentation would have told us, and the reason the plan
 // insisted on reading a live ddgs rather than a document: it sends the
 // dimensions as *strings*. Decoding them into ints fails the whole response,
@@ -112,6 +158,7 @@ func TestOnlySomeBackendsCanSearchForImages(t *testing.T) {
 	}{
 		{"serper", newSerperSearcher("k", ""), true},
 		{"ddgs", newDDGSSearcher("http://localhost:8000"), true},
+		{"brave", newBraveSearcher("k", ""), true},
 		{"stub", &Stub{}, true},
 		{"ollama", newOllamaSearcher("k", ""), false},
 	} {

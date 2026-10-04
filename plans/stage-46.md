@@ -77,6 +77,29 @@ file with no spending cap by default, the advice to set a limit), and Brave
 added to the image-search sentence in `docs/configuration/images.md`. Places
 stay "Serper only" until Milestone 2.
 
+**Done.** `internal/websearch/brave.go` landed as planned, with one shared
+`get` helper for the HTTP request, the auth header and the status mapping,
+where Serper repeats them per endpoint. `placesURL` is left for Milestone 2,
+which first needs it. The `New` case, `config.SearchProviders` entry and
+backend comments are updated as listed. One deviation: the docs do not tell
+operators to set a spending limit in the Brave dashboard, because I could not
+confirm the dashboard has one; they say only that requests past the monthly
+credit are billed to the card. Tests: recorded web and image shapes
+(mapping, HTML stripping in titles and snippets, a GET with
+`X-Subscription-Token` and `count`), `TestStripHTML`, 401/403/402/429/500 each named, sibling
+endpoint derivation including a proxy override, rows with no URL skipped,
+`New` with and without a key, Brave as an `ImageSearcher`, and `brave`
+accepted by `config.Load`. `make ci` and `make docs` are green. Live, on a
+separate instance (:8097, throwaway seeded DB) with the real key: the startup
+log showed `search=brave` and `image_search_web=brave`. The image picker for
+"Kex Hostel Reykjavik" showed a "From the web (brave)" group of 12, and all 12
+`imgs.search.brave.com` thumbnails had `naturalWidth` 500. Picking one stored
+the 900 px original as media, with the hostelgeeks page as `source_url`. An
+assistant enrich run made 6 `web_search` calls through Brave, all
+`ok=true` at 0.6–0.8 s each, and finished in 21 s with 4 fields, 2 links and
+a pin. A temporary live test (deleted afterwards) confirmed that none of the 6
+real results kept tags or `&amp;`.
+
 ## 2. Brave place lookup, with the address as search area
 
 **Interface change** in `internal/websearch/websearch.go`:

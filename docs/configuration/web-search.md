@@ -13,7 +13,7 @@ to run and pay for, and the providers do not all offer the same features.
 
 | Variable | Purpose |
 |---|---|
-| `CARAVEL_SEARCH_PROVIDER` | `ollama`, `serper`, `ddgs` or `stub`. Empty — the default — means no web search |
+| `CARAVEL_SEARCH_PROVIDER` | `ollama`, `serper`, `brave`, `ddgs` or `stub`. Empty — the default — means no web search |
 | `CARAVEL_SEARCH_KEY` | The API key, for the hosted providers |
 | `CARAVEL_SEARCH_URL` | The service root for `ddgs`, which you run yourself, so it has no address to default to. For the hosted providers it is an optional override of their endpoint, for pointing at a proxy |
 
@@ -24,14 +24,14 @@ anywhere near it.
 
 ## What each provider can do
 
-| | `ollama` | `serper` | `ddgs` |
-|---|:-:|:-:|:-:|
-| [Web search](#what-uses-it) for the assistant | ✅ | ✅ | ✅ |
-| [Image search](#what-uses-it) in the image picker | — | ✅ | ✅ |
-| [Place lookup](#what-uses-it) for the assistant's pins | — | ✅ | — |
-| Needs | key | key | URL |
-| Runs where | hosted | hosted | your own host |
-| Costs | free tier | per query | nothing |
+| | `ollama` | `serper` | `brave` | `ddgs` |
+|---|:-:|:-:|:-:|:-:|
+| [Web search](#what-uses-it) for the assistant | ✅ | ✅ | ✅ | ✅ |
+| [Image search](#what-uses-it) in the image picker | — | ✅ | ✅ | ✅ |
+| [Place lookup](#what-uses-it) for the assistant's pins | — | ✅ | — | — |
+| Needs | key | key | key | URL |
+| Runs where | hosted | hosted | hosted | your own host |
+| Costs | free tier | per query | monthly credit, then per query | nothing |
 
 A feature a provider lacks is not an error. Each one falls back to what works
 without it, described [below](#what-uses-it).
@@ -65,6 +65,29 @@ place on top of the searches, up to six for one trip-level suggestion run.
 
 ```sh
 CARAVEL_SEARCH_PROVIDER=serper
+CARAVEL_SEARCH_KEY=...
+```
+
+### `brave` — Brave Search API
+
+The [Brave Search API](https://brave.com/search/api/) searches Brave's own
+index, through an API rather than by scraping. Like Serper it needs only a key,
+and it does web and image search. Its image thumbnails come through Brave's own
+proxy, so they load even from sites that block other sites from embedding
+their pictures.
+
+What sets it apart is the price for a small instance. Brave adds $5 of credit
+to the account every month, which covers roughly a thousand requests at $5 per
+thousand. A personal or family instance is unlikely to use that up, so in
+practice it costs nothing. Serper, by contrast, sells packs of credit that
+expire after six months. Past the monthly credit Brave is the more expensive
+of the two per query, so for heavy use Serper wins.
+
+The account needs a credit card, and requests past the monthly credit are
+billed to it.
+
+```sh
+CARAVEL_SEARCH_PROVIDER=brave
 CARAVEL_SEARCH_KEY=...
 ```
 
@@ -103,9 +126,9 @@ already knows and the pages it can name itself — a worse assistant, but a
 working one. See [The assistant](assistant.md).
 
 **Image search.** The image picker always searches Wikipedia, which needs no
-configuration. With `serper` or `ddgs` it also runs a web image search, which is
-far better for hotels and restaurants but cannot tell you the licence of what it
-finds. See [Finding an image](images.md).
+configuration. With `serper`, `brave` or `ddgs` it also runs a web image
+search, which is far better for hotels and restaurants but cannot tell you the
+licence of what it finds. See [Finding an image](images.md).
 
 **Place lookup.** The assistant never takes coordinates from the model; it looks
 the place up instead. The address search is always asked. With `serper`,

@@ -193,15 +193,13 @@ without asking.
 
 ## Deployment and operations
 
-- **The Zensical pin needs periodic review, in two files.** (Stage 18 Milestone
-  9.) `zensical==0.0.57` is pinned in `.github/workflows/docs.yml` and in
-  `ci.yml`'s `docs` job, deliberately, because a 0.0.x generator can change its
-  output between patch releases. So the site gets no fixes until somebody bumps
-  it -- including for the two 0.0.57 bugs `overrides/home.html` works around
-  (the `page.is_homepage` flag being falsy for `docs/index.md`, and the skip
+- **Drop the Zensical workarounds once upstream fixes them.** (Stage 18
+  Milestone 9; re-checked against 0.0.67.) `overrides/home.html` and
+  `main.html` work around `page.is_homepage` never being defined, and the skip
   link pointing at a markdown-derived anchor that an emptied content block does
-  not render). When bumping, drop the workarounds and re-check the landing page
-  title and skip link.
+  not render. Both still reproduce in 0.0.67. The pin now lives in
+  `requirements.txt` and Dependabot proposes bumps monthly; its header has what
+  to re-test on each one.
 
 - **S3-compatible object storage.** Swap the `internal/storagefs` `Blob`
   implementation from local filesystem to S3-compatible (MinIO, Backblaze, and

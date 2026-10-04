@@ -25,10 +25,11 @@
 -->
 
 <!--
-  Zensical 0.0.57 has a `not page.is_homepage` guard in base.html's htmltitle
-  block, but the flag is falsy for docs/index.md, so the landing page comes out
-  as "Caravel - Caravel". Overriding the block is the workaround; drop it and
-  re-check the title if a later release fixes the flag.
+  Zensical has a `not page.is_homepage` guard in base.html's htmltitle block,
+  but never defines the flag (checked up to 0.0.67), so the landing page comes
+  out as "Home - Caravel" (the nav entry's title). Overriding the block is the
+  workaround; drop it and re-check the title if a later release sets the flag,
+  and switch main.html's homepage test over to it too.
 -->
 {% block htmltitle %}
   <title>{{ config.site_name }} - {{ config.site_description }}</title>

@@ -12,13 +12,13 @@
 
   The image URL must be absolute -- scrapers drop one they cannot resolve on
   their own -- so it is built from site_url rather than with the url filter.
-  The title test compares against site_name rather than using
-  page.is_homepage, which Zensical 0.0.57 leaves falsy for docs/index.md (see
-  home.html); the landing page's title is "Caravel" from its `# Caravel`
-  heading.
+  The landing page is recognised by its empty url rather than by
+  page.is_homepage, which Zensical leaves undefined (still in 0.0.67, see
+  home.html). Not by its title either: since 0.0.67 that is "Home", taken from
+  the nav entry, which would make the card read "Home - Caravel".
 -->
 {% block extrahead %}
-  {% if page.title and page.title != config.site_name %}
+  {% if page.title and page.url != "" %}
     {% set og_title = page.title ~ " - " ~ config.site_name %}
   {% else %}
     {% set og_title = config.site_name %}

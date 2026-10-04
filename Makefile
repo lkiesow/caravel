@@ -198,7 +198,7 @@ image:
 # Strict mode, matching CI: a dead link or an unresolved reference is an error,
 # not a line of output nobody reads.
 #
-#   pip install 'zensical==0.0.57'   (the version the deploy workflow pins)
+#   pip install -r requirements.txt   (the pinned version CI builds with)
 docs:
 	zensical build --clean --strict
 

@@ -1,0 +1,20 @@
+# Python dependencies of the documentation site (docs/, zensical.toml,
+# overrides/) -- the app itself has none. Installed by the docs job in
+# .github/workflows/ci.yml and by .github/workflows/docs.yml, and by hand for
+# `make docs`:
+#
+#   pip install -r requirements.txt
+#
+# Pinned exactly, because this is a 0.0.x generator whose output can change
+# between patch releases, and an unreviewed layout change arriving with an
+# unrelated docs commit is a surprise a published site should not have.
+# Dependabot (.github/dependabot.yml) opens a monthly pull request for the
+# bump, which keeps it a deliberate, reviewed change. When reviewing one:
+#
+#   - build the site and look at it, the landing page in particular;
+#   - check whether the two workarounds in overrides/ can go: page.is_homepage
+#     (still undefined in 0.0.67, see overrides/home.html and main.html) and
+#     the skip link anchor on the hero heading (home.html);
+#   - check the landing page title and og:title are still "Caravel - ..." and
+#     "Caravel".
+zensical==0.0.67

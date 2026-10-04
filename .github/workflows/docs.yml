@@ -1,11 +1,7 @@
 # Builds the project website and documentation and publishes it to GitHub
 # Pages. Based on the workflow template Zensical ships (zensical new), with two
-# changes: the zensical version is pinned, and the build runs in strict mode.
-#
-# Pinned rather than floating on `pip install zensical`, because this is a 0.0.x
-# generator whose output can change between patch releases -- and an unreviewed
-# layout change arriving with an unrelated docs commit is exactly the kind of
-# surprise a published site should not have. Bumping it is a deliberate commit.
+# changes: the zensical version is pinned (in requirements.txt, which says why
+# and how Dependabot bumps it), and the build runs in strict mode.
 #
 # Note that Pages has to be enabled for the repository once, by hand, with the
 # source set to GitHub Actions. No workflow can do that for you; until it is
@@ -41,7 +37,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
-      - run: pip install zensical==0.0.57
+      - run: pip install -r requirements.txt
       # Strict, so a dead link or an unresolved reference fails the deploy
       # rather than shipping. The same build runs on pull requests in ci.yml,
       # which is where a broken link is supposed to be caught first.

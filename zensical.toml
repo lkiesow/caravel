@@ -32,6 +32,7 @@ nav = [
   { Configuration = [
     { "Server and database" = "configuration/server.md" },
     { "The assistant" = "configuration/assistant.md" },
+    { "Web search" = "configuration/web-search.md" },
     { "Address search" = "configuration/address-search.md" },
     { "Finding an image" = "configuration/images.md" },
     { "Map style" = "configuration/map-style.md" },

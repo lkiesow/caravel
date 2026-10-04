@@ -31,29 +31,11 @@ when somebody presses the button.
 ## Web search
 
 Optional but strongly recommended: without it the assistant has only what the
-model already knows and the pages it can name itself. Pick one and set
-`CARAVEL_SEARCH_PROVIDER`, plus `CARAVEL_SEARCH_KEY` or `CARAVEL_SEARCH_URL` as
-the table says. There is no default — the right choice depends on what you are
-willing to run and pay for.
-
-| Provider | Needs | Runs where | Notes |
-|---|---|---|---|
-| `ollama` | `CARAVEL_SEARCH_KEY` | hosted | Ollama Cloud. Free tier; if you already use Ollama for the model, one account covers both |
-| `serper` | `CARAVEL_SEARCH_KEY` | hosted | Real Google results via API. Cheap per query, and the only option here that is neither scraping nor something you host |
-| `ddgs` | `CARAVEL_SEARCH_URL` | your own host | [DDGS](https://github.com/deedy5/ddgs): `pip install ddgs[api]`, then `ddgs api`, and point the URL at it. No key, no account |
-| `stub` | — | in-process | A fake for tests. Never a real answer |
-
-A search provider set without `CARAVEL_LLM_URL` used to be refused at startup,
-back when nothing else in the app searched the web. The image picker now uses the
-same backend, so the two are independent — see
-[finding an image](images.md).
-
-Two honest caveats about `ddgs`, since it is the keyless option and therefore
-tempting. It works by **scraping** search engines, so a backend can break when
-someone changes their markup — it aggregates several and falls back between
-them, which softens this a lot. And scraped engines rate-limit datacenter
-addresses, so it suits a home server better than a VPS. Scraping Google and Bing
-is also against their terms of service.
+model already knows and the pages it can name itself. Set
+`CARAVEL_SEARCH_PROVIDER` and its key or URL — [Web search](web-search.md)
+compares the providers and how to set each one up. The same setting also powers
+the [image picker](images.md)'s web search, so it does not need the assistant to
+be on.
 
 ## Coordinates are never taken from the model
 
@@ -71,10 +53,10 @@ Two things are asked, when both are available:
   street itself — a pin outside the door rather than on it. Searching the name
   finds the element somebody actually mapped. The address still earns its place
   as the fallback: it is what positions a rented flat with no findable name.
-- **Serper's places endpoint**, when `CARAVEL_SEARCH_PROVIDER` is `serper`.
-  This is Google Maps data, and it is far better than OpenStreetMap on the
-  restaurants, cafés, bars, shops and hotels a trip is mostly made of — for
-  those, its pin is the business's own position rather than an address
+- **Serper's places endpoint**, when the [search provider](web-search.md) is
+  `serper`. This is Google Maps data, and it is far better than OpenStreetMap
+  on the restaurants, cafés, bars, shops and hotels a trip is mostly made of —
+  for those, its pin is the business's own position rather than an address
   interpolation. It costs one API credit per lookup, and up to six for one
   trip-level suggestion run. No other search provider has such an endpoint;
   with `ollama`, `ddgs` or none, only the geocoder is asked and everything

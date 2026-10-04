@@ -55,6 +55,9 @@ is an editor (can change the trip) or a viewer (read-only).
   self-hosting is an option.
 - **The assistant** is off until you configure it, and needs a model endpoint
   you host or pay for. See [The assistant](../configuration/assistant.md).
+- **Web search** is off until you pick a provider. It feeds the assistant and
+  adds web results to the image picker. See [Web
+  search](../configuration/web-search.md).
 - **Put it behind TLS** if it is reachable from outside your own network. See
   [Behind a reverse proxy](../running/reverse-proxy.md).
 - **Set up backups** before there is anything to lose. See [Backup and

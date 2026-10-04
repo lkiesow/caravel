@@ -83,8 +83,9 @@ type Config struct {
 	// whatever the model already knows.
 	SearchProvider string
 	SearchKey      string
-	// SearchURL is the base URL for the self-hosted providers (ddgs, searxng),
-	// which have no fixed address. Ignored by the hosted ones.
+	// SearchURL is the service root for ddgs, which is self-hosted and so has
+	// no fixed address. For the hosted providers it is an optional override of
+	// their endpoint.
 	SearchURL string
 
 	// Guard rails on one assistant run, and on how often runs may be started.

@@ -158,7 +158,17 @@ const (
 	// what a person reading a badge cares about and is not what would change
 	// if the reseller did.
 	SourceGoogle = "google"
+	// SourceBrave is Brave's place search. Named for the service, unlike
+	// SourceGoogle, because Brave does not say whose data it is -- even though
+	// it agrees with Google to the metre often enough to suggest an answer --
+	// and a badge is not the place to guess.
+	SourceBrave = "brave"
 )
+
+// The maps-style backend is called "google" in the variable names below
+// (choosePosition's google, resolvePosition's googleCh) because Serper was the
+// only one when they were written. Read it as "the PlaceLocator's answer": its
+// Source says which backend it actually was.
 
 // ambiguousMetres is how far apart two sources have to put a place before the
 // answer is a question rather than a position.
@@ -274,6 +284,12 @@ func (a *Agent) locateViaOSM(ctx context.Context, name, address string, log *slo
 // city in the place name ("Kex Hostel, Reykjavik"), which is exactly the query
 // a maps search wants.
 //
+// The address also goes along on both rungs as near, the area to search in.
+// Serper ignores it; Brave needs it, because without one it searches the whole
+// world and a name with no town -- "Pension Sonnenhof" -- goes to whichever
+// place by that name is best known. That is a hint about where to look, not
+// part of the query, so it is not the over-specifying described next.
+//
 // The first version of this concatenated the two into one query, on the
 // reasoning that a maps search is happy to be given more than it strictly
 // needs. Measured against the live API, that is false and expensively so:
@@ -306,7 +322,7 @@ func (a *Agent) locateViaPlaces(ctx context.Context, name, address string, log *
 		if from.query == "" {
 			continue
 		}
-		results, err := locator.SearchPlaces(ctx, from.query)
+		results, err := locator.SearchPlaces(ctx, from.query, address)
 		if err != nil || len(results) == 0 {
 			log.Debug("assist: places missed", "from", from.source, "query", from.query, "err", err)
 			continue
@@ -318,7 +334,7 @@ func (a *Agent) locateViaPlaces(ctx context.Context, name, address string, log *
 			Lat:     best.Lat,
 			Lng:     best.Lng,
 			Label:   placeLabel(best),
-			Source:  SourceGoogle,
+			Source:  locator.PlaceSource(),
 			Precise: true,
 			From:    from.source,
 		}
@@ -394,7 +410,7 @@ func choosePosition(osm, google *Position, log *slog.Logger) *Position {
 		log.Debug("assist: sources agree", "metres", int(apart), "chose", SourceOSM, "reason", "precise match")
 		return osm
 	}
-	log.Debug("assist: sources agree", "metres", int(apart), "chose", SourceGoogle, "reason", "the osm match was coarse")
+	log.Debug("assist: sources agree", "metres", int(apart), "chose", google.Source, "reason", "the osm match was coarse")
 	// Google's pin, OSM's city. The two agreed to within ambiguousMetres, so
 	// they are describing one place, and only one of them says which
 	// settlement it is in. Losing the city because the coordinates came from

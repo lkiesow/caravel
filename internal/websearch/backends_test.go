@@ -300,7 +300,7 @@ func TestSerperPlacesReadsBothRecordedResponses(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			got, err := newSerperSearcher("k", srv.URL+"/search").SearchPlaces(context.Background(), "q")
+			got, err := newSerperSearcher("k", srv.URL+"/search").SearchPlaces(context.Background(), "q", "")
 			if err != nil {
 				t.Fatalf("SearchPlaces: %v", err)
 			}
@@ -349,7 +349,7 @@ func TestSerperPlacesSkipsRowsItCannotUse(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got, err := newSerperSearcher("k", srv.URL+"/search").SearchPlaces(context.Background(), "q")
+	got, err := newSerperSearcher("k", srv.URL+"/search").SearchPlaces(context.Background(), "q", "")
 	if err != nil {
 		t.Fatalf("SearchPlaces: %v", err)
 	}
@@ -366,11 +366,21 @@ func TestSerperPlacesSkipsRowsItCannotUse(t *testing.T) {
 	}
 }
 
-// A Serper backend is a PlaceLocator and the others are not, which is what the
-// resolver type-asserts on.
-func TestOnlySerperOffersPlaces(t *testing.T) {
-	if _, ok := any(newSerperSearcher("k", "")).(PlaceLocator); !ok {
-		t.Error("serper should offer places")
+// Serper and Brave are PlaceLocators and the others are not, which is what the
+// resolver type-asserts on. The source each names is the badge on the pin.
+func TestWhichBackendsOfferPlaces(t *testing.T) {
+	for name, s := range map[string]Searcher{
+		"google": newSerperSearcher("k", ""),
+		"brave":  newBraveSearcher("k", ""),
+	} {
+		locator, ok := s.(PlaceLocator)
+		if !ok {
+			t.Errorf("%s should offer places", s.Name())
+			continue
+		}
+		if got := locator.PlaceSource(); got != name {
+			t.Errorf("%s PlaceSource() = %q, want %q", s.Name(), got, name)
+		}
 	}
 	if _, ok := any(&Stub{}).(PlaceLocator); !ok {
 		t.Error("the stub should offer places, or the browser suite cannot reach the two-source path")
@@ -499,5 +509,89 @@ func TestBraveDerivesItsSiblingEndpoints(t *testing.T) {
 	proxied := newBraveSearcher("k", "http://proxy.example/brave/res/v1/web/search")
 	if proxied.imageURL != "http://proxy.example/brave/res/v1/images/search" {
 		t.Errorf("proxied imageURL = %q", proxied.imageURL)
+	}
+}
+
+// Brave's places shape, cut down from the live probe (Stage 46): coordinates as
+// a [lat, lng] pair, the address one level down, and the useful category in
+// `description`. The third row has no coordinates and the fourth no title.
+const bravePlacesResponse = `{
+  "type": "locations",
+  "results": [
+    {"type": "location_result", "title": "KEX Hostel and Hotel Reykjavík", "url": "https://kexhostel.is/",
+     "description": "Hostel", "coordinates": [64.14542399999999, -21.919484],
+     "postal_address": {"type": "PostalAddress", "displayAddress": "Skúlagata 28, 101 Reykjavík"},
+     "categories": ["bar", "lodging", "restaurant"], "contact": {"telephone": "+3545616060"}},
+    {"type": "location_result", "title": "Kaffibarinn Bar", "coordinates": [64.1460, -21.9301],
+     "postal_address": {"type": "PostalAddress", "displayAddress": "Bergstaðastræti 1, 101 Reykjavík"},
+     "categories": []},
+    {"type": "location_result", "title": "Nowhere in particular", "description": "Bar",
+     "postal_address": {"displayAddress": "Somewhere"}},
+    {"type": "location_result", "title": "", "description": "Bar", "coordinates": [64.1, -21.9]}
+  ]
+}`
+
+func TestBravePlacesMapsTheRecordedResponse(t *testing.T) {
+	var path string
+	var query map[string][]string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		query = r.URL.Query()
+		fmt.Fprint(w, bravePlacesResponse)
+	}))
+	defer srv.Close()
+
+	got, err := newBraveSearcher("k", srv.URL+"/res/v1/web/search").
+		SearchPlaces(context.Background(), "Kex Hostel, Reykjavik", "Skulagata 28, 101 Reykjavik, Iceland")
+	if err != nil {
+		t.Fatalf("SearchPlaces: %v", err)
+	}
+	if path != "/res/v1/local/place_search" {
+		t.Errorf("asked %q, want the place search endpoint", path)
+	}
+	// The address as the area to search in, and no country: the default is
+	// US, and Iceland is not one of the codes it accepts.
+	if l := query["location"]; len(l) != 1 || l[0] != "Skulagata 28, 101 Reykjavik, Iceland" {
+		t.Errorf("location = %v, want the address", l)
+	}
+	if c := query["country"]; len(c) != 1 || c[0] != "ALL" {
+		t.Errorf("country = %v, want ALL", c)
+	}
+	if len(got) != 2 {
+		t.Fatalf("places = %d (%+v), want the two with a title and a position", len(got), got)
+	}
+	want := PlaceResult{
+		Title: "KEX Hostel and Hotel Reykjavík", Address: "Skúlagata 28, 101 Reykjavík",
+		Lat: 64.14542399999999, Lng: -21.919484, Category: "Hostel",
+	}
+	if got[0] != want {
+		t.Errorf("place[0] = %+v, want %+v", got[0], want)
+	}
+	// No description, so no category -- not the coarser `categories` list.
+	if got[1].Category != "" {
+		t.Errorf("place[1] category = %q, want empty", got[1].Category)
+	}
+}
+
+// No location when there is no address, and none when the address *is* the
+// query (the fallback rung), where it would add nothing.
+func TestBravePlacesOnlySendsALocationThatAddsSomething(t *testing.T) {
+	for _, tc := range []struct{ query, near string }{
+		{"Kex Hostel, Reykjavik", ""},
+		{"Skulagata 28, 101 Reykjavik", "Skulagata 28, 101 Reykjavik"},
+	} {
+		var sent []string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			sent = r.URL.Query()["location"]
+			fmt.Fprint(w, `{"results":[]}`)
+		}))
+		_, err := newBraveSearcher("k", srv.URL).SearchPlaces(context.Background(), tc.query, tc.near)
+		srv.Close()
+		if err != nil {
+			t.Fatalf("SearchPlaces(%q, %q): %v", tc.query, tc.near, err)
+		}
+		if sent != nil {
+			t.Errorf("SearchPlaces(%q, %q) sent location %v, want none", tc.query, tc.near, sent)
+		}
 	}
 }

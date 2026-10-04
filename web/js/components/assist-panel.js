@@ -50,6 +50,7 @@ let positionGroups = 0;
 const SOURCE_LABELS = {
   osm: "assist.position.source.osm",
   google: "assist.position.source.google",
+  brave: "assist.position.source.brave",
 };
 
 export function renderAssistPanel(container, { tripId, root, readCurrent, applyField, applyLink, applyCoordinates, applyCover }) {

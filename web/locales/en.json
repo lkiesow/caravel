@@ -376,6 +376,7 @@
   "assist.error.promptRequired": "Describe the place you are looking for, or give it a name first.",
   "assist.position.source.osm": "OpenStreetMap",
   "assist.position.source.google": "Google Maps",
+  "assist.position.source.brave": "Brave Search",
   "assist.position.approximate": "This matched the street, not the place itself \u2014 check the pin on the map.",
   "assist.position.choose": "Two sources disagree about where this is. Pick one:",
   "assist.needsChoice": "{count} needs a choice",

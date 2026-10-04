@@ -326,18 +326,55 @@ func TestPlacesFallsBackToTheAddress(t *testing.T) {
 	}
 }
 
+// The address goes along on both rungs as the area to search in -- the hint
+// Brave needs to keep "Pension Sonnenhof" in Bad Ischl -- and the pin carries
+// whichever backend answered rather than assuming Google.
+func TestPlacesIsGivenTheAddressAsTheAreaAndNamesItsSource(t *testing.T) {
+	var asked, near []string
+	a := &Agent{search: &recordingLocator{
+		asked: &asked, near: &near, source: SourceBrave,
+		hitOn: "4820 Bad Ischl, Austria",
+	}}
+
+	got := a.locateViaPlaces(context.Background(),
+		"Pension Sonnenhof", "4820 Bad Ischl, Austria",
+		slog.New(slog.DiscardHandler))
+	if got == nil {
+		t.Fatal("no position")
+	}
+	if len(near) != 2 || near[0] != "4820 Bad Ischl, Austria" || near[1] != "4820 Bad Ischl, Austria" {
+		t.Errorf("near = %v, want the address on both rungs", near)
+	}
+	if got.Source != SourceBrave {
+		t.Errorf("Source = %q, want the locator's own %q", got.Source, SourceBrave)
+	}
+}
+
 // A PlaceLocator that records what it was asked and answers exactly one query.
+// near and source are optional: the area each query was given, and the badge
+// to report ("google" when empty).
 type recordingLocator struct {
-	asked *[]string
-	hitOn string
+	asked  *[]string
+	near   *[]string
+	hitOn  string
+	source string
 }
 
 func (r *recordingLocator) Name() string { return "recording" }
 func (r *recordingLocator) Search(context.Context, string) ([]websearch.Result, error) {
 	return nil, nil
 }
-func (r *recordingLocator) SearchPlaces(_ context.Context, query string) ([]websearch.PlaceResult, error) {
+func (r *recordingLocator) PlaceSource() string {
+	if r.source == "" {
+		return SourceGoogle
+	}
+	return r.source
+}
+func (r *recordingLocator) SearchPlaces(_ context.Context, query, near string) ([]websearch.PlaceResult, error) {
 	*r.asked = append(*r.asked, query)
+	if r.near != nil {
+		*r.near = append(*r.near, near)
+	}
 	if query != r.hitOn {
 		return nil, nil
 	}

@@ -376,6 +376,7 @@
   "assist.error.promptRequired": "Beschreibe den gesuchten Ort, oder gib ihm zuerst einen Namen.",
   "assist.position.source.osm": "OpenStreetMap",
   "assist.position.source.google": "Google Maps",
+  "assist.position.source.brave": "Brave Search",
   "assist.position.approximate": "Gefunden wurde die Stra\u00dfe, nicht der Ort selbst \u2014 pr\u00fcfe die Markierung auf der Karte.",
   "assist.position.choose": "Zwei Quellen sind sich \u00fcber die Lage nicht einig. W\u00e4hle eine aus:",
   "assist.needsChoice": "bei {count} ist eine Auswahl n\u00f6tig",

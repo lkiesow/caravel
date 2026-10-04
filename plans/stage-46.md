@@ -154,6 +154,34 @@ endpoint" and notes that Brave is given the address as its search area.
 Brave side now passes the address, while the OSM side and Serper still have
 the problem.
 
+**Done.** Landed as planned. `PlaceLocator.SearchPlaces(ctx, query, near)`
+gained `PlaceSource()`. Serper ignores `near` and reports "google". Brave sends
+`near` as `location` (only when it is set and differs from the query) with
+`country=ALL`, and reports "brave". `locateViaPlaces` passes the address on
+both steps, and a pin's `Source` comes from the backend. I kept the
+`google` variable names in `resolvePosition`/`choosePosition`, with a comment
+that they mean "the PlaceLocator's answer", rather than renaming throughout.
+Additions beyond the plan: the live probe refuses a provider with no places
+endpoint, and its "only one source answered" line now prints that source's
+label, since a count alone hides a pin in the wrong country. The docs record
+one Brave miss the probe found (below). Tests: the recorded places shape
+(mapping, rows with no coordinates or title skipped, `description` as the
+category, `location` and `country=ALL` sent), no `location` when it is empty
+or the same as the query, Serper and Brave as `PlaceLocator`s with their
+sources, and the address reaching the locator on both steps with the pin
+carrying the locator's source. `make ci` and `make docs` are green.
+
+The live probe, run for both providers against the real APIs, gave the same
+verdict for 9 of 11 places. Pension Sonnenhof: Serper found nothing, so OSM's
+South Tyrol match was presented as a confident pin. Brave found Sonnhof in Bad
+Ischl, 150 km away, so the pin is shown as a question. Café Einstein
+Stammhaus: Serper was right (9 m from OSM), while Brave picked a different
+"Einstein Kaffee" 4.6 km away, which was flagged as ambiguous rather than
+accepted. UI, on a separate Brave instance (:8097): an assistant run for
+"Tsuta ramen in Tokyo" (which OSM does not know) showed a pin with the "Brave
+Search" badge, and the log showed `places resolved ... category="Ramen
+Restaurant"`.
+
 ## Build order
 
 0 → 1 → 2. Milestone 1 is usable on its own (web and image search with no

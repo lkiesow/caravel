@@ -28,7 +28,7 @@ anywhere near it.
 |---|:-:|:-:|:-:|:-:|
 | [Web search](#what-uses-it) for the assistant | ✅ | ✅ | ✅ | ✅ |
 | [Image search](#what-uses-it) in the image picker | — | ✅ | ✅ | ✅ |
-| [Place lookup](#what-uses-it) for the assistant's pins | — | ✅ | — | — |
+| [Place lookup](#what-uses-it) for the assistant's pins | — | ✅ | ✅ | — |
 | Needs | key | key | key | URL |
 | Runs where | hosted | hosted | hosted | your own host |
 | Costs | free tier | per query | monthly credit, then per query | nothing |
@@ -55,10 +55,8 @@ CARAVEL_SEARCH_KEY=...
 
 ### `serper` — Google, through an API
 
-[Serper](https://serper.dev) returns real Google results through an API. It is
-the only option here that is neither scraping nor something you host, and the
-only one that offers all three features — including Google Maps data for place
-lookup.
+[Serper](https://serper.dev) returns real Google results through an API. Like
+Brave it offers all three features, and its place lookup is Google Maps data.
 
 The trade is money: every query is paid for, and place lookup adds one per
 place on top of the searches, up to six for one trip-level suggestion run.
@@ -71,10 +69,17 @@ CARAVEL_SEARCH_KEY=...
 ### `brave` — Brave Search API
 
 The [Brave Search API](https://brave.com/search/api/) searches Brave's own
-index, through an API rather than by scraping. Like Serper it needs only a key,
-and it does web and image search. Its image thumbnails come through Brave's own
+index, through an API rather than by scraping. Like Serper it needs only a key
+and offers all three features. Its image thumbnails come through Brave's own
 proxy, so they load even from sites that block other sites from embedding
 their pictures.
+
+Its place lookup agreed with Serper's to the metre for most places tested. It
+is given the postal address as the area to search in, so a place the
+assistant names without a town stays near that address. Serper does not use
+the address, and found nothing for such a name in testing. Brave was also wrong once where Serper was right, picking a
+different café of the same chain 4.6 km away. Pins from it carry a "Brave
+Search" badge.
 
 What sets it apart is the price for a small instance. Brave adds $5 of credit
 to the account every month, which covers roughly a thousand requests at $5 per
@@ -131,10 +136,10 @@ search, which is far better for hotels and restaurants but cannot tell you the
 licence of what it finds. See [Finding an image](images.md).
 
 **Place lookup.** The assistant never takes coordinates from the model; it looks
-the place up instead. The address search is always asked. With `serper`,
-Google Maps is asked as well, which is much better than OpenStreetMap for
-restaurants, cafés, bars, shops and hotels. With any other provider, only the
-address search is asked. See [Coordinates are never taken from the
+the place up instead. The address search is always asked. With `serper` or
+`brave`, a places search is asked as well, which is much better than
+OpenStreetMap for restaurants, cafés, bars, shops and hotels. With any other
+provider, only the address search is asked. See [Coordinates are never taken from the
 model](assistant.md#coordinates-are-never-taken-from-the-model).
 
 Address search when you type into a location is a separate thing and does not

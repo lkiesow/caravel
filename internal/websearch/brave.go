@@ -37,11 +37,13 @@ const braveSearchURL = "https://api.search.brave.com/res/v1/web/search"
 
 type braveSearcher struct {
 	url string
-	// imageURL is the /images/search sibling of url, derived rather than
-	// configured for the same reason as Serper's: one override covers both.
-	imageURL string
-	key      string
-	client   *http.Client
+	// imageURL and placesURL are the /images/search and /local/place_search
+	// siblings of url, derived rather than configured for the same reason as
+	// Serper's: one override covers all three.
+	imageURL  string
+	placesURL string
+	key       string
+	client    *http.Client
 }
 
 func newBraveSearcher(key, overrideURL string) *braveSearcher {
@@ -51,10 +53,11 @@ func newBraveSearcher(key, overrideURL string) *braveSearcher {
 	}
 	base := strings.TrimSuffix(endpoint, "/web/search")
 	return &braveSearcher{
-		url:      endpoint,
-		imageURL: base + "/images/search",
-		key:      key,
-		client:   &http.Client{Timeout: searchTimeout},
+		url:       endpoint,
+		imageURL:  base + "/images/search",
+		placesURL: base + "/local/place_search",
+		key:       key,
+		client:    &http.Client{Timeout: searchTimeout},
 	}
 }
 
@@ -155,12 +158,87 @@ func (s *braveSearcher) SearchImages(ctx context.Context, query string) ([]Image
 	return out, nil
 }
 
+// SearchPlaces implements PlaceLocator.
+//
+// GET /local/place_search, answering a `results` array, from a live response:
+//
+//	{"title": "KEX Hostel and Hotel Reykjavík", "description": "Hostel",
+//	 "coordinates": [64.145424, -21.919484],
+//	 "postal_address": {"type": "PostalAddress", "displayAddress": "Skúlagata 28, 101 Reykjavík"},
+//	 "categories": ["bar", "lodging", "restaurant"], "rating": {...}, "pictures": {...}}
+//
+// Four things that shape the code below:
+//
+//   - near goes in `location`, and it matters more than anything else here.
+//     Without it Brave searches the whole world and takes the best-known match
+//     for the name: in the live probe "Pension Sonnenhof" was in South Tyrol
+//     instead of Bad Ischl, and "Hotel Ranga" was in India when the name had
+//     no town. The raw postal address works as given; no parsing is needed.
+//     It is left out when it is the query itself (the address rung), where it
+//     would say nothing new.
+//   - `country` is always ALL. The parameter defaults to US and accepts only
+//     37 codes -- not Iceland -- so any real value would be wrong somewhere.
+//   - `coordinates` is a [lat, lng] pair. Anything else is a row with no
+//     position and is skipped, as Serper's rows without one are.
+//   - The category is `description` ("Hostel", "Coffee Shop"), the same kind of
+//     word Serper's `category` is. `categories` is a coarser vocabulary
+//     ("lodging") and often empty.
+func (s *braveSearcher) SearchPlaces(ctx context.Context, query, near string) ([]PlaceResult, error) {
+	params := url.Values{
+		"q":       {query},
+		"country": {"ALL"},
+		"count":   {fmt.Sprint(placeSearchMaxResults)},
+	}
+	if near = strings.TrimSpace(near); near != "" && near != strings.TrimSpace(query) {
+		params.Set("location", near)
+	}
+	raw, err := s.get(ctx, "places", s.placesURL, params)
+	if err != nil {
+		return nil, err
+	}
+
+	var decoded struct {
+		Results []struct {
+			Title         string    `json:"title"`
+			Description   string    `json:"description"`
+			Coordinates   []float64 `json:"coordinates"`
+			PostalAddress struct {
+				DisplayAddress string `json:"displayAddress"`
+			} `json:"postal_address"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return nil, fmt.Errorf("the places service returned a response that could not be read: %w", err)
+	}
+
+	out := make([]PlaceResult, 0, len(decoded.Results))
+	for _, r := range decoded.Results {
+		if len(r.Coordinates) != 2 || strings.TrimSpace(r.Title) == "" {
+			continue
+		}
+		out = append(out, PlaceResult{
+			Title:    collapseWhitespace(stripHTML(r.Title)),
+			Address:  collapseWhitespace(r.PostalAddress.DisplayAddress),
+			Lat:      r.Coordinates[0],
+			Lng:      r.Coordinates[1],
+			Category: collapseWhitespace(r.Description),
+		})
+	}
+	return out, nil
+}
+
+// PlaceSource implements PlaceLocator. Named for the service rather than the
+// data, unlike Serper's "google": Brave does not say where its places come
+// from, and a badge is a claim the user takes at face value.
+func (*braveSearcher) PlaceSource() string { return "brave" }
+
 // get makes one authenticated GET and returns the body of a 200.
 //
 // Shared by every endpoint, unlike Serper's copies of the same, because here
 // the requests really are identical apart from the URL: no body to build, the
 // same header, the same status codes. `what` names the service in errors
-// ("search", "image search"), so a log line still says which half failed.
+// ("search", "image search", "places"), so a log line still says which one
+// failed.
 func (s *braveSearcher) get(ctx context.Context, what, endpoint string, params url.Values) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, searchTimeout)
 	defer cancel()

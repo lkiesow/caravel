@@ -222,7 +222,11 @@ func (s *serperSearcher) SearchImages(ctx context.Context, query string) ([]Imag
 // The response also carries `credits`, which is 1 per call. That is the price
 // of the second opinion, and it is why this is only reached when the operator
 // has chosen `serper`.
-func (s *serperSearcher) SearchPlaces(ctx context.Context, query string) ([]PlaceResult, error) {
+//
+// near is ignored. Serper finds a place from the model's place name alone
+// ("Kex Hostel, Reykjavik"), and adding the address made it miss -- see
+// locateViaPlaces.
+func (s *serperSearcher) SearchPlaces(ctx context.Context, query, _ string) ([]PlaceResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, searchTimeout)
 	defer cancel()
 
@@ -292,3 +296,6 @@ func (s *serperSearcher) SearchPlaces(ctx context.Context, query string) ([]Plac
 	}
 	return out, nil
 }
+
+// PlaceSource implements PlaceLocator: /places is Google Maps data.
+func (*serperSearcher) PlaceSource() string { return "google" }

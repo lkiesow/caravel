@@ -109,8 +109,10 @@ type PlaceResult struct {
 // discovered by type assertion rather than by a second provider registry --
 // the same arrangement as ImageSearcher above, for the same reason.
 //
-// Only Serper has one today: /places is Google Maps data, which is why it is
-// worth asking at all. OpenStreetMap is better than Google for landmarks,
+// Serper and Brave have one. Serper's /places is Google Maps data, which is why
+// it is worth asking at all; Brave does not say where its places come from,
+// but measured against Serper it put 11 of 13 test places on the identical
+// pin, under the identical name. OpenStreetMap is better than Google for landmarks,
 // museums, churches and stations, and considerably thinner on the restaurants,
 // cafes, bars, shops and hotels a trip is actually made of -- and for those,
 // Google's pin is the business's own position rather than an address
@@ -120,9 +122,17 @@ type PlaceResult struct {
 //
 // Note what implementing this costs the operator, because it is not nothing: a
 // paid API call per location, up to six for one trip-suggestion run. That is a
-// deliberate trade, made once in the config by choosing `serper`.
+// deliberate trade, made once in the config by choosing `serper` or `brave`.
 type PlaceLocator interface {
-	SearchPlaces(ctx context.Context, query string) ([]PlaceResult, error)
+	// SearchPlaces looks query up. near is free text naming the area to look
+	// in -- the model's postal address -- or "" when there is none, and a
+	// backend may ignore it: it is a hint for a backend that needs one, not a
+	// second query.
+	SearchPlaces(ctx context.Context, query, near string) ([]PlaceResult, error)
+	// PlaceSource is the Position.Source a pin from this backend carries, and
+	// so the badge the user sees. Named for the data where that is known
+	// ("google") and for the service where it is not ("brave").
+	PlaceSource() string
 }
 
 // placeSearchMaxResults is what a places backend is asked for. Small: the
@@ -253,7 +263,7 @@ func (*Stub) Search(_ context.Context, query string) ([]Result, error) {
 //   - "Harpa" -- deliberately 3km from where the fixture geocoder puts it.
 //     Two services disagreeing about a place is not a pin to show with
 //     confidence, and Milestone 5 needs a way to reach that state.
-func (*Stub) SearchPlaces(_ context.Context, query string) ([]PlaceResult, error) {
+func (*Stub) SearchPlaces(_ context.Context, query, _ string) ([]PlaceResult, error) {
 	switch key := strings.ToLower(strings.TrimSpace(query)); {
 	case strings.Contains(key, "kex hostel"):
 		// The same building the fixture geocoder returns, give or take the
@@ -289,6 +299,10 @@ func (*Stub) SearchPlaces(_ context.Context, query string) ([]PlaceResult, error
 	// none" is the same shape as a real backend's.
 	return []PlaceResult{}, nil
 }
+
+// PlaceSource names the stub's places as Google's, which is what the fixtures
+// imitate and what the browser suite's badge assertions expect.
+func (*Stub) PlaceSource() string { return "google" }
 
 // SearchImages makes the stub an ImageSearcher, which is what puts a second,
 // web-search group in the picker when the browser suite runs.

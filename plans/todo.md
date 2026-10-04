@@ -45,7 +45,11 @@ without asking.
   answer to make it ambiguous. Two cheap guards: add the town from the address
   to a name that has none before searching, or resolve the address too and
   reject a name match far from it (the `ambiguousMetres` idea, applied between
-  the two queries rather than between the two sources).
+  the two queries rather than between the two sources). Stage 46 Milestone 2
+  softened it for `brave` only: Brave's place search is given the address as
+  its area, finds the place in Bad Ischl, and the 150km disagreement with OSM
+  makes the pin a question rather than a wrong answer. OSM itself, and Serper
+  (which ignores the area), still have the problem.
 
 ---
 

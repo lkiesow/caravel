@@ -53,19 +53,21 @@ Two things are asked, when both are available:
   street itself — a pin outside the door rather than on it. Searching the name
   finds the element somebody actually mapped. The address still earns its place
   as the fallback: it is what positions a rented flat with no findable name.
-- **Serper's places endpoint**, when the [search provider](web-search.md) is
-  `serper`. This is Google Maps data, and it is far better than OpenStreetMap
-  on the restaurants, cafés, bars, shops and hotels a trip is mostly made of —
-  for those, its pin is the business's own position rather than an address
-  interpolation. It costs one API credit per lookup, and up to six for one
-  trip-level suggestion run. No other search provider has such an endpoint;
-  with `ollama`, `ddgs` or none, only the geocoder is asked and everything
-  still works.
+- **A places search**, when the [search provider](web-search.md) is `serper`
+  or `brave`. Serper's is Google Maps data, and it is far better than
+  OpenStreetMap on the restaurants, cafés, bars, shops and hotels a trip is
+  mostly made of — for those, its pin is the business's own position rather
+  than an address interpolation. Brave's agrees with it to the metre for most
+  places, and is given the postal address as the area to search in, which
+  keeps a name with no town in it near the address rather than at the
+  best-known place of that name. Either costs one paid request per lookup,
+  and up to six for one trip-level suggestion run. With `ollama`, `ddgs` or
+  none, only the geocoder is asked and everything still works.
 
 Where the two agree, a precise OpenStreetMap match wins, because it is the only
 one of the two that carries an OSM element identity — which is what makes the
 "view on OpenStreetMap" link on a location possible. Where OpenStreetMap only
-found a street, Google wins.
+found a street, the places search wins.
 
 Where they disagree by more than 150 metres, **neither is trusted**. Both are
 offered and nothing is preselected, the row is skipped by *Accept all*, and on

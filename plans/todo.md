@@ -35,6 +35,18 @@ without asking.
   (and an access check) while serving the shell. Probably not worth it; kept so
   the gap is known.
 
+- **A place name with no town can pin the assistant's place in another
+  country.** (Geocode-tool review, 2026-10-04.) `locateViaOSM`
+  (`internal/assist/locate.go`) searches the model's `place_name` as given and
+  takes the first hit, and only falls back to the address when the name finds
+  nothing. In one live run the model proposed `place_name` "Pension Sonnenhof"
+  with address "4820 Bad Ischl, Austria", and the name alone matched a Pension
+  Sonnenhof in South Tyrol -- a confident, precise, wrong pin, and Google did not
+  answer to make it ambiguous. Two cheap guards: add the town from the address
+  to a name that has none before searching, or resolve the address too and
+  reject a name match far from it (the `ambiguousMetres` idea, applied between
+  the two queries rather than between the two sources).
+
 ---
 
 ## Planned features

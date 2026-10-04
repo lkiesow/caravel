@@ -12,7 +12,14 @@
 // and one passing should not hide the other regressing.
 import { readFileSync } from "node:fs";
 import { test, expect } from "@playwright/test";
-import { login, buildRoutes, gotoRoute, waitForMapInstance } from "./helpers/scenarios.js";
+import {
+  login,
+  buildRoutes,
+  gotoRoute,
+  waitForMapInstance,
+  installFetchTracker,
+  blockExternalRequests,
+} from "./helpers/scenarios.js";
 import {
   AT_SEA,
   COAST,
@@ -3804,3 +3811,70 @@ test.describe("the fullscreen trip map", () => {
   });
 });
 
+
+// The backlog entry from Stage 45 Milestone 2: a reload of the Map tab used to
+// ask for /auth/me, then the trip, then the map items and the map config, each
+// only once the one before had answered. Only /auth/me has to come first. Each
+// test holds back one response and checks that the requests meant to run beside
+// it go out while it is held, which says the same thing as timing the load but
+// does not depend on how fast the test machine is.
+test.describe("a trip map load does not queue its requests", () => {
+  // The service worker would answer the locale itself on the second navigation,
+  // out of sight of page.route.
+  test.use({ serviceWorkers: "block" });
+
+  // Holds every request matching `match` until `waitFor` returns true for the
+  // requests seen so far, or a few seconds pass, and records which it was.
+  async function holdUntil(page, match, waitFor) {
+    const seen = [];
+    const result = { released: null };
+    page.on("request", (req) => seen.push(new URL(req.url()).pathname));
+    await page.route(match, async (route) => {
+      const deadline = Date.now() + 3000;
+      while (!waitFor(seen) && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      result.released ??= waitFor(seen) ? "early" : "timeout";
+      result.held = (result.held || 0) + 1;
+      await route.continue();
+    });
+    return { seen, result };
+  }
+
+  test("the map's own requests go out beside the trip, not after it", async ({ page }) => {
+    await login(page);
+    const routes = await buildRoutes(page);
+    const mapPath = routes.find((r) => r.label === "trip map").path;
+    const tripPath = `/api${mapPath.replace(/\/map$/, "")}`;
+
+    const { seen, result } = await holdUntil(
+      page,
+      (url) => url.pathname === tripPath,
+      (paths) => paths.includes(`${tripPath}/map`) && paths.includes("/api/map/config")
+    );
+    await gotoRoute(page, mapPath);
+    await waitForMapInstance(page);
+
+    expect(result.released, "the map items and map config should be requested while the trip is still loading").toBe(
+      "early"
+    );
+    // The page hands its request to the map rather than both asking.
+    expect(seen.filter((p) => p === `${tripPath}/map`)).toHaveLength(1);
+  });
+
+  test("/auth/me goes out beside the locale, not after it", async ({ page }) => {
+    // Not login(): its first navigation would leave the locale in the cache,
+    // and a cache hit is never held. The saved session is enough to boot.
+    await installFetchTracker(page);
+    await blockExternalRequests(page);
+    const { result } = await holdUntil(
+      page,
+      (url) => /\/locales\/[^/]+\.json$/.test(url.pathname),
+      (paths) => paths.includes("/api/auth/me")
+    );
+    await gotoRoute(page, "/trips");
+
+    expect(result.held, "the locale should have been fetched, not taken from the cache").toBeGreaterThan(0);
+    expect(result.released, "/auth/me should be requested while the locale is still loading").toBe("early");
+  });
+});

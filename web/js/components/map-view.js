@@ -42,6 +42,29 @@ function loadMapConfig() {
   return mapConfigPromise;
 }
 
+// A trip page that is about to mount a map calls this before it fetches the
+// trip, so the map's own requests run alongside that one instead of after it:
+// none of them needs more than the trip id from the URL. The items are held
+// for exactly one load() of the same trip and then dropped, so any later
+// render (a tab switch back to the map) fetches them fresh, as it always has.
+// The no-op catch keeps a 404 for a trip that does not exist from being
+// reported as unhandled; the page shows its not-found state from its own fetch.
+let preloadedItems = null;
+
+export function preloadTripMap(tripId) {
+  const promise = api.get(`/trips/${tripId}/map`);
+  promise.catch(() => {});
+  preloadedItems = { tripId, promise };
+  loadMapConfig();
+  import(assetURL("/js/vendor/maplibre/maplibre-gl.mjs")).catch(() => {});
+}
+
+function takePreloadedItems(tripId) {
+  const preloaded = preloadedItems;
+  preloadedItems = null;
+  return preloaded?.tripId === tripId ? preloaded.promise : null;
+}
+
 // MapLibre draws from a *style*, not from a tile layer, so there is no longer
 // a one-line "here is the tile URL" call: the server names two style
 // documents and this fetches whichever the current scheme calls for.
@@ -1207,7 +1230,7 @@ class MapView extends HTMLElement {
     const tripId = this.getAttribute("trip-id");
     if (!tripId) return;
 
-    const items = await api.get(`/trips/${tripId}/map`);
+    const items = await (takePreloadedItems(tripId) || api.get(`/trips/${tripId}/map`));
     if (generation !== this._generation) return;
     this._items = items;
     await this.render(generation);
@@ -1289,7 +1312,8 @@ class MapView extends HTMLElement {
     // needed before the first tile can be requested, so serialising them would
     // cost a round trip, and awaiting the config *after* constructing the map
     // would leave a constructed, tile-less map behind whenever this render is
-    // superseded mid-fetch.
+    // superseded mid-fetch. On a trip's Map tab both are usually in flight
+    // already, started by preloadTripMap() alongside the trip itself.
     const [maplibre, mapConfig] = await Promise.all([
       import(assetURL("/js/vendor/maplibre/maplibre-gl.mjs")),
       loadMapConfig(),

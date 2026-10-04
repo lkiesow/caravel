@@ -105,13 +105,13 @@ async function renderAuthenticated(user) {
   router.render();
 }
 
-async function boot() {
+async function boot(mePromise) {
   // Replaces index.html's static copy of the same loader with the translated
   // one, so the wait runs unbroken from first paint to the first route - the
   // ring does not restart, because the markup it swaps in is identical.
   renderLoading(app, { size: "lg" });
   try {
-    const user = await api.get("/auth/me");
+    const user = await mePromise;
     setCurrentUser(user);
     await renderAuthenticated(user);
   } catch {
@@ -139,7 +139,13 @@ initMapTheme();
 // changes from the settings page, so naming them here gives nothing away.
 window.caravel = Object.freeze({ setTheme, setMapTheme, rememberPosition, setLocale });
 
-initI18n().then(boot);
+// Asked for alongside the locale rather than after it: neither needs the
+// other, and on a warm load the locale is a cache hit while this is a round
+// trip. The no-op catch only keeps a logged-out load (a 401 here) from being
+// reported as unhandled before boot() gets to it; boot() still sees the error.
+const mePromise = api.get("/auth/me");
+mePromise.catch(() => {});
+initI18n().then(() => boot(mePromise));
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {

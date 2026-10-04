@@ -208,16 +208,6 @@ without asking.
 
 ## Deployment and operations
 
-- **A warm load of a trip still waits on its API calls, one after another.**
-  **(soon)** (Stage 45 Milestone 2.) With every static file served immutable, a
-  reload of the Map tab reaches the server for the shell, `sw.js` and four API
-  calls: `/api/auth/me`, then the trip, then the map config and the map items.
-  Behind a 250 ms-per-request proxy the map view attached at ~1.4 s warm, and
-  nearly all of that is those requests waiting on each other. Candidates:
-  starting `/auth/me` from the shell rather than after the bundle runs,
-  fetching the trip and the map data in parallel, or folding the map config
-  into a response the page already makes.
-
 - **Two of the three UI font files are not preloaded.** **(soon)** (Stage 41
   Milestone 2.) `web/index.html` preloads `montserrat-700`, but not
   `inter-400` or `inter-600`, the body faces -- they are requested only once

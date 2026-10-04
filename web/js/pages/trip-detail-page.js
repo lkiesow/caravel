@@ -1,7 +1,7 @@
 import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
-import "../components/map-view.js";
+import { preloadTripMap } from "../components/map-view.js";
 import { renderItemsTab } from "./locations-tab.js";
 import { renderItineraryTab } from "./itinerary-tab.js";
 import { renderNotesTab } from "./notes-tab.js";
@@ -22,6 +22,7 @@ const TABS = TRIP_TABS.map(({ key }) => key);
 
 export async function renderTripDetailPage(container, { tripId, tab }) {
   renderLoading(container, { size: "lg" });
+  if (tab === "map") preloadTripMap(tripId);
 
   let trip;
   try {

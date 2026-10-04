@@ -872,8 +872,10 @@ const styles = `
     margin: 0.5rem 0 0;
     /* .maplibregl-map sets font: 12px/20px Helvetica for everything inside
        the map container, and that inheritance is gone out here. Without an
-       explicit size the credit would come out at the app's body size. */
-    font-size: 0.7rem;
+       explicit size the credit would come out at the app's body size.
+       10px rather than 0.7rem so the OpenFreeMap credit stays on one line on
+       a 324px phone: at 0.7rem it measured 310px against 292px of room. */
+    font-size: 0.625rem;
     line-height: 1.4;
     color: var(--color-text-muted, #666);
   }

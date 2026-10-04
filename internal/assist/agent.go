@@ -432,7 +432,7 @@ func runTask[A any, R any](ctx context.Context, a *Agent, tk task, events func(E
 		s.begin(tk.mode, tk.user)
 	}
 
-	tools := newToolset(a.search, a.fetcher, a.geocoder, emit, log)
+	tools := newToolset(a.search, a.fetcher, emit, log)
 	defs := tools.definitions(tk.answer)
 
 	messages := []chatMessage{

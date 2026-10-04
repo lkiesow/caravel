@@ -81,18 +81,6 @@ without asking.
   2. **Offline edits.** A write queue with sync and conflict handling. Much
      larger; a separate decision.
 
-- **Does the assistant's `geocode` tool earn its keep?** **(soon)** (Review
-  2026-10-03; replaces "the maps lookup is not offered to the model as a
-  tool".) The model may call `geocode` (OpenStreetMap, `internal/assist/tools.go`)
-  while researching, to check that a place exists and is unambiguous. Its
-  result never reaches the proposal directly: the coordinates come from
-  `resolvePosition` (`locate.go`), which looks up the model's final
-  `place_name` and `address` in OSM and Google itself. So the tool can only
-  help indirectly -- a dropped non-existent place, a better-chosen name or
-  address -- while every call costs a full model round trip, which is most of
-  a run's time. Measure how often real runs call it and whether results differ
-  with it removed; remove it if it does not help.
-
 - **Per-trip feature toggles.** (notes.md, reviewed 2026-10-03.) Let a trip
   switch off what it does not use -- expenses, the itinerary, notes, files, the
   assistant -- in its settings tab, so a weekend trip is not eight tabs. Hidden,

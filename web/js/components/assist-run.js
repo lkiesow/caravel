@@ -25,7 +25,6 @@ const PROGRESS_KEYS = new Set([
   "assist.progress.thinking",
   "assist.progress.searching",
   "assist.progress.reading",
-  "assist.progress.checkingMap",
   "assist.progress.checkingLinks",
   "assist.progress.composing",
   "assist.progress.wrappingUp",
@@ -36,7 +35,6 @@ const STEP_KEYS = new Set([
   "assist.step.thinking",
   "assist.step.searching",
   "assist.step.reading",
-  "assist.step.checkingMap",
   "assist.step.checkingLinks",
   "assist.step.composing",
 ]);

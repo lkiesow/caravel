@@ -30,8 +30,8 @@ when somebody presses the button.
 
 ## Web search
 
-Optional but strongly recommended: without it the assistant has only
-OpenStreetMap and whatever the model already knows. Pick one and set
+Optional but strongly recommended: without it the assistant has only what the
+model already knows and the pages it can name itself. Pick one and set
 `CARAVEL_SEARCH_PROVIDER`, plus `CARAVEL_SEARCH_KEY` or `CARAVEL_SEARCH_URL` as
 the table says. There is no default — the right choice depends on what you are
 willing to run and pay for.

@@ -11,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"caravel/internal/geocode"
 	"caravel/internal/websearch"
 )
 
@@ -36,49 +35,47 @@ func TestToolDefinitionsFollowWhatIsConfigured(t *testing.T) {
 		return out
 	}
 
-	// Four when everything is configured: the three that do work, plus propose,
+	// Three when everything is configured: the two that do work, plus propose,
 	// which ends the run and is always offered.
-	full := newToolset(&websearch.Stub{}, newPageFetcher(), geocode.New("http://example.invalid/search"), nil, nil)
-	if got := names(full.definitions(locationTask(Request{}).answer)); len(got) != 4 {
-		t.Errorf("definitions = %v, want all four", got)
+	full := newToolset(&websearch.Stub{}, newPageFetcher(), nil, nil)
+	if got := names(full.definitions(locationTask(Request{}).answer)); len(got) != 3 {
+		t.Errorf("definitions = %v, want all three", got)
+	}
+	// The geocode tool was removed on purpose (see tools.go); a model that can
+	// call it spends a turn on a lookup resolvePosition makes anyway.
+	if slices.Contains(names(full.definitions(locationTask(Request{}).answer)), "geocode") {
+		t.Error("the removed geocode tool is offered again")
 	}
 
 	// propose is not optional: without it there is no way to end a run in one
 	// request, and the loop falls back to a second one every time.
 	for _, ts := range []*toolset{
 		full,
-		newToolset(nil, newPageFetcher(), nil, nil, nil),
+		newToolset(nil, newPageFetcher(), nil, nil),
 	} {
 		if !slices.Contains(names(ts.definitions(locationTask(Request{}).answer)), toolPropose) {
 			t.Errorf("propose was not offered: %v", names(ts.definitions(locationTask(Request{}).answer)))
 		}
 	}
 
-	noSearch := newToolset(nil, newPageFetcher(), geocode.New("http://example.invalid/search"), nil, nil)
+	noSearch := newToolset(nil, newPageFetcher(), nil, nil)
 	for _, n := range names(noSearch.definitions(locationTask(Request{}).answer)) {
 		if n == toolWebSearch {
 			t.Error("web search was offered with no search backend configured")
 		}
 	}
 
-	noGeo := newToolset(&websearch.Stub{}, newPageFetcher(), nil, nil, nil)
-	for _, n := range names(noGeo.definitions(locationTask(Request{}).answer)) {
-		if n == toolGeocode {
-			t.Error("geocoding was offered with no geocoder configured")
-		}
-	}
-
 	// fetch_page needs no configuration, so it is always there -- and the
 	// agent is still useful with it alone.
-	if got := names(noGeo.definitions(locationTask(Request{}).answer)); len(got) == 0 {
-		t.Error("no tools at all were offered")
+	if !slices.Contains(names(noSearch.definitions(locationTask(Request{}).answer)), toolFetchPage) {
+		t.Error("fetch_page was not offered with no search backend configured")
 	}
 }
 
 func TestToolDefinitionSchemasAreValidJSON(t *testing.T) {
 	// Hand-written literals, so a stray comma reaches a real provider as an
 	// opaque 400 unless something local catches it first.
-	ts := newToolset(&websearch.Stub{}, newPageFetcher(), geocode.New("http://example.invalid/search"), nil, nil)
+	ts := newToolset(&websearch.Stub{}, newPageFetcher(), nil, nil)
 	for _, d := range ts.definitions(locationTask(Request{}).answer) {
 		var parsed map[string]any
 		if err := json.Unmarshal(d.Parameters, &parsed); err != nil {
@@ -91,7 +88,7 @@ func TestToolDefinitionSchemasAreValidJSON(t *testing.T) {
 }
 
 func TestDispatchSearch(t *testing.T) {
-	ts := newToolset(&websearch.Stub{}, newPageFetcher(), nil, nil, nil)
+	ts := newToolset(&websearch.Stub{}, newPageFetcher(), nil, nil)
 	out := ts.dispatch(context.Background(), callTo(toolWebSearch, `{"query":"Kex Hostel"}`))
 
 	if !strings.Contains(out, "Kex Hostel") || !strings.Contains(out, "https://example.invalid/kex") {
@@ -107,7 +104,7 @@ func TestDispatchSearch(t *testing.T) {
 // the model, not a reason to abandon a paid run. Every dead link on the web
 // would otherwise be a failed enrichment.
 func TestDispatchTurnsFailuresIntoTextForTheModel(t *testing.T) {
-	ts := newToolset(&failingSearcher{}, newPageFetcher(), nil, nil, nil)
+	ts := newToolset(&failingSearcher{}, newPageFetcher(), nil, nil)
 
 	cases := []struct {
 		name string
@@ -119,7 +116,7 @@ func TestDispatchTurnsFailuresIntoTextForTheModel(t *testing.T) {
 		{"an empty query", callTo(toolWebSearch, `{"query":"  "}`), "empty"},
 		{"a blocked URL", callTo(toolFetchPage, `{"url":"http://169.254.169.254/"}`), "link-local"},
 		{"a tool that does not exist", callTo("summon_daemon", `{}`), "no tool called"},
-		{"a tool that is not configured", callTo(toolGeocode, `{"query":"x"}`), "no tool called"},
+		{"the removed geocode tool", callTo("geocode", `{"query":"x"}`), "no tool called"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -141,40 +138,6 @@ func (*failingSearcher) Search(context.Context, string) ([]websearch.Result, err
 	return nil, errors.New("the backend is down")
 }
 
-// The model must never see coordinates: showing them invites it to copy one
-// into the answer, which is exactly what the design forbids.
-func TestDispatchGeocodeReturnsAddressesWithoutCoordinates(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `[{"display_name":"Skulagata 28, Reykjavik","lat":"64.1466","lon":"-21.9426"}]`)
-	}))
-	defer upstream.Close()
-
-	ts := newToolset(nil, newPageFetcher(), geocode.New(upstream.URL), nil, nil)
-	out := ts.dispatch(context.Background(), callTo(toolGeocode, `{"query":"Kex Hostel"}`))
-
-	if !strings.Contains(out, "Skulagata 28") {
-		t.Errorf("result = %q, want the formatted address", out)
-	}
-	for _, coord := range []string{"64.1466", "-21.9426", "64.14", "-21.94"} {
-		if strings.Contains(out, coord) {
-			t.Errorf("result = %q, want no coordinates in it (found %q)", out, coord)
-		}
-	}
-}
-
-func TestDispatchGeocodeWithNoMatch(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `[]`)
-	}))
-	defer upstream.Close()
-
-	ts := newToolset(nil, newPageFetcher(), geocode.New(upstream.URL), nil, nil)
-	out := ts.dispatch(context.Background(), callTo(toolGeocode, `{"query":"zzzz"}`))
-	if !strings.Contains(out, "No matching place") {
-		t.Errorf("result = %q, want a plain no-match answer", out)
-	}
-}
-
 // Sources are what the run actually read. A page that failed is not one:
 // listing it would imply the proposal rests on something it does not.
 func TestSourcesRecordOnlySuccessfulReads(t *testing.T) {
@@ -189,7 +152,7 @@ func TestSourcesRecordOnlySuccessfulReads(t *testing.T) {
 	defer srv.Close()
 
 	f := newRelaxedFetcher()
-	ts := newToolset(nil, f, nil, nil, nil)
+	ts := newToolset(nil, f, nil, nil)
 
 	// Through dispatch, which is what records sources; the fetcher's address
 	// policy is relaxed because the test server is on loopback.
@@ -207,7 +170,7 @@ func TestSourcesRecordOnlySuccessfulReads(t *testing.T) {
 }
 
 func TestSourcesAreDeduplicated(t *testing.T) {
-	ts := newToolset(nil, newPageFetcher(), nil, nil, nil)
+	ts := newToolset(nil, newPageFetcher(), nil, nil)
 	// The model routinely searches twice and re-reads a page it already found.
 	ts.record(Source{Title: "Kex", URL: "https://example.invalid/kex"})
 	ts.record(Source{Title: "Kex again", URL: "https://example.invalid/kex"})
@@ -226,7 +189,7 @@ func TestSourcesAreDeduplicated(t *testing.T) {
 // wire cannot be re-rendered when they switch locale mid-run.
 func TestToolsEmitProgressEventsAsKeys(t *testing.T) {
 	var events []Event
-	ts := newToolset(&websearch.Stub{}, newPageFetcher(), nil, func(e Event) { events = append(events, e) }, nil)
+	ts := newToolset(&websearch.Stub{}, newPageFetcher(), func(e Event) { events = append(events, e) }, nil)
 	ts.dispatch(context.Background(), callTo(toolWebSearch, `{"query":"Kex Hostel"}`))
 
 	if len(events) != 2 {
@@ -259,7 +222,7 @@ func TestToolsEmitProgressEventsAsKeys(t *testing.T) {
 // proposal.
 func TestAFailedToolCallIsStillATracedStep(t *testing.T) {
 	var events []Event
-	ts := newToolset(&failingSearcher{}, newPageFetcher(), nil, func(e Event) { events = append(events, e) }, nil)
+	ts := newToolset(&failingSearcher{}, newPageFetcher(), func(e Event) { events = append(events, e) }, nil)
 	ts.dispatch(context.Background(), callTo(toolWebSearch, `{"query":"Kex Hostel"}`))
 
 	if len(events) != 2 {
@@ -275,7 +238,7 @@ func TestAFailedToolCallIsStillATracedStep(t *testing.T) {
 // appears with no parameter rather than not appearing.
 func TestAnUnreadableToolCallIsStillTraced(t *testing.T) {
 	var events []Event
-	ts := newToolset(&websearch.Stub{}, newPageFetcher(), nil, func(e Event) { events = append(events, e) }, nil)
+	ts := newToolset(&websearch.Stub{}, newPageFetcher(), func(e Event) { events = append(events, e) }, nil)
 	ts.dispatch(context.Background(), callTo(toolWebSearch, `not json at all`))
 
 	if len(events) != 2 {
@@ -293,7 +256,7 @@ func TestAnUnreadableToolCallIsStillTraced(t *testing.T) {
 // the part a person reads, and the part safe to put in a progress line.
 func TestFetchProgressEventReportsOnlyTheHost(t *testing.T) {
 	var events []Event
-	ts := newToolset(nil, newPageFetcher(), nil, func(e Event) { events = append(events, e) }, nil)
+	ts := newToolset(nil, newPageFetcher(), func(e Event) { events = append(events, e) }, nil)
 	ts.dispatch(context.Background(), callTo(toolFetchPage, `{"url":"https://example.invalid/a/very/long/path?tracking=1"}`))
 
 	if len(events) != 2 {

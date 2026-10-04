@@ -1,7 +1,7 @@
 // Package assist proposes travel metadata by asking an LLM, which may call a
-// small set of read-only tools (web search, page fetch, OpenStreetMap) while
-// it works. Two questions: fill in one location (Propose), and suggest several
-// places for a trip (Suggest).
+// small set of read-only tools (web search and page fetch) while it works. Two
+// questions: fill in one location (Propose), and suggest several places for a
+// trip (Suggest).
 //
 // # Off by default
 //

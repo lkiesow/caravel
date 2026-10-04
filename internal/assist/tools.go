@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"caravel/internal/geocode"
 	"caravel/internal/websearch"
 )
 
@@ -30,11 +29,17 @@ const (
 	// toolFetchPage retrieves one page as text. The tool with a real attack
 	// surface, guarded in fetch.go.
 	toolFetchPage = "fetch_page"
-	// toolGeocode resolves a place name or address to coordinates through
-	// OpenStreetMap. Available to the model as a lookup, but note that the
-	// coordinates that reach the proposal are resolved by the agent itself,
-	// not taken from whatever the model does with this.
-	toolGeocode = "geocode"
+
+	// There used to be a "geocode" tool here too, an OpenStreetMap lookup the
+	// model could use to check a place existed. Removed 2026-10-04 after an
+	// A/B over 96 live runs: the model called it in nearly every run, always
+	// in a turn of its own, mostly to re-check an address a page had just
+	// given it, and the resolved pins came out the same without it --
+	// resolvePosition (locate.go) asks the geocoder regardless. What it did
+	// change was the address field, for the worse: the model copied OSM's
+	// display street into it ("Schloss-Wolfsbrunnenweg" for Heidelberg Castle,
+	// whose address is Schlosshof 1).
+
 	// toolPropose ends the run: its arguments are the answer.
 	//
 	// Not dispatched like the others, and deliberately not in the tool map --
@@ -64,11 +69,10 @@ type toolFunc func(ctx context.Context, args json.RawMessage) (string, error)
 // One per run, not one per server: Sources accumulates, and two concurrent
 // runs must not pool theirs.
 type toolset struct {
-	search   websearch.Searcher
-	fetch    *pageFetcher
-	geocoder *geocode.Client
-	events   func(Event)
-	log      *slog.Logger
+	search websearch.Searcher
+	fetch  *pageFetcher
+	events func(Event)
+	log    *slog.Logger
 
 	mu      sync.Mutex
 	sources []Source
@@ -77,14 +81,14 @@ type toolset struct {
 	seen map[string]bool
 }
 
-func newToolset(search websearch.Searcher, fetch *pageFetcher, geocoder *geocode.Client, events func(Event), log *slog.Logger) *toolset {
+func newToolset(search websearch.Searcher, fetch *pageFetcher, events func(Event), log *slog.Logger) *toolset {
 	if events == nil {
 		events = func(Event) {}
 	}
 	if log == nil {
 		log = slog.Default()
 	}
-	return &toolset{search: search, fetch: fetch, geocoder: geocoder, events: events, log: log, seen: map[string]bool{}}
+	return &toolset{search: search, fetch: fetch, events: events, log: log, seen: map[string]bool{}}
 }
 
 // answerTool is the propose tool as one task shapes it.
@@ -106,7 +110,7 @@ type answerTool struct {
 // receives an error, and wastes a turn discovering what the config already
 // knew.
 func (t *toolset) definitions(answer answerTool) []toolDef {
-	defs := make([]toolDef, 0, 4)
+	defs := make([]toolDef, 0, 3)
 
 	if t.search != nil {
 		defs = append(defs, toolDef{
@@ -142,21 +146,6 @@ func (t *toolset) definitions(answer answerTool) []toolDef {
 		Parameters:  answer.Schema,
 	})
 
-	if t.geocoder != nil {
-		defs = append(defs, toolDef{
-			Name:        toolGeocode,
-			Description: "Look up a place name or postal address in OpenStreetMap to check that it exists and is unambiguous. Returns matching places with their formatted addresses.",
-			Parameters: json.RawMessage(`{
-			  "type": "object",
-			  "additionalProperties": false,
-			  "required": ["query"],
-			  "properties": {
-			    "query": {"type": "string", "description": "A place name and city, or a postal address."}
-			  }
-			}`),
-		})
-	}
-
 	return defs
 }
 
@@ -184,7 +173,7 @@ func (t *toolset) dispatch(ctx context.Context, call toolCall) string {
 	}
 
 	// One record per tool call, here rather than inside each tool, so the
-	// timing is measured the same way for all three and adding a fourth tool
+	// timing is measured the same way for every tool and adding another one
 	// gets its trace for free. The arguments carry the interesting part -- the
 	// query, the URL -- so they go in whole; they are short by schema, and
 	// nothing secret can reach them.
@@ -194,8 +183,8 @@ func (t *toolset) dispatch(ctx context.Context, call toolCall) string {
 	// answers "why did this run cost so much".
 	// Both halves of a step are announced here rather than inside each tool:
 	// the live status line when it starts, and the trace entry when it ends.
-	// One place owns the timing, so all three tools are measured identically
-	// and a fourth gets its trace for free.
+	// One place owns the timing, so every tool is measured identically
+	// and a new one gets its trace for free.
 	progressKey, stepKey, params := describeCall(name, args)
 	t.events(Event{Key: progressKey, Params: params})
 
@@ -237,11 +226,6 @@ func (t *toolset) lookup(name string) (toolFunc, bool) {
 		return t.doSearch, true
 	case toolFetchPage:
 		return t.doFetch, true
-	case toolGeocode:
-		if t.geocoder == nil {
-			return nil, false
-		}
-		return t.doGeocode, true
 	default:
 		return nil, false
 	}
@@ -305,40 +289,6 @@ func (t *toolset) doFetch(ctx context.Context, args json.RawMessage) (string, er
 	return fetched.Text, nil
 }
 
-func (t *toolset) doGeocode(ctx context.Context, args json.RawMessage) (string, error) {
-	var in struct {
-		Query string `json:"query"`
-	}
-	if err := json.Unmarshal(args, &in); err != nil {
-		return "", fmt.Errorf("the arguments were not valid JSON: %w", err)
-	}
-	in.Query = strings.TrimSpace(in.Query)
-	if in.Query == "" {
-		return "", fmt.Errorf("the query was empty")
-	}
-
-	// No locale, as in resolveCoordinates: the model is given the
-	// coordinates and the display name is only context for it, so the
-	// language they are named in does not change the answer.
-	results, err := t.geocoder.Search(ctx, in.Query, "")
-	if err != nil {
-		return "", fmt.Errorf("the lookup failed: %w", err)
-	}
-	if len(results) == 0 {
-		return "No matching place was found in OpenStreetMap.", nil
-	}
-
-	// Formatted addresses only, no coordinates. The model has no use for
-	// lat/lng -- the agent resolves the final position itself -- and showing
-	// them invites it to copy a number into the answer, which is the exact
-	// failure the design forbids.
-	var b strings.Builder
-	for i, r := range results {
-		fmt.Fprintf(&b, "%d. %s\n", i+1, r.DisplayName)
-	}
-	return b.String(), nil
-}
-
 // describeCall turns a tool call into the two keys and the parameters the UI
 // needs: what to say while it runs, and what to say about it afterwards.
 //
@@ -364,8 +314,6 @@ func describeCall(name string, args json.RawMessage) (progressKey, stepKey strin
 		// The host, not the URL: a full URL from a search result is long and
 		// attacker-influenced, and the host is the part a person reads.
 		return "assist.progress.reading", "assist.step.reading", param("url", hostOf(in.URL))
-	case toolGeocode:
-		return "assist.progress.checkingMap", "assist.step.checkingMap", param("query", strings.TrimSpace(in.Query))
 	default:
 		// A tool the model invented. It still gets a trace line, because "it
 		// spent a turn calling something that does not exist" is worth seeing.

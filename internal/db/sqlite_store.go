@@ -165,6 +165,10 @@ func (s *sqliteStore) DeleteExpiredSessions(ctx context.Context, now time.Time) 
 	return s.q.DeleteExpiredSessions(ctx, formatTime(now))
 }
 
+func (s *sqliteStore) CountActiveSessions(ctx context.Context, now time.Time) (int64, error) {
+	return s.q.CountActiveSessions(ctx, formatTime(now))
+}
+
 func (s *sqliteStore) CountUsers(ctx context.Context) (int64, error) {
 	return s.q.CountUsers(ctx)
 }

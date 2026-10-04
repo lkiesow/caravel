@@ -129,7 +129,20 @@ type Config struct {
 	// Set it when something in front rewrites Host, or when the instance is
 	// reached under a different name than it is addressed by.
 	BaseURL string // CARAVEL_BASE_URL
+
+	// MetricsToken switches on GET /metrics and is the bearer token a
+	// Prometheus scraper must send to read it. Empty -- the default -- means
+	// no metrics at all. A token rather than a separate listen address because
+	// the endpoint shares the main port, and so is reachable through whatever
+	// reverse proxy publishes the app; see minMetricsTokenLen.
+	MetricsToken string // CARAVEL_METRICS_TOKEN
 }
+
+// minMetricsTokenLen is the shortest metrics token accepted. The endpoint is on
+// the public port and the comparison has no rate limit, so the token has to be
+// unguessable by length alone; sixteen characters is the floor, and
+// `openssl rand -hex 32` the suggestion in the docs.
+const minMetricsTokenLen = 16
 
 // DefaultTrustedProxies is the private address space, which is what
 // CARAVEL_TRUSTED_PROXIES takes when it is unset. The same choice Tomcat makes
@@ -190,6 +203,9 @@ func Load() (Config, error) {
 		// Trailing slash trimmed here rather than at every use: the tags
 		// concatenate it with paths that start with one.
 		BaseURL: strings.TrimRight(strings.TrimSpace(os.Getenv("CARAVEL_BASE_URL")), "/"),
+		// Trimmed because a token read from a file into the environment
+		// usually brings its newline along, and the scraper's copy will not.
+		MetricsToken: strings.TrimSpace(os.Getenv("CARAVEL_METRICS_TOKEN")),
 		// Nominatim is the same project the map tiles come from. It is called
 		// from the server rather than the browser: OSM's usage policy wants an
 		// identifying User-Agent and no more than one request a second, which
@@ -309,6 +325,13 @@ func Load() (Config, error) {
 		if u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
 			return Config{}, fmt.Errorf("invalid CARAVEL_BASE_URL %q: scheme and host only, with no path", cfg.BaseURL)
 		}
+	}
+
+	// A short token on a public port is a password anyone can guess, and the
+	// operator would never find out: the endpoint answers the guesser the same
+	// way it answers the scraper.
+	if cfg.MetricsToken != "" && len(cfg.MetricsToken) < minMetricsTokenLen {
+		return Config{}, fmt.Errorf("invalid CARAVEL_METRICS_TOKEN: needs at least %d characters (try: openssl rand -hex 32)", minMetricsTokenLen)
 	}
 
 	// A style URL the browser cannot resolve is a blank map with nothing in

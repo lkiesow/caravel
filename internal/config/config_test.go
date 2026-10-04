@@ -564,3 +564,43 @@ func TestLoadBaseURL(t *testing.T) {
 		})
 	}
 }
+
+func TestMetricsToken(t *testing.T) {
+	cases := []struct {
+		name    string
+		raw     string
+		wantErr string
+		want    string
+	}{
+		{name: "unset means no metrics", raw: "", want: ""},
+		{name: "a long token comes through", raw: "0123456789abcdef0123", want: "0123456789abcdef0123"},
+		{
+			// A token read from a file into the environment brings its
+			// newline along; the scraper's copy will not have one.
+			name: "surrounding whitespace is trimmed",
+			raw:  " 0123456789abcdef\n",
+			want: "0123456789abcdef",
+		},
+		{name: "a short token is refused", raw: "hunter2", wantErr: "CARAVEL_METRICS_TOKEN"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("CARAVEL_METRICS_TOKEN", tc.raw)
+
+			cfg, err := Load()
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("Load() error = %v, want it to contain %q", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load() = %v, want success", err)
+			}
+			if cfg.MetricsToken != tc.want {
+				t.Errorf("MetricsToken = %q, want %q", cfg.MetricsToken, tc.want)
+			}
+		})
+	}
+}

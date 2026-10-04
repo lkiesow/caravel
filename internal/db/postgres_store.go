@@ -128,6 +128,10 @@ func (s *postgresStore) DeleteExpiredSessions(ctx context.Context, now time.Time
 	return s.q.DeleteExpiredSessions(ctx, now.UTC())
 }
 
+func (s *postgresStore) CountActiveSessions(ctx context.Context, now time.Time) (int64, error) {
+	return s.q.CountActiveSessions(ctx, now.UTC())
+}
+
 const dateLayout = "2006-01-02"
 
 func (s *postgresStore) CreateItem(ctx context.Context, p CreateItemParams) (Item, error) {

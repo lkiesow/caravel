@@ -17,6 +17,7 @@ import (
 	"caravel/internal/buildinfo"
 	"caravel/internal/db"
 	"caravel/internal/geocode"
+	"caravel/internal/metrics"
 	"caravel/internal/storagefs"
 	"caravel/internal/webbundle"
 	"caravel/internal/websearch"
@@ -100,7 +101,11 @@ type Server struct {
 	// against the defaults, so nothing downstream has to ask "is this the
 	// configured value or the fallback".
 	MapStyle MapStyleSettings
-	router   chi.Router
+	// Metrics is the Prometheus instrumentation, nil when metrics are off;
+	// MetricsToken is the bearer token GET /metrics demands. See handleMetrics.
+	Metrics      *metrics.Metrics
+	MetricsToken string
+	router       chi.Router
 }
 
 // Options are NewServer's dependencies and settings.
@@ -150,6 +155,12 @@ type Options struct {
 	// BaseURL pins the public origin used by the shell social tags. Empty --
 	// the usual case, and what a test wants -- derives it from each request.
 	BaseURL string
+	// Metrics counts requests and serves GET /metrics. Nil -- what a test
+	// wants unless it is testing this -- switches both off.
+	Metrics *metrics.Metrics
+	// MetricsToken is the bearer token /metrics requires. Empty leaves the
+	// endpoint answering 404 even when Metrics is set.
+	MetricsToken string
 }
 
 // DefaultAssistRateLimit is far tighter than the other limiters because the
@@ -202,6 +213,8 @@ func NewServer(opts Options) *Server {
 		ImageSearchLimiter: newRateLimiter(10, time.Minute),
 		assistSlots:        make(chan struct{}, assistMaxConcurrent(opts.AssistMaxConcurrent)),
 		MapStyle:           opts.MapStyle.withDefaults(),
+		Metrics:            opts.Metrics,
+		MetricsToken:       opts.MetricsToken,
 	}
 	// Hashing the asset tree is skipped in dev: the files change under the
 	// running process, so a startup snapshot of their hashes would be wrong
@@ -269,6 +282,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) buildRouter() chi.Router {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
+	// Outside Recoverer, so a panic is counted as the 500 it is answered with.
+	r.Use(s.Metrics.Middleware)
 	r.Use(middleware.Recoverer)
 	r.Use(securityHeaders)
 	r.Use(middleware.Compress(5))
@@ -491,6 +506,11 @@ func (s *Server) buildRouter() chi.Router {
 	// build fingerprint is substituted into it, which is what makes a deploy
 	// invalidate the worker's cache without anyone editing a constant.
 	r.Get("/sw.js", s.handleServiceWorker)
+
+	// Top level rather than under /api, which is the JSON API for the app,
+	// and registered even when metrics are off so that the path answers 404
+	// instead of falling through to the page shell with a 200.
+	r.Get("/metrics", s.handleMetrics)
 
 	fileServer := http.FileServer(s.WebFS)
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {

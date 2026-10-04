@@ -9,6 +9,7 @@ import (
 )
 
 type Querier interface {
+	CountActiveSessions(ctx context.Context, now string) (int64, error)
 	// Compared against a bound parameter rather than against a literal: the column
 	// is INTEGER in sqlite and BOOLEAN in postgres, so the comparison value has to
 	// come from the store layer, which is the only place that knows which dialect

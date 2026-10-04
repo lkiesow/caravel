@@ -20,6 +20,7 @@ change when the defaults do not fit.
 | `CARAVEL_BASE_URL` | *(unset)* | The public origin the instance is reached under, scheme and host, no path — for example `https://caravel.example`. Used only to build the absolute URLs in the social preview tags. Unset derives it from each request, which is right behind an ordinary reverse proxy; set it if something in front rewrites `Host` |
 | `CARAVEL_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error` — see [Logging](#logging) |
 | `CARAVEL_LOG_FORMAT` | `text` | `text` or `json` |
+| `CARAVEL_METRICS_TOKEN` | *(unset)* | Turns on `GET /metrics` for Prometheus, and is the bearer token a scraper must send. At least 16 characters. Unset means no metrics — see [Metrics](#metrics) |
 
 The container image sets `CARAVEL_DB_DSN=/data/caravel.db` and
 `CARAVEL_UPLOAD_DIR=/uploads`, which is why the compose files mount volumes at
@@ -98,6 +99,46 @@ run, though, so turning it on to answer a question and off again costs nothing.
 A run that *fails* is logged at `error` whatever the level is set to, with the
 provider's actual complaint — the browser only ever sees a fixed sentence, so
 this is the only place the real cause is written down.
+
+## Metrics
+
+Setting `CARAVEL_METRICS_TOKEN` turns on `GET /metrics`, which serves
+Prometheus metrics, in OpenMetrics format to any scraper that asks for it. It
+is on the same port as the app, so whatever publishes the app publishes it too.
+The token is all that protects it, which is why a short one stops the server.
+Generate one:
+
+```sh
+openssl rand -hex 32
+```
+
+Without the token, `/metrics` answers 404. With the wrong one, it answers 401.
+A Prometheus scrape job:
+
+```yaml
+scrape_configs:
+  - job_name: caravel
+    scheme: https
+    metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/caravel-token
+    static_configs:
+      - targets: [caravel.example]
+```
+
+What it exports:
+
+| Metric | What it is |
+|---|---|
+| `caravel_http_requests_total` | Requests by `method`, `route` and status `code`. `route` is the matched pattern (`/api/trips/{tripId}`), not the raw path; every static file is `static` |
+| `caravel_http_request_duration_seconds` | Request duration histogram, by `method` and `route` |
+| `caravel_blob_writes_total` | Files written to upload storage — uploads and the images resized from them — by `result` (`ok` or `error`) |
+| `caravel_blob_write_bytes` | Size histogram of those files |
+| `caravel_sessions_active` | Logged-in sessions that have not expired. Counted on each scrape |
+| `caravel_build_info` | Always 1; the `version` label is the running build |
+| `go_sql_*{db_name="caravel"}` | The database connection pool: open, in use, idle, waits |
+| `go_*`, `process_*` | The Go runtime and the process: memory, goroutines, CPU, open files |
 
 ## Bad values stop the server
 

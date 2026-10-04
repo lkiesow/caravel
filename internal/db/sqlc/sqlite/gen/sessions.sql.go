@@ -10,6 +10,17 @@ import (
 	"database/sql"
 )
 
+const countActiveSessions = `-- name: CountActiveSessions :one
+SELECT COUNT(*) FROM sessions WHERE expires_at > ?1
+`
+
+func (q *Queries) CountActiveSessions(ctx context.Context, now string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countActiveSessions, now)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createSession = `-- name: CreateSession :one
 INSERT INTO sessions (id, user_id, created_at, expires_at, last_seen_at, user_agent, ip)
 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)

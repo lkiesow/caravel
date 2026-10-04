@@ -17,6 +17,7 @@ import (
 	"caravel/internal/db"
 	"caravel/internal/geocode"
 	"caravel/internal/httpapi"
+	"caravel/internal/metrics"
 	"caravel/internal/storagefs"
 	"caravel/internal/websearch"
 	"caravel/internal/wikimedia"
@@ -87,7 +88,7 @@ func main() {
 		fatal("store", err)
 	}
 	authService := auth.NewService(store)
-	blob := storagefs.NewLocalFS(cfg.UploadDir)
+	var blob storagefs.Blob = storagefs.NewLocalFS(cfg.UploadDir)
 
 	// One geocoder, shared: /api/geocode proxies through it and the assistant
 	// resolves proposed addresses with it. Nil when unconfigured, which
@@ -153,6 +154,15 @@ func main() {
 
 	go sweepExpiredSessionsPeriodically(store)
 
+	// Built only when a token is set, so an instance without one carries no
+	// instrumentation at all. The blob store is wrapped here, before the
+	// server is handed it, so every upload path is measured by construction.
+	var m *metrics.Metrics
+	if cfg.MetricsToken != "" {
+		m = metrics.New(dbConn, store)
+		blob = m.InstrumentBlob(blob)
+	}
+
 	webFS := httpapi.WebFS(webassets.FS(), cfg.WebDir)
 	server := httpapi.NewServer(serverOptions(cfg, httpapi.Options{
 		DB:        dbConn,
@@ -164,6 +174,7 @@ func main() {
 		Assist:    assistant,
 		Wikimedia: wiki,
 		Searcher:  searcher,
+		Metrics:   m,
 	}))
 
 	slog.Info("caravel listening",
@@ -176,7 +187,8 @@ func main() {
 		// Wikipedia half works with nothing configured at all. What is worth
 		// logging is therefore the half that *is* conditional -- whether the
 		// configured search backend can also search for images.
-		"image_search_web", webImageSearch(searcher))
+		"image_search_web", webImageSearch(searcher),
+		"metrics", m != nil)
 	if err := http.ListenAndServe(":"+cfg.Port, server); err != nil {
 		fatal("server", err)
 	}
@@ -202,6 +214,9 @@ func serverOptions(cfg config.Config, opts httpapi.Options) httpapi.Options {
 	opts.TrustedProxies = cfg.TrustedProxies
 	// Empty is the normal case: the origin is then derived per request.
 	opts.BaseURL = cfg.BaseURL
+	// The token rather than the instrumentation: main builds Metrics, since
+	// it needs the database and the store, and passes it in the literal.
+	opts.MetricsToken = cfg.MetricsToken
 	// Zero means "left alone" for both, and NewServer turns exactly that into
 	// DefaultAssistRateLimit and DefaultAssistMaxConcurrent -- so the raw
 	// configured value belongs here, not a pre-defaulted one. The startup log

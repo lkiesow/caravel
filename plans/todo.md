@@ -193,15 +193,6 @@ without asking.
 
 ## Deployment and operations
 
-- **Prometheus/OpenMetrics metrics.** **(soon)** A `GET /metrics` endpoint via
-  `promhttp.Handler()`, outside `/api` and outside the session-auth middleware.
-  Stage 01's plan described that routing reservation as already in place, but
-  there is no `metrics` reference anywhere in `internal/` or `cmd/` -- the route
-  needs adding along with the instrumentation (HTTP request count, duration and
-  status; DB query duration; upload counts and sizes; session counts). Decide
-  whether it needs its own listen address or a token, since it sits outside
-  auth.
-
 - **The documentation site has no social preview.** **(soon)** (Surfaced fixing
   the app's, Aug 2026.) `zensical.toml` sets `site_description` and `site_url`
   but nothing emits `og:image`, so a link to the project site previews as bare
@@ -227,3 +218,10 @@ without asking.
 - **OpenID Connect / external auth providers.** `auth_identities` already
   supports a `provider` column beyond `'local'` for exactly this; no provider
   integration exists yet.
+
+- **Per-query database timing in the metrics.** (Deferred when `/metrics`
+  landed, Oct 2026.) The first cut exports the connection pool
+  (`go_sql_*`) but no query durations. Wrap sqlc's `DBTX` in both stores,
+  including the transaction one `WithTx` builds, and label each observation by
+  the `-- name:` comment sqlc puts at the top of every query string. The name
+  set is fixed, so the cardinality is too.

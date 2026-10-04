@@ -275,6 +275,9 @@ type Store interface {
 	// password changes.
 	DeleteSessionsByUserID(ctx context.Context, userID string) error
 	DeleteExpiredSessions(ctx context.Context, now time.Time) error
+	// CountActiveSessions counts the sessions that have not expired by now,
+	// for the caravel_sessions_active metric.
+	CountActiveSessions(ctx context.Context, now time.Time) (int64, error)
 
 	CreateTrip(ctx context.Context, p CreateTripParams) (Trip, error)
 	GetTripByID(ctx context.Context, id string) (Trip, error)

@@ -56,6 +56,7 @@ func TestServerOptionsCarriesTheRestOfTheConfiguration(t *testing.T) {
 		WebDir:          "web",
 		TrustedProxies:  proxies,
 		BaseURL:         "https://caravel.example",
+		MetricsToken:    "0123456789abcdef",
 		MapStyleURL:     "https://tiles.example/styles/day",
 		MapStyleDarkURL: "https://tiles.example/styles/night",
 	}
@@ -72,6 +73,9 @@ func TestServerOptionsCarriesTheRestOfTheConfiguration(t *testing.T) {
 	}
 	if opts.BaseURL != cfg.BaseURL {
 		t.Errorf("BaseURL = %q, want %q", opts.BaseURL, cfg.BaseURL)
+	}
+	if opts.MetricsToken != cfg.MetricsToken {
+		t.Errorf("MetricsToken = %q, want %q", opts.MetricsToken, cfg.MetricsToken)
 	}
 	if opts.MapStyle.URL != cfg.MapStyleURL {
 		t.Errorf("MapStyle.URL = %q, want %q", opts.MapStyle.URL, cfg.MapStyleURL)

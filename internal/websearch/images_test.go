@@ -1,4 +1,4 @@
-package assist
+package websearch
 
 import (
 	"context"
@@ -112,7 +112,7 @@ func TestOnlySomeBackendsCanSearchForImages(t *testing.T) {
 	}{
 		{"serper", newSerperSearcher("k", ""), true},
 		{"ddgs", newDDGSSearcher("http://localhost:8000"), true},
-		{"stub", &stubSearcher{}, true},
+		{"stub", &Stub{}, true},
 		{"ollama", newOllamaSearcher("k", ""), false},
 	} {
 		if _, ok := tc.s.(ImageSearcher); ok != tc.want {
@@ -121,33 +121,21 @@ func TestOnlySomeBackendsCanSearchForImages(t *testing.T) {
 	}
 }
 
-// NewSearcher exists so cmd/caravel can build one searcher for two consumers.
+// New exists so cmd/caravel can build one searcher for two consumers.
 // The thing worth pinning is that it still works with no assistant in sight,
 // which is the configuration Milestone 7 made legal.
-func TestNewSearcherBuildsABackendWithoutAnAssistant(t *testing.T) {
-	s, err := NewSearcher("serper", "k", "")
-	if err != nil {
-		t.Fatalf("NewSearcher: %v", err)
-	}
-	if s == nil || s.Name() != "serper" {
-		t.Fatalf("NewSearcher returned %v", s)
-	}
-	if none, err := NewSearcher("", "", ""); none != nil || err != nil {
-		t.Errorf("no provider = %v, %v; want nil, nil", none, err)
-	}
-	if _, err := NewSearcher("altavista", "", ""); err == nil {
-		t.Error("an unknown provider was accepted")
-	}
-}
-
-// And that the agent uses the one it is given rather than building a second.
-func TestTheAgentUsesTheSearcherItIsHanded(t *testing.T) {
-	mine := &stubSearcher{}
-	a, err := New(Options{LLMURL: LLMStub, LLMModel: "m", Searcher: mine})
+func TestNewBuildsABackendWithoutAnAssistant(t *testing.T) {
+	s, err := New("serper", "k", "")
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	if a.(*Agent).search != Searcher(mine) {
-		t.Error("the agent built its own searcher instead of using the shared one")
+	if s == nil || s.Name() != "serper" {
+		t.Fatalf("New returned %v", s)
+	}
+	if none, err := New("", "", ""); none != nil || err != nil {
+		t.Errorf("no provider = %v, %v; want nil, nil", none, err)
+	}
+	if _, err := New("altavista", "", ""); err == nil {
+		t.Error("an unknown provider was accepted")
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"caravel/internal/geocode"
+	"caravel/internal/websearch"
 )
 
 // The resolver against the fixture geocoder, which is the pair Stage 33 exists
@@ -218,7 +219,7 @@ func TestChoosePositionDoesNotMutateItsInputs(t *testing.T) {
 // End to end through the resolver with both fixtures configured, which is the
 // arrangement an operator running `serper` actually gets.
 func TestResolvePositionAsksBothSources(t *testing.T) {
-	a := &Agent{geocoder: geocode.New(geocode.StubURL), search: &stubSearcher{}}
+	a := &Agent{geocoder: geocode.New(geocode.StubURL), search: &websearch.Stub{}}
 	log := slog.New(slog.DiscardHandler)
 
 	// A place both know, where OSM has the mapped element. OSM wins, and the
@@ -276,7 +277,7 @@ func TestResolvePositionWithoutAPlaceLocator(t *testing.T) {
 type searcherWithoutPlaces struct{}
 
 func (searcherWithoutPlaces) Name() string { return "no-places" }
-func (searcherWithoutPlaces) Search(context.Context, string) ([]SearchResult, error) {
+func (searcherWithoutPlaces) Search(context.Context, string) ([]websearch.Result, error) {
 	return nil, nil
 }
 
@@ -332,22 +333,22 @@ type recordingLocator struct {
 }
 
 func (r *recordingLocator) Name() string { return "recording" }
-func (r *recordingLocator) Search(context.Context, string) ([]SearchResult, error) {
+func (r *recordingLocator) Search(context.Context, string) ([]websearch.Result, error) {
 	return nil, nil
 }
-func (r *recordingLocator) SearchPlaces(_ context.Context, query string) ([]PlaceResult, error) {
+func (r *recordingLocator) SearchPlaces(_ context.Context, query string) ([]websearch.PlaceResult, error) {
 	*r.asked = append(*r.asked, query)
 	if query != r.hitOn {
 		return nil, nil
 	}
-	return []PlaceResult{{Title: "Found", Address: "An address", Lat: 63.84, Lng: -20.31}}, nil
+	return []websearch.PlaceResult{{Title: "Found", Address: "An address", Lat: 63.84, Lng: -20.31}}, nil
 }
 
 // The city, which rides along with the position because it comes from the same
 // match. Three cases, and the middle one is the one worth having a test for.
 
 func TestPositionCarriesTheCity(t *testing.T) {
-	a := &Agent{geocoder: geocode.New(geocode.StubURL), search: &stubSearcher{}}
+	a := &Agent{geocoder: geocode.New(geocode.StubURL), search: &websearch.Stub{}}
 	log := slog.New(slog.DiscardHandler)
 
 	// The ordinary case: OSM answered and OSM won.

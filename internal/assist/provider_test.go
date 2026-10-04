@@ -429,3 +429,22 @@ func TestProviderHonorsContextCancellation(t *testing.T) {
 		t.Errorf("error = %v, want context.Canceled", err)
 	}
 }
+
+// Every provider documents the base URL, so requiring the full path produces a
+// 404 whose cause is invisible.
+func TestCompletionsURLAcceptsBothForms(t *testing.T) {
+	cases := map[string]string{
+		"https://openrouter.ai/api/v1":                   "https://openrouter.ai/api/v1/chat/completions",
+		"https://openrouter.ai/api/v1/":                  "https://openrouter.ai/api/v1/chat/completions",
+		"https://api.openai.com/v1":                      "https://api.openai.com/v1/chat/completions",
+		"http://localhost:11434/v1":                      "http://localhost:11434/v1/chat/completions",
+		"https://openrouter.ai/api/v1/chat/completions":  "https://openrouter.ai/api/v1/chat/completions",
+		"https://openrouter.ai/api/v1/chat/completions/": "https://openrouter.ai/api/v1/chat/completions",
+		"https://gateway.example.com/weird/mount/point":  "https://gateway.example.com/weird/mount/point/chat/completions",
+	}
+	for in, want := range cases {
+		if got := completionsURL(in); got != want {
+			t.Errorf("completionsURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

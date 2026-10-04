@@ -1,4 +1,4 @@
-package assist
+package websearch
 
 import (
 	"bytes"
@@ -53,7 +53,7 @@ func newOllamaSearcher(key, overrideURL string) *ollamaSearcher {
 
 func (*ollamaSearcher) Name() string { return "ollama" }
 
-func (s *ollamaSearcher) Search(ctx context.Context, query string) ([]SearchResult, error) {
+func (s *ollamaSearcher) Search(ctx context.Context, query string) ([]Result, error) {
 	ctx, cancel := context.WithTimeout(ctx, searchTimeout)
 	defer cancel()
 
@@ -63,7 +63,7 @@ func (s *ollamaSearcher) Search(ctx context.Context, query string) ([]SearchResu
 		// official SDKs expose a result count and pass it through here. An
 		// endpoint that ignores it costs nothing, since the results are
 		// truncated on our side anyway.
-		"max_results": searchMaxResults,
+		"max_results": MaxResults,
 	})
 	if err != nil {
 		return nil, err
@@ -76,7 +76,7 @@ func (s *ollamaSearcher) Search(ctx context.Context, query string) ([]SearchResu
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+s.key)
-	req.Header.Set("User-Agent", assistUserAgent())
+	req.Header.Set("User-Agent", userAgent())
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -110,14 +110,14 @@ func (s *ollamaSearcher) Search(ctx context.Context, query string) ([]SearchResu
 		return nil, fmt.Errorf("the search service returned a response that could not be read: %w", err)
 	}
 
-	out := make([]SearchResult, 0, len(decoded.Results))
+	out := make([]Result, 0, len(decoded.Results))
 	for _, r := range decoded.Results {
 		// A result with no URL is unusable: the model's next move is to read
 		// it, and there is nothing to read.
 		if strings.TrimSpace(r.URL) == "" {
 			continue
 		}
-		out = append(out, SearchResult{
+		out = append(out, Result{
 			Title: strings.TrimSpace(r.Title),
 			URL:   strings.TrimSpace(r.URL),
 			// Trimmed hard. This backend returns substantial page extracts

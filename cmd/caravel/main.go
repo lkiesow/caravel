@@ -18,6 +18,7 @@ import (
 	"caravel/internal/geocode"
 	"caravel/internal/httpapi"
 	"caravel/internal/storagefs"
+	"caravel/internal/websearch"
 	"caravel/internal/wikimedia"
 )
 
@@ -98,7 +99,7 @@ func main() {
 	// assist.New because since Stage 21 Milestone 7 it has two consumers and
 	// is no longer the assistant's private dependency -- an instance may
 	// configure a search provider with no LLM at all.
-	searcher, err := assist.NewSearcher(cfg.SearchProvider, cfg.SearchKey, cfg.SearchURL)
+	searcher, err := websearch.New(cfg.SearchProvider, cfg.SearchKey, cfg.SearchURL)
 	if err != nil {
 		fatal("search", err)
 	}
@@ -218,11 +219,11 @@ func serverOptions(cfg config.Config, opts httpapi.Options) httpapi.Options {
 // or says why there is none. A string rather than a bool because "configured
 // but cannot do images" is the answer an operator is most likely to be
 // surprised by, and it is invisible in a true/false.
-func webImageSearch(searcher assist.Searcher) string {
+func webImageSearch(searcher websearch.Searcher) string {
 	if searcher == nil {
 		return "none"
 	}
-	if _, ok := searcher.(assist.ImageSearcher); !ok {
+	if _, ok := searcher.(websearch.ImageSearcher); !ok {
 		return searcher.Name() + " (no image search)"
 	}
 	return searcher.Name()

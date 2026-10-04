@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"caravel/internal/geocode"
+	"caravel/internal/websearch"
 )
 
 // The stub's value is that it drives a *multi-step* exchange, so the loop, the
@@ -252,7 +253,7 @@ func TestTheStubCanBeAskedAboutAPlaceTheSourcesDisagreeAbout(t *testing.T) {
 	a := agentWith()
 	a.provider = newStubProvider()
 	a.geocoder = geocode.New(geocode.StubURL)
-	a.search = &stubSearcher{}
+	a.search = &websearch.Stub{}
 
 	req := enrichRequest()
 	req.Prompt = "Harpa concert hall"

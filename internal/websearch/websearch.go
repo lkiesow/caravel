@@ -1,14 +1,4 @@
-package assist
-
-import (
-	"context"
-	"fmt"
-	"strings"
-
-	"caravel/internal/wikimedia"
-)
-
-// Web search, behind an interface.
+// Package websearch is web search, behind an interface.
 //
 // Four backends are supported and they disagree about almost everything --
 // auth, request shape, response shape, whether they are hosted or something you
@@ -18,15 +8,30 @@ import (
 // common denominator every one of them returns and the most the model needs to
 // decide what to read.
 //
-// The normalisation matters beyond tidiness. The agent never sees
+// The normalisation matters beyond tidiness. No caller ever sees
 // provider-shaped JSON, so swapping providers is a change to one file and
 // nothing else -- the same reasoning as geocode.Result versus the raw
 // Nominatim payload. It also means a provider that disappears (these are
 // scrapers and startups) costs a replacement implementation rather than a
-// change to the prompt.
+// change to the assistant's prompt.
+//
+// Lifted out of internal/assist (where it started, as the assistant's research
+// tool) once the image picker became a second consumer: cmd/caravel builds one
+// searcher and hands it to both, and a package named for the assistant should
+// not be imported for something with no LLM in it.
+package websearch
 
-// SearchResult is one hit, normalised.
-type SearchResult struct {
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"caravel/internal/buildinfo"
+	"caravel/internal/wikimedia"
+)
+
+// Result is one hit, normalised.
+type Result struct {
 	Title   string
 	URL     string
 	Snippet string
@@ -36,13 +41,13 @@ type SearchResult struct {
 // configured: the agent then runs on OpenStreetMap and the model's own
 // knowledge, which is a worse assistant but a working one.
 type Searcher interface {
-	Search(ctx context.Context, query string) ([]SearchResult, error)
+	Search(ctx context.Context, query string) ([]Result, error)
 	// Name is what appears in progress events and errors, so an operator can
 	// tell which backend is misbehaving without reading the config.
 	Name() string
 }
 
-// ImageResult is one image hit, normalised the same way SearchResult is.
+// ImageResult is one image hit, normalised the same way Result is.
 //
 // Note what is *not* here: a licence. A web image search finds pictures on
 // pages, and neither Serper nor ddgs knows on what terms any of them may be
@@ -126,78 +131,94 @@ type PlaceLocator interface {
 const placeSearchMaxResults = 3
 
 // imageSearchMaxResults is what an image-search backend is asked for. Larger
-// than searchMaxResults because these are thumbnails in a grid being judged by
+// than MaxResults because these are thumbnails in a grid being judged by
 // eye, not text being read by a model.
 const imageSearchMaxResults = 12
 
-// searchMaxResults is what the agent asks for and what providers are told to
+// MaxResults is what the assistant asks for and what providers are told to
 // return. Enough to choose from, few enough that the list itself is not most
 // of the prompt.
-const searchMaxResults = 6
+const MaxResults = 6
 
-// newSearcher builds the configured backend, or nil if none is configured.
+// New builds the configured backend, or nil if none is configured.
 //
-// Milestone 3 implemented the stub, Milestone 5 Ollama Cloud, Milestone 8 ddgs
-// and Serper. An unknown name is a startup error rather
-// than a silent fallback to "no search", because config.Load has already
-// validated the value -- reaching here with something else means the two lists
-// have drifted, which is a bug worth surfacing loudly.
-func newSearcher(opts Options) (Searcher, error) {
-	return NewSearcher(opts.SearchProvider, opts.SearchKey, opts.SearchURL)
-}
-
-// NewSearcher is newSearcher without the assistant.
-//
-// Exported as of Stage 21 Milestone 7, when web search stopped being the
-// assistant's alone: the image picker uses the same backend, so cmd/caravel
-// builds one searcher and hands it to both rather than each constructing its
-// own from the same three settings.
-func NewSearcher(provider, key, searchURL string) (Searcher, error) {
-	opts := Options{SearchProvider: provider, SearchKey: key, SearchURL: searchURL}
-	switch opts.SearchProvider {
+// An unknown name is a startup error rather than a silent fallback to "no
+// search", because config.Load has already validated the value -- reaching here
+// with something else means the two lists have drifted, which is a bug worth
+// surfacing loudly.
+func New(provider, key, searchURL string) (Searcher, error) {
+	switch provider {
 	case "":
 		return nil, nil
 	case "stub":
-		return &stubSearcher{}, nil
+		return &Stub{}, nil
 	case "ollama":
-		if opts.SearchKey == "" {
-			return nil, fmt.Errorf("assist: search provider %q needs CARAVEL_SEARCH_KEY", opts.SearchProvider)
+		if key == "" {
+			return nil, fmt.Errorf("websearch: search provider %q needs CARAVEL_SEARCH_KEY", provider)
 		}
-		return newOllamaSearcher(opts.SearchKey, opts.SearchURL), nil
+		return newOllamaSearcher(key, searchURL), nil
 	case "serper":
-		if opts.SearchKey == "" {
-			return nil, fmt.Errorf("assist: search provider %q needs CARAVEL_SEARCH_KEY", opts.SearchProvider)
+		if key == "" {
+			return nil, fmt.Errorf("websearch: search provider %q needs CARAVEL_SEARCH_KEY", provider)
 		}
-		return newSerperSearcher(opts.SearchKey, opts.SearchURL), nil
+		return newSerperSearcher(key, searchURL), nil
 	case "ddgs":
 		// Self-hosted, so there is no address to fall back on. config.Load
 		// already refuses this combination; the check is here too because this
 		// constructor is reachable from tests that do not go through Load.
-		if opts.SearchURL == "" {
-			return nil, fmt.Errorf("assist: search provider %q needs CARAVEL_SEARCH_URL", opts.SearchProvider)
+		if searchURL == "" {
+			return nil, fmt.Errorf("websearch: search provider %q needs CARAVEL_SEARCH_URL", provider)
 		}
-		return newDDGSSearcher(opts.SearchURL), nil
+		return newDDGSSearcher(searchURL), nil
 	default:
-		return nil, fmt.Errorf("assist: unknown search provider %q", opts.SearchProvider)
+		return nil, fmt.Errorf("websearch: unknown search provider %q", provider)
 	}
 }
 
-// stubSearcher answers from a fixed table, selected by
+// userAgent identifies our outbound requests to the search backends. The same
+// string the assistant's page fetches send, so an operator reading a backend's
+// logs sees one Caravel, not two.
+func userAgent() string {
+	return "Caravel/" + buildinfo.Version + " (self-hosted trip planner; +assistant)"
+}
+
+// truncate and collapseWhitespace are copies of the assistant's helpers of the
+// same name, which its page fetcher still uses; a few lines each is cheaper
+// than a shared package for them.
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
+}
+
+func collapseWhitespace(s string) string {
+	lines := strings.Split(s, "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if f := strings.Join(strings.Fields(line), " "); f != "" {
+			out = append(out, f)
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+// Stub answers from a fixed table, selected by
 // CARAVEL_SEARCH_PROVIDER=stub.
 //
 // Like the stub provider, it fakes exactly one thing -- the outbound HTTP call
 // -- and leaves the dispatch, the agent loop and everything downstream real.
 // The results deliberately point at example.invalid, which cannot resolve, so
 // a test that accidentally follows one fails rather than reaching the network.
-type stubSearcher struct{}
+type Stub struct{}
 
-func (*stubSearcher) Name() string { return "stub" }
+func (*Stub) Name() string { return "stub" }
 
-func (*stubSearcher) Search(_ context.Context, query string) ([]SearchResult, error) {
+func (*Stub) Search(_ context.Context, query string) ([]Result, error) {
 	// Echoing the query into the first result is not decoration: it makes a
 	// Playwright assertion able to prove the search term actually reached the
 	// backend, rather than that some fixture was rendered.
-	return []SearchResult{
+	return []Result{
 		{
 			Title:   "Kex Hostel, Reykjavik",
 			URL:     "https://example.invalid/kex",
@@ -227,7 +248,7 @@ func (*stubSearcher) Search(_ context.Context, query string) ([]SearchResult, er
 //   - "Harpa" -- deliberately 3km from where the fixture geocoder puts it.
 //     Two services disagreeing about a place is not a pin to show with
 //     confidence, and Milestone 5 needs a way to reach that state.
-func (*stubSearcher) SearchPlaces(_ context.Context, query string) ([]PlaceResult, error) {
+func (*Stub) SearchPlaces(_ context.Context, query string) ([]PlaceResult, error) {
 	switch key := strings.ToLower(strings.TrimSpace(query)); {
 	case strings.Contains(key, "kex hostel"):
 		// The same building the fixture geocoder returns, give or take the
@@ -275,7 +296,7 @@ func (*stubSearcher) SearchPlaces(_ context.Context, query string) ([]PlaceResul
 // The first has to load, though, or the group it is in could never be looked
 // at. It borrows a picture from the stub encyclopaedia, which is the one
 // loopback host in a test run that serves images.
-func (*stubSearcher) SearchImages(_ context.Context, query string) ([]ImageResult, error) {
+func (*Stub) SearchImages(_ context.Context, query string) ([]ImageResult, error) {
 	// The same escape hatch the stub encyclopaedia has, so a test can reach
 	// the "nothing at all was found" state with both sources configured.
 	if strings.Contains(strings.ToLower(query), "nothing") {

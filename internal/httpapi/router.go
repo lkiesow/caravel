@@ -19,6 +19,7 @@ import (
 	"caravel/internal/geocode"
 	"caravel/internal/storagefs"
 	"caravel/internal/webbundle"
+	"caravel/internal/websearch"
 	"caravel/internal/wikimedia"
 )
 
@@ -86,7 +87,7 @@ type Server struct {
 	// ImageSearch is the *optional* other half: the configured search backend,
 	// when it can search for images. Nil when none is configured, or when the
 	// one that is cannot (Ollama Cloud has no images endpoint).
-	ImageSearch assist.ImageSearcher
+	ImageSearch websearch.ImageSearcher
 	// assistSlots is a counting semaphore over in-flight assist runs; see
 	// DefaultAssistMaxConcurrent. A buffered channel rather than a mutex and
 	// a counter, so the non-blocking "is there room" question is one select.
@@ -128,8 +129,8 @@ type Options struct {
 	// Wikimedia backs the Wikipedia half of /api/trips/{id}/image-search.
 	Wikimedia *wikimedia.Client
 	// Searcher is the configured web-search backend, shared with Assist. The
-	// image endpoint uses it only if it also implements assist.ImageSearcher.
-	Searcher assist.Searcher
+	// image endpoint uses it only if it also implements websearch.ImageSearcher.
+	Searcher websearch.Searcher
 	// AssistRateLimit is runs per minute per client address. Zero takes
 	// defaultAssistRateLimit. This is the only thing bounding how *many* runs
 	// happen -- assist.Limits bounds what one run may spend -- so the
@@ -214,8 +215,8 @@ func NewServer(opts Options) *Server {
 	// The image searcher is the configured backend *if* it can do images --
 	// a type assertion rather than a second registry, so a backend that
 	// cannot simply contributes nothing and the Wikipedia half carries the
-	// feature. See assist.ImageSearcher.
-	if is, ok := opts.Searcher.(assist.ImageSearcher); ok {
+	// feature. See websearch.ImageSearcher.
+	if is, ok := opts.Searcher.(websearch.ImageSearcher); ok {
 		s.ImageSearch = is
 	}
 	s.router = s.buildRouter()

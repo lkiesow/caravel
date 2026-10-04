@@ -128,7 +128,7 @@ without asking.
 
 - **Serper reports a website and a phone number for every place it finds.**
   (Stage 33 Milestone 3.) `/places` carries `website` and `phoneNumber`
-  alongside the position, and `PlaceResult` (`internal/assist/search.go`)
+  alongside the position, and `PlaceResult` (`internal/websearch/websearch.go`)
   deliberately drops both. An official site found this way needs no liveness
   check and no model to have proposed it, which makes it a better link than
   most of what a run currently offers -- but it is a different feature from
@@ -175,16 +175,6 @@ without asking.
 ---
 
 ## Consistency and cleanup
-
-- **Web search should leave `internal/assist`.** **(soon)** (Stage 21 Milestone
-  7.) `Searcher` and its backends live in that package because the assistant
-  was their only consumer. It no longer is: the image picker uses the same
-  backend, `cmd/caravel` builds it and `internal/httpapi` type-asserts
-  `assist.ImageSearcher` off it (`router.go`), so a package named for the
-  assistant is imported for something with no LLM in it. An `internal/websearch`
-  in the shape of `internal/geocode` would be the honest arrangement.
-  Mechanical but wide -- every test in `internal/assist` names one of these
-  types.
 
 - **Identifier sweep: "item" → "location", all the way down.** (Stage 05; depth
   decided 2026-10-03.) The user-visible copy says "location"; below it, the

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"caravel/internal/geocode"
+	"caravel/internal/websearch"
 )
 
 // The trip-level run. Its loop is Propose's loop -- agent_test.go covers that
@@ -310,7 +311,7 @@ func TestTheStubHasASuggestScript(t *testing.T) {
 	// isolation: which candidate resolves precisely, which only to a street,
 	// and which the two sources cannot agree about.
 	a.geocoder = geocode.New(geocode.StubURL)
-	a.search = &stubSearcher{}
+	a.search = &websearch.Stub{}
 
 	out, err := a.Suggest(context.Background(), suggestRequest(), nil)
 	if err != nil {

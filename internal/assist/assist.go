@@ -65,6 +65,7 @@ import (
 
 	"caravel/internal/buildinfo"
 	"caravel/internal/geocode"
+	"caravel/internal/websearch"
 	"caravel/internal/wikimedia"
 )
 
@@ -101,19 +102,12 @@ type Options struct {
 	LLMKey   string
 	LLMModel string
 
-	// SearchProvider is empty, "stub", or the name of a real backend. Empty
+	// Searcher is the web-search backend the agent researches with. Nil
 	// means the agent runs without web search: a worse assistant, but a
-	// working one.
-	SearchProvider string
-	SearchKey      string
-	SearchURL      string
-
-	// Searcher, when non-nil, is used instead of building one from the three
-	// settings above. Since Stage 21 Milestone 7 the image picker uses the
-	// same backend, so cmd/caravel builds one and shares it -- one set of
-	// connections and one place a misconfiguration is reported, rather than
-	// two constructions of the same thing that could disagree.
-	Searcher Searcher
+	// working one. Built by cmd/caravel rather than here because the image
+	// picker shares it -- one set of connections and one place a
+	// misconfiguration is reported.
+	Searcher websearch.Searcher
 
 	// Geocoder resolves a proposed address to coordinates. Nil means the
 	// agent proposes an address with no coordinates rather than guessing
@@ -167,16 +161,7 @@ func New(opts Options) (Assistant, error) {
 		p = newHTTPProvider(opts.LLMURL, opts.LLMKey, opts.LLMModel)
 	}
 
-	// An unknown provider name is a startup error rather than a silent
-	// downgrade to "no search": config.Load has already validated it, so
-	// reaching here with something else means the two lists have drifted.
 	search := opts.Searcher
-	if search == nil {
-		var err error
-		if search, err = newSearcher(opts); err != nil {
-			return nil, err
-		}
-	}
 
 	// Defaults filled and the combination checked here rather than at first
 	// use, so a nonsensical setting is a startup failure naming the problem
@@ -208,7 +193,7 @@ func New(opts Options) (Assistant, error) {
 type Agent struct {
 	opts      Options
 	provider  provider
-	search    Searcher
+	search    websearch.Searcher
 	fetcher   *pageFetcher
 	geocoder  *geocode.Client
 	wikimedia *wikimedia.Client

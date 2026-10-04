@@ -1,4 +1,4 @@
-package assist
+package websearch
 
 import (
 	"context"
@@ -133,36 +133,17 @@ func TestOllamaSearcherDefaultsToTheHostedEndpoint(t *testing.T) {
 	}
 }
 
-func TestNewSearcherRequiresAKeyForOllama(t *testing.T) {
+func TestNewRequiresAKeyForOllama(t *testing.T) {
 	// Failing at startup beats a run that reaches the search tool and gets a
 	// 401 thirty seconds in.
-	if _, err := newSearcher(Options{SearchProvider: "ollama"}); err == nil {
-		t.Error("newSearcher accepted the ollama provider with no key")
+	if _, err := New("ollama", "", ""); err == nil {
+		t.Error("New accepted the ollama provider with no key")
 	}
-	s, err := newSearcher(Options{SearchProvider: "ollama", SearchKey: "k"})
+	s, err := New("ollama", "k", "")
 	if err != nil || s == nil {
-		t.Fatalf("newSearcher = %v, %v", s, err)
+		t.Fatalf("New = %v, %v", s, err)
 	}
 	if s.Name() != "ollama" {
 		t.Errorf("Name() = %q", s.Name())
-	}
-}
-
-// Every provider documents the base URL, so requiring the full path produces a
-// 404 whose cause is invisible.
-func TestCompletionsURLAcceptsBothForms(t *testing.T) {
-	cases := map[string]string{
-		"https://openrouter.ai/api/v1":                   "https://openrouter.ai/api/v1/chat/completions",
-		"https://openrouter.ai/api/v1/":                  "https://openrouter.ai/api/v1/chat/completions",
-		"https://api.openai.com/v1":                      "https://api.openai.com/v1/chat/completions",
-		"http://localhost:11434/v1":                      "http://localhost:11434/v1/chat/completions",
-		"https://openrouter.ai/api/v1/chat/completions":  "https://openrouter.ai/api/v1/chat/completions",
-		"https://openrouter.ai/api/v1/chat/completions/": "https://openrouter.ai/api/v1/chat/completions",
-		"https://gateway.example.com/weird/mount/point":  "https://gateway.example.com/weird/mount/point/chat/completions",
-	}
-	for in, want := range cases {
-		if got := completionsURL(in); got != want {
-			t.Errorf("completionsURL(%q) = %q, want %q", in, got, want)
-		}
 	}
 }

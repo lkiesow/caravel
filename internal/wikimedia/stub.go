@@ -119,7 +119,7 @@ var startStubFixture = sync.OnceValue(func() string {
 // StubImageURL is a picture the fixture really serves, for other packages
 // stubbing something that has to hand the browser a loadable image.
 //
-// internal/assist is the caller: its stub image search offers one live result
+// internal/websearch is the caller: its stub image search offers one live result
 // and one dead one, so the browser suite can see both a group that renders and
 // a thumbnail that removes itself. Without a live URL from somewhere, every
 // stubbed web result would be dead and the group could never be looked at.

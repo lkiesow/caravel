@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+
+	"caravel/internal/websearch"
 )
 
 // Turning what the model said into where the place is.
@@ -289,7 +291,7 @@ func (a *Agent) locateViaPlaces(ctx context.Context, name, address string, log *
 	if a.search == nil {
 		return nil
 	}
-	locator, ok := a.search.(PlaceLocator)
+	locator, ok := a.search.(websearch.PlaceLocator)
 	if !ok {
 		// ddgs, Ollama Cloud, and any future backend without a maps endpoint.
 		// Silent rather than logged: it is a property of the configuration,
@@ -327,7 +329,7 @@ func (a *Agent) locateViaPlaces(ctx context.Context, name, address string, log *
 // placeLabel is what the user is shown as evidence for a Google-sourced pin:
 // the same thing a geocoder display name gives them, assembled from the two
 // fields this API reports separately.
-func placeLabel(p PlaceResult) string {
+func placeLabel(p websearch.PlaceResult) string {
 	switch {
 	case p.Title != "" && p.Address != "":
 		return p.Title + ", " + p.Address

@@ -1,4 +1,4 @@
-package assist
+package websearch
 
 import (
 	"context"
@@ -195,7 +195,7 @@ func TestAllBackendsSkipResultsWithNoURL(t *testing.T) {
 }
 
 // The point of the interface: four implementations, no changes anywhere else.
-func TestNewSearcherKnowsEveryProvider(t *testing.T) {
+func TestNewKnowsEveryProvider(t *testing.T) {
 	cases := []struct {
 		provider, key, url, wantName string
 		wantErr                      bool
@@ -211,15 +211,15 @@ func TestNewSearcherKnowsEveryProvider(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.provider+"/"+tc.wantName, func(t *testing.T) {
-			s, err := newSearcher(Options{SearchProvider: tc.provider, SearchKey: tc.key, SearchURL: tc.url})
+			s, err := New(tc.provider, tc.key, tc.url)
 			if tc.wantErr {
 				if err == nil {
-					t.Fatalf("newSearcher(%q) succeeded, want an error", tc.provider)
+					t.Fatalf("New(%q) succeeded, want an error", tc.provider)
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("newSearcher(%q) = %v", tc.provider, err)
+				t.Fatalf("New(%q) = %v", tc.provider, err)
 			}
 			if s.Name() != tc.wantName {
 				t.Errorf("Name() = %q, want %q", s.Name(), tc.wantName)
@@ -360,7 +360,7 @@ func TestOnlySerperOffersPlaces(t *testing.T) {
 	if _, ok := any(newSerperSearcher("k", "")).(PlaceLocator); !ok {
 		t.Error("serper should offer places")
 	}
-	if _, ok := any(&stubSearcher{}).(PlaceLocator); !ok {
+	if _, ok := any(&Stub{}).(PlaceLocator); !ok {
 		t.Error("the stub should offer places, or the browser suite cannot reach the two-source path")
 	}
 	if _, ok := any(newDDGSSearcher("http://example.invalid")).(PlaceLocator); ok {

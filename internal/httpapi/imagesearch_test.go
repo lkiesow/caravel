@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"testing"
 
-	"caravel/internal/assist"
 	"caravel/internal/db"
+	"caravel/internal/websearch"
 	"caravel/internal/wikimedia"
 )
 
@@ -16,15 +16,15 @@ import (
 
 type fakeImageSearcher struct {
 	name    string
-	results []assist.ImageResult
+	results []websearch.ImageResult
 	err     error
 }
 
 func (f fakeImageSearcher) Name() string { return f.name }
-func (f fakeImageSearcher) Search(context.Context, string) ([]assist.SearchResult, error) {
+func (f fakeImageSearcher) Search(context.Context, string) ([]websearch.Result, error) {
 	return nil, nil
 }
-func (f fakeImageSearcher) SearchImages(context.Context, string) ([]assist.ImageResult, error) {
+func (f fakeImageSearcher) SearchImages(context.Context, string) ([]websearch.ImageResult, error) {
 	return f.results, f.err
 }
 
@@ -33,11 +33,11 @@ func (f fakeImageSearcher) SearchImages(context.Context, string) ([]assist.Image
 type textOnlySearcher struct{}
 
 func (textOnlySearcher) Name() string { return "textonly" }
-func (textOnlySearcher) Search(context.Context, string) ([]assist.SearchResult, error) {
+func (textOnlySearcher) Search(context.Context, string) ([]websearch.Result, error) {
 	return nil, nil
 }
 
-func imageSearchServer(t *testing.T, searcher assist.Searcher) *testServer {
+func imageSearchServer(t *testing.T, searcher websearch.Searcher) *testServer {
 	t.Helper()
 	return newTestServerWithOptions(t, func(o *Options) {
 		o.Wikimedia = wikimedia.New(wikimedia.StubURL)
@@ -46,7 +46,7 @@ func imageSearchServer(t *testing.T, searcher assist.Searcher) *testServer {
 }
 
 func TestImageSearchAnswersFromBothSources(t *testing.T) {
-	ts := imageSearchServer(t, fakeImageSearcher{name: "serper", results: []assist.ImageResult{
+	ts := imageSearchServer(t, fakeImageSearcher{name: "serper", results: []websearch.ImageResult{
 		{Title: "A hotel", URL: "https://site.example/a.jpg", SourceURL: "https://site.example/"},
 	}})
 	cookie := ts.login("alice")

@@ -1,4 +1,4 @@
-package assist
+package websearch
 
 import (
 	"bytes"
@@ -50,13 +50,13 @@ func newDDGSSearcher(baseURL string) *ddgsSearcher {
 
 func (*ddgsSearcher) Name() string { return "ddgs" }
 
-func (s *ddgsSearcher) Search(ctx context.Context, query string) ([]SearchResult, error) {
+func (s *ddgsSearcher) Search(ctx context.Context, query string) ([]Result, error) {
 	ctx, cancel := context.WithTimeout(ctx, searchTimeout)
 	defer cancel()
 
 	body, err := json.Marshal(map[string]any{
 		"query":       query,
-		"max_results": searchMaxResults,
+		"max_results": MaxResults,
 		// Let the server pick and fall back between engines. Pinning one would
 		// mean a single site's markup change takes our search out entirely,
 		// which is the failure mode this backend is otherwise good at
@@ -73,7 +73,7 @@ func (s *ddgsSearcher) Search(ctx context.Context, query string) ([]SearchResult
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", assistUserAgent())
+	req.Header.Set("User-Agent", userAgent())
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -103,12 +103,12 @@ func (s *ddgsSearcher) Search(ctx context.Context, query string) ([]SearchResult
 		return nil, fmt.Errorf("the ddgs service returned a response that could not be read: %w", err)
 	}
 
-	out := make([]SearchResult, 0, len(decoded.Results))
+	out := make([]Result, 0, len(decoded.Results))
 	for _, r := range decoded.Results {
 		if strings.TrimSpace(r.Href) == "" {
 			continue
 		}
-		out = append(out, SearchResult{
+		out = append(out, Result{
 			Title:   strings.TrimSpace(r.Title),
 			URL:     strings.TrimSpace(r.Href),
 			Snippet: truncate(collapseWhitespace(r.Body), 600),
@@ -146,7 +146,7 @@ func (s *ddgsSearcher) SearchImages(ctx context.Context, query string) ([]ImageR
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", assistUserAgent())
+	req.Header.Set("User-Agent", userAgent())
 
 	resp, err := s.client.Do(req)
 	if err != nil {

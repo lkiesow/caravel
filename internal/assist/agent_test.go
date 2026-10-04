@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"caravel/internal/geocode"
+	"caravel/internal/websearch"
 	"caravel/internal/wikimedia"
 )
 
@@ -55,7 +56,7 @@ func TestProposeRunsTheToolLoopThenAsksForTheAnswer(t *testing.T) {
 		stubTurn{Content: "done gathering"},
 		stubTurn{Content: answerJSON(t, modelProposal{Category: "stay", Tags: "hostel", Notes: "A hostel."})},
 	)
-	a.search = &stubSearcher{}
+	a.search = &websearch.Stub{}
 
 	p, err := a.Propose(context.Background(), enrichRequest(), nil)
 	if err != nil {
@@ -516,7 +517,7 @@ func TestRunStopsAtTheTurnCeiling(t *testing.T) {
 		turns[i] = turnCalling(toolWebSearch, `{"query":"again"}`)
 	}
 	a := agentWith(turns...)
-	a.search = &stubSearcher{}
+	a.search = &websearch.Stub{}
 
 	// It reaches the structured turn and fails there, having stopped looping.
 	// What matters is that it stops at all, and quickly.
@@ -562,9 +563,9 @@ func TestRunStopsAtTheToolCallCeiling(t *testing.T) {
 type countingSearcher struct{ n atomic.Int32 }
 
 func (*countingSearcher) Name() string { return "counting" }
-func (c *countingSearcher) Search(context.Context, string) ([]SearchResult, error) {
+func (c *countingSearcher) Search(context.Context, string) ([]websearch.Result, error) {
 	c.n.Add(1)
-	return []SearchResult{{Title: "t", URL: "https://example.invalid/x", Snippet: "s"}}, nil
+	return []websearch.Result{{Title: "t", URL: "https://example.invalid/x", Snippet: "s"}}, nil
 }
 
 // Spending the budget ends the research, not the run. The first live run
@@ -580,7 +581,7 @@ func TestSpendingTheBudgetStillProducesAProposal(t *testing.T) {
 		stubTurn{ToolCalls: []toolCall{callTo(toolWebSearch, `{"query":"never"}`)}},
 		stubTurn{Content: answerJSON(t, modelProposal{Category: "stay", Tags: "hostel"})},
 	)
-	a := &Agent{provider: &greedyProvider{inner: expensive}, fetcher: newPageFetcher(), search: &stubSearcher{}, limits: DefaultLimits()}
+	a := &Agent{provider: &greedyProvider{inner: expensive}, fetcher: newPageFetcher(), search: &websearch.Stub{}, limits: DefaultLimits()}
 
 	var keys []string
 	p, err := a.Propose(context.Background(), enrichRequest(), func(e Event) { keys = append(keys, e.Key) })
@@ -604,7 +605,7 @@ func TestGatheringDeadlineStillProducesAProposal(t *testing.T) {
 		stubTurn{ToolCalls: []toolCall{callTo(toolWebSearch, `{"query":"x"}`)}},
 		stubTurn{Content: answerJSON(t, modelProposal{Category: "stay", Tags: "hostel"})},
 	)
-	a := &Agent{provider: &expiringProvider{inner: slow}, fetcher: newPageFetcher(), search: &stubSearcher{}, limits: DefaultLimits()}
+	a := &Agent{provider: &expiringProvider{inner: slow}, fetcher: newPageFetcher(), search: &websearch.Stub{}, limits: DefaultLimits()}
 
 	p, err := a.Propose(context.Background(), enrichRequest(), nil)
 	if err != nil {
@@ -662,7 +663,7 @@ func TestRunHonorsCancellation(t *testing.T) {
 type cancellingSearcher struct{ cancel context.CancelFunc }
 
 func (*cancellingSearcher) Name() string { return "cancelling" }
-func (c *cancellingSearcher) Search(context.Context, string) ([]SearchResult, error) {
+func (c *cancellingSearcher) Search(context.Context, string) ([]websearch.Result, error) {
 	c.cancel()
 	return nil, nil
 }
@@ -697,7 +698,7 @@ func TestProgressEventsAreEmittedThroughTheRun(t *testing.T) {
 		stubTurn{Content: "done"},
 		stubTurn{Content: answerJSON(t, modelProposal{Category: "stay"})},
 	)
-	a.search = &stubSearcher{}
+	a.search = &websearch.Stub{}
 
 	if _, err := a.Propose(context.Background(), enrichRequest(), func(e Event) {
 		keys = append(keys, e.Key)
@@ -731,7 +732,7 @@ func TestStepAndSummaryEventsCloseOutARun(t *testing.T) {
 		stubTurn{Content: "done"},
 		stubTurn{Content: answerJSON(t, modelProposal{Category: "stay"})},
 	)
-	a.search = &stubSearcher{}
+	a.search = &websearch.Stub{}
 
 	if _, err := a.Propose(context.Background(), enrichRequest(), func(e Event) {
 		events = append(events, e)
@@ -806,7 +807,7 @@ func TestNilEventCallbackIsAllowed(t *testing.T) {
 func TestTheDefaultStubScriptRunsEndToEnd(t *testing.T) {
 	// The exact path CI and the Playwright suite take. If this breaks, the
 	// UI milestone has nothing to develop against.
-	a, err := New(Options{LLMURL: LLMStub, LLMModel: "stub", SearchProvider: "stub"})
+	a, err := New(Options{LLMURL: LLMStub, LLMModel: "stub", Searcher: &websearch.Stub{}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -975,7 +976,7 @@ func TestAProposeCallAnswersWithoutASecondRequest(t *testing.T) {
 		// request rather than mysteriously passing.
 		stubTurn{Content: answerJSON(t, modelProposal{Category: "site", Notes: "SHOULD NOT BE USED"})},
 	)
-	a.search = &stubSearcher{}
+	a.search = &websearch.Stub{}
 
 	p, err := a.Propose(context.Background(), enrichRequest(), nil)
 	if err != nil {
@@ -1005,7 +1006,7 @@ func TestARunWithNoProposeCallStillComposes(t *testing.T) {
 		stubTurn{Content: "I have enough."},
 		stubTurn{Content: answerJSON(t, modelProposal{Category: "stay", Notes: "From the composing turn."})},
 	)
-	a.search = &stubSearcher{}
+	a.search = &websearch.Stub{}
 
 	p, err := a.Propose(context.Background(), enrichRequest(), nil)
 	if err != nil {
@@ -1069,7 +1070,7 @@ func TestProposeEndsTheTurnEvenAlongsideOtherCalls(t *testing.T) {
 type recordingSearcher struct{ called *bool }
 
 func (*recordingSearcher) Name() string { return "recording" }
-func (r *recordingSearcher) Search(context.Context, string) ([]SearchResult, error) {
+func (r *recordingSearcher) Search(context.Context, string) ([]websearch.Result, error) {
 	*r.called = true
 	return nil, nil
 }
@@ -1344,7 +1345,7 @@ func TestWikipediaArticleRecognisesArticleURLs(t *testing.T) {
 // the suggestion against -- the same reason it grew a fixture host in
 // Milestone 1.
 func TestTheDefaultStubProposesACover(t *testing.T) {
-	a, err := New(Options{LLMURL: LLMStub, LLMModel: "stub", SearchProvider: "stub"})
+	a, err := New(Options{LLMURL: LLMStub, LLMModel: "stub", Searcher: &websearch.Stub{}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -1363,5 +1364,18 @@ func TestTheDefaultStubProposesACover(t *testing.T) {
 	}
 	if p.Cover.SourceURL == "" {
 		t.Error("the cover has no source page")
+	}
+}
+
+// The agent uses the searcher it is given rather than building a second: one
+// backend is shared with the image picker.
+func TestTheAgentUsesTheSearcherItIsHanded(t *testing.T) {
+	mine := &websearch.Stub{}
+	a, err := New(Options{LLMURL: LLMStub, LLMModel: "m", Searcher: mine})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if a.(*Agent).search != websearch.Searcher(mine) {
+		t.Error("the agent built its own searcher instead of using the shared one")
 	}
 }

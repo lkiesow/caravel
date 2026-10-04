@@ -1,4 +1,4 @@
-package assist
+package websearch
 
 import (
 	"bytes"
@@ -52,11 +52,11 @@ func newSerperSearcher(key, overrideURL string) *serperSearcher {
 
 func (*serperSearcher) Name() string { return "serper" }
 
-func (s *serperSearcher) Search(ctx context.Context, query string) ([]SearchResult, error) {
+func (s *serperSearcher) Search(ctx context.Context, query string) ([]Result, error) {
 	ctx, cancel := context.WithTimeout(ctx, searchTimeout)
 	defer cancel()
 
-	body, err := json.Marshal(map[string]any{"q": query, "num": searchMaxResults})
+	body, err := json.Marshal(map[string]any{"q": query, "num": MaxResults})
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +68,7 @@ func (s *serperSearcher) Search(ctx context.Context, query string) ([]SearchResu
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("X-API-KEY", s.key)
-	req.Header.Set("User-Agent", assistUserAgent())
+	req.Header.Set("User-Agent", userAgent())
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -104,12 +104,12 @@ func (s *serperSearcher) Search(ctx context.Context, query string) ([]SearchResu
 		return nil, fmt.Errorf("the search service returned a response that could not be read: %w", err)
 	}
 
-	out := make([]SearchResult, 0, len(decoded.Organic))
+	out := make([]Result, 0, len(decoded.Organic))
 	for _, r := range decoded.Organic {
 		if strings.TrimSpace(r.Link) == "" {
 			continue
 		}
-		out = append(out, SearchResult{
+		out = append(out, Result{
 			Title:   strings.TrimSpace(r.Title),
 			URL:     strings.TrimSpace(r.Link),
 			Snippet: truncate(collapseWhitespace(r.Snippet), 600),
@@ -141,7 +141,7 @@ func (s *serperSearcher) SearchImages(ctx context.Context, query string) ([]Imag
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("X-API-KEY", s.key)
-	req.Header.Set("User-Agent", assistUserAgent())
+	req.Header.Set("User-Agent", userAgent())
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -238,7 +238,7 @@ func (s *serperSearcher) SearchPlaces(ctx context.Context, query string) ([]Plac
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("X-API-KEY", s.key)
-	req.Header.Set("User-Agent", assistUserAgent())
+	req.Header.Set("User-Agent", userAgent())
 
 	resp, err := s.client.Do(req)
 	if err != nil {

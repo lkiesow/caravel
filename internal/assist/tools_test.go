@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"caravel/internal/geocode"
+	"caravel/internal/websearch"
 )
 
 func callTo(name, args string) toolCall {
@@ -37,7 +38,7 @@ func TestToolDefinitionsFollowWhatIsConfigured(t *testing.T) {
 
 	// Four when everything is configured: the three that do work, plus propose,
 	// which ends the run and is always offered.
-	full := newToolset(&stubSearcher{}, newPageFetcher(), geocode.New("http://example.invalid/search"), nil, nil)
+	full := newToolset(&websearch.Stub{}, newPageFetcher(), geocode.New("http://example.invalid/search"), nil, nil)
 	if got := names(full.definitions(locationTask(Request{}).answer)); len(got) != 4 {
 		t.Errorf("definitions = %v, want all four", got)
 	}
@@ -60,7 +61,7 @@ func TestToolDefinitionsFollowWhatIsConfigured(t *testing.T) {
 		}
 	}
 
-	noGeo := newToolset(&stubSearcher{}, newPageFetcher(), nil, nil, nil)
+	noGeo := newToolset(&websearch.Stub{}, newPageFetcher(), nil, nil, nil)
 	for _, n := range names(noGeo.definitions(locationTask(Request{}).answer)) {
 		if n == toolGeocode {
 			t.Error("geocoding was offered with no geocoder configured")
@@ -77,7 +78,7 @@ func TestToolDefinitionsFollowWhatIsConfigured(t *testing.T) {
 func TestToolDefinitionSchemasAreValidJSON(t *testing.T) {
 	// Hand-written literals, so a stray comma reaches a real provider as an
 	// opaque 400 unless something local catches it first.
-	ts := newToolset(&stubSearcher{}, newPageFetcher(), geocode.New("http://example.invalid/search"), nil, nil)
+	ts := newToolset(&websearch.Stub{}, newPageFetcher(), geocode.New("http://example.invalid/search"), nil, nil)
 	for _, d := range ts.definitions(locationTask(Request{}).answer) {
 		var parsed map[string]any
 		if err := json.Unmarshal(d.Parameters, &parsed); err != nil {
@@ -90,7 +91,7 @@ func TestToolDefinitionSchemasAreValidJSON(t *testing.T) {
 }
 
 func TestDispatchSearch(t *testing.T) {
-	ts := newToolset(&stubSearcher{}, newPageFetcher(), nil, nil, nil)
+	ts := newToolset(&websearch.Stub{}, newPageFetcher(), nil, nil, nil)
 	out := ts.dispatch(context.Background(), callTo(toolWebSearch, `{"query":"Kex Hostel"}`))
 
 	if !strings.Contains(out, "Kex Hostel") || !strings.Contains(out, "https://example.invalid/kex") {
@@ -136,7 +137,7 @@ func TestDispatchTurnsFailuresIntoTextForTheModel(t *testing.T) {
 type failingSearcher struct{}
 
 func (*failingSearcher) Name() string { return "failing" }
-func (*failingSearcher) Search(context.Context, string) ([]SearchResult, error) {
+func (*failingSearcher) Search(context.Context, string) ([]websearch.Result, error) {
 	return nil, errors.New("the backend is down")
 }
 
@@ -225,7 +226,7 @@ func TestSourcesAreDeduplicated(t *testing.T) {
 // wire cannot be re-rendered when they switch locale mid-run.
 func TestToolsEmitProgressEventsAsKeys(t *testing.T) {
 	var events []Event
-	ts := newToolset(&stubSearcher{}, newPageFetcher(), nil, func(e Event) { events = append(events, e) }, nil)
+	ts := newToolset(&websearch.Stub{}, newPageFetcher(), nil, func(e Event) { events = append(events, e) }, nil)
 	ts.dispatch(context.Background(), callTo(toolWebSearch, `{"query":"Kex Hostel"}`))
 
 	if len(events) != 2 {
@@ -274,7 +275,7 @@ func TestAFailedToolCallIsStillATracedStep(t *testing.T) {
 // appears with no parameter rather than not appearing.
 func TestAnUnreadableToolCallIsStillTraced(t *testing.T) {
 	var events []Event
-	ts := newToolset(&stubSearcher{}, newPageFetcher(), nil, func(e Event) { events = append(events, e) }, nil)
+	ts := newToolset(&websearch.Stub{}, newPageFetcher(), nil, func(e Event) { events = append(events, e) }, nil)
 	ts.dispatch(context.Background(), callTo(toolWebSearch, `not json at all`))
 
 	if len(events) != 2 {
@@ -302,24 +303,6 @@ func TestFetchProgressEventReportsOnlyTheHost(t *testing.T) {
 		if got := e.Params["url"]; got != "example.invalid" {
 			t.Errorf("url param = %q, want just the host", got)
 		}
-	}
-}
-
-func TestNewSearcherSelection(t *testing.T) {
-	if s, err := newSearcher(Options{}); err != nil || s != nil {
-		t.Errorf("newSearcher(none) = %v, %v; want nil, nil", s, err)
-	}
-	s, err := newSearcher(Options{SearchProvider: "stub"})
-	if err != nil || s == nil {
-		t.Fatalf("newSearcher(stub) = %v, %v", s, err)
-	}
-	if s.Name() != "stub" {
-		t.Errorf("Name() = %q", s.Name())
-	}
-	// config.Load validates the name, so reaching here with something else
-	// means the two lists have drifted -- a bug worth surfacing loudly.
-	if _, err := newSearcher(Options{SearchProvider: "altavista"}); err == nil {
-		t.Error("newSearcher accepted an unknown provider")
 	}
 }
 

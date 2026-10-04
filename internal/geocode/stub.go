@@ -130,8 +130,8 @@ var stubPlaces = []stubPlace{
 		city:        "Reykjavik",
 	},
 	{
-		// The disagreement case. The stub places backend (internal/assist,
-		// search.go) answers "Harpa" with a point 3.4km east of this one, so a
+		// The disagreement case. The stub places backend (internal/websearch,
+		// websearch.go) answers "Harpa" with a point 3.4km east of this one, so a
 		// resolver asking both sources has to notice that they cannot both be
 		// right. Nothing in this file needs to know that; it just has to be a
 		// real place with a real position, and this is Harpa's.

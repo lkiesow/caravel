@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"caravel/internal/geocode"
+	"caravel/internal/websearch"
 )
 
 // The names of the tools the model may call.
@@ -63,7 +64,7 @@ type toolFunc func(ctx context.Context, args json.RawMessage) (string, error)
 // One per run, not one per server: Sources accumulates, and two concurrent
 // runs must not pool theirs.
 type toolset struct {
-	search   Searcher
+	search   websearch.Searcher
 	fetch    *pageFetcher
 	geocoder *geocode.Client
 	events   func(Event)
@@ -76,7 +77,7 @@ type toolset struct {
 	seen map[string]bool
 }
 
-func newToolset(search Searcher, fetch *pageFetcher, geocoder *geocode.Client, events func(Event), log *slog.Logger) *toolset {
+func newToolset(search websearch.Searcher, fetch *pageFetcher, geocoder *geocode.Client, events func(Event), log *slog.Logger) *toolset {
 	if events == nil {
 		events = func(Event) {}
 	}
@@ -265,8 +266,8 @@ func (t *toolset) doSearch(ctx context.Context, args json.RawMessage) (string, e
 	if len(results) == 0 {
 		return "No results.", nil
 	}
-	if len(results) > searchMaxResults {
-		results = results[:searchMaxResults]
+	if len(results) > websearch.MaxResults {
+		results = results[:websearch.MaxResults]
 	}
 
 	var b strings.Builder

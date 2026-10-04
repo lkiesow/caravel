@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"caravel/internal/geocode"
+	"caravel/internal/websearch"
 )
 
 // A hand-run probe against the *real* OpenStreetMap and the *real* Serper, for
@@ -41,7 +42,7 @@ func TestLiveSourceAgreement(t *testing.T) {
 		t.Skip("set CARAVEL_LIVE_PROBE=1 and CARAVEL_SEARCH_KEY to run this; it makes paid, outbound calls")
 	}
 
-	search, err := NewSearcher("serper", key, "")
+	search, err := websearch.New("serper", key, "")
 	if err != nil {
 		t.Fatalf("building the search backend: %v", err)
 	}

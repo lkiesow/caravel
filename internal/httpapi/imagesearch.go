@@ -5,8 +5,8 @@ import (
 	"strings"
 	"sync"
 
-	"caravel/internal/assist"
 	"caravel/internal/db"
+	"caravel/internal/websearch"
 	"caravel/internal/wikimedia"
 )
 
@@ -132,7 +132,7 @@ func (s *Server) handleImageSearch(w http.ResponseWriter, r *http.Request) {
 			defer wg.Done()
 			found, err := s.ImageSearch.SearchImages(r.Context(), query)
 			name := "search"
-			if named, ok := s.ImageSearch.(assist.Searcher); ok {
+			if named, ok := s.ImageSearch.(websearch.Searcher); ok {
 				name = named.Name()
 			}
 			add(1, imageSearchGroup{Source: name, Results: fromImageSearch(found)}, err)
@@ -183,7 +183,7 @@ func fromWikimedia(found []wikimedia.Image) []imageCandidate {
 	return out
 }
 
-func fromImageSearch(found []assist.ImageResult) []imageCandidate {
+func fromImageSearch(found []websearch.ImageResult) []imageCandidate {
 	out := make([]imageCandidate, 0, len(found))
 	for _, i := range found {
 		out = append(out, imageCandidate{

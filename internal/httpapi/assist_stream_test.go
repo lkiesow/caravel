@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"caravel/internal/assist"
+	"caravel/internal/websearch"
 )
 
 // SSE cannot be tested through httptest.NewRecorder: a recorder collects the
@@ -87,7 +88,7 @@ func postAssist(t *testing.T, srv *httptest.Server, cookie *http.Cookie, tripID,
 func stubAssistant(t *testing.T) assist.Assistant {
 	t.Helper()
 	a, err := assist.New(assist.Options{
-		LLMURL: assist.LLMStub, LLMModel: "stub", SearchProvider: "stub",
+		LLMURL: assist.LLMStub, LLMModel: "stub", Searcher: &websearch.Stub{},
 	})
 	if err != nil {
 		t.Fatalf("build stub assistant: %v", err)

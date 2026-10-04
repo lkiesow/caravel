@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+
+	"caravel/internal/websearch"
 )
 
 // The run trace, and the level that gates it.
@@ -21,10 +23,10 @@ func runWithLogger(t *testing.T, level slog.Level) string {
 	t.Helper()
 	var buf bytes.Buffer
 	a, err := New(Options{
-		LLMURL:         LLMStub,
-		LLMModel:       "stub-model",
-		SearchProvider: "stub",
-		Logger:         slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: level})),
+		LLMURL:   LLMStub,
+		LLMModel: "stub-model",
+		Searcher: &websearch.Stub{},
+		Logger:   slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: level})),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -98,11 +100,11 @@ func TestTheRunTraceAccountsForAWholeRun(t *testing.T) {
 func TestTheRunTraceLeaksNeitherKeysNorPageBodies(t *testing.T) {
 	var buf bytes.Buffer
 	a, err := New(Options{
-		LLMURL:         LLMStub,
-		LLMModel:       "stub-model",
-		LLMKey:         "sk-do-not-log-me-0123456789",
-		SearchProvider: "stub",
-		Logger:         slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		LLMURL:   LLMStub,
+		LLMModel: "stub-model",
+		LLMKey:   "sk-do-not-log-me-0123456789",
+		Searcher: &websearch.Stub{},
+		Logger:   slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

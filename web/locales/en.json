@@ -204,6 +204,7 @@
   "location.form.searching": "Searching…",
   "location.form.searchTooShort": "Type at least two characters to search.",
   "location.form.searchNoResults": "No places found for that search.",
+  "location.form.searchApproximate": "Street or area only, not the exact place",
   "location.form.searchFailed": "The address search is unavailable right now. You can still place the point on the map.",
   "location.form.resolvingLink": "Reading the map link…",
   "location.form.linkResolved": "Coordinates taken from the link.",

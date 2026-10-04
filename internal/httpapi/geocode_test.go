@@ -85,6 +85,48 @@ func TestGeocodeMapsUpstreamResults(t *testing.T) {
 	}
 }
 
+// The editor's result list marks the matches that are the street rather than
+// the place, so the verdict has to reach the client. geocode.Result.Precise owns
+// the rule (and its own tests the edge cases); this checks it is on the wire.
+func TestGeocodeReportsWhetherEachMatchIsPrecise(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login("alice")
+	stubGeocoder(t, ts, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `[
+  {"display_name":"Skulagata, Reykjavik","lat":"64.1479","lon":"-21.9234","category":"highway","type":"residential","addresstype":"road"},
+  {"display_name":"Kex Hostel, Reykjavik","lat":"64.1466","lon":"-21.9254","category":"tourism","type":"hostel","addresstype":"hostel"}
+]`)
+	})
+
+	rec := ts.do(http.MethodGet, "/api/geocode?q=Skulagata", cookie, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+	}
+	var got []struct {
+		DisplayName string `json:"display_name"`
+		Class       string `json:"class"`
+		Precise     *bool  `json:"precise"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d results, want 2", len(got))
+	}
+	for i, want := range []bool{false, true} {
+		if got[i].Precise == nil {
+			t.Fatalf("%s: no precise field", got[i].DisplayName)
+		}
+		if *got[i].Precise != want {
+			t.Errorf("%s: precise = %v, want %v", got[i].DisplayName, *got[i].Precise, want)
+		}
+	}
+	// The embedded result is still flattened, not nested under a key.
+	if got[0].Class != "highway" {
+		t.Errorf("class = %q, want highway", got[0].Class)
+	}
+}
+
 func TestGeocodeSkipsUnparseableRowsRatherThanFailing(t *testing.T) {
 	ts := newTestServer(t)
 	cookie := ts.login("alice")

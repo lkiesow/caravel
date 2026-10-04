@@ -1257,6 +1257,61 @@ test.describe("pasting a Google Maps link", () => {
   });
 });
 
+// The address search marks a match on the street (or a whole area) rather than
+// on the place itself: in a list somebody picks from by hand the two look the
+// same, and one of them is a pin outside the door.
+//
+// Not intercepted: the suite's server runs the stub geocoder
+// (CARAVEL_GEOCODER_URL=stub, internal/geocode/stub.go), whose "skulagata 28"
+// is the street and "kex hostel" the hostel on it, so this goes through the
+// server's own verdict (geocode.Result.Precise) rather than a hand-written one.
+test.describe("marking approximate address-search results", () => {
+  test.use({ viewport: MOBILE });
+
+  let tripId;
+
+  test.beforeEach(async ({ page }) => {
+    await login(page);
+    const res = await page.request.post("/api/trips", {
+      data: { title: "UI suite: approximate results" },
+    });
+    expect(res.status(), "create the spec's own trip").toBe(201);
+    tripId = (await res.json()).id;
+  });
+
+  test.afterEach(async ({ page }) => {
+    if (tripId) await page.request.delete(`/api/trips/${tripId}`);
+    tripId = null;
+  });
+
+  async function search(page, query) {
+    await page.locator('[name="placeQuery"]').fill(query);
+    await page.locator('[data-action="search-place"]').click();
+    await expect(page.locator(".location-search__result")).toHaveCount(1);
+    return page.locator(".location-search__result");
+  }
+
+  test("a street match says so, inside the row and its accessible name", async ({ page }) => {
+    await gotoRoute(page, `/trips/${tripId}/locations/new`);
+    const row = await search(page, "skulagata 28");
+
+    const approx = row.locator(".location-search__approx");
+    await expect(approx).toBeVisible();
+    await expect(approx).toHaveText("Street or area only, not the exact place");
+    await expect(row).toHaveAccessibleName(/^Skulagata, Reykjavik.*not the exact place$/);
+    // One tap target: the note is a line under the name, not a second control.
+    await expect(row.locator("button, a")).toHaveCount(0);
+  });
+
+  test("a match on the place itself carries no mark", async ({ page }) => {
+    await gotoRoute(page, `/trips/${tripId}/locations/new`);
+    const row = await search(page, "kex hostel");
+
+    await expect(row).toContainText("Kex Hostel");
+    await expect(row.locator(".location-search__approx")).toHaveCount(0);
+  });
+});
+
 // Creating a location is one request, and either all of it happens or none of
 // it does (Stage 23 Milestones 3-4).
 test.describe("creating a location is atomic", () => {

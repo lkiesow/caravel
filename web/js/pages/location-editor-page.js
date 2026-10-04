@@ -670,7 +670,20 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
         const choose = document.createElement("button");
         choose.type = "button";
         choose.className = "location-search__result";
-        choose.textContent = place.display_name;
+        const name = document.createElement("span");
+        name.textContent = place.display_name;
+        choose.appendChild(name);
+        // A match on the street reads exactly like a match on the building and
+        // puts the pin outside the door -- the assistant says so for the same
+        // reason (assist-panel.js). The server decides (geocode.Result.Precise);
+        // `=== false` so a reply without the field marks nothing. Inside the
+        // button, so it is part of what a screen reader announces for the row.
+        if (place.precise === false) {
+          const approx = document.createElement("span");
+          approx.className = "location-search__approx";
+          approx.textContent = t("location.form.searchApproximate");
+          choose.appendChild(approx);
+        }
         choose.addEventListener("click", () => {
           form.lat.value = place.lat;
           form.lng.value = place.lng;

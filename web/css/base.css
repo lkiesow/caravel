@@ -2119,6 +2119,16 @@ button {
   background: var(--color-bg);
 }
 
+/* A match on the street or the area rather than the place itself. Same size
+   and colour as .assist-position__approximate, which says the same thing about
+   the same verdict: a line of caution under the name, not a pill that would
+   read as a second control inside the row. */
+.location-search__approx {
+  display: block;
+  font-size: 0.8125rem;
+  color: var(--color-danger-fg);
+}
+
 /* Same treatment as .itinerary-day__notes: without an explicit width and
    resize the UA default (resize: both) lets the drag handle pull the
    textarea wider than the card containing it. Vertical-only dragging still

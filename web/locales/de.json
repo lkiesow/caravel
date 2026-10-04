@@ -204,6 +204,7 @@
   "location.form.searching": "Suche läuft …",
   "location.form.searchTooShort": "Gib mindestens zwei Zeichen ein.",
   "location.form.searchNoResults": "Keine Orte für diese Suche gefunden.",
+  "location.form.searchApproximate": "Nur Straße oder Gebiet, nicht der genaue Ort",
   "location.form.searchFailed": "Die Adresssuche ist gerade nicht verfügbar. Du kannst den Punkt weiterhin auf der Karte setzen.",
   "location.form.resolvingLink": "Kartenlink wird gelesen …",
   "location.form.linkResolved": "Koordinaten aus dem Link übernommen.",

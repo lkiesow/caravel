@@ -69,15 +69,6 @@ without asking.
   2. **Offline edits.** A write queue with sync and conflict handling. Much
      larger; a separate decision.
 
-- **Mark street-only results in the address search.** **(soon)** (Stage 33
-  Milestone 2.) `/api/geocode` reports `class`, `kind` and `address_type` for
-  every result, and `geocode.Result.Precise()` reduces them to the one question
-  that matters -- is this the building or the road outside it. The assistant
-  reads it; the editor's own address search does not, and it is where a person
-  picks a result by hand from a list in which a street and a building look
-  identical. A badge on the coarse ones, or precise matches sorted first, would
-  use what is already on the wire.
-
 - **Does the assistant's `geocode` tool earn its keep?** **(soon)** (Review
   2026-10-03; replaces "the maps lookup is not offered to the model as a
   tool".) The model may call `geocode` (OpenStreetMap, `internal/assist/tools.go`)

@@ -57,7 +57,24 @@ func (s *Server) handleGeocode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, "the address search service could not be reached")
 		return
 	}
-	writeJSON(w, http.StatusOK, results)
+	out := make([]searchResult, len(results))
+	for i, res := range results {
+		out[i] = searchResult{Result: res, Precise: res.Precise()}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// searchResult is one address-search match plus the verdict on it.
+//
+// The editor lists these for somebody to pick from, and a match on the street
+// reads exactly like a match on the building -- the same failure the assistant
+// warns about (internal/assist/locate.go). Class, kind and address type are on
+// the wire already, but the rule that reduces them to "is this the place
+// itself" lives in geocode.Result.Precise, and computing it here keeps the two
+// callers agreeing rather than copying the class list into the client.
+type searchResult struct {
+	geocode.Result
+	Precise bool `json:"precise"`
 }
 
 // handleReverseGeocode turns a coordinate back into an address, so clicking the

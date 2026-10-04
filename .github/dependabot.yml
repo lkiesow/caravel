@@ -1,11 +1,11 @@
 # Dependabot version updates. Only the documentation site's Python pin for now
-# (requirements.txt): it is the dependency that otherwise goes stale silently,
-# since nothing else bumps it. Monthly, because the review is by hand -- see
-# the checklist in requirements.txt.
+# (requirements.txt, next to this file): it is the dependency that otherwise
+# goes stale silently, since nothing else bumps it. Monthly, because the review
+# is by hand -- see the checklist in requirements.txt.
 version: 2
 updates:
   - package-ecosystem: pip
-    directory: /
+    directory: /.github
     schedule:
       interval: monthly
     commit-message:

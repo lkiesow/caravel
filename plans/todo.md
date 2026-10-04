@@ -198,8 +198,8 @@ without asking.
   `main.html` work around `page.is_homepage` never being defined, and the skip
   link pointing at a markdown-derived anchor that an emptied content block does
   not render. Both still reproduce in 0.0.67. The pin now lives in
-  `requirements.txt` and Dependabot proposes bumps monthly; its header has what
-  to re-test on each one.
+  `.github/requirements.txt` and Dependabot proposes bumps monthly; its header
+  has what to re-test on each one.
 
 - **S3-compatible object storage.** Swap the `internal/storagefs` `Blob`
   implementation from local filesystem to S3-compatible (MinIO, Backblaze, and

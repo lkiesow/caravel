@@ -82,9 +82,9 @@ ahead removes the checkpoint where it gets looked at.
   editing it.
 
 - **Documentation site** (`docs/`, Zensical):
-  - The Zensical version is pinned in `requirements.txt`, which both workflows
-    install from; Dependabot proposes bumps monthly. Its header has the review
-    checklist for a bump (the `overrides/` workarounds to re-test).
+  - The Zensical version is pinned in `.github/requirements.txt`, which both
+    workflows install from; Dependabot proposes bumps monthly. Its header has
+    the review checklist for a bump (the `overrides/` workarounds to re-test).
   - Keep `--strict` on every build call; without it a dead link exits 0.
   - Material sets a 125% root font size (`15rem` = 300px): wrap grid
     minimums in `min(100%, ...)`.

@@ -198,7 +198,7 @@ image:
 # Strict mode, matching CI: a dead link or an unresolved reference is an error,
 # not a line of output nobody reads.
 #
-#   pip install -r requirements.txt   (the pinned version CI builds with)
+#   pip install -r .github/requirements.txt   (the version CI builds with)
 docs:
 	zensical build --clean --strict
 

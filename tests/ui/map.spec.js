@@ -833,14 +833,19 @@ test.describe("a marker popup shows the location photo", () => {
 // path runs off the map's own click event, which a dispatched event on a
 // marker would bypass.
 test.describe("a near miss still opens the pin", () => {
-  // Viewport coordinates of every pin's centre, in marker (DOM) order.
+  // Viewport coordinates of every pin's centre, in marker (DOM) order. The
+  // map is scrolled into view first: page.mouse clicks at viewport
+  // coordinates, and at 1280x720 the map starts low enough on the trip page
+  // that a pin in its lower half is below the fold.
   function pinCentres(page) {
-    return page.evaluate(() =>
-      [...document.querySelector("map-view").shadowRoot.querySelectorAll(".maplibregl-marker")].map((m) => {
+    return page.evaluate(() => {
+      const host = document.querySelector("map-view");
+      host.scrollIntoView({ block: "center" });
+      return [...host.shadowRoot.querySelectorAll(".maplibregl-marker")].map((m) => {
         const r = m.getBoundingClientRect();
         return { x: r.x + r.width / 2, y: r.y + r.height / 2, width: r.width, height: r.height };
-      })
-    );
+      });
+    });
   }
 
   // Which marker's popup is open, by index; -1 for none.

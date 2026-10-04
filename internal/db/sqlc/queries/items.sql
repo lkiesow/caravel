@@ -72,4 +72,8 @@ WHERE i.trip_id = sqlc.arg(trip_id) AND l.lat IS NOT NULL AND l.lng IS NOT NULL;
 SELECT i.id, i.category, i.title, i.show_on_map, i.image_id, l.lat, l.lng, l.address
 FROM items i
 INNER JOIN item_locations l ON l.item_id = i.id
-WHERE i.trip_id = sqlc.arg(trip_id) AND l.lat IS NOT NULL AND l.lng IS NOT NULL;
+WHERE i.trip_id = sqlc.arg(trip_id) AND l.lat IS NOT NULL AND l.lng IS NOT NULL
+-- Creation order, as in the locations list. Without an ORDER BY the markers
+-- came out in whatever order the index scan gave, which on SQLite was sorted
+-- by category name and on Postgres is not promised at all.
+ORDER BY i.created_at, i.id;

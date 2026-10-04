@@ -198,6 +198,7 @@ SELECT i.id, i.category, i.title, i.show_on_map, i.image_id, l.lat, l.lng, l.add
 FROM items i
 INNER JOIN item_locations l ON l.item_id = i.id
 WHERE i.trip_id = $1 AND l.lat IS NOT NULL AND l.lng IS NOT NULL
+ORDER BY i.created_at, i.id
 `
 
 type ListMapItemsByTripRow struct {
@@ -222,6 +223,9 @@ type ListMapItemsByTripRow struct {
 // image_id is selected so the popup can show the same photo the location page
 // shows. It is the id, not a URL -- media assets are resolved through
 // resolveImageURL in the API layer, the way the itinerary list does it.
+// Creation order, as in the locations list. Without an ORDER BY the markers
+// came out in whatever order the index scan gave, which on SQLite was sorted
+// by category name and on Postgres is not promised at all.
 func (q *Queries) ListMapItemsByTrip(ctx context.Context, tripID string) ([]ListMapItemsByTripRow, error) {
 	rows, err := q.db.QueryContext(ctx, listMapItemsByTrip, tripID)
 	if err != nil {

@@ -508,6 +508,19 @@ func seedFull(s seedCtx) error {
 			notes: "Check-in from 15:00.", lat: ptr(64.1466), lng: ptr(-21.9426), onMap: true},
 		{key: "kef-flight", category: "transport", tags: []string{"flight"}, title: "Flight to Keflavik",
 			notes: "Seat 14A.", lat: ptr(63.9850), lng: ptr(-22.6056), onMap: true},
+		// One location for each remaining category, so all seven have a pin on
+		// the map, a card in the screenshots and markup for the route sweeps to
+		// measure. Appended after the three above, which are used by index below.
+		// All are more than 5km from the hotel: the distance-filter spec expects
+		// the hotel alone within that radius.
+		{key: "thingvellir", category: "area", tags: []string{"national-park"}, title: "Þingvellir National Park",
+			notes: "Walk the rift between the plates.", lat: ptr(64.2559), lng: ptr(-21.1299), onMap: true},
+		{key: "fridheimar", category: "food", tags: []string{"restaurant"}, title: "Friðheimar",
+			notes: "Tomato soup in the greenhouse.", lat: ptr(64.1756), lng: ptr(-20.4458), onMap: true},
+		{key: "fish-day", category: "event", tags: []string{"festival"}, title: "Fiskidagurinn mikli",
+			notes: "Free fish soup all over Dalvík.", lat: ptr(65.9702), lng: ptr(-18.5286), onMap: true},
+		{key: "vik-wool", category: "shop", tags: []string{"wool"}, title: "Víkurprjón wool shop",
+			notes: "Sweaters for the cold days.", lat: ptr(63.4189), lng: ptr(-19.0064), onMap: true},
 	})
 	if err != nil {
 		return err

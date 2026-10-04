@@ -205,6 +205,9 @@ type Querier interface {
 	// image_id is selected so the popup can show the same photo the location page
 	// shows. It is the id, not a URL -- media assets are resolved through
 	// resolveImageURL in the API layer, the way the itinerary list does it.
+	// Creation order, as in the locations list. Without an ORDER BY the markers
+	// came out in whatever order the index scan gave, which on SQLite was sorted
+	// by category name and on Postgres is not promised at all.
 	ListMapItemsByTrip(ctx context.Context, tripID string) ([]ListMapItemsByTripRow, error)
 	// Every personal list belonging to one user on one trip, for the moment they
 	// stop being a member. Same treatment as their personal files.

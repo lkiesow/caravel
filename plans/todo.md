@@ -193,14 +193,6 @@ without asking.
 
 ## Testing, CI and dev tooling
 
-- **No seeded location for `area`, `food`, `event` or `shop`.** **(soon)**
-  (Stage 37.) The demo trip in `cmd/seed/main.go` has only a site and a stay,
-  so most of the seven categories never appear in a screenshot, in the map
-  legend with a pin behind it, or in any UI assertion. Adding them is a
-  line each, but specs count cards on the seeded trips (e.g.
-  `assist-suggest.spec.js` around line 121), so it wants doing together with
-  those specs.
-
 - **`scripts/check_js.sh` cannot see a `.mjs` file.** **(soon)** (Stage 30
   Milestone 1.) It walks `find web/js -name '*.js'` (line 42), so the vendored
   MapLibre `.mjs` modules go unparsed -- acceptable for them, since

@@ -193,13 +193,6 @@ without asking.
 
 ## Testing, CI and dev tooling
 
-- **`scripts/check_js.sh` cannot see a `.mjs` file.** **(soon)** (Stage 30
-  Milestone 1.) It walks `find web/js -name '*.js'` (line 42), so the vendored
-  MapLibre `.mjs` modules go unparsed -- acceptable for them, since
-  `web/js/vendor/maplibre/README.md` records a sha256 each, but a trap the day
-  a hand-written module is named `.mjs`. Widen the `find` now rather than
-  document the trap.
-
 - **The font generator should download its sources.** (Stage 41 Milestone 1;
   reworded 2026-10-03.) `scripts/gen_brand_fonts.py` reads Montserrat and Inter
   from the Fedora packages' `/usr/share/fonts/...` paths, so a machine without

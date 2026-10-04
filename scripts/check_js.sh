@@ -2,7 +2,7 @@
 # Syntax-checks the app's JavaScript in two passes, because the tree contains
 # both module kinds and the parse mode has to match how the browser loads each:
 #
-#   web/js/**.js  — ES modules (see below)
+#   web/js/**.js  — ES modules, and .mjs alike (see below)
 #   web/*.js      — classic scripts. Today that is only the service worker,
 #                   which app.js registers as navigator.serviceWorker
 #                   .register("/sw.js") with no {type: "module"}. It lived
@@ -39,10 +39,10 @@ while IFS= read -r -d '' file; do
 		echo "check-js: $file is not a valid ES module (see the [stdin] trace above)" >&2
 		failed=$((failed + 1))
 	fi
-done < <(find web/js -name '*.js' -print0)
+done < <(find web/js \( -name '*.js' -o -name '*.mjs' \) -print0)
 
 if [ "$count" -eq 0 ]; then
-	echo "check-js: found no .js files under web/js — wrong directory?" >&2
+	echo "check-js: found no .js/.mjs files under web/js — wrong directory?" >&2
 	exit 1
 fi
 

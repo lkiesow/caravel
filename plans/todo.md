@@ -191,21 +191,6 @@ without asking.
 
 ---
 
-## Testing, CI and dev tooling
-
-- **The font generator should download its sources.** (Stage 41 Milestone 1;
-  reworded 2026-10-03.) `scripts/gen_brand_fonts.py` reads Montserrat and Inter
-  from the Fedora packages' `/usr/share/fonts/...` paths, so a machine without
-  `sudo dnf install julietaula-montserrat-fonts rsms-inter-fonts` cannot
-  regenerate the faces; twice now the workaround was an RPM unpacked with
-  `rpm2cpio`. The script is run by hand and is not part of the build, so the
-  network is no objection: fetch a pinned upstream release (`rsms/inter`,
-  `JulietaUla/Montserrat`) and check its sha256, the way MapLibre is vendored.
-  The packaged version may not match an upstream release byte for byte, so the
-  first run after the switch wants its output diffed once.
-
----
-
 ## Deployment and operations
 
 - **Prometheus/OpenMetrics metrics.** **(soon)** A `GET /metrics` endpoint via

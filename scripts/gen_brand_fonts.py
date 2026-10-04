@@ -18,16 +18,27 @@ the full families cover Cyrillic, Greek and Vietnamese, which nothing here
 needs — latin plus latin-ext is a fraction of the bytes and covers both shipped
 locales.
 
-Input is the OFL build packaged by the distribution, so no download is needed:
+Input is a pinned upstream release of each family, downloaded and checked
+against the sha256 recorded below, so the faces can be rebuilt on any machine
+rather than only one with the right distribution packages installed. Downloads
+are cached in $XDG_CACHE_HOME/caravel/fonts (~/.cache/caravel/fonts), keyed by
+their hash and re-checked on every run, so iterating on the subset does not
+fetch Inter's 34 MB archive each time.
 
-    sudo dnf install julietaula-montserrat-fonts rsms-inter-fonts
+To move to a newer release: change the URL, run the script, and take the new
+hash from the mismatch it reports -- after checking the release is the one you
+meant. Then diff the output; a new version is a new set of glyphs.
 
 Requires fonttools with brotli (`pip install 'fonttools[woff]'`).
 """
 
+import hashlib
+import io
 import os
-import shutil
 import sys
+import tempfile
+import urllib.request
+import zipfile
 
 from fontTools import subset
 
@@ -51,39 +62,85 @@ UNICODES = "U+0020-007E,U+00A0-00FF,U+0100-017F,U+2013-2014,U+2018-201A,U+201C-2
 WEB = ("web", "fonts")
 DOCS = ("docs", "assets", "fonts")
 
+# A source is (url, sha256, member): member is a path inside a zip archive, or
+# None when the URL is the file itself. Montserrat publishes no release assets,
+# so its files are fetched from the repository at the release tag; Inter's
+# release is a single archive.
+MONTSERRAT = "https://raw.githubusercontent.com/JulietaUla/Montserrat/v9.000/"
+INTER_ZIP = (
+    "https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip",
+    "9883fdd4a49d4fb66bd8177ba6625ef9a64aa45899767dde3d36aa425756b11e",
+)
+
 FAMILIES = [
     {
         "slug": "montserrat",
-        "package": "julietaula-montserrat-fonts",
-        "source_dir": "/usr/share/fonts/julietaula-montserrat-fonts",
-        "license_file": "/usr/share/licenses/julietaula-montserrat-fonts/OFL.txt",
+        "license": (MONTSERRAT + "OFL.txt", "8b7141c03fa4f8d44e6345d5d4931709290f0f67875e452e95ac1fd3a027802e", None),
         # Only what the design actually asks for: 700 for the wordmark and
         # headings, 500 for the tagline and the tracked small caps. Every extra
         # weight is another file every visitor downloads.
         "weights": {
-            500: "Montserrat-Medium.otf",
-            700: "Montserrat-Bold.otf",
+            500: (
+                MONTSERRAT + "fonts/otf/Montserrat-Medium.otf",
+                "9e2bff7923aaf42c5db116a1811f35ff41aa978abf091aed97ab5e1d0f052669",
+                None,
+            ),
+            700: (
+                MONTSERRAT + "fonts/otf/Montserrat-Bold.otf",
+                "7869c1657888d7d9ba60fa243a37ffbc6b0eb316b1a93044bb1e07ba6ec169a8",
+                None,
+            ),
         },
         "destinations": [(WEB, None), (DOCS, (700,))],
     },
     {
         "slug": "inter",
-        "package": "rsms-inter-fonts",
-        "source_dir": "/usr/share/fonts/rsms-inter-fonts",
-        "license_file": "/usr/share/licenses/rsms-inter-fonts/LICENSE.txt",
+        "license": (*INTER_ZIP, "LICENSE.txt"),
         # 400 is the body default, 600 is every emphasised label and amount,
         # 500 is the three rules between them. No 700: both bold rules in
         # base.css are on var(--font-brand), so Montserrat covers bold. No
         # italic: two rules use it, both small muted text, and synthetic
         # oblique is adequate there -- a real face would be another 20 KiB.
         "weights": {
-            400: "Inter-Regular.ttf",
-            500: "Inter-Medium.ttf",
-            600: "Inter-SemiBold.ttf",
+            400: (*INTER_ZIP, "extras/ttf/Inter-Regular.ttf"),
+            500: (*INTER_ZIP, "extras/ttf/Inter-Medium.ttf"),
+            600: (*INTER_ZIP, "extras/ttf/Inter-SemiBold.ttf"),
         },
         "destinations": [(WEB, None)],
     },
 ]
+
+
+def fetch(url, sha256):
+    """The downloaded file at url, from the cache when it is already there.
+
+    The hash is checked on every use, not only after a download, so a cache
+    file that changed under us is caught the same way a changed upstream is.
+    """
+    cache = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "caravel", "fonts")
+    os.makedirs(cache, exist_ok=True)
+    path = os.path.join(cache, f"{sha256}-{os.path.basename(url)}")
+    if not os.path.exists(path):
+        print(f"downloading {url}")
+        with urllib.request.urlopen(url) as response, open(path + ".part", "wb") as out:
+            out.write(response.read())
+        os.replace(path + ".part", path)
+    with open(path, "rb") as f:
+        data = f.read()
+    actual = hashlib.sha256(data).hexdigest()
+    if actual != sha256:
+        os.remove(path)
+        sys.exit(f"sha256 mismatch for {url}\n  expected {sha256}\n  actual   {actual}")
+    return data
+
+
+def read_source(source):
+    url, sha256, member = source
+    data = fetch(url, sha256)
+    if member is None:
+        return data
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        return archive.read(member)
 
 
 def build(family, out_dir, weights=None):
@@ -93,24 +150,28 @@ def build(family, out_dir, weights=None):
     missing = set(weights or ()) - set(family["weights"])
     if missing:
         sys.exit(f"{slug}: destination asks for weight(s) {sorted(missing)}, which WEIGHTS does not define")
-    for weight, filename in sorted(wanted.items()):
-        source = os.path.join(family["source_dir"], filename)
-        if not os.path.exists(source):
-            sys.exit(f"missing {source} — is {family['package']} installed?")
+    for weight, source in sorted(wanted.items()):
+        filename = os.path.basename(source[2] or source[0])
         target = os.path.join(out_dir, f"{slug}-{weight}.woff2")
-        subset.main(
-            [
-                source,
-                f"--unicodes={UNICODES}",
-                "--layout-features=kern,liga",
-                "--flavor=woff2",
-                # The subsetter keeps the name table by default, which carries
-                # the family name @font-face matching does not use but a font
-                # inspector shows - worth keeping so a stray file is
-                # identifiable.
-                f"--output-file={target}",
-            ]
-        )
+        # The subsetter takes a path, so the source goes through a temporary
+        # file named like the original.
+        with tempfile.TemporaryDirectory() as tmp:
+            source_path = os.path.join(tmp, filename)
+            with open(source_path, "wb") as f:
+                f.write(read_source(source))
+            subset.main(
+                [
+                    source_path,
+                    f"--unicodes={UNICODES}",
+                    "--layout-features=kern,liga",
+                    "--flavor=woff2",
+                    # The subsetter keeps the name table by default, which
+                    # carries the family name @font-face matching does not use
+                    # but a font inspector shows - worth keeping so a stray
+                    # file is identifiable.
+                    f"--output-file={target}",
+                ]
+            )
         print(f"{target}  {os.path.getsize(target) / 1024:.1f} KiB  (from {filename})")
 
     # A shipped font ships its licence, and two families from two copyright
@@ -118,15 +179,18 @@ def build(family, out_dir, weights=None):
     # the name. OFL section 4 also forbids using the reserved font name for a
     # modified version, which is why the subsets keep the name and change
     # nothing but coverage.
-    license_file = family["license_file"]
-    if not os.path.exists(license_file):
-        sys.exit(f"missing {license_file} — the licence must ship with the fonts")
-    shutil.copyfile(license_file, os.path.join(out_dir, f"{slug}-OFL.txt"))
+    with open(os.path.join(out_dir, f"{slug}-OFL.txt"), "wb") as f:
+        f.write(read_source(family["license"]))
     print(os.path.join(out_dir, f"{slug}-OFL.txt"))
 
 
 if __name__ == "__main__":
     root = os.path.join(os.path.dirname(__file__), "..")
+    # Fetch and check every source before writing anything, so a bad hash
+    # cannot leave one family regenerated and the other not.
+    for family in FAMILIES:
+        for url, sha256, _ in [family["license"], *family["weights"].values()]:
+            fetch(url, sha256)
     for family in FAMILIES:
         for parts, weights in family["destinations"]:
             out = os.path.join(root, *parts)

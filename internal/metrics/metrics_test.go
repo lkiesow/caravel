@@ -14,22 +14,49 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
+	"caravel/internal/db"
 	"caravel/internal/dbtest"
 	"caravel/internal/storagefs"
 )
 
-type sessionCount func() (int64, error)
+// fakeSource answers whatever its funcs say; a nil func answers zero.
+type fakeSource struct {
+	sessions func() (int64, error)
+	counts   func() (db.InstanceCounts, error)
+}
 
-func (f sessionCount) CountActiveSessions(context.Context, time.Time) (int64, error) { return f() }
+func (f fakeSource) CountActiveSessions(context.Context, time.Time) (int64, error) {
+	if f.sessions == nil {
+		return 0, nil
+	}
+	return f.sessions()
+}
 
-func newMetrics(t *testing.T, sessions sessionCount) *Metrics {
+func (f fakeSource) InstanceCounts(context.Context) (db.InstanceCounts, error) {
+	if f.counts == nil {
+		return db.InstanceCounts{}, nil
+	}
+	return f.counts()
+}
+
+func newMetrics(t *testing.T, source fakeSource) *Metrics {
 	t.Helper()
 	_, conn := dbtest.Open(t)
-	return New(conn, sessions)
+	return New(conn, source)
+}
+
+func scrapeBody(t *testing.T, m *Metrics) string {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	m.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("scrape status = %d, want 200", rec.Code)
+	}
+	return rec.Body.String()
 }
 
 func TestMiddlewareLabelsByRoutePattern(t *testing.T) {
-	m := newMetrics(t, func() (int64, error) { return 0, nil })
+	m := newMetrics(t, fakeSource{})
 
 	r := chi.NewRouter()
 	r.Use(m.Middleware)
@@ -81,7 +108,7 @@ func (failingBlob) Put(context.Context, string, io.Reader) (int64, error) {
 }
 
 func TestInstrumentBlob(t *testing.T) {
-	m := newMetrics(t, func() (int64, error) { return 0, nil })
+	m := newMetrics(t, fakeSource{})
 
 	ok := m.InstrumentBlob(storagefs.NewLocalFS(t.TempDir()))
 	for _, size := range []int{3000, 70000} {
@@ -124,13 +151,9 @@ caravel_blob_write_bytes_count 2
 
 func TestSessionsGauge(t *testing.T) {
 	count, err := int64(3), error(nil)
-	m := newMetrics(t, func() (int64, error) { return count, err })
+	m := newMetrics(t, fakeSource{sessions: func() (int64, error) { return count, err }})
 
-	scrape := func() string {
-		rec := httptest.NewRecorder()
-		m.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
-		return rec.Body.String()
-	}
+	scrape := func() string { return scrapeBody(t, m) }
 
 	body := scrape()
 	for _, want := range []string{"caravel_sessions_active 3", "caravel_build_info{version=", `go_sql_open_connections{db_name="caravel"}`, "go_goroutines"} {
@@ -153,4 +176,39 @@ func grepLine(s, prefix string) string {
 		}
 	}
 	return "(absent)"
+}
+
+func TestDataGauges(t *testing.T) {
+	counts := db.InstanceCounts{
+		Users: 2, Trips: 5, Files: 3, FileBytes: 123456, Expenses: 7,
+		ItemsByCategory: map[string]int64{"stay": 4, "site": 9},
+	}
+	var err error
+	m := newMetrics(t, fakeSource{counts: func() (db.InstanceCounts, error) { return counts, err }})
+
+	body := scrapeBody(t, m)
+	for _, want := range []string{
+		"caravel_users 2",
+		"caravel_trips 5",
+		`caravel_items{category="site"} 9`,
+		`caravel_items{category="stay"} 4`,
+		"caravel_files 3",
+		"caravel_files_size_bytes 123456",
+		"caravel_expenses 7",
+	} {
+		if !strings.Contains(body, want+"\n") {
+			t.Errorf("scrape lacks %q", want)
+		}
+	}
+
+	// A failed read drops the data gauges but keeps the scrape: the request
+	// and runtime metrics matter most when the database is the problem.
+	err = errors.New("database is locked")
+	body = scrapeBody(t, m)
+	if strings.Contains(body, "caravel_trips ") {
+		t.Error("data gauges reported despite the failed read")
+	}
+	if !strings.Contains(body, "go_goroutines") {
+		t.Error("a failed data read took the rest of the scrape with it")
+	}
 }

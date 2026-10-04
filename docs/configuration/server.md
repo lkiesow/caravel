@@ -136,6 +136,9 @@ What it exports:
 | `caravel_blob_writes_total` | Files written to upload storage — uploads and the images resized from them — by `result` (`ok` or `error`) |
 | `caravel_blob_write_bytes` | Size histogram of those files |
 | `caravel_sessions_active` | Logged-in sessions that have not expired. Counted on each scrape |
+| `caravel_users`, `caravel_trips`, `caravel_expenses` | How many of each the instance holds. Counted on each scrape |
+| `caravel_items` | Trip items by `category` (`site`, `stay`, `transport`, `area`, `food`, `event`, `shop`). A category with no items has no series |
+| `caravel_files`, `caravel_files_size_bytes` | Uploaded documents: how many, and their total size |
 | `caravel_build_info` | Always 1; the `version` label is the running build |
 | `go_sql_*{db_name="caravel"}` | The database connection pool: open, in use, idle, waits |
 | `go_*`, `process_*` | The Go runtime and the process: memory, goroutines, CPU, open files |

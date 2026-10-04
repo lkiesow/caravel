@@ -86,6 +86,9 @@ func TestMetricsCountsRequestsByRoute(t *testing.T) {
 		`caravel_build_info{version=`,
 		`caravel_http_requests_total{code="200",method="GET",route="/api/health"} 1`,
 		`caravel_sessions_active 0`,
+		// The real store behind the data gauges, on an empty database.
+		"caravel_trips 0\n",
+		"caravel_users 0\n",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("scrape lacks %q", want)

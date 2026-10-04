@@ -279,6 +279,9 @@ type Store interface {
 	// for the caravel_sessions_active metric.
 	CountActiveSessions(ctx context.Context, now time.Time) (int64, error)
 
+	// InstanceCounts totals the instance's data for the metrics endpoint.
+	InstanceCounts(ctx context.Context) (InstanceCounts, error)
+
 	CreateTrip(ctx context.Context, p CreateTripParams) (Trip, error)
 	GetTripByID(ctx context.Context, id string) (Trip, error)
 	// ListTripsForUser returns every trip the user owns or is a member of,

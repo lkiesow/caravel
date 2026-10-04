@@ -509,3 +509,16 @@ type ItemTag struct {
 	ItemID string
 	Tag    string
 }
+
+// InstanceCounts are the instance-wide totals the metrics endpoint exports.
+// Aggregates only: nothing in here identifies a user or a trip.
+type InstanceCounts struct {
+	Users     int64
+	Trips     int64
+	Files     int64
+	FileBytes int64 // total size of every uploaded file
+	Expenses  int64
+	// ItemsByCategory has one entry per category in use; a category with no
+	// items is absent rather than zero.
+	ItemsByCategory map[string]int64
+}

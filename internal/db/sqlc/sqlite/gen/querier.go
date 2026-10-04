@@ -26,6 +26,7 @@ type Querier interface {
 	// type differs per dialect, so the assertion would be right in one and panic
 	// in the other. Same trick as the role column in ListTripsForUser.
 	CountExpensesByCurrency(ctx context.Context, tripID string) ([]CountExpensesByCurrencyRow, error)
+	CountItemsByCategory(ctx context.Context) ([]CountItemsByCategoryRow, error)
 	CountTripMembers(ctx context.Context, tripID string) (int64, error)
 	// Used for exactly one decision, in two places: whether this is the first
 	// account on the instance, which both makes it an admin and is the one case
@@ -119,6 +120,9 @@ type Querier interface {
 	// day at once both succeed; the caller reads the row back afterwards.
 	InsertItineraryDayIfAbsent(ctx context.Context, arg InsertItineraryDayIfAbsentParams) error
 	InsertTripNote(ctx context.Context, arg InsertTripNoteParams) (TripNote, error)
+	// Instance-wide totals for the metrics endpoint, one row per scrape.
+	// Every column is cast so both dialects generate a plain int64.
+	InstanceCounts(ctx context.Context) (InstanceCountsRow, error)
 	ListChecklistItemsByChecklist(ctx context.Context, checklistID string) ([]ChecklistItem, error)
 	// A personal list belongs to whoever created it and never appears in anyone
 	// other listing. The same predicate guards loadChecklist, for the reason the

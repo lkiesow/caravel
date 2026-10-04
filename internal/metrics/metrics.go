@@ -29,20 +29,21 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"caravel/internal/buildinfo"
+	"caravel/internal/db"
 	"caravel/internal/storagefs"
 )
 
-// SessionCounter is the one thing metrics needs from the store. An interface
-// of one method rather than db.Store, so this package does not depend on the
-// whole of internal/db and a test can hand it a func.
-type SessionCounter interface {
+// Source is what metrics reads from the store on each scrape. The two methods
+// rather than db.Store, so a test can hand it a small fake.
+type Source interface {
 	CountActiveSessions(ctx context.Context, now time.Time) (int64, error)
+	InstanceCounts(ctx context.Context) (db.InstanceCounts, error)
 }
 
-// sessionCountTimeout bounds the query a scrape triggers. A scrape that waits
-// on a locked SQLite database should report the gauge as missing, not hold
-// the scraper until its own timeout fires and lose every other metric too.
-const sessionCountTimeout = 2 * time.Second
+// queryTimeout bounds each query a scrape triggers. A scrape that waits on a
+// locked SQLite database should report those gauges as missing, not hold the
+// scraper until its own timeout fires and lose every other metric too.
+const queryTimeout = 2 * time.Second
 
 // staticRoute labels requests that matched no route and fell through to the
 // static file server. Their raw paths are unbounded -- every versioned asset
@@ -61,9 +62,8 @@ type Metrics struct {
 }
 
 // New builds the instrumentation and registers it, including the collectors
-// that read conn's pool statistics and count sessions in sessions on every
-// scrape.
-func New(conn *sql.DB, sessions SessionCounter) *Metrics {
+// that read conn's pool statistics and query source on every scrape.
+func New(conn *sql.DB, source Source) *Metrics {
 	m := &Metrics{
 		registry: prometheus.NewRegistry(),
 		httpRequests: prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -98,9 +98,9 @@ func New(conn *sql.DB, sessions SessionCounter) *Metrics {
 		Name: "caravel_sessions_active",
 		Help: "Sessions that have not yet expired.",
 	}, func() float64 {
-		ctx, cancel := context.WithTimeout(context.Background(), sessionCountTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
 		defer cancel()
-		n, err := sessions.CountActiveSessions(ctx, time.Now().UTC())
+		n, err := source.CountActiveSessions(ctx, time.Now().UTC())
 		if err != nil {
 			// NaN rather than zero: zero is a real answer ("nobody is logged
 			// in") and would be believed.
@@ -116,6 +116,7 @@ func New(conn *sql.DB, sessions SessionCounter) *Metrics {
 		collectors.NewDBStatsCollector(conn, "caravel"),
 		buildInfo,
 		activeSessions,
+		dataCollector{source: source},
 		m.httpRequests,
 		m.httpDuration,
 		m.blobWrites,

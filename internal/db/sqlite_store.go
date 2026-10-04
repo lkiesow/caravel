@@ -169,6 +169,29 @@ func (s *sqliteStore) CountActiveSessions(ctx context.Context, now time.Time) (i
 	return s.q.CountActiveSessions(ctx, formatTime(now))
 }
 
+func (s *sqliteStore) InstanceCounts(ctx context.Context) (InstanceCounts, error) {
+	row, err := s.q.InstanceCounts(ctx)
+	if err != nil {
+		return InstanceCounts{}, err
+	}
+	cats, err := s.q.CountItemsByCategory(ctx)
+	if err != nil {
+		return InstanceCounts{}, err
+	}
+	c := InstanceCounts{
+		Users:           row.Users,
+		Trips:           row.Trips,
+		Files:           row.Files,
+		FileBytes:       row.FileBytes,
+		Expenses:        row.Expenses,
+		ItemsByCategory: make(map[string]int64, len(cats)),
+	}
+	for _, r := range cats {
+		c.ItemsByCategory[r.Category] = r.ItemCount
+	}
+	return c, nil
+}
+
 func (s *sqliteStore) CountUsers(ctx context.Context) (int64, error) {
 	return s.q.CountUsers(ctx)
 }

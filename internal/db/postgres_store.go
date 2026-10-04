@@ -132,6 +132,29 @@ func (s *postgresStore) CountActiveSessions(ctx context.Context, now time.Time) 
 	return s.q.CountActiveSessions(ctx, now.UTC())
 }
 
+func (s *postgresStore) InstanceCounts(ctx context.Context) (InstanceCounts, error) {
+	row, err := s.q.InstanceCounts(ctx)
+	if err != nil {
+		return InstanceCounts{}, err
+	}
+	cats, err := s.q.CountItemsByCategory(ctx)
+	if err != nil {
+		return InstanceCounts{}, err
+	}
+	c := InstanceCounts{
+		Users:           row.Users,
+		Trips:           row.Trips,
+		Files:           row.Files,
+		FileBytes:       row.FileBytes,
+		Expenses:        row.Expenses,
+		ItemsByCategory: make(map[string]int64, len(cats)),
+	}
+	for _, r := range cats {
+		c.ItemsByCategory[r.Category] = r.ItemCount
+	}
+	return c, nil
+}
+
 const dateLayout = "2006-01-02"
 
 func (s *postgresStore) CreateItem(ctx context.Context, p CreateItemParams) (Item, error) {

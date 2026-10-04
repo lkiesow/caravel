@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+<!--
+  Every page's social preview: Open Graph and Twitter card tags, so a link to
+  the site unfurls with a card rather than bare text. home.html extends this
+  file rather than base.html so the landing page gets them too.
+
+  The card is og-card-cta.png, not og-card.png: the site is read by people who
+  have not deployed Caravel yet, which is what the call to action is for. The
+  plain card is the one an instance serves. docs/assets/brand/README.md has the
+  split.
+
+  The image URL must be absolute -- scrapers drop one they cannot resolve on
+  their own -- so it is built from site_url rather than with the url filter.
+  The title test compares against site_name rather than using
+  page.is_homepage, which Zensical 0.0.57 leaves falsy for docs/index.md (see
+  home.html); the landing page's title is "Caravel" from its `# Caravel`
+  heading.
+-->
+{% block extrahead %}
+  {% if page.title and page.title != config.site_name %}
+    {% set og_title = page.title ~ " - " ~ config.site_name %}
+  {% else %}
+    {% set og_title = config.site_name %}
+  {% endif %}
+  {% if page.meta and page.meta.description %}
+    {% set og_description = page.meta.description %}
+  {% else %}
+    {% set og_description = config.site_description %}
+  {% endif %}
+  {% set og_image = config.site_url ~ "assets/brand/og-card-cta.png" %}
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{ config.site_name }}">
+  <meta property="og:title" content="{{ og_title }}">
+  <meta property="og:description" content="{{ og_description }}">
+  {% if page.canonical_url %}
+    <meta property="og:url" content="{{ page.canonical_url }}">
+  {% endif %}
+  <meta property="og:image" content="{{ og_image }}">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Caravel - every trip, one place.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ og_title }}">
+  <meta name="twitter:description" content="{{ og_description }}">
+  <meta name="twitter:image" content="{{ og_image }}">
+{% endblock %}

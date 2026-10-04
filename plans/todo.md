@@ -193,14 +193,6 @@ without asking.
 
 ## Deployment and operations
 
-- **The documentation site has no social preview.** **(soon)** (Surfaced fixing
-  the app's, Aug 2026.) `zensical.toml` sets `site_description` and `site_url`
-  but nothing emits `og:image`, so a link to the project site previews as bare
-  text. `site_url` is a fixed absolute URL, so the tags can be written
-  literally into `overrides/home.html`. Use `og-card-cta.png` --
-  `docs/assets/brand/README.md` explains why that one. Wanted before the first
-  release is announced.
-
 - **The Zensical pin needs periodic review, in two files.** (Stage 18 Milestone
   9.) `zensical==0.0.57` is pinned in `.github/workflows/docs.yml` and in
   `ci.yml`'s `docs` job, deliberately, because a 0.0.x generator can change its

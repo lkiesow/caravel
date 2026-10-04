@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "main.html" %}
 
 <!--
   The landing page. Selected by `template: home.html` in docs/index.md's
@@ -10,6 +10,9 @@
   the whole page lives in the hero block and the default content area would
   otherwise render an empty article under it. `hide: [navigation, toc]` in the
   frontmatter takes care of the two sidebars.
+
+  It extends main.html rather than base.html for the social preview tags, which
+  main.html adds to every page.
 
   The copy here is the app's own: the headline and sub-line are the same strings
   as auth.hero.title and auth.hero.subtitle in web/locales/en.json, so the

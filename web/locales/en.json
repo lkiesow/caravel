@@ -199,7 +199,6 @@
   "location.form.showOnMap": "Show on map",
   "location.form.showOnMapHint": "Add both a latitude and a longitude above for this location to appear on the map.",
   "location.form.pickHint": "Or click the map to place the point, then drag it to fine-tune.",
-  "location.form.coarseFix": "Saved from a rough position, accurate to about {distance}. Drag the pin if you know better.",
   "location.form.searchPlaceholder": "Search for a place, or paste a Google Maps link",
   "location.form.searchButton": "Search",
   "location.form.searching": "Searching…",

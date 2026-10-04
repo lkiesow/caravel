@@ -69,16 +69,6 @@ without asking.
   2. **Offline edits.** A write queue with sync and conflict handling. Much
      larger; a separate decision.
 
-- **Remove "My location" from the location editor's map.** **(soon)** (Review
-  2026-10-03.) Never used there; the trip map keeps it. The editor's picker is
-  the `pick` branch of the locate control in `map-view.js` (non-continuous,
-  15s settle deadline, place-grade 50m target), which also carries the "a rough
-  fix is only reachable through a fifteen-second wait" complaint -- removing it
-  removes that too. After the removal, check what in `web/js/geolocation.js`
-  and the picker code has become dead: the locations tab's distance filter
-  still uses `getCurrentPosition` (500m target), the trip map uses the
-  continuous watch.
-
 - **Mark street-only results in the address search.** **(soon)** (Stage 33
   Milestone 2.) `/api/geocode` reports `class`, `kind` and `address_type` for
   every result, and `geocode.Result.Precise()` reduces them to the one question

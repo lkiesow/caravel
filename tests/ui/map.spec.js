@@ -1728,27 +1728,25 @@ test.describe("the locate control", () => {
     expect(after.zoom).toBeCloseTo(before.zoom, 6);
   });
 
-  test("in the editor, it sets the point being picked", async ({ page }) => {
+  test("the editor's picker has no locate control", async ({ page }) => {
+    // Removed after the 2026-10-03 backlog review: a place is recorded by
+    // searching, clicking or dragging, not by standing on it. The trip map
+    // keeps its control.
     await login(page);
     const res = await page.request.post("/api/trips", { data: { title: "UI suite: locate spec" } });
     const tripId = (await res.json()).id;
     try {
       await gotoRoute(page, `/trips/${tripId}/locations/new`);
       await page.waitForFunction(() => document.querySelector(".location-form__map")?.hasAttribute("data-ready"));
-
-      await page.evaluate(() =>
-        document.querySelector(".location-form__map").shadowRoot.querySelector('[data-action="locate"]').click()
-      );
-      await waitForLocateSettled(page, ".location-form__map");
-
-      // The single most useful case: standing somewhere and recording it.
-      await expect(page.locator('.location-form input[name="lat"]')).toHaveValue(/64\.14/);
-      await expect(page.locator('.location-form input[name="lng"]')).toHaveValue(/-21\.94/);
-      // ...and the coordinates flowed on to the pick marker, so the two
-      // markers now mean different things on the same map.
-      await expect
-        .poll(() => page.evaluate(() => Boolean(document.querySelector(".location-form__map")._pickMarker)))
-        .toBe(true);
+      const counts = await page.evaluate(() => {
+        const root = document.querySelector(".location-form__map").shadowRoot;
+        return {
+          button: root.querySelectorAll('[data-action="locate"]').length,
+          status: root.querySelectorAll(".locate-status").length,
+          coarse: document.querySelectorAll(".location-form__coarse").length,
+        };
+      });
+      expect(counts).toEqual({ button: 0, status: 0, coarse: 0 });
     } finally {
       await page.request.delete(`/api/trips/${tripId}`);
     }
@@ -2108,39 +2106,6 @@ test.describe("tracking", () => {
     expect(afterFollow, "but following is not").toBe(afterFit);
   });
 
-  test("the editor's picker does not track", async ({ page }) => {
-    // It is recording where a *place* is, not where you are going, so a live
-    // watch would fight the reader's own pin drags and could re-announce a
-    // position over coordinates they had since adjusted.
-    await login(page);
-    const res = await page.request.post("/api/trips", { data: { title: "UI suite: tracking spec" } });
-    expect(res.status()).toBe(201);
-    const tripId = (await res.json()).id;
-    try {
-      await page.goto(`/trips/${tripId}/locations/new`);
-      await page.waitForFunction(() => document.querySelector(".location-form__map")?._map, null, {
-        timeout: 20000,
-      });
-      await page.evaluate(() =>
-        document.querySelector(".location-form__map").shadowRoot.querySelector('[data-action="locate"]').click()
-      );
-      await waitForWatch(page);
-      await emitFix(page, AT_SEA);
-      await waitForLocateSettled(page, ".location-form__map");
-
-      const { starts, clears } = await geoCounters(page);
-      expect(clears, "a one-shot watch releases itself at settle").toBe(starts);
-      const tracking = await page.evaluate(() =>
-        document
-          .querySelector(".location-form__map")
-          .shadowRoot.querySelector('[data-action="locate"]')
-          .hasAttribute("data-tracking")
-      );
-      expect(tracking, "and the picker never claims to be tracking").toBe(false);
-    } finally {
-      await page.request.delete(`/api/trips/${tripId}`);
-    }
-  });
 });
 
 // Stage 42 Milestone 1. While moving, the marker is an arrow along the
@@ -2293,30 +2258,6 @@ test.describe("the marker shows the direction of travel", () => {
     expect(count, "and there is only ever one").toBe(1);
   });
 
-  test("the editor's picker never shows an arrow", async ({ page }) => {
-    await login(page);
-    const res = await page.request.post("/api/trips", { data: { title: "UI suite: heading spec" } });
-    expect(res.status()).toBe(201);
-    const tripId = (await res.json()).id;
-    try {
-      await page.goto(`/trips/${tripId}/locations/new`);
-      await page.waitForFunction(() => document.querySelector(".location-form__map")?._map, null, {
-        timeout: 20000,
-      });
-      await page.evaluate(() =>
-        document.querySelector(".location-form__map").shadowRoot.querySelector('[data-action="locate"]').click()
-      );
-      await waitForWatch(page);
-      await emitFix(page, { ...AT_SEA, heading: 90, speed: 3 });
-      await waitForLocateSettled(page, ".location-form__map");
-      const moving = await page.evaluate(() =>
-        document.querySelector(".location-form__map")._hereMarker.getElement().hasAttribute("data-moving")
-      );
-      expect(moving).toBe(false);
-    } finally {
-      await page.request.delete(`/api/trips/${tripId}`);
-    }
-  });
 });
 
 // Stage 42 Milestones 2 and 3. The compass cone: which way the phone faces,
@@ -2465,25 +2406,6 @@ test.describe("the marker shows which way the phone faces", () => {
       expect((await compassState(page)).listeners, "a map that is gone listens to nothing").toBe(0);
     });
 
-    test("the editor's picker never listens to the compass", async ({ page }) => {
-      await login(page);
-      const res = await page.request.post("/api/trips", { data: { title: "UI suite: compass spec" } });
-      expect(res.status()).toBe(201);
-      const tripId = (await res.json()).id;
-      try {
-        await page.goto(`/trips/${tripId}/locations/new`);
-        await page.waitForFunction(() => document.querySelector(".location-form__map")?._map, null, {
-          timeout: 20000,
-        });
-        await pressLocate(page, ".location-form__map");
-        await waitForWatch(page);
-        await emitFix(page, AT_SEA);
-        await waitForLocateSettled(page, ".location-form__map");
-        expect((await compassState(page)).listeners).toBe(0);
-      } finally {
-        await page.request.delete(`/api/trips/${tripId}`);
-      }
-    });
   });
 
   test.describe("where deviceorientationabsolute exists (Chrome, Firefox)", () => {
@@ -2742,126 +2664,6 @@ test.describe("the locate control says how accurate it is", () => {
       expect(status.text, "the decimal comma, from Intl").toMatch(/2,8\s*km/);
       expect(status.text, "and the sentence, from de.json").toMatch(/K\u00fcste/);
       expect(status.text, "which must not have fallen back to English").not.toMatch(/coast/i);
-    });
-  });
-});
-
-// Stage 36 Milestone 6. The editor says when a fix is too rough to be a place.
-//
-// A position good to a few hundred metres is a real answer to "where am I" and
-// a poor one to "where is this place", and nothing on screen otherwise tells
-// the two apart -- the coordinate fields show six decimals either way.
-test.describe("saving a place from a rough position", () => {
-  test.beforeEach(async ({ page }) => {
-    await installFakeGeolocation(page);
-  });
-
-  // Three of these take about twenty seconds each, and that is the feature
-  // rather than a slow test: a settled fix worse than 200m is only reachable
-  // by the picker's deadline, because it settles early only on something good
-  // enough for a place (50m). There is no shortcut -- the deadline is a real
-  // timer, not something the fake clock can move -- and shortening it further
-  // to suit the suite would be letting the tests design the product.
-  //
-  // The editor needs a trip of its own: this writes, and the suite's shared
-  // seed is what the isolation problem in plans/todo.md is about.
-  const inNewLocationEditor = async (page, body) => {
-    await login(page);
-    const res = await page.request.post("/api/trips", { data: { title: "UI suite: coarse fix" } });
-    expect(res.status()).toBe(201);
-    const tripId = (await res.json()).id;
-    try {
-      await page.goto(`/trips/${tripId}/locations/new`);
-      await page.waitForFunction(() => document.querySelector(".location-form__map")?._map, null, {
-        timeout: 20000,
-      });
-      await body();
-    } finally {
-      await page.request.delete(`/api/trips/${tripId}`);
-    }
-  };
-
-  const pressLocate = (page) =>
-    page.evaluate(() =>
-      document
-        .querySelector(".location-form__map")
-        .shadowRoot.querySelector('[data-action="locate"]')
-        .click()
-    );
-
-  const warning = (page) =>
-    page.evaluate(() => {
-      const el = document.querySelector(".location-form__coarse");
-      return { hidden: el.hidden, text: el.textContent.trim() };
-    });
-
-  const fields = (page) =>
-    page.evaluate(() => {
-      const form = document.querySelector(".location-form");
-      return { lat: form.lat.value, lng: form.lng.value };
-    });
-
-  test("a rough fix still fills the fields, and says it is rough", async ({ page }) => {
-    await inNewLocationEditor(page, async () => {
-      await pressLocate(page);
-      await waitForWatch(page);
-      // 300m settles it outright -- the picker is one-shot and asks for a
-      // usable answer, not a perfect one -- so this is the settled state the
-      // warning is about, not a passing stage of acquisition.
-      await emitFix(page, { lat: 54.4, lng: 10.3, accuracy: 300 });
-      await waitForLocateSettled(page, ".location-form__map");
-
-      const set = await fields(page);
-      expect(set.lat, "the point is still taken: a rough answer is still an answer")
-        .not.toBe("");
-      expect(Number(set.lat)).toBeCloseTo(54.4, 3);
-
-      const warn = await warning(page);
-      expect(warn.hidden).toBe(false);
-      expect(warn.text).toMatch(/300\s*m/);
-      // It names the remedy, not just the problem.
-      expect(warn.text).toMatch(/drag/i);
-    });
-  });
-
-  test("a good fix says nothing", async ({ page }) => {
-    await inNewLocationEditor(page, async () => {
-      await pressLocate(page);
-      await waitForWatch(page);
-      await emitFix(page, AT_SEA);
-      await waitForLocateSettled(page, ".location-form__map");
-      expect((await warning(page)).hidden, "18m is a place, not a guess").toBe(true);
-    });
-  });
-
-  test("moving the pin afterwards clears it", async ({ page }) => {
-    // The warning described the point that was there. A click is a deliberate
-    // choice and carries no accuracy at all, so leaving the line up would have
-    // it describing a coordinate it knows nothing about.
-    await inNewLocationEditor(page, async () => {
-      await pressLocate(page);
-      await waitForWatch(page);
-      await emitFix(page, { lat: 54.4, lng: 10.3, accuracy: 300 });
-      await waitForLocateSettled(page, ".location-form__map");
-      expect((await warning(page)).hidden).toBe(false);
-
-      await clickPickerAt(page, 0.35, 0.4, ".location-form__map");
-      await expect.poll(async () => (await warning(page)).hidden).toBe(true);
-    });
-  });
-
-  test("typing a coordinate clears it too", async ({ page }) => {
-    // One of five writers, and the one most likely to be forgotten: the
-    // clearing is central, in coordinatesChanged, rather than per writer.
-    await inNewLocationEditor(page, async () => {
-      await pressLocate(page);
-      await waitForWatch(page);
-      await emitFix(page, { lat: 54.4, lng: 10.3, accuracy: 300 });
-      await waitForLocateSettled(page, ".location-form__map");
-      expect((await warning(page)).hidden).toBe(false);
-
-      await page.locator(".location-form [name='lat']").fill("48.1");
-      await expect.poll(async () => (await warning(page)).hidden).toBe(true);
     });
   });
 });
@@ -3400,13 +3202,6 @@ test.describe("Stage 13's surfaces in German at 324px", () => {
         el.hidden = false;
         el.textContent = text;
       }, "Die Adresssuche ist gerade nicht verfügbar. Du kannst den Punkt weiterhin auf der Karte setzen.");
-
-      // The picker's own locate line, at its longest.
-      await page.evaluate((text) => {
-        const status = document.querySelector(".location-form__map").shadowRoot.querySelector(".locate-status");
-        status.hidden = false;
-        status.textContent = text;
-      }, LONGEST_LOCATE_MESSAGE_DE);
 
       await assertFitsAndTappable(page, ".location-editor");
     } finally {

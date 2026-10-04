@@ -1841,12 +1841,10 @@ class MapView extends HTMLElement {
       // The compass first, and synchronously: iOS only considers the request
       // if it is made inside the gesture itself, and anything below can await.
       // A no-op everywhere that does not ask, and after the reader has
-      // answered. Not for the picker, which never shows a direction.
-      if (!this.hasAttribute("pick")) {
-        requestCompassPermission().then((allowed) => {
-          if (allowed && this._trackingIntent && !this._compassWatch) this.startCompass();
-        });
-      }
+      // answered.
+      requestCompassPermission().then((allowed) => {
+        if (allowed && this._trackingIntent && !this._compassWatch) this.startCompass();
+      });
       // A press while tracking is "bring me back", not "start again": it takes
       // the camera back and recentres, and deliberately does not restart
       // acquisition or stop the watch. Leaving the map tab, reloading, or the
@@ -1861,7 +1859,7 @@ class MapView extends HTMLElement {
         return;
       }
       this._locateSettled = false;
-      this.startLocateWatch(true);
+      this.startLocateWatch();
     });
 
     // A watch running while the screen is off, or while the reader is in
@@ -1874,19 +1872,17 @@ class MapView extends HTMLElement {
         this._locateWatch = null;
         this.stopCompass();
       } else if (!this._locateWatch) {
-        // Not a fresh press: no "position-found" is announced, and because
-        // _locateSettled is left alone the resumed watch's fixes are treated
-        // as tracking rather than re-fitting the camera under the reader.
-        this.startLocateWatch(false);
+        // Not a fresh press: _locateSettled is left alone, so the resumed
+        // watch's fixes are treated as tracking rather than re-fitting the
+        // camera under the reader.
+        this.startLocateWatch();
       }
     };
     document.addEventListener("visibilitychange", this._onVisibilityChange);
   }
 
-  // One press, one watch. Also the resume path, which is why `fromPress`
-  // exists: a resumed watch must not re-announce a position the page already
-  // acted on.
-  startLocateWatch(fromPress) {
+  // One press, one watch. Also the resume path.
+  startLocateWatch() {
     const button = this._locateButton;
     const say = this._locateSay;
     this._trackingIntent = true;
@@ -1899,22 +1895,8 @@ class MapView extends HTMLElement {
       say("map.locate.searching");
     }
 
-    // Continuous everywhere but the editor's picker. That one is recording
-    // where a *place* is, not where you are going, so a live watch would fight
-    // the reader's own pin drags -- and would re-announce a position over
-    // coordinates they had since adjusted.
-    const continuous = !this.hasAttribute("pick");
-
     const watch = watchPosition({
-      continuous,
-      // The picker blocks a form, so it does not hold out as long. It still
-      // wants a *place*-grade fix and keeps refining towards one -- pressing
-      // this while standing somewhere is the case it exists for -- but after
-      // fifteen seconds it takes the best it has and says how good that is,
-      // rather than leaving somebody watching a disabled button. The trip
-      // map can afford the longer default because it keeps tracking
-      // afterwards, so a slow lock costs nothing there.
-      settleDeadlineMs: continuous ? undefined : 15000,
+      continuous: true,
       onUpdate: (fix) => {
         this._lastFix = fix;
         this.showPosition(
@@ -1924,7 +1906,7 @@ class MapView extends HTMLElement {
           !this._locateSettled ? "fit" : this._followCamera ? "follow" : "none"
         );
         this.sayAccuracy(fix);
-        if (continuous) this.showCourse(fix);
+        this.showCourse(fix);
       },
       // Set here rather than off the promise, because it has to be true before
       // the *next* fix arrives and a promise continuation is a microtask away.
@@ -1933,7 +1915,7 @@ class MapView extends HTMLElement {
       },
     });
     this._locateWatch = watch;
-    if (continuous) this.startCompass();
+    this.startCompass();
 
     watch.promise.then(
       (position) => {
@@ -1942,20 +1924,7 @@ class MapView extends HTMLElement {
         // place. sayAccuracy decides whether there is anything to admit.
         this.sayAccuracy(position);
         button.disabled = false;
-        this.setTracking(continuous);
-        if (!fromPress) return;
-        // The page decides what a position *means*: the trip map only shows
-        // it, while the editor's picker takes it as the point being set. Same
-        // control, one event, no second button to keep in step. Fired once, on
-        // the settled fix, so the editor is never handed a coordinate that is
-        // about to be improved on.
-        this.dispatchEvent(
-          new CustomEvent("position-found", {
-            bubbles: true,
-            composed: true,
-            detail: position,
-          })
-        );
+        this.setTracking(true);
       },
       (err) => {
         if (this._locateWatch === watch) this._locateWatch = null;
@@ -2091,8 +2060,6 @@ class MapView extends HTMLElement {
 
   // Dot or arrow, and which way the arrow points (Stage 42).
   //
-  // Only the continuous watch calls this -- the editor's picker records where a
-  // place is, not where you are going -- so a pick map never shows an arrow.
   // The direction is the platform's direction of *travel*, from GNSS: it says
   // nothing about which way the phone is facing, and is only worth showing
   // once you are moving fast enough for it to mean something. See

@@ -176,18 +176,6 @@ without asking.
 
 ## Consistency and cleanup
 
-- **`escapeAttr` promises attribute safety and delivers entity escaping.**
-  **(soon)** (Stage 27 Milestone 4a.) **Eight** files define `escapeAttr` --
-  menu, location-card, image-field, itinerary-tab, trip-card,
-  location-view-page, location-editor-page and map-view; the comment at
-  `web/js/url.js:12` says seven -- and in most it is a bare alias of
-  `escapeHtml`, which escapes `&<>"'` and says nothing about what the value
-  *means* in the attribute it lands in. Quoting a `javascript:` URL into an
-  `href` produces a well-formed dangerous link, which is the bug that milestone
-  fixed with `safeHref` in `url.js`; what is left is the name. Renaming it to
-  `escapeHtmlAttr`, or collapsing the copies into one shared helper, would stop
-  the next person reading `escapeAttr(url)` as "this is safe".
-
 - **Web search should leave `internal/assist`.** **(soon)** (Stage 21 Milestone
   7.) `Searcher` and its backends live in that package because the assistant
   was their only consumer. It no longer is: the image picker uses the same

@@ -14,6 +14,7 @@ import { CATEGORIES, CATEGORY_COLORS, FALLBACK_CATEGORY_COLOR } from "../categor
 import { eventBus } from "../eventbus.js";
 import { resolveMapTheme } from "../map-theme.js";
 import { assetURL } from "../asset-url.js";
+import { escapeHtml } from "../escape.js";
 
 // The map, as the instance has it configured. Defaults duplicated from
 // internal/httpapi/map.go on purpose: they are what the map falls back to when
@@ -1607,7 +1608,7 @@ class MapView extends HTMLElement {
         .setLngLat([lng, lat])
         .setPopup(
           this.popup(
-            `<strong>${escapeHtml(title)}</strong><br/><a href="${escapeAttr(mapsUrl)}" target="_blank" rel="noopener">${t("map.viewOnGoogleMaps")}</a>`
+            `<strong>${escapeHtml(title)}</strong><br/><a href="${escapeHtml(mapsUrl)}" target="_blank" rel="noopener">${t("map.viewOnGoogleMaps")}</a>`
           )
         )
         .addTo(this._map);
@@ -1642,10 +1643,10 @@ class MapView extends HTMLElement {
               // loading="lazy" because setHTML builds the content up front for
               // every marker while only the opened popup is ever in the DOM.
               (item.image_url
-                ? `<img class="popup-image" src="${escapeAttr(item.image_url)}" alt="" loading="lazy" />`
+                ? `<img class="popup-image" src="${escapeHtml(item.image_url)}" alt="" loading="lazy" />`
                 : "") +
-              `<a class="popup-link" data-item-id="${escapeAttr(item.id)}" href="${escapeAttr(`/trips/${tripId}/locations/${item.id}`)}">${t("map.openLocation")}</a>` +
-              `<a class="popup-link" href="${escapeAttr(item.google_maps_url)}" target="_blank" rel="noopener">${t("map.viewOnGoogleMaps")}</a>`
+              `<a class="popup-link" data-item-id="${escapeHtml(item.id)}" href="${escapeHtml(`/trips/${tripId}/locations/${item.id}`)}">${t("map.openLocation")}</a>` +
+              `<a class="popup-link" href="${escapeHtml(item.google_maps_url)}" target="_blank" rel="noopener">${t("map.viewOnGoogleMaps")}</a>`
           )
         )
         .addTo(this._map);
@@ -1693,8 +1694,8 @@ class MapView extends HTMLElement {
   // focusAfterOpen: false because moving focus into a popup on open scrolls
   // the page to it, and these open from a marker the person just clicked -
   // they are already looking at it. setHTML does no sanitising, so escapeHtml
-  // and escapeAttr at the call sites remain the only escaping, exactly as they
-  // were under Leaflet's bindPopup.
+  // at the call sites remains the only escaping, exactly as it was under
+  // Leaflet's bindPopup.
   //
   // maxWidth is 200px against MapLibre's own 240: the vendor rule pads the
   // content box by 10px a side, so this is the ceiling that lets .popup-image
@@ -2569,14 +2570,6 @@ function readCoordinate(el, name) {
   if (raw == null || raw.trim() === "") return null;
   const n = Number(raw);
   return Number.isFinite(n) ? n : null;
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-}
-
-function escapeAttr(s) {
-  return escapeHtml(s);
 }
 
 customElements.define("map-view", MapView);

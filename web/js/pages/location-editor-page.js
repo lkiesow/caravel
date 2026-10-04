@@ -15,6 +15,7 @@ import { hasCapability } from "../session.js";
 import { renderAssistPanel } from "../components/assist-panel.js";
 import { formatDateRange, formatDistance } from "../format.js";
 import { safeHref } from "../url.js";
+import { escapeHtml } from "../escape.js";
 
 // Past this, a fix taken from the device is worth a word of warning when it
 // is being saved as a *place*. Same threshold the map's own status line
@@ -207,7 +208,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
             <p class="location-form__coarse" role="status" hidden></p>
             <map-view pick locate class="location-form__map"${
               item?.location?.lat != null && item?.location?.lng != null
-                ? ` lat="${escapeAttr(item.location.lat)}" lng="${escapeAttr(item.location.lng)}"`
+                ? ` lat="${escapeHtml(item.location.lat)}" lng="${escapeHtml(item.location.lng)}"`
                 : ""
             }></map-view>
           </form>
@@ -943,7 +944,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
               const href = safeHref(l.url);
               const text = escapeHtml(l.label || l.url);
               const body = href
-                ? `<a href="${escapeAttr(href)}" target="_blank" rel="noopener">${text}</a>`
+                ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener">${text}</a>`
                 : `<span class="link-list__unsafe">${text}</span>`;
               return `<li>${body} <button class="icon-remove" data-action="delete-link" data-index="${i}" aria-label="${t("common.remove")}">${icon("x")}</button></li>`;
             }
@@ -1016,12 +1017,4 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
   }
 
   render();
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-}
-
-function escapeAttr(s) {
-  return escapeHtml(s);
 }

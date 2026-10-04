@@ -7,16 +7,14 @@
 // are still there, and "javascript:alert(1)" in an href is a working link,
 // not a broken one.
 //
-// A module of its own rather than a helper copied into the two pages that
-// render links. Every other escaping helper in web/js is duplicated per file
-// -- escapeHtml and escapeAttr appear in seven -- and that is tolerable for
-// entity escaping, where a divergent copy is a rendering bug. A divergent
+// A module of its own rather than a helper copied into the pages that render
+// links: a divergent copy of an entity escaper is a rendering bug, a divergent
 // copy of this is a hole.
 //
-// Note what escapeAttr does *not* do, which is what made this necessary: it is
-// an alias of escapeHtml, so it escapes &<>"' and says nothing whatever about
-// schemes. Quoting a javascript: URL into an attribute produces a perfectly
-// well-formed dangerous link.
+// Note what escapeHtml (escape.js) does *not* do, which is what made this
+// necessary: it escapes &<>"' and says nothing whatever about schemes. Quoting
+// a javascript: URL into an attribute produces a perfectly well-formed
+// dangerous link.
 
 const SAFE_SCHEMES = ["http:", "https:"];
 

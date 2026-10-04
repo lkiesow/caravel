@@ -1,4 +1,5 @@
 import { formatDateRange } from "../format.js";
+import { escapeHtml } from "../escape.js";
 
 const styles = `
   :host {
@@ -111,7 +112,7 @@ class TripCard extends HTMLElement {
     this.shadowRoot.innerHTML = `
       <style>${styles}</style>
       <div class="card">
-        ${imageUrl ? `<img class="thumb" src="${escapeAttr(imageUrl)}" alt="" />` : ""}
+        ${imageUrl ? `<img class="thumb" src="${escapeHtml(imageUrl)}" alt="" />` : ""}
         <div class="body">
           <h2>${escapeHtml(title)}</h2>
           ${dateRange ? `<div class="dates">${escapeHtml(dateRange)}</div>` : ""}
@@ -120,14 +121,6 @@ class TripCard extends HTMLElement {
       </div>
     `;
   }
-}
-
-function escapeHtml(s) {
-  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-}
-
-function escapeAttr(s) {
-  return escapeHtml(s);
 }
 
 customElements.define("trip-card", TripCard);

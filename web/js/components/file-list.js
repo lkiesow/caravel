@@ -6,6 +6,7 @@ import { confirmDialog, promptDialog } from "./dialog.js";
 import { renderMenu } from "./menu.js";
 import { renderLoading } from "./loading.js";
 import { createGuard } from "../busy.js";
+import { escapeHtml } from "../escape.js";
 
 // Renders a file list as cards (type tile, name, meta line, size, and a
 // per-row overflow menu holding Edit note / Delete) plus a drop zone that
@@ -627,8 +628,4 @@ function filenameHtml(filename) {
   const stem = hasExt ? filename.slice(0, dot) : filename;
   const ext = hasExt ? filename.slice(dot) : "";
   return `<span class="file-card__filename"><span class="file-card__stem">${escapeHtml(stem)}</span>${ext ? `<span class="file-card__ext">${escapeHtml(ext)}</span>` : ""}</span>`;
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }

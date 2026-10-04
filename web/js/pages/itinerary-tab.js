@@ -10,6 +10,7 @@ import { canEdit } from "../trip-role.js";
 import { byTitle } from "../sort.js";
 import { todayISO } from "../format.js";
 import { categoryColor } from "../categories.js";
+import { escapeHtml } from "../escape.js";
 
 export async function renderItineraryTab(container, trip) {
   // Four things on this tab write: removing a day, editing a day's notes,
@@ -118,7 +119,7 @@ export async function renderItineraryTab(container, trip) {
       ${
         editable
           ? `<form class="itinerary-day__add-item">
-        <select name="itemId" aria-label="${escapeAttr(t("itinerary.addItemTo", { date: formatDate(day.date) }))}">
+        <select name="itemId" aria-label="${escapeHtml(t("itinerary.addItemTo", { date: formatDate(day.date) }))}">
           <option value="" data-i18n="itinerary.selectItem"></option>
           ${items.map((i) => `<option value="${i.id}">${escapeHtml(i.title)}</option>`).join("")}
         </select>
@@ -255,7 +256,7 @@ export async function renderItineraryTab(container, trip) {
         <a href="/trips/${trip.id}/locations/${entry.item_id}" data-link class="itinerary-entry__link">
           ${
             entry.item_image_url
-              ? `<img class="itinerary-entry__thumb" src="${escapeAttr(entry.item_image_url)}" alt="" />`
+              ? `<img class="itinerary-entry__thumb" src="${escapeHtml(entry.item_image_url)}" alt="" />`
               : `<span class="dot" style="background:${categoryColor(entry.item_category)}"></span>`
           }
           <span>${escapeHtml(entry.item_title)}</span>
@@ -264,8 +265,8 @@ export async function renderItineraryTab(container, trip) {
         ${
           editable
             ? `<span class="itinerary-entry__actions">
-          <button class="icon-btn" data-action="move-up" ${index === 0 ? "disabled" : ""} aria-label="${escapeAttr(t("itinerary.moveUp", { title: entry.item_title }))}">${icon("chevron-up")}</button>
-          <button class="icon-btn" data-action="move-down" ${index === day.entries.length - 1 ? "disabled" : ""} aria-label="${escapeAttr(t("itinerary.moveDown", { title: entry.item_title }))}">${icon("chevron-down")}</button>
+          <button class="icon-btn" data-action="move-up" ${index === 0 ? "disabled" : ""} aria-label="${escapeHtml(t("itinerary.moveUp", { title: entry.item_title }))}">${icon("chevron-up")}</button>
+          <button class="icon-btn" data-action="move-down" ${index === day.entries.length - 1 ? "disabled" : ""} aria-label="${escapeHtml(t("itinerary.moveDown", { title: entry.item_title }))}">${icon("chevron-down")}</button>
           <span class="itinerary-entry__menu"></span>
         </span>`
             : ""
@@ -500,12 +501,4 @@ function hasContent(day) {
 function formatDate(dateStr) {
   const date = new Date(`${dateStr}T00:00:00`);
   return new Intl.DateTimeFormat(undefined, { weekday: "short", year: "numeric", month: "short", day: "numeric" }).format(date);
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-}
-
-function escapeAttr(s) {
-  return escapeHtml(s);
 }

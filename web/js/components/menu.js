@@ -2,6 +2,7 @@ import { createGuard } from "../busy.js";
 import { translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
 import { bindPopup } from "./popup.js";
+import { escapeHtml } from "../escape.js";
 
 // A small single-select dropdown menu: a button that shows the currently
 // selected option, and a popup list to change it.
@@ -115,7 +116,7 @@ export function renderMenu(
           .map(
             (item) => `
           <li role="none">
-            <button type="button" ${item.action ? `role="menuitem" class="menu__action${item.danger ? " menu__action--danger" : ""}"` : `role="menuitemradio" aria-checked="${item.value === active}"`} data-value="${escapeAttr(item.value)}"${item.disabled ? " disabled" : ""}>
+            <button type="button" ${item.action ? `role="menuitem" class="menu__action${item.danger ? " menu__action--danger" : ""}"` : `role="menuitemradio" aria-checked="${item.value === active}"`} data-value="${escapeHtml(item.value)}"${item.disabled ? " disabled" : ""}>
               ${
                 item.iconName
                   ? icon(item.iconName, { className: "menu__item-icon" })
@@ -228,8 +229,4 @@ export function renderMenu(
       syncLabel();
     },
   };
-}
-
-function escapeAttr(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }

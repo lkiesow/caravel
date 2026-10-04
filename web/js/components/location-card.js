@@ -1,5 +1,6 @@
 import { formatDateRange } from "../format.js";
 import { categoryColor } from "../categories.js";
+import { escapeHtml } from "../escape.js";
 
 const styles = `
   :host {
@@ -217,7 +218,7 @@ class ItemCard extends HTMLElement {
     this.shadowRoot.innerHTML = `
       <style>${styles}</style>
       <div class="card">
-        ${imageUrl ? `<img class="thumb" src="${escapeAttr(imageUrl)}" alt="" />` : ""}
+        ${imageUrl ? `<img class="thumb" src="${escapeHtml(imageUrl)}" alt="" />` : ""}
         <span class="dot" style="background:${color}"></span>
         <div class="text">
           <h2>${escapeHtml(title)}</h2>
@@ -287,14 +288,6 @@ class ItemCard extends HTMLElement {
       run();
     }
   }
-}
-
-function escapeHtml(s) {
-  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-}
-
-function escapeAttr(s) {
-  return escapeHtml(s);
 }
 
 customElements.define("item-card", ItemCard);

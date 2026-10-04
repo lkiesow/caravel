@@ -21,6 +21,7 @@ function hostOf(raw) {
   }
 }
 import { renderNotFoundPage } from "./not-found-page.js";
+import { escapeHtml } from "../escape.js";
 
 // Read-only detail view for an item: image, category badge, notes,
 // location as address text plus an embedded single-marker map (map-view
@@ -89,7 +90,7 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
         item.image_url
           ? `
         <figure class="location-view__cover">
-          <img class="location-view__image" src="${escapeAttr(item.image_url)}" alt="" />
+          <img class="location-view__image" src="${escapeHtml(item.image_url)}" alt="" />
           ${item.image_credit ? `<figcaption class="image-credit"></figcaption>` : ""}
         </figure>
       `
@@ -106,13 +107,13 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
           ${
             hasCoords
               ? `
-            <map-view lat="${item.location.lat}" lng="${item.location.lng}" marker-title="${escapeAttr(item.title)}" marker-address="${escapeAttr(item.location.address ?? "")}" marker-category="${escapeAttr(item.category)}"></map-view>
+            <map-view lat="${item.location.lat}" lng="${item.location.lng}" marker-title="${escapeHtml(item.title)}" marker-address="${escapeHtml(item.location.address ?? "")}" marker-category="${escapeHtml(item.category)}"></map-view>
             <div class="location-view__maps-links">
-              <a class="location-view__maps-link" href="${escapeAttr(googleMapsUrl(item.location.lat, item.location.lng, item.title, item.location.address))}" target="_blank" rel="noopener" data-i18n="map.viewOnGoogleMaps"></a>
+              <a class="location-view__maps-link" href="${escapeHtml(googleMapsUrl(item.location.lat, item.location.lng, item.title, item.location.address))}" target="_blank" rel="noopener" data-i18n="map.viewOnGoogleMaps"></a>
               ${
                 osmUrl
                   ? `<span class="location-view__maps-sep" aria-hidden="true">\u00b7</span>
-                     <a class="location-view__maps-link" href="${escapeAttr(osmUrl)}" target="_blank" rel="noopener" data-i18n="map.viewOnOpenStreetMap"></a>`
+                     <a class="location-view__maps-link" href="${escapeHtml(osmUrl)}" target="_blank" rel="noopener" data-i18n="map.viewOnOpenStreetMap"></a>`
                   : ""
               }
             </div>
@@ -248,13 +249,5 @@ function renderLink(l) {
   const href = safeHref(l.url);
   const text = escapeHtml(l.label || l.url);
   if (!href) return `<li><span class="link-list__unsafe">${text}</span></li>`;
-  return `<li><a href="${escapeAttr(href)}" target="_blank" rel="noopener">${text}</a></li>`;
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-}
-
-function escapeAttr(s) {
-  return escapeHtml(s);
+  return `<li><a href="${escapeHtml(href)}" target="_blank" rel="noopener">${text}</a></li>`;
 }

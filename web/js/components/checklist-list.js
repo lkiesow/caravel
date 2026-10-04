@@ -5,6 +5,7 @@ import { icon } from "../icon.js";
 import { confirmDialog, promptDialog } from "./dialog.js";
 import { renderMenu } from "./menu.js";
 import { renderLoading } from "./loading.js";
+import { escapeHtml } from "../escape.js";
 
 // Renders a trip's checklists: each an "editor-card" with a title, its
 // checkable items, an "add item" input, and a per-list ⋮ menu. Plus an "Add
@@ -352,8 +353,4 @@ export async function renderChecklistList(container, tripId, { readOnly = false,
   }
 
   render();
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }

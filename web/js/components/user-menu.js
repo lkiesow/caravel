@@ -1,6 +1,7 @@
 import { t } from "../i18n.js";
 import { navigate } from "../router.js";
 import { renderMenu } from "./menu.js";
+import { escapeHtml } from "../escape.js";
 
 // Renders an initials-avatar user menu into `container`, at the far right of
 // the header. Clicking the avatar opens a small dropdown: account settings and
@@ -45,8 +46,4 @@ export function renderUserMenu(container, user, { onLogout }) {
       if (value === "logout") return onLogout?.();
     },
   });
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }

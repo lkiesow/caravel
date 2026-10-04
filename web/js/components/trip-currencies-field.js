@@ -3,6 +3,7 @@ import { guardClick } from "../busy.js";
 import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
 import { CURRENCIES, parseRate, formatRate, RATE_ONE } from "../format.js";
+import { escapeHtml } from "../escape.js";
 
 // The extra currencies a trip records expenses in, and the rate for each.
 // Stage 32 Milestone 4.
@@ -24,12 +25,6 @@ import { CURRENCIES, parseRate, formatRate, RATE_ONE } from "../format.js";
 // helper and adding one for a single call would be a change of a different
 // kind. Needed because the rate is typed text going back into an attribute
 // value on every re-render, and a code change re-renders the whole group.
-function escapeHtml(s) {
-  return String(s).replace(
-    /[&<>"']/g,
-    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
-  );
-}
 
 export function renderTripCurrenciesField(container, trip, { onSaved } = {}) {
   // Working copy: the saved set is only replaced once the server accepts one.

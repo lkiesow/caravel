@@ -8,6 +8,7 @@ import { renderLoading } from "../components/loading.js";
 import { getCurrentUser } from "../session.js";
 import { navigate } from "../router.js";
 import { renderNotFoundPage } from "./not-found-page.js";
+import { escapeHtml } from "../escape.js";
 
 // Account administration: the accounts on this instance, and whether anyone can
 // register a new one.
@@ -313,8 +314,4 @@ export async function renderAdminPage(container) {
   }
 
   await load();
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }

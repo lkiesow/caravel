@@ -4,6 +4,7 @@ import { getLocale, t, translatePage } from "../i18n.js";
 import { formatBytes } from "../format.js";
 import { icon } from "../icon.js";
 import { hasCapability } from "../session.js";
+import { escapeHtml } from "../escape.js";
 
 // Renders an image picker (upload a file, or paste a URL) plus a preview
 // and remove button. `tripId` scopes the upload/url endpoints (media is
@@ -30,7 +31,7 @@ export function renderImageField(container, { tripId, imageUrl, attachPath, onCh
   function render(currentUrl) {
     container.innerHTML = `
       <div class="image-field">
-        ${currentUrl ? `<img class="image-field__preview" src="${escapeAttr(currentUrl)}" alt="" />` : ""}
+        ${currentUrl ? `<img class="image-field__preview" src="${escapeHtml(currentUrl)}" alt="" />` : ""}
         <div class="image-field__controls">
           <label class="image-field__upload">
             <span data-i18n="image.upload"></span>
@@ -155,7 +156,6 @@ export function renderImageField(container, { tripId, imageUrl, attachPath, onCh
       });
     }
   }
-
 
   // "Search for an image": the picker, and the one image feature with no
   // assistant in it.
@@ -393,8 +393,4 @@ export function renderImageField(container, { tripId, imageUrl, attachPath, onCh
   render(imageUrl);
 
   return { setFromURL };
-}
-
-function escapeAttr(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }

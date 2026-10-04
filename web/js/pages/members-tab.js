@@ -8,6 +8,7 @@ import { confirmDialog } from "../components/dialog.js";
 import { renderLoading } from "../components/loading.js";
 import { bindSuggestInput } from "../components/suggest-input.js";
 import { canManageMembers } from "../trip-role.js";
+import { escapeHtml } from "../escape.js";
 
 // Who else is on this trip, and what they may do.
 //
@@ -266,8 +267,4 @@ export function renderMembersTab(content, trip, { onMembersChanged } = {}) {
   }
 
   load();
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }

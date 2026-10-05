@@ -952,6 +952,34 @@ textarea {
   flex: none;
 }
 
+/* A row with a hint (menu.js's items[].hint): label over a smaller muted line.
+   The icon lines up with the label, not the middle of the pair. The dropdown
+   shrink-wraps against a trigger that can be one icon wide, so a plain
+   wrapping hint would break at the label's width; `width: max-content` keeps
+   it on one line, and the cap - with the row's icon and padding - keeps the
+   dropdown inside a 324px screen's gutter, wrapping only past that. */
+.menu__dropdown .menu__item--hinted {
+  align-items: flex-start;
+}
+
+.menu__item--hinted .menu__item-icon {
+  margin-block-start: 0.125rem;
+}
+
+.menu__item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.menu__item-hint {
+  width: max-content;
+  max-width: 14rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  white-space: normal;
+}
+
 .menu__dropdown button[aria-checked="true"] {
   color: var(--color-accent);
 }

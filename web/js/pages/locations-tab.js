@@ -582,8 +582,8 @@ export async function renderItemsTab(container, trip) {
         ariaLabel: "locations.new",
         triggerClass: "btn btn-primary btn-collapse",
         items: [
-          { value: "blank", label: t("locations.newBlank"), iconName: "plus", action: true },
-          { value: "suggest", label: t("locations.newSuggest"), iconName: "sparkles", action: true },
+          { value: "blank", label: t("locations.newBlank"), hint: t("locations.newBlankHint"), iconName: "plus", action: true },
+          { value: "suggest", label: t("locations.newSuggest"), hint: t("locations.newSuggestHint"), iconName: "sparkles", action: true },
         ],
         onSelect: (value) => {
           if (value === "suggest") navigate(`/trips/${tripId}/suggest`);

@@ -55,8 +55,16 @@ test.describe("suggesting several locations", () => {
     // The entry point: New is a menu now, not a plain button, because the
     // toolbar had no room for a fifth control.
     await page.locator(".locations-new-slot .menu__trigger").click();
-    const suggestRow = page.locator('.locations-new-slot [role="menu"] button', { hasText: "Suggest locations" });
+    const suggestRow = page.locator('.locations-new-slot [role="menu"] button', { hasText: "Get AI suggestions" });
     await expect(suggestRow).toBeVisible();
+    // The hint line is the row's description, not part of its name: people
+    // took this row for the way to get AI help with one place, so each row
+    // says which it is - without making the name a sentence long.
+    await expect(suggestRow).toHaveAccessibleName("Get AI suggestions");
+    await expect(suggestRow).toHaveAccessibleDescription("AI proposes places for this trip");
+    const blankRow = page.locator('.locations-new-slot [role="menu"] button[data-value="blank"]');
+    await expect(blankRow).toHaveAccessibleName("Add one location");
+    await expect(blankRow).toHaveAccessibleDescription("Fill it in yourself or search via AI");
     await suggestRow.click();
 
     await expect(page).toHaveURL(new RegExp(`/trips/${tripId}/suggest$`));

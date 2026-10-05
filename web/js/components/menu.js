@@ -4,6 +4,10 @@ import { icon } from "../icon.js";
 import { bindPopup } from "./popup.js";
 import { escapeHtml } from "../escape.js";
 
+// Hint ids only need to be unique within the document; menus re-render often
+// enough that a counter is simpler than deriving one from the container.
+let hintIds = 0;
+
 // A small single-select dropdown menu: a button that shows the currently
 // selected option, and a popup list to change it.
 //
@@ -24,7 +28,7 @@ import { escapeHtml } from "../escape.js";
 // carries resolved label strings rather than i18n keys - callers translate
 // first (labels here come from several different key namespaces).
 //
-// items: [{ value, label, iconName }]. onSelect is called with the value only
+// items: [{ value, label, iconName, hint }]. onSelect is called with the value only
 // when it actually changes, so callers don't have to guard against
 // re-selecting the current option.
 //
@@ -47,6 +51,15 @@ import { escapeHtml } from "../escape.js";
 // way into the menu makes the same destination look like a different one, so
 // the icon wins the slot and the current item is marked by styling instead
 // (`aria-checked` still carries it for assistive tech either way).
+//
+// An item's optional `hint` is a second, smaller line under its label, for a
+// menu whose options are easy to mistake for one another: the locations tab's
+// "New location" menu, where people after AI help with one place picked the
+// several-places option because it was the only one that said AI. The hint is
+// the row's accessible description (aria-describedby), not part of its name,
+// so the name stays the short label a screen reader user navigates by. That
+// takes an explicit aria-labelledby too: Firefox otherwise names the button
+// from all of its text, hint included, and reads the hint twice.
 //
 // An item may be `disabled`, which renders it as a disabled <button> - it keeps
 // its place in the menu rather than disappearing, so the rows do not shift
@@ -113,10 +126,12 @@ export function renderMenu(
       </button>
       <ul class="menu__dropdown" role="menu" hidden>
         ${items
-          .map(
-            (item) => `
+          .map((item) => {
+            const hintId = item.hint ? `menu-hint-${++hintIds}` : "";
+            const classes = [item.action && "menu__action", item.action && item.danger && "menu__action--danger", hintId && "menu__item--hinted"].filter(Boolean).join(" ");
+            return `
           <li role="none">
-            <button type="button" ${item.action ? `role="menuitem" class="menu__action${item.danger ? " menu__action--danger" : ""}"` : `role="menuitemradio" aria-checked="${item.value === active}"`} data-value="${escapeHtml(item.value)}"${item.disabled ? " disabled" : ""}>
+            <button type="button" ${item.action ? `role="menuitem"` : `role="menuitemradio" aria-checked="${item.value === active}"`}${classes ? ` class="${classes}"` : ""} data-value="${escapeHtml(item.value)}"${hintId ? ` aria-labelledby="${hintId}-label" aria-describedby="${hintId}"` : ""}${item.disabled ? " disabled" : ""}>
               ${
                 item.iconName
                   ? icon(item.iconName, { className: "menu__item-icon" })
@@ -130,12 +145,16 @@ export function renderMenu(
                     ? ""
                     : icon("check", { className: "menu__check" })
               }
-              <span></span>
+              ${
+                hintId
+                  ? `<span class="menu__item-text"><span class="menu__item-label" id="${hintId}-label"></span><span class="menu__item-hint" id="${hintId}"></span></span>`
+                  : `<span class="menu__item-label"></span>`
+              }
               ${item.reversible ? icon("arrow-down-up", { className: "menu__reverse" }) : ""}
             </button>
           </li>
-        `
-          )
+        `;
+          })
           .join("")}
       </ul>
     </div>
@@ -146,7 +165,11 @@ export function renderMenu(
   const dropdown = container.querySelector(".menu__dropdown");
   const labelEl = container.querySelector(".menu__label");
 
-  const rowLabels = dropdown.querySelectorAll("[data-value] span");
+  const rowLabels = dropdown.querySelectorAll(".menu__item-label");
+  // Set once: unlike a label, a hint never changes with the selection.
+  items.forEach((item, i) => {
+    if (item.hint) rowLabels[i].closest("[data-value]").querySelector(".menu__item-hint").textContent = item.hint;
+  });
   syncLabel();
 
   // The label an item shows right now: its reversed one only while it is the

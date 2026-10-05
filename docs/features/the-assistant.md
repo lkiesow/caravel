@@ -22,10 +22,10 @@ Nothing is written until you accept it, and nothing is saved until you press
 ## Suggesting several places at once
 
 The other way in. On a trip's **Locations** tab, the **New location** button is
-a menu: *Blank location* fills in the form yourself, and *Suggest locations*
-opens a page where you describe what you are after — "things to do in
-Reykjavik", "somewhere to eat near the harbour" — and get back several
-candidate places to look through.
+a menu: *Add one location* opens the form, which you fill in yourself or with
+**Search via AI**, and *Get AI suggestions* opens a page where you describe
+what you are after — "things to do in Reykjavik", "somewhere to eat near the
+harbour" — and get back several candidate places to look through.
 
 Each candidate is a card with a tick box, ticked to start with, so reviewing
 means untangling the ones you do not want rather than picking out the ones you

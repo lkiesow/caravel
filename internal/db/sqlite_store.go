@@ -196,6 +196,11 @@ func (s *sqliteStore) CountUsers(ctx context.Context) (int64, error) {
 	return s.q.CountUsers(ctx)
 }
 
+// WithTx's BEGIN IMMEDIATE already holds the write lock; see db.openSQLite.
+func (s *sqliteStore) LockUserCreation(ctx context.Context) error {
+	return nil
+}
+
 func (s *sqliteStore) ListUsers(ctx context.Context) ([]UserWithTripCount, error) {
 	rows, err := s.q.ListUsers(ctx)
 	if err != nil {

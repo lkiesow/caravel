@@ -244,6 +244,15 @@ type Store interface {
 	// account on the instance? That decides both whether it becomes an admin
 	// and whether a closed registration accepts it anyway.
 	CountUsers(ctx context.Context) (int64, error)
+	// LockUserCreation makes the transaction it runs in the only one that can
+	// create a user until it ends, so CountUsers and the insert after it see
+	// the same table. Only meaningful inside WithTx, before CountUsers.
+	//
+	// A no-op on SQLite, where WithTx's BEGIN IMMEDIATE already serialises
+	// every writing transaction. Postgres's default READ COMMITTED takes no
+	// lock for a read, so without this two simultaneous first registrations
+	// both count zero users and both become admins.
+	LockUserCreation(ctx context.Context) error
 	// ListUsers is the admin screen's list, ordered by username.
 	ListUsers(ctx context.Context) ([]UserWithTripCount, error)
 	// CountAdmins backs the last-admin guard rails: an instance must never end

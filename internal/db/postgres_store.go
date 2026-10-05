@@ -399,6 +399,18 @@ func (s *postgresStore) CountUsers(ctx context.Context) (int64, error) {
 	return s.q.CountUsers(ctx)
 }
 
+// SHARE ROW EXCLUSIVE conflicts with itself and with the ROW EXCLUSIVE lock
+// every INSERT, UPDATE and DELETE on users takes, but not with plain reads or
+// with the foreign-key checks of rows referencing a user. A table lock rather
+// than an advisory one because the latter is per database, and the Postgres
+// tests share one database with a schema each.
+//
+// Raw SQL because the queries are shared with SQLite, which has no LOCK.
+func (s *postgresStore) LockUserCreation(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, `LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE`)
+	return err
+}
+
 func (s *postgresStore) ListUsers(ctx context.Context) ([]UserWithTripCount, error) {
 	rows, err := s.q.ListUsers(ctx)
 	if err != nil {

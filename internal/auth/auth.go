@@ -67,12 +67,15 @@ func (s *Service) Register(ctx context.Context, username, password, displayName 
 	// a CLI step to promote yourself — is a setup instruction people skip and
 	// then cannot recover from.
 	//
-	// Counted inside the transaction so two simultaneous first registrations
-	// cannot both see an empty table and both become admins. Under SQLite the
-	// write lock settles it; the read has to be in the same transaction as the
-	// insert for that to hold.
+	// Counted inside the transaction, under LockUserCreation, so two
+	// simultaneous first registrations cannot both see an empty table and both
+	// become admins. The hash above stays outside: the lock is held for a count
+	// and two inserts, not for argon2.
 	var user db.User
 	err = s.store.WithTx(ctx, func(tx db.Store) error {
+		if txErr := tx.LockUserCreation(ctx); txErr != nil {
+			return txErr
+		}
 		existing, txErr := tx.CountUsers(ctx)
 		if txErr != nil {
 			return txErr

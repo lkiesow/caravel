@@ -222,6 +222,10 @@ func TestOpenSignupFailsClosed(t *testing.T) {
 // before another one committed failed with "database is locked" and answered
 // 500 -- the intermittent register.spec.js failure. See the _txlock comment
 // in db.openSQLite.
+//
+// On Postgres every registration succeeded, but READ COMMITTED let several of
+// them count zero users before any committed, so two or three became admins;
+// see db.Store.LockUserCreation.
 func TestConcurrentRegistrationsAllSucceedWithOneAdmin(t *testing.T) {
 	ts := newTestServer(t)
 

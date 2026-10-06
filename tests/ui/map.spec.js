@@ -2886,7 +2886,7 @@ test.describe("distance filter on the locations list", () => {
     await expect(page.locator(".locations-distance-status")).toBeHidden();
   });
 
-  test("keeps locations that have no coordinates, and says it did", async ({ page }) => {
+  test("leaves out locations that have no coordinates, and says it did", async ({ page }) => {
     await login(page);
     const res = await page.request.post("/api/trips", { data: { title: "UI suite: distance spec" } });
     const tripId = (await res.json()).id;
@@ -2905,17 +2905,56 @@ test.describe("distance filter on the locations list", () => {
 
       await pickRadius(page, "5");
 
-      // The far one goes; the one with no coordinates stays. It is not far
-      // away, it is unmeasurable - hiding it would make a gap in the data
-      // look like a distance result.
+      // The far one goes, and so does the one with no coordinates: it cannot
+      // be within 5 km. Keeping it meant a radius with nothing in range still
+      // listed every unplaced location, and read as a filter that did nothing.
       const titles = await page.locator("item-card").evaluateAll((els) => els.map((el) => el.getAttribute("title")));
-      expect(titles.sort()).toEqual(["No coordinates", "Right here"]);
+      expect(titles).toEqual(["Right here"]);
 
-      // And the user is told, rather than left to wonder why an unplaced
-      // location survived a distance filter.
+      // The gap in the data is still visible, in the note rather than the list.
       const note = page.locator(".locations-distance-note");
       await expect(note).toBeVisible();
-      await expect(note).toContainText("1");
+      await expect(note).toHaveText("1 location without coordinates is not included.");
+
+      // The note counts against the other filters: a search that already
+      // hides the unplaced location must not have it reported as left out.
+      await page.locator(".list-search input").fill("right");
+      await expect(page.locator("item-card")).toHaveCount(1);
+      await expect(note).toBeHidden();
+    } finally {
+      await page.request.delete(`/api/trips/${tripId}`);
+    }
+  });
+
+  test("a radius with nothing measurable in range shows no locations", async ({ page }) => {
+    await login(page);
+    const res = await page.request.post("/api/trips", { data: { title: "UI suite: empty radius spec" } });
+    const tripId = (await res.json()).id;
+    try {
+      // The reported bug: nothing within the radius, but unplaced locations
+      // kept the list populated, so it looked unfiltered.
+      for (const body of [
+        { title: "Far away", category: "site", location: { lat: 64.9275, lng: -23.3106 } },
+        { title: "No coordinates", category: "site", location: { address: "past the bridge" } },
+        { title: "No coordinates either", category: "stay", location: { address: "by the lake" } },
+      ]) {
+        expect((await page.request.post(`/api/trips/${tripId}/items`, { data: body })).status()).toBe(201);
+      }
+
+      await gotoRoute(page, `/trips/${tripId}/locations`);
+      await expect(page.locator("item-card")).toHaveCount(3);
+
+      await pickRadius(page, "5");
+
+      await expect(page.locator("item-card")).toHaveCount(0);
+      await expect(page.locator(".items-empty--no-matches")).toBeVisible();
+      await expect(page.locator(".locations-distance-note")).toHaveText(
+        "2 locations without coordinates are not included."
+      );
+
+      await pickRadius(page, "any");
+      await expect(page.locator("item-card")).toHaveCount(3);
+      await expect(page.locator(".locations-distance-note")).toBeHidden();
     } finally {
       await page.request.delete(`/api/trips/${tripId}`);
     }
@@ -3237,7 +3276,7 @@ test.describe("Stage 13's surfaces in German at 324px", () => {
     await page.evaluate(() => {
       for (const [sel, text] of [
         [".locations-distance-status", "Die Standortermittlung hat zu lange gedauert. Falls dein Browser nach Erlaubnis gefragt hat, beantworte das zuerst und versuche es dann erneut."],
-        [".locations-distance-note", "3 Orte ohne Koordinaten werden weiterhin angezeigt."],
+        [".locations-distance-note", "3 Orte ohne Koordinaten werden nicht angezeigt."],
       ]) {
         const el = document.querySelector(sel);
         el.hidden = false;

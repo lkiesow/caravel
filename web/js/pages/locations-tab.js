@@ -122,12 +122,21 @@ export async function renderItemsTab(container, trip) {
     return typeof item.lat === "number" && typeof item.lng === "number";
   }
 
-  function matches(item) {
+  function distanceActive() {
+    return Boolean(radiusKm && devicePosition);
+  }
+
+  // ignoreDistance is for counting what the radius left out: everything the
+  // other filters keep, regardless of where it is.
+  function matches(item, { ignoreDistance = false } = {}) {
     if (activeFilter !== "all" && item.category !== activeFilter) return false;
-    // A location with no coordinates is not far away, it is unmeasurable -
-    // so a radius never hides one. Hiding them would make a gap in the data
-    // look like a distance result, and the note below says they are there.
-    if (radiusKm && devicePosition && hasCoordinates(item)) {
+    // A location with no coordinates cannot be within a radius, so a radius
+    // hides it. Keeping them used to be the rule (Stage 13), but when nothing
+    // measurable was in range the list was only unplaced locations and read as
+    // "the filter did nothing". The note below says how many were left out,
+    // so the gap in the data is still visible.
+    if (!ignoreDistance && distanceActive()) {
+      if (!hasCoordinates(item)) return false;
       if (distanceKm(devicePosition, { lat: item.lat, lng: item.lng }) > radiusKm) return false;
     }
     if (activeTag !== ANY_TAG && !(item.tags ?? []).includes(activeTag)) return false;
@@ -283,11 +292,14 @@ export async function renderItemsTab(container, trip) {
 
   function applyFilters() {
     saveToolbarState();
-    const visible = sorted(allItems.filter(matches));
+    const visible = sorted(allItems.filter((item) => matches(item)));
 
     // Only while a radius is active, and only if there is actually something
-    // it could not measure - otherwise it is a warning about nothing.
-    const unplaced = radiusKm && devicePosition ? visible.filter((item) => !hasCoordinates(item)).length : 0;
+    // it could not measure - otherwise it is a warning about nothing. Counted
+    // against the other filters, so it never mentions a location they hide.
+    const unplaced = distanceActive()
+      ? allItems.filter((item) => !hasCoordinates(item) && matches(item, { ignoreDistance: true })).length
+      : 0;
     distanceNote.textContent = unplaced ? t("locations.distance.unplaced", { count: unplaced }, unplaced) : "";
     distanceNote.hidden = !unplaced;
 

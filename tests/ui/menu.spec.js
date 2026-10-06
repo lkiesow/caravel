@@ -341,12 +341,12 @@ for (const locale of ["en", "de"]) {
       // Desktop: every tab in the row, none behind More.
       await page.setViewportSize({ width: 1280, height: 800 });
       await gotoRoute(page, `/trips/${trips.full}/locations`);
-      const visibleTabs = page.locator(".trip-tabs button[data-tab]:visible");
+      const visibleTabs = page.locator(".trip-tabs a[data-tab]:visible");
       await expect(visibleTabs).toHaveText(expected);
 
       // Phone: the row plus the More menu, concatenated, must be the same list.
       await page.setViewportSize({ width: 324, height: 756 });
-      const row = await page.locator(".trip-tabs button[data-tab]:visible").allTextContents();
+      const row = await page.locator(".trip-tabs a[data-tab]:visible").allTextContents();
       await page.locator(".trip-tabs__more-slot .menu__trigger").click();
       const more = await page.locator('.trip-tabs__more-slot [role="menuitemradio"]').allTextContents();
       const mobileOrder = [...row, ...more].map((s) => s.trim());

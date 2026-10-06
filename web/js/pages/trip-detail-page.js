@@ -70,7 +70,7 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
         <nav class="trip-tabs">
           ${TRIP_TABS.map(
             ({ key, icon: tabIcon, overflow }) =>
-              `<button data-tab="${key}" class="${[key === tab ? "active" : "", overflow ? "trip-tabs__overflow-tab" : ""].filter(Boolean).join(" ")}">${icon(tabIcon)} <span data-i18n="trip.tabs.${key}"></span></button>`
+              `<a href="/trips/${trip.id}/${key}" data-tab="${key}" class="${[key === tab ? "active" : "", overflow ? "trip-tabs__overflow-tab" : ""].filter(Boolean).join(" ")}"${key === tab ? ` aria-current="page"` : ""}>${icon(tabIcon)} <span data-i18n="trip.tabs.${key}"></span></a>`
           ).join("")}
           <div class="trip-tabs__more-slot"></div>
         </nav>
@@ -89,9 +89,16 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
     const coverEl = container.querySelector(".trip-detail__cover");
     if (coverEl) coverEl.src = trip.preview_image_url;
 
-    container.querySelectorAll("[data-tab]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        tab = btn.getAttribute("data-tab");
+    // Each tab is a real <a href> (Stage 47), so middle-click, Ctrl-click and
+    // "Open link in new tab" work on it. No data-link, though: the router would
+    // re-run the whole route and re-fetch the trip, so a plain left-click is
+    // taken over here instead, and anything else is left to the browser - the
+    // same guard as router.js and map-view.js.
+    container.querySelectorAll("[data-tab]").forEach((link) => {
+      link.addEventListener("click", (e) => {
+        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        e.preventDefault();
+        tab = link.getAttribute("data-tab");
         // Pushed directly (not via router.js's navigate) so switching tabs
         // stays a local re-render instead of re-fetching the trip through a
         // full route match - this only updates history/the URL bar. Back/

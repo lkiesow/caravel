@@ -11,6 +11,8 @@
 // full load), a modified click must leave this tab alone and open the URL in a
 // new one.
 //
+// The trip tab bar got the same treatment in Milestone 2, below.
+//
 // Owns its trips, so the seeded scenarios other specs read are never touched.
 import { test, expect } from "@playwright/test";
 import { login, gotoRoute } from "./helpers/scenarios.js";
@@ -134,5 +136,73 @@ test.describe("cards are links", () => {
     await expect(page.getByRole("heading", { level: 1, name: "Cardlinks Alpha" })).toBeVisible();
     expect(await page.evaluate(() => window.location.pathname)).toBe(`/trips/${trip.id}/locations`);
     expect(await page.evaluate(() => window.__sameDocument)).toBe(true);
+  });
+});
+
+// The trip tab bar, Milestone 2. Tabs are links too, but without data-link:
+// a plain click is taken over by trip-detail-page.js, which switches the tab
+// with a local re-render instead of a route match -- so the trip must not be
+// fetched again. A modified click is the browser's.
+test.describe("trip tabs are links", () => {
+  test.use({ viewport: DESKTOP });
+
+  let tripId;
+
+  test.beforeEach(async ({ page }) => {
+    await login(page);
+    const res = await page.request.post("/api/trips", { data: { title: "UI suite: tab links" } });
+    expect(res.status(), "create the spec's own trip").toBe(201);
+    tripId = (await res.json()).id;
+  });
+
+  test.afterEach(async ({ page }) => {
+    if (tripId) await page.request.delete(`/api/trips/${tripId}`);
+    tripId = null;
+  });
+
+  test("every tab has its route as href, and the current one is marked", async ({ page }) => {
+    await gotoRoute(page, `/trips/${tripId}/locations`);
+    const tabs = page.locator(".trip-tabs > a[data-tab]");
+    await expect(tabs).toHaveCount(9);
+    for (const tab of await tabs.all()) {
+      const key = await tab.getAttribute("data-tab");
+      await expect(tab).toHaveAttribute("href", `/trips/${tripId}/${key}`);
+      // The global link styling must not reach the bar.
+      expect(await tab.evaluate((el) => getComputedStyle(el).textDecorationLine)).toBe("none");
+    }
+    await expect(page.locator('.trip-tabs [aria-current="page"]')).toHaveCount(1);
+    await expect(page.locator('.trip-tabs [aria-current="page"]')).toHaveAttribute("data-tab", "locations");
+  });
+
+  test("a plain click switches in place without refetching the trip; Ctrl-click opens a new tab", async ({
+    page,
+    context,
+  }) => {
+    await gotoRoute(page, `/trips/${tripId}/locations`);
+    const tripFetches = [];
+    page.on("request", (req) => {
+      if (new URL(req.url()).pathname === `/api/trips/${tripId}`) tripFetches.push(req.url());
+    });
+
+    const notes = page.locator('.trip-tabs > a[data-tab="notes"]');
+    const opened = context.waitForEvent("page");
+    await notes.click({ modifiers: ["ControlOrMeta"] });
+    const tab = await opened;
+    await tab.waitForLoadState();
+    expect(new URL(tab.url()).pathname).toBe(`/trips/${tripId}/notes`);
+    await tab.close();
+    expect(await page.evaluate(() => window.location.pathname)).toBe(`/trips/${tripId}/locations`);
+    await expect(page.locator('.trip-tabs [aria-current="page"]')).toHaveAttribute("data-tab", "locations");
+
+    await page.evaluate(() => (window.__sameDocument = true));
+    await page.locator('.trip-tabs > a[data-tab="itinerary"]').click();
+    await expect(page.locator('.trip-tabs [aria-current="page"]')).toHaveAttribute("data-tab", "itinerary");
+    expect(await page.evaluate(() => window.location.pathname)).toBe(`/trips/${tripId}/itinerary`);
+    expect(await page.evaluate(() => window.__sameDocument)).toBe(true);
+    expect(tripFetches, "a tab switch is a local re-render, not a route match").toEqual([]);
+
+    // Back still returns to the previous tab.
+    await page.goBack();
+    await expect(page.locator('.trip-tabs [aria-current="page"]')).toHaveAttribute("data-tab", "locations");
   });
 });

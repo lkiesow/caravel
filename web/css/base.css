@@ -1504,7 +1504,13 @@ button {
   margin-bottom: 1rem;
 }
 
-.trip-tabs > button {
+/* Links since Stage 47, so middle-click and "Open in new tab" work on a tab;
+   they were <button>s before. font-size and line-height are the button
+   defaults the tabs have always rendered at (13.33px, normal), pinned here
+   because a link would otherwise inherit the body's 16px and grow the bar --
+   and the "More" trigger beside them is still a button at that size.
+   text-decoration and the explicit colour keep the global link styling off. */
+.trip-tabs > a {
   display: flex;
   align-items: center;
   gap: 0.4em;
@@ -1512,12 +1518,15 @@ button {
   border: none;
   padding: 0.5rem 0.75rem;
   color: var(--color-text-muted);
+  text-decoration: none;
+  font-size: 0.8333rem;
+  line-height: normal;
   cursor: pointer;
   white-space: nowrap;
   border-bottom: 2px solid transparent;
 }
 
-.trip-tabs > button.active {
+.trip-tabs > a.active {
   color: var(--color-text);
   border-bottom-color: var(--color-accent);
 }
@@ -1543,7 +1552,7 @@ button {
   flex: 1;
 }
 
-/* `.trip-tabs > button` above deliberately doesn't reach the trigger - it is
+/* `.trip-tabs > a` above deliberately doesn't reach the trigger - it is
    nested inside .trip-tabs__more-slot, and that selector is scoped to direct
    children so the *dropdown's* rows don't get styled as tabs either - so
    everything a tab needs is repeated here. That includes `display: flex`:
@@ -1657,13 +1666,13 @@ button {
     border-right: 1px solid var(--color-border);
   }
 
-  .trip-tabs > button {
+  .trip-tabs > a {
     text-align: left;
     border-bottom: none;
     border-left: 2px solid transparent;
   }
 
-  .trip-tabs > button.active {
+  .trip-tabs > a.active {
     border-left-color: var(--color-accent);
   }
 }
@@ -3429,7 +3438,7 @@ button {
     justify-content: center;
   }
 
-  .trip-tabs > button,
+  .trip-tabs > a,
   .trip-tabs .menu__trigger {
     min-height: var(--tap-min);
   }
@@ -3470,9 +3479,9 @@ button {
     position: relative;
   }
 
-  /* `.trip-tabs > button` above also carries `display: flex`, so a bare class
+  /* `.trip-tabs > a` above also carries `display: flex`, so a bare class
      here would lose to it on specificity and the tab would stay visible. */
-  .trip-tabs > button.trip-tabs__overflow-tab {
+  .trip-tabs > a.trip-tabs__overflow-tab {
     display: none;
   }
 
@@ -3491,13 +3500,13 @@ button {
      every label on the same line as its neighbours, and makes the bar's height
      the same in every language rather than depending on whether some
      translation happens to wrap. */
-  .trip-tabs > button > span,
+  .trip-tabs > a > span,
   .trip-tabs .menu__trigger .menu__label {
     min-width: 0;
     min-height: 2.3em;
   }
 
-  .trip-tabs > button,
+  .trip-tabs > a,
   .trip-tabs .menu__trigger {
     flex-direction: column;
     justify-content: center;
@@ -3523,9 +3532,9 @@ button {
 
   /* Icons use em-sizing (see .icon in the button system above) so they'd
      otherwise shrink along with the small label text. The trigger is listed
-     separately for the reason its own rule gives: `.trip-tabs > button` does
+     separately for the reason its own rule gives: `.trip-tabs > a` does
      not reach it. */
-  .trip-tabs > button .icon,
+  .trip-tabs > a .icon,
   .trip-tabs .menu__trigger .icon {
     width: 1.1rem;
     height: 1.1rem;

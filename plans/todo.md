@@ -167,6 +167,14 @@ without asking.
   renamed the table in `0006` and dropped the old URL outright. Do it as its
   own milestone (or stage): a mechanical rename inside any other diff hides the
   real changes, which is why Stage 26 declined to fold it in.
+- **The phone "More" tab menu is still buttons.** (Stage 47.) The trip tabs in
+  the row are real links since Stage 47 Milestone 2, so middle-click and "Open
+  in new tab" work on them; the tabs that move into "More" below 640px
+  (Checklists, Files, Expenses, Members, Settings) are menuitemradio
+  `<button>`s from `components/menu.js`, so on a phone those five cannot be
+  opened in a new tab. Fixing it means teaching the shared menu component an
+  `href` item, which the filter and sort menus do not need. Deliberately left
+  out of Stage 47 as low value.
 
 ---
 

@@ -184,6 +184,44 @@ Tests (`tests/ui/menu.spec.js` or the trip-detail spec):
   centered and tappable: the existing `menu.spec.js` layout tests cover this.
   Check that the tabs' computed `text-decoration-line` is `none`.
 
+**Done.** Landed as planned:
+- `trip-detail-page.js` renders each tab as
+  `<a href="/trips/:id/<key>" data-tab>`, with `aria-current="page"` on the
+  active one.
+- The tab click handler ignores middle and modified clicks, which go to the
+  browser. A plain left-click calls `preventDefault()` and does the same
+  local `pushState` + `render()` as before.
+- In `base.css`, every `.trip-tabs > button` selector, and the comments that
+  quote it, became `.trip-tabs > a`.
+
+Deviation from the plan:
+- The base tab rule also pins `font-size: 0.8333rem` and
+  `line-height: normal`. Tabs as buttons had rendered at the browser's
+  default button size (13.33px, line-height normal). As links they would
+  have inherited the body's 16px and made the bar bigger. The "More" trigger
+  beside them is still a button at that size.
+- A measured before/after comparison at 1280px (sidebar), 700px (scrolling
+  row) and 324px (grid) gave identical tab positions, sizes, font sizes and
+  colours.
+
+How it was verified:
+- `menu.spec.js` selectors changed from `button[data-tab]` to `a[data-tab]`.
+  No other spec or the screenshot script looks tabs up by button.
+- New "trip tabs are links" block in `tests/ui/card-links.spec.js`:
+  - All 9 tabs carry their route as `href` and have no underline.
+  - Exactly one tab is `aria-current`.
+  - Ctrl-click opens a new page on `/notes` and leaves this tab on Locations.
+  - A plain click switches to Itinerary in the same document with **zero**
+    `GET /api/trips/:id` requests.
+  - Back returns to Locations.
+- `make ci` green, `make check-contrast` green (926 elements), full
+  `make test-ui` 343/343.
+- Manual check against `make dev` at 324×756:
+  - A tap on Map switched in the same document, with no horizontal scroll.
+  - Middle-click on Notes opened a second tab on `/notes` while this one
+    stayed on Map.
+- `plans/todo.md` gained the deferred "More" menu entry.
+
 ## Build order
 
 0 → 1 → 2. Milestone 1 is the reported bug. Milestone 2 is independent of it

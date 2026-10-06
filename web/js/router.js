@@ -80,9 +80,21 @@ export function createRouter(routes, container) {
     return catchAll ? { route: catchAll, params: {} } : null;
   }
 
+  // Every render gets a fresh, empty copy of the container. A page draws its
+  // loader, awaits its fetches and only then writes its markup, so a render
+  // the user has already navigated away from used to finish late and write
+  // over the page that replaced it -- tap a location, press Back quickly, and
+  // the list's URL showed the location. Now the late render writes into the
+  // detached old element, which nobody sees. The reference is held here
+  // rather than looked up by id: logging out and back in leaves the previous
+  // router's listeners behind, and two routers that both found the live
+  // <main> would keep replacing each other's pages.
   async function render() {
     const result = match(window.location.pathname);
     if (!result) return;
+    const fresh = container.cloneNode(false);
+    container.replaceWith(fresh);
+    container = fresh;
     await result.route.render(container, result.params);
   }
 

@@ -51,6 +51,25 @@ without asking.
   makes the pin a question rather than a wrong answer. OSM itself, and Serper
   (which ignores the area), still have the problem.
 
+- **A save the user has navigated away from still redirects when it lands.**
+  (Stale-render fix, 2026-10-06.) The router now gives every render a fresh
+  `<main>`, so a late *render* writes into a detached element. A late *action*
+  does not care about that: an awaited save that ends in `navigate` or
+  `leaveEditor` (admin-page, suggest-page, members-tab, settings-tab,
+  location-editor, trip-editor) still moves the user off whatever page they
+  went to meanwhile. The same `container.isConnected` check the location
+  editor's viewer redirect now uses would cover each one.
+
+- **Leaving a page does not tear down everything it started.** (Stale-render
+  fix, 2026-10-06.) The router has no teardown hook; cleanup relies on detached
+  DOM (`<map-view>`'s `disconnectedCallback` and the like). What that misses:
+  logging out and back in creates a second router without removing the first
+  one's `popstate` and click listeners (`boot` in app.js); notes-tab's mention
+  picker leaves its `window` resize listeners behind; and assist streams in
+  suggest-page and the location editor's assist panel run on after navigation.
+  All mostly harmless today; together they are the case for one router-level
+  "this page is gone" signal, if one is ever wanted.
+
 ---
 
 ## Planned features

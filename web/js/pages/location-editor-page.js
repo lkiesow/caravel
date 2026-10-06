@@ -60,6 +60,9 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     renderNotFoundPage(container, { href: "/trips", labelKey: "common.home" });
     return;
   }
+  // The user navigated on while the trip loaded (the router has swapped in a
+  // fresh <main>): redirecting now would move them off the page they chose.
+  if (!container.isConnected) return;
   if (!canEdit(trip)) {
     // The location they were trying to edit if there is one, the trip if not.
     // leaveEditor rather than navigate: a form every save would 403 is not a

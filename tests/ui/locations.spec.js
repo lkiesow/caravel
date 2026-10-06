@@ -721,6 +721,36 @@ test.describe("the location editor, end to end", () => {
     expect(await titles()).toEqual(reversedDate);
   });
 
+  // The CI failure the router's fresh <main> fixed: the location view awaits
+  // its fetches before drawing, and if Back landed first, the late location
+  // view wrote over the list -- the URL said /locations, the screen showed
+  // the location. The held-back files request makes the loser of that race
+  // certain instead of a matter of a loaded runner.
+  test("pressing Back while a location is still loading keeps the list", async ({ page }) => {
+    await page.request.post(`/api/trips/${tripId}/items`, {
+      data: { title: "Slow to open", category: "site", dates: [] },
+    });
+    await gotoRoute(page, `/trips/${tripId}/locations`);
+    const card = page.locator("item-card").first();
+    await expect(card).toBeVisible();
+
+    await page.route("**/api/items/*/files", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await route.continue();
+    });
+    const filesAnswered = page.waitForResponse("**/api/items/*/files");
+    await card.click();
+    await expect(page).not.toHaveURL(/\/locations$/);
+    await page.goBack();
+    await expect(card).toBeVisible();
+
+    // Only once the stale render has had its chance is the list worth checking.
+    await filesAnswered;
+    await expect(page).toHaveURL(/\/locations$/);
+    await expect(page.locator("item-card")).toHaveCount(1);
+    await expect(page.getByRole("heading", { level: 1, name: "Slow to open" })).toHaveCount(0);
+  });
+
   // Sorting orders what the filters left, rather than replacing them.
   test("sorting composes with a filter and with the search box", async ({ page }) => {
     const mk = (title, category) =>

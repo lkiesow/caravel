@@ -24,23 +24,25 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
   renderLoading(container, { size: "lg" });
   if (tab === "map") preloadTripMap(tripId);
 
+  // Locations (not Overview) is what users actually want to land on - see
+  // Stage 02 review. "/trips/:tripId" has no tab segment, so it
+  // canonicalizes itself to the real tab URL rather than leaving a
+  // tab-less URL in the address bar and history. Before the fetch, not after:
+  // by the time a slow fetch returns the user may be on another entry, and
+  // this would rewrite *that* one.
+  if (!tab || !TABS.includes(tab)) {
+    tab = "locations";
+    // Spread rather than {}: this entry is the same stop on the way back, so
+    // whatever router.js recorded about where it came from still holds.
+    window.history.replaceState({ ...window.history.state }, "", `/trips/${tripId}/locations`);
+  }
+
   let trip;
   try {
     trip = await api.get(`/trips/${tripId}`);
   } catch {
     renderNotFoundPage(container, { href: "/trips", labelKey: "common.home" });
     return;
-  }
-
-  // Locations (not Overview) is what users actually want to land on - see
-  // Stage 02 review. "/trips/:tripId" has no tab segment, so it
-  // canonicalizes itself to the real tab URL rather than leaving a
-  // tab-less URL in the address bar and history.
-  if (!tab || !TABS.includes(tab)) {
-    tab = "locations";
-    // Spread rather than {}: this entry is the same stop on the way back, so
-    // whatever router.js recorded about where it came from still holds.
-    window.history.replaceState({ ...window.history.state }, "", `/trips/${tripId}/locations`);
   }
 
   function render() {

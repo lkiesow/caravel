@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"caravel/internal/geocode"
 	"caravel/internal/websearch"
 )
 
@@ -33,6 +34,11 @@ import (
 // office. So the order is name, then address -- and, since Stage 33, a coarse
 // answer to either is recorded as coarse rather than passed off as a position
 // somebody can trust.
+//
+// The address is also the check on the name. A name the model gives without
+// its town is shared by places elsewhere ("Pension Sonnenhof" matched one in
+// South Tyrol for an address in Bad Ischl), so when both are given, a name
+// match far from the address is not believed. See locateViaOSM.
 //
 // # Two sources, and what to do when they disagree
 //
@@ -199,6 +205,25 @@ const (
 // should not drag the other along.
 const ambiguousMetres = 150
 
+// nameNearAddressMetres is how far a place-name match may be from where the
+// postal address resolves before locateViaOSM stops believing the name.
+//
+// 10km, and deliberately loose, because the two are not describing the same
+// point. An address is often answered with a town or a postcode area rather
+// than a door, and the centre of a rural municipality can be several
+// kilometres from a guesthouse on its edge; ambiguousMetres would throw that
+// guesthouse away. What this guards against is a different place sharing the
+// name: the neighbouring town at 40km, or another country at 130km.
+//
+// Wrong in the direction that shows itself, as with ambiguousMetres: a correct
+// match rejected costs a coarse pin in the right town, which the panel shows
+// as coarse, and choosePosition turns into a question if the places backend
+// put the place somewhere else.
+//
+// Unrelated to ambiguousMetres and samePlaceMetres: this compares the model's
+// two strings within one source, not two sources or two candidates.
+const nameNearAddressMetres = 10000
+
 // resolvePosition finds where a proposed place is, or returns nil.
 //
 // Nil rather than an error: not finding a place is an ordinary outcome, and it
@@ -237,43 +262,81 @@ func (a *Agent) resolvePosition(ctx context.Context, raw modelProposal, log *slo
 //
 // The order is the point of this stage. See the file comment: an address
 // resolves to the street, a name resolves to the building.
+//
+// When the name answers and there is an address as well, the address is asked
+// too -- not as a better answer but as a check on the name's. A name is only a
+// name: "Pension Sonnenhof" with the address "4820 Bad Ischl, Austria" matched
+// a Pension Sonnenhof in South Tyrol, 130km away, as a precise and entirely
+// confident pin. So the name's results are taken in Nominatim's order, the
+// first within nameNearAddressMetres of the address wins, and if none is, the
+// address answers on its own: a coarse pin in the right town rather than a
+// precise one in the wrong country. An address that finds nothing checks
+// nothing, and the name's first result stands as it always did.
 func (a *Agent) locateViaOSM(ctx context.Context, name, address string, log *slog.Logger) *Position {
 	if a.geocoder == nil {
 		log.Debug("assist: no osm lookup", "reason", "no geocoder configured")
 		return nil
 	}
-	for _, from := range []struct{ source, query string }{
-		{"place_name", name},
-		{"address", address},
-	} {
-		if from.query == "" {
-			continue
+	// No locale on either search: the display name is shown as evidence about
+	// the pin rather than saved, and asking for one language over another
+	// would not change which place is matched.
+	search := func(source, query string) []geocode.Result {
+		if query == "" {
+			return nil
 		}
-		// No locale: the display name is shown as evidence about the pin
-		// rather than saved, and asking for one language over another would
-		// not change which place is matched.
-		results, err := a.geocoder.Search(ctx, from.query, "")
+		results, err := a.geocoder.Search(ctx, query, "")
 		if err != nil || len(results) == 0 {
-			log.Debug("assist: geocode missed", "from", from.source, "query", from.query, "err", err)
-			continue
+			log.Debug("assist: geocode missed", "from", source, "query", query, "err", err)
+			return nil
 		}
-		best := results[0]
-		log.Debug("assist: osm resolved",
-			"from", from.source, "query", from.query, "matches", len(results),
-			"class", best.Class, "type", best.Kind, "precise", best.Precise())
-		return &Position{
-			Lat:     best.Lat,
-			Lng:     best.Lng,
-			Label:   best.DisplayName,
-			Source:  SourceOSM,
-			Precise: best.Precise(),
-			From:    from.source,
-			OSMType: best.OSMType,
-			OSMID:   best.OSMID,
-			City:    best.City,
+		return results
+	}
+
+	named := search("place_name", name)
+	if len(named) == 0 {
+		// The name found nothing: the address is the fallback, as it always
+		// was.
+		located := search("address", address)
+		if len(located) == 0 {
+			return nil
+		}
+		return osmPosition(located[0], "address", address, len(located), log)
+	}
+
+	located := search("address", address)
+	if len(located) == 0 {
+		// Nothing to check the name against.
+		return osmPosition(named[0], "place_name", name, len(named), log)
+	}
+	there := located[0]
+	for _, candidate := range named {
+		if metresBetween(candidate.Lat, candidate.Lng, there.Lat, there.Lng) <= nameNearAddressMetres {
+			return osmPosition(candidate, "place_name", name, len(named), log)
 		}
 	}
-	return nil
+	log.Debug("assist: osm name match rejected",
+		"query", name, "match", named[0].DisplayName,
+		"metres", int(metresBetween(named[0].Lat, named[0].Lng, there.Lat, there.Lng)),
+		"address", there.DisplayName)
+	return osmPosition(there, "address", address, len(located), log)
+}
+
+// osmPosition turns the geocoder's chosen match into a Position, and logs it.
+func osmPosition(best geocode.Result, from, query string, matches int, log *slog.Logger) *Position {
+	log.Debug("assist: osm resolved",
+		"from", from, "query", query, "matches", matches,
+		"class", best.Class, "type", best.Kind, "precise", best.Precise())
+	return &Position{
+		Lat:     best.Lat,
+		Lng:     best.Lng,
+		Label:   best.DisplayName,
+		Source:  SourceOSM,
+		Precise: best.Precise(),
+		From:    from,
+		OSMType: best.OSMType,
+		OSMID:   best.OSMID,
+		City:    best.City,
+	}
 }
 
 // locateViaPlaces asks the maps-style backend, when the configured search
@@ -288,7 +351,9 @@ func (a *Agent) locateViaOSM(ctx context.Context, name, address string, log *slo
 // Serper ignores it; Brave needs it, because without one it searches the whole
 // world and a name with no town -- "Pension Sonnenhof" -- goes to whichever
 // place by that name is best known. That is a hint about where to look, not
-// part of the query, so it is not the over-specifying described next.
+// part of the query, so it is not the over-specifying described next -- and
+// only a hint: in a later probe Brave's first answer for that name was still a
+// town 40km from the address.
 //
 // The first version of this concatenated the two into one query, on the
 // reasoning that a maps search is happy to be given more than it strictly

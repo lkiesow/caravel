@@ -76,8 +76,9 @@ their pictures.
 
 Its place lookup agreed with Serper's to the metre for most places tested. It
 is given the postal address as the area to search in, so a place the
-assistant names without a town stays near that address. Serper does not use
-the address, and found nothing for such a name in testing. Brave was also wrong once where Serper was right, picking a
+assistant names without a town tends to be found near that address, though in
+one later test its first answer was a place of that name in a town 40 km away.
+Serper does not use the address, and found nothing for such a name in testing. Brave was also wrong once where Serper was right, picking a
 different café of the same chain 4.6 km away. Pins from it carry a "Brave
 Search" badge.
 

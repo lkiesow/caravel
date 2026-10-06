@@ -82,7 +82,8 @@ func TestLiveSourceAgreement(t *testing.T) {
 		{"Hotel Adlon Kempinski, Berlin", "Unter den Linden 77, 10117 Berlin, Germany"},
 		// A name with no town, which the model does produce. Searched on its
 		// own it matches a Pension Sonnenhof in South Tyrol; it is here to show
-		// whether a backend uses the address to stay in Bad Ischl.
+		// whether a backend uses the address to stay in Bad Ischl, and that
+		// the OSM side rejects that match (from=address).
 		{"Pension Sonnenhof", "4820 Bad Ischl, Austria"},
 	}
 
@@ -114,8 +115,8 @@ func TestLiveSourceAgreement(t *testing.T) {
 		} else {
 			agreed++
 		}
-		t.Logf("%-34s %7.0f m %8s %10v  (osm precise=%v)",
-			p.name, apart, chosen.Source, chosen.Ambiguous(), osm.Precise)
+		t.Logf("%-34s %7.0f m %8s %10v  (osm precise=%v from=%s)",
+			p.name, apart, chosen.Source, chosen.Ambiguous(), osm.Precise, osm.From)
 	}
 	t.Logf("both answered: %d agreed, %d ambiguous at %dm; only one source: %d",
 		agreed, ambiguous, ambiguousMetres, oneSided)

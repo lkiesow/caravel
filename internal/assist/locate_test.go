@@ -2,7 +2,13 @@ package assist
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"slices"
+	"strconv"
+	"sync"
 	"testing"
 
 	"caravel/internal/geocode"
@@ -327,7 +333,7 @@ func TestPlacesFallsBackToTheAddress(t *testing.T) {
 }
 
 // The address goes along on both rungs as the area to search in -- the hint
-// Brave needs to keep "Pension Sonnenhof" in Bad Ischl -- and the pin carries
+// Brave needs to look for "Pension Sonnenhof" near Bad Ischl -- and the pin carries
 // whichever backend answered rather than assuming Google.
 func TestPlacesIsGivenTheAddressAsTheAreaAndNamesItsSource(t *testing.T) {
 	var asked, near []string
@@ -452,5 +458,157 @@ func TestAnAgreedGooglePositionKeepsTheOSMCity(t *testing.T) {
 	}
 	if precise.City != "" {
 		t.Error("choosePosition wrote the city onto its argument rather than a copy")
+	}
+}
+
+// The address as a check on the name. Against a Nominatim stand-in of its own
+// rather than geocode.StubURL, because the shared fixture answers every query
+// with at most one row on purpose, and the second case below is about the
+// second row.
+
+// nominatimRow is one search result in Nominatim's jsonv2 shape.
+type nominatimRow struct {
+	name, class, kind, addressType string
+	lat, lng                       float64
+}
+
+// The places the cases share. Bad Ischl's town centre is what the address
+// resolves to, and the Sonnhof is the guesthouse 600m from it; the South Tyrol
+// guesthouse is the one the name alone found in a live run, 130km away.
+var (
+	southTyrolPension = nominatimRow{"Pension Sonnenhof, Ahrntal, Italy", "tourism", "guest_house", "guest_house", 46.98525, 11.95254}
+	badIschlPension   = nominatimRow{"Pension Sonnenhof, Bahnhofstrasse 4, Bad Ischl, Austria", "tourism", "guest_house", "guest_house", 47.71124, 13.62545}
+	badIschlTown      = nominatimRow{"Bad Ischl, Gmunden, Upper Austria, 4820, Austria", "boundary", "administrative", "town", 47.71154, 13.61840}
+)
+
+// nominatimServer answers each query with its rows, or nothing, and records
+// the queries in the order they arrived.
+func nominatimServer(t *testing.T, answers map[string][]nominatimRow) (*geocode.Client, *[]string) {
+	t.Helper()
+	var (
+		mu    sync.Mutex
+		asked []string
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query().Get("q")
+		mu.Lock()
+		asked = append(asked, q)
+		mu.Unlock()
+		out := []map[string]any{}
+		for i, row := range answers[q] {
+			out = append(out, map[string]any{
+				"display_name": row.name,
+				"lat":          strconv.FormatFloat(row.lat, 'f', -1, 64),
+				"lon":          strconv.FormatFloat(row.lng, 'f', -1, 64),
+				"category":     row.class,
+				"type":         row.kind,
+				"addresstype":  row.addressType,
+				"osm_type":     "node",
+				"osm_id":       json.Number(strconv.Itoa(1000 + i)),
+			})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(out)
+	}))
+	t.Cleanup(server.Close)
+	return geocode.New(server.URL + "/search"), &asked
+}
+
+// The live failure: the name alone finds a guesthouse of that name in another
+// country, and the address says the place is in Bad Ischl. The address answers.
+func TestOSMRejectsANameMatchFarFromTheAddress(t *testing.T) {
+	client, asked := nominatimServer(t, map[string][]nominatimRow{
+		"Pension Sonnenhof":       {southTyrolPension},
+		"4820 Bad Ischl, Austria": {badIschlTown},
+	})
+	a := &Agent{geocoder: client}
+
+	got := a.locateViaOSM(context.Background(), "Pension Sonnenhof", "4820 Bad Ischl, Austria", slog.New(slog.DiscardHandler))
+	if got == nil {
+		t.Fatal("no position")
+	}
+	if got.From != "address" || got.Label != badIschlTown.name {
+		t.Errorf("got %q from %s, want the address's answer in Bad Ischl", got.Label, got.From)
+	}
+	// A town is not a door, and must not be passed off as one.
+	if got.Precise {
+		t.Error("the town matched as precise")
+	}
+	if len(*asked) != 2 {
+		t.Errorf("queries = %v, want the name then the address", *asked)
+	}
+}
+
+// A common name finds several places; the one near the address wins even when
+// Nominatim ranks another first.
+func TestOSMTakesTheNameMatchNearTheAddress(t *testing.T) {
+	client, _ := nominatimServer(t, map[string][]nominatimRow{
+		"Pension Sonnenhof":       {southTyrolPension, badIschlPension},
+		"4820 Bad Ischl, Austria": {badIschlTown},
+	})
+	a := &Agent{geocoder: client}
+
+	got := a.locateViaOSM(context.Background(), "Pension Sonnenhof", "4820 Bad Ischl, Austria", slog.New(slog.DiscardHandler))
+	if got == nil {
+		t.Fatal("no position")
+	}
+	if got.From != "place_name" || got.Label != badIschlPension.name {
+		t.Errorf("got %q from %s, want the Bad Ischl guesthouse from the name", got.Label, got.From)
+	}
+	if !got.Precise {
+		t.Error("the guesthouse matched as not precise")
+	}
+}
+
+// The check only removes a match it has evidence against. With the name in the
+// right town it changes nothing, and with an address that finds nothing there
+// is no evidence, so the name's first match stands as it did before.
+func TestOSMKeepsTheNameMatchWithoutEvidenceAgainstIt(t *testing.T) {
+	client, _ := nominatimServer(t, map[string][]nominatimRow{
+		"Pension Sonnenhof, Bad Ischl": {badIschlPension},
+		"Pension Sonnenhof":            {southTyrolPension},
+		"4820 Bad Ischl, Austria":      {badIschlTown},
+	})
+	a := &Agent{geocoder: client}
+	log := slog.New(slog.DiscardHandler)
+
+	near := a.locateViaOSM(context.Background(), "Pension Sonnenhof, Bad Ischl", "4820 Bad Ischl, Austria", log)
+	if near == nil || near.From != "place_name" || near.Label != badIschlPension.name {
+		t.Errorf("name in the right town: got %+v, want the guesthouse from the name", near)
+	}
+
+	unchecked := a.locateViaOSM(context.Background(), "Pension Sonnenhof", "an address nobody mapped", log)
+	if unchecked == nil || unchecked.From != "place_name" || unchecked.Label != southTyrolPension.name {
+		t.Errorf("address missed: got %+v, want the name's first match", unchecked)
+	}
+}
+
+// What the check costs: one more request, and only when the name answered and
+// there is an address to ask about.
+func TestOSMAsksTheAddressOnlyWhenItCanCheckSomething(t *testing.T) {
+	client, asked := nominatimServer(t, map[string][]nominatimRow{
+		"Pension Sonnenhof":       {southTyrolPension},
+		"4820 Bad Ischl, Austria": {badIschlTown},
+	})
+	a := &Agent{geocoder: client}
+	log := slog.New(slog.DiscardHandler)
+
+	cases := []struct {
+		name, address string
+		want          []string
+	}{
+		{"Pension Sonnenhof", "", []string{"Pension Sonnenhof"}},
+		{"", "4820 Bad Ischl, Austria", []string{"4820 Bad Ischl, Austria"}},
+		{"A guesthouse nobody has mapped", "4820 Bad Ischl, Austria", []string{"A guesthouse nobody has mapped", "4820 Bad Ischl, Austria"}},
+		{"Pension Sonnenhof", "4820 Bad Ischl, Austria", []string{"Pension Sonnenhof", "4820 Bad Ischl, Austria"}},
+	}
+	for _, c := range cases {
+		*asked = nil
+		if a.locateViaOSM(context.Background(), c.name, c.address, log) == nil {
+			t.Errorf("%q / %q: no position", c.name, c.address)
+		}
+		if !slices.Equal(*asked, c.want) {
+			t.Errorf("%q / %q: queries = %v, want %v", c.name, c.address, *asked, c.want)
+		}
 	}
 }

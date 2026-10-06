@@ -35,22 +35,6 @@ without asking.
   (and an access check) while serving the shell. Probably not worth it; kept so
   the gap is known.
 
-- **A place name with no town can pin the assistant's place in another
-  country.** (Geocode-tool review, 2026-10-04.) `locateViaOSM`
-  (`internal/assist/locate.go`) searches the model's `place_name` as given and
-  takes the first hit, and only falls back to the address when the name finds
-  nothing. In one live run the model proposed `place_name` "Pension Sonnenhof"
-  with address "4820 Bad Ischl, Austria", and the name alone matched a Pension
-  Sonnenhof in South Tyrol -- a confident, precise, wrong pin, and Google did not
-  answer to make it ambiguous. Two cheap guards: add the town from the address
-  to a name that has none before searching, or resolve the address too and
-  reject a name match far from it (the `ambiguousMetres` idea, applied between
-  the two queries rather than between the two sources). Stage 46 Milestone 2
-  softened it for `brave` only: Brave's place search is given the address as
-  its area, finds the place in Bad Ischl, and the 150km disagreement with OSM
-  makes the pin a question rather than a wrong answer. OSM itself, and Serper
-  (which ignores the area), still have the problem.
-
 - **A save the user has navigated away from still redirects when it lands.**
   (Stale-render fix, 2026-10-06.) The router now gives every render a fresh
   `<main>`, so a late *render* writes into a detached element. A late *action*

@@ -53,14 +53,18 @@ Two things are asked, when both are available:
   street itself — a pin outside the door rather than on it. Searching the name
   finds the element somebody actually mapped. The address still earns its place
   as the fallback: it is what positions a rented flat with no findable name.
+  It is also the check on the name: when both are given, a name match more than
+  10 km from where the address resolves is not used, because a name without
+  its town is often shared by a place elsewhere. The pin then falls back to
+  the address, in the right town if not at the door.
 - **A places search**, when the [search provider](web-search.md) is `serper`
   or `brave`. Serper's is Google Maps data, and it is far better than
   OpenStreetMap on the restaurants, cafés, bars, shops and hotels a trip is
   mostly made of — for those, its pin is the business's own position rather
   than an address interpolation. Brave's agrees with it to the metre for most
   places, and is given the postal address as the area to search in, which
-  keeps a name with no town in it near the address rather than at the
-  best-known place of that name. Either costs one paid request per lookup,
+  makes a name with no town in it more likely to be found near the address
+  than at the best-known place of that name. Either costs one paid request per lookup,
   and up to six for one trip-level suggestion run. With `ollama`, `ddgs` or
   none, only the geocoder is asked and everything still works.
 

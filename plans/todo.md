@@ -14,45 +14,39 @@ Entries tagged **(soon)** are the ones marked as wanted in one of the next few
 stages, and are listed first in each section. Everything else is unordered —
 worth keeping, not worth scheduling.
 
-**Reviewed 2026-10-03** (the third full review, after Stage 45; the earlier ones
-were in Stage 15 and on 2026-08-29). Every entry, and every idea in
-`plans/notes.md`, was read out and kept, tagged, folded or dropped deliberately.
-About two thirds of the file went: watch-notes with no action, decisions already
-settled, test-suite tidiness with no failure behind it, and features nobody
-intends to build. Anything deleted in that review was deleted on purpose — do
-not reconstruct it from an older stage plan or an earlier version of this file
-without asking.
+**Reviewed 2026-10-07** (the fourth full review; the earlier ones were in Stage
+15, on 2026-08-29 and on 2026-10-03, which cut the file by two thirds). Every
+entry was read out and kept, tagged, folded or dropped deliberately. Anything
+deleted in a review was deleted on purpose — do not reconstruct it from an
+older stage plan or an earlier version of this file without asking.
 
 ---
 
 ## Bugs and rough edges
 
-- **A deep link to a missing record still answers 200.** (Unknown-path 404 fix,
-  2026-10-03.) The SPA fallback now sends the shell with a 404 for any path no
-  client route matches (`isClientRoute`, `internal/httpapi/clientroutes.go`),
-  but `/trips/<missing id>` has a valid shape and stays a 200: only the API call
-  the page makes finds out the trip is gone. Fixing it means a database lookup
-  (and an access check) while serving the shell. Probably not worth it; kept so
-  the gap is known.
+- **Pages have no lifecycle: late saves redirect, and nothing is torn down.**
+  **(soon)** (Stale-render fix, 2026-10-06; two entries folded 2026-10-07.)
+  The router gives every render a fresh `<main>`, so a late *render* writes into
+  a detached element and is harmless. Two things it does not cover:
 
-- **A save the user has navigated away from still redirects when it lands.**
-  (Stale-render fix, 2026-10-06.) The router now gives every render a fresh
-  `<main>`, so a late *render* writes into a detached element. A late *action*
-  does not care about that: an awaited save that ends in `navigate` or
-  `leaveEditor` (admin-page, suggest-page, members-tab, settings-tab,
-  location-editor, trip-editor) still moves the user off whatever page they
-  went to meanwhile. The same `container.isConnected` check the location
-  editor's viewer redirect now uses would cover each one.
+  - **A late save still redirects.** An awaited save that ends in `navigate`
+    or `leaveEditor` moves the user off whatever page they went to meanwhile
+    -- about nine call sites in admin-page, suggest-page, members-tab,
+    settings-tab, location-editor-page and trip-editor-page. The location
+    editor's viewer redirect already guards with `container.isConnected`.
+  - **Nothing is torn down.** There is no teardown hook; cleanup relies on
+    detached DOM (`<map-view>`'s `disconnectedCallback` and the like). Logging
+    out and back in creates a second router without removing the first one's
+    `popstate` and click listeners (`boot` in app.js); notes-tab's mention
+    picker leaves `window` resize listeners behind; assist streams in
+    suggest-page and the location editor's assist panel run on after
+    navigation -- paid model calls nobody is waiting for.
 
-- **Leaving a page does not tear down everything it started.** (Stale-render
-  fix, 2026-10-06.) The router has no teardown hook; cleanup relies on detached
-  DOM (`<map-view>`'s `disconnectedCallback` and the like). What that misses:
-  logging out and back in creates a second router without removing the first
-  one's `popstate` and click listeners (`boot` in app.js); notes-tab's mention
-  picker leaves its `window` resize listeners behind; and assist streams in
-  suggest-page and the location editor's assist panel run on after navigation.
-  All mostly harmless today; together they are the case for one router-level
-  "this page is gone" signal, if one is ever wanted.
+  The approach agreed in review: one router-level "this page is gone" signal,
+  an `AbortSignal` per render. Late saves check `signal.aborted` instead of
+  nine hand-written `isConnected` checks, listeners register with
+  `{ signal }`, and streams pass it to `fetch`. Wants doing before offline
+  mode, which makes slow and failed requests more common.
 
 ---
 
@@ -64,13 +58,31 @@ without asking.
   dialects, a toggle on the card or the view page, and the filter. Fits beside
   the itinerary: a day's entries are the places you mean to visit.
 
-- **A brief summary in the map popup.** **(soon)** (notes.md, reviewed
-  2026-10-03.) A pin's popup shows the title, a photo if there is one, "Open
-  location" and "View on Google Maps" -- nothing about what the place is. Add a
-  short summary: the category, the days it is on, perhaps the first line of the
-  notes. Most of it is already in the map payload (`mapItemResponse` in
-  `internal/httpapi/map.go`). The popup is capped at 200px wide
-  (`popup()` in `map-view.js`), so it has to stay brief.
+- **A short summary for each location.** **(soon)** (notes.md, reviewed
+  2026-10-03; clarified 2026-10-07.) A new optional field answering "what is
+  this place, in at most about five words" -- Tokyo Skytree: "Japan's tallest
+  observation radio tower". Filled in by hand, and proposed by the assistant.
+  No backfill of existing locations. The parts:
+
+  - **Data.** A `summary` column (both dialects), sqlc, the location API.
+    Enforce a length cap on the server; words are fuzzy, so a character limit
+    (around 60) is the robust rule, with "five words" in the placeholder and
+    the prompt.
+  - **Editor.** One short text input in the location form, plus i18n.
+  - **Display.** In the map popup, which was the original wish -- it shows the
+    title, a photo and two links today, nothing about what the place is, and
+    `summary` has to join the map payload (`mapItemResponse` in
+    `internal/httpapi/map.go`, which carries only the category). Naturally
+    also under the title on the location page and the location card. The
+    popup is capped at 200px wide (`popup()` in `map-view.js`).
+  - **Assistant.** One more field in the proposal schema
+    (`internal/assist/schema.go`, beside tags and notes), through the editor's
+    per-field accept/reject review, and saved by `/suggest` -- where it also
+    helps pick between candidates.
+
+  Effort about 4 of 10: every piece is small, but it touches schema, API,
+  three display surfaces, the editor and the assistant pipeline. Wants the
+  item -> location rename to land first (see Consistency and cleanup).
 
 - **Offline mode for the PWA, read-only first.** **(soon)** (notes.md, reviewed
   2026-10-03; absorbs the Stage 23 / Stage 45 "offline map needs one online
@@ -105,28 +117,6 @@ without asking.
   drawing one by hand: Nominatim can return a park's or a district's outline
   with the search result.
 
-- **Serper reports a website and a phone number for every place it finds.**
-  (Stage 33 Milestone 3.) `/places` carries `website` and `phoneNumber`
-  alongside the position, and `PlaceResult` (`internal/websearch/websearch.go`)
-  deliberately drops both. An official site found this way needs no liveness
-  check and no model to have proposed it, which makes it a better link than
-  most of what a run currently offers -- but it is a different feature from
-  positioning a place, and folding it in would mean a link nobody asked for
-  arriving from a source the sources list does not mention.
-
-- **An assistant-proposed place found only by Google gets no city tag.** (Stage
-  33 follow-up, the city tag; reworded 2026-10-03.) The automatic city tag
-  comes from `Position.City` (`internal/assist/locate.go`), and only the OSM
-  answer fills it, because Nominatim returns a structured address with a city
-  field. Serper's `/places` returns a single formatted string ("Laugavegur 1,
-  101 Reykjavík, Iceland") -- shown as the pin's label, and the saved location
-  still gets the model's address -- with no city field to take. So the tag is
-  missing when OSM did not find the place at all (common for restaurants and
-  shops), and also, deliberately, when the two sources disagree. Parsing the
-  city out of Google's string is guesswork (the order varies by country); one
-  Nominatim *reverse* lookup on the chosen coordinates is accurate, works for
-  every source, and costs one request per place.
-
 - **Outbound map links: build them in the browser, then widen them.** (Stage 29;
   two entries folded 2026-10-03.) The Google Maps link exists twice --
   server-built `google_maps_url` (`googleMapsURL`, `internal/httpapi/map.go`)
@@ -155,38 +145,25 @@ without asking.
 
 ## Consistency and cleanup
 
-- **Identifier sweep: "item" → "location", all the way down.** (Stage 05; depth
-  decided 2026-10-03.) The user-visible copy says "location"; below it, the
-  `item.*` i18n namespace (27 keys in `en.json`) is still item-flavoured while
+- **Identifier sweep: "item" → "location", all the way down.** **(soon)** (Stage
+  05; depth decided 2026-10-03; scheduled 2026-10-07.) Land it *before* the
+  location summary and the visited flag, so their columns, API fields and code
+  are written with the new names rather than renamed afterwards. The
+  user-visible copy says "location"; below it, the `item.*` i18n namespace (27
+  keys in `en.json`) is still item-flavoured while
   `location.form.*`/`location.editor.*` migrated, `location-form.js` exports
   `renderItemForm`, `locations-tab.js` exports `renderItemsTab` and uses
   `data-action="new-item"`, the list renders `<item-card>`, and the API and
   schema say `items` (`/api/items/{id}`, the `items` table and its satellites).
   Decided: go all the way, API routes and a table-rename migration included --
   precedent is Stage 11 Milestone 1's "documents" → "files" rename, which
-  renamed the table in `0006` and dropped the old URL outright. Do it as its
-  own milestone (or stage): a mechanical rename inside any other diff hides the
-  real changes, which is why Stage 26 declined to fold it in.
-- **The phone "More" tab menu is still buttons.** (Stage 47.) The trip tabs in
-  the row are real links since Stage 47 Milestone 2, so middle-click and "Open
-  in new tab" work on them; the tabs that move into "More" below 640px
-  (Checklists, Files, Expenses, Members, Settings) are menuitemradio
-  `<button>`s from `components/menu.js`, so on a phone those five cannot be
-  opened in a new tab. Fixing it means teaching the shared menu component an
-  `href` item, which the filter and sort menus do not need. Deliberately left
-  out of Stage 47 as low value.
+  renamed the table in `0006` and dropped the old URL outright. Do it as its own
+  milestone (or stage): a mechanical rename inside any other diff hides the real
+  changes, which is why Stage 26 declined to fold it in.
 
 ---
 
 ## Deployment and operations
-
-- **Drop the Zensical workarounds once upstream fixes them.** (Stage 18
-  Milestone 9; re-checked against 0.0.67.) `overrides/home.html` and
-  `main.html` work around `page.is_homepage` never being defined, and the skip
-  link pointing at a markdown-derived anchor that an emptied content block does
-  not render. Both still reproduce in 0.0.67. The pin now lives in
-  `.github/requirements.txt` and Dependabot proposes bumps monthly; its header
-  has what to re-test on each one.
 
 - **S3-compatible object storage.** Swap the `internal/storagefs` `Blob`
   implementation from local filesystem to S3-compatible (MinIO, Backblaze, and
@@ -195,10 +172,3 @@ without asking.
 - **OpenID Connect / external auth providers.** `auth_identities` already
   supports a `provider` column beyond `'local'` for exactly this; no provider
   integration exists yet.
-
-- **Per-query database timing in the metrics.** (Deferred when `/metrics`
-  landed, Oct 2026.) The first cut exports the connection pool
-  (`go_sql_*`) but no query durations. Wrap sqlc's `DBTX` in both stores,
-  including the transaction one `WithTx` builds, and label each observation by
-  the `-- name:` comment sqlc puts at the top of every query string. The name
-  set is fixed, so the cardinality is too.

@@ -217,17 +217,20 @@ export async function renderTripsPage(container) {
       if (trip.owner) {
         card.setAttribute("shared-label", t("trips.sharedBy", { name: trip.owner.display_name }));
       }
-      grid.appendChild(card);
+      // Wrapped in a real link, as the location cards are -- locations-tab.js
+      // says why.
+      const link = document.createElement("a");
+      link.className = "card-link";
+      link.href = `/trips/${trip.id}`;
+      link.setAttribute("data-link", "");
+      link.appendChild(card);
+      grid.appendChild(link);
     }
   }
 
   container.querySelector('input[name="q"]').addEventListener("input", (e) => {
     query = e.target.value.trim().toLowerCase();
     apply();
-  });
-
-  grid.addEventListener("trip-open", (e) => {
-    navigate(`/trips/${e.detail.tripId}`);
   });
 
   container.querySelector('[data-action="new-trip"]').addEventListener("click", () => {

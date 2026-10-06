@@ -1589,12 +1589,9 @@ test.describe("the location editor stays out of the history", () => {
     ).json();
 
     await gotoRoute(page, `/trips/${tripId}/locations`);
-    // Through the card's own event rather than a click, for the same reason
-    // map.spec.js does: what is being tested is the navigation, not the shadow
-    // DOM the click has to reach through.
-    await page.locator(`item-card[title="Kirkjufel"]`).evaluate((el) => {
-      el.dispatchEvent(new CustomEvent("item-open", { bubbles: true, detail: { itemId: el.getAttribute("item-id") } }));
-    });
+    // The card is wrapped in a real link since Stage 47, so a plain click on it
+    // is the router's [data-link] navigation, no shadow DOM to reach through.
+    await page.getByRole("link", { name: /Kirkjufel/ }).click();
     await expect(page).toHaveURL(`/trips/${tripId}/locations/${item.id}`);
 
     await page.locator('[data-action="edit"]').click();

@@ -107,6 +107,47 @@ Tests (`tests/ui/locations.spec.js`, `tests/ui/trips.spec.js`):
 - Existing specs that `.click()` a card keep working unchanged. Re-run
   `headings.spec.js`: the h2 is now inside a link, which is valid.
 
+**Done.** Landed as planned:
+- Both cards lost `role="button"`, the `tabindex` default, their click and
+  keydown listeners, `open()`, and the `:host` cursor and focus ring.
+- `locations-tab.js` and `trips-page.js` wrap each card in
+  `<a class="card-link" data-link>` and no longer listen for
+  `item-open` / `trip-open`.
+- `trip-detail-page.js` still listens for `item-open`: the map popup sends it.
+- `base.css` has the new `.card-link` rules.
+
+Deviations from the plan:
+- A `.card-link:visited` rule was needed. `a:visited` (0,1,1) outranks a bare
+  `.card-link` (0,1,0) and would have turned visited cards accent-coloured.
+- `locations.spec.js`'s "editing: one Back…" test fired a synthetic
+  `item-open` on the card, which no longer has a listener. It now clicks the
+  link, which is the real path.
+
+How it was verified:
+- New spec: `tests/ui/card-links.spec.js`.
+  - Location card:
+    - The `href` is right.
+    - No `role="button"` or `tabindex` is left on the card.
+    - The link's `text-decoration-line` is `none`, and the title colour
+      equals the body colour.
+    - Ctrl-click and middle-click each open a new page on the location URL
+      and leave this tab on the list.
+    - A plain click and Enter both navigate in the same document; a
+      `window` marker survives.
+  - Trip card:
+    - The `href` is right.
+    - A dated and an undated card in one row have equal `.card` heights.
+    - Ctrl-click opens a new page; a plain click stays in the same document.
+- `make test-ui`: 340/341 on the first run. The one failure was the synthetic
+  event above. After the fix, the locations, card-links, headings and trips
+  specs pass, 52/52.
+- `make ci` and `make check-contrast` green.
+- Manual check against `make dev` at 324×756: cards are 292 px wide with no
+  horizontal scroll, the title is in the text colour with no underline, and
+  the cards look unchanged.
+- `make screenshots` changed only the seeded dates, which are relative to
+  today, so the screenshots were not committed.
+
 ## 2. Trip tab bar becomes links
 
 Changes:

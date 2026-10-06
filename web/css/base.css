@@ -1880,6 +1880,32 @@ button {
   margin-bottom: 1rem;
 }
 
+/* The link wrapped around each location and trip card (Stage 47). It owns
+   what the card host used to: focus, cursor, navigation. color and the
+   underline are reset because both inherit into the card's shadow tree --
+   without this every card title would be accent-coloured and underlined. */
+.card-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 0.5rem;
+}
+
+.card-link:visited {
+  color: inherit;
+}
+
+.card-link:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* The grid item is now the link, so the row-height stretch that trip-card.js
+   carries down to its body has to pass through it. */
+.trip-grid > .card-link {
+  height: 100%;
+}
+
 .item-form {
   display: flex;
   flex-direction: column;

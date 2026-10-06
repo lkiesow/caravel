@@ -317,7 +317,17 @@ export async function renderItemsTab(container, trip) {
       if (item.tags?.length) card.setAttribute("tags", JSON.stringify(item.tags));
       if (item.dates?.length) card.setAttribute("dates", JSON.stringify(item.dates));
       if (item.image_url) card.setAttribute("image-url", item.image_url);
-      list.appendChild(card);
+      // A real <a href> around the card, for the reason itinerary-tab.js gives
+      // for its entry links: middle-click, open-in-new-tab and "copy link
+      // address" need an href. Outside the shadow root on purpose: a click in
+      // the card retargets to the <item-card> host, and the router's
+      // closest("[data-link]") finds this wrapper from there.
+      const link = document.createElement("a");
+      link.className = "card-link";
+      link.href = `/trips/${tripId}/locations/${item.id}`;
+      link.setAttribute("data-link", "");
+      link.appendChild(card);
+      list.appendChild(link);
     }
   }
 
@@ -608,10 +618,6 @@ export async function renderItemsTab(container, trip) {
       newSlot.querySelector('[data-action="new-item"]').addEventListener("click", goToNew);
     }
   }
-
-  list.addEventListener("item-open", (e) => {
-    navigate(`/trips/${tripId}/locations/${e.detail.itemId}`);
-  });
 
   renderLoading(list);
   allItems = await api.get(`/trips/${tripId}/items`);

@@ -3,14 +3,11 @@ import { categoryColor } from "../categories.js";
 import { escapeHtml } from "../escape.js";
 
 const styles = `
+  /* Not focusable and not clickable itself: the page wraps the card in an
+     <a class="card-link"> (see locations-tab.js), which owns the focus ring,
+     the pointer cursor and the navigation. */
   :host {
     display: block;
-    cursor: pointer;
-  }
-  :host(:focus-visible) {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 2px;
-    border-radius: 0.5rem;
   }
   .card {
     display: flex;
@@ -122,8 +119,6 @@ class ItemCard extends HTMLElement {
 
   connectedCallback() {
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
-    if (!this.hasAttribute("tabindex")) this.setAttribute("tabindex", "0");
-    this.setAttribute("role", "button");
     this.render();
     // Re-solve the tag row whenever the card changes width: rotating the phone,
     // dragging a desktop window, or crossing the 641px breakpoint where the
@@ -133,13 +128,6 @@ class ItemCard extends HTMLElement {
       this.fitObserver = new ResizeObserver(() => this.scheduleFit());
       this.fitObserver.observe(this);
     }
-    this.addEventListener("click", () => this.open());
-    this.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        this.open();
-      }
-    });
   }
 
   disconnectedCallback() {
@@ -147,16 +135,6 @@ class ItemCard extends HTMLElement {
       this.fitObserver.disconnect();
       this.fitObserver = null;
     }
-  }
-
-  open() {
-    this.dispatchEvent(
-      new CustomEvent("item-open", {
-        bubbles: true,
-        composed: true,
-        detail: { itemId: this.getAttribute("item-id") },
-      })
-    );
   }
 
   attributeChangedCallback() {

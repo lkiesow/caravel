@@ -2,18 +2,16 @@ import { formatDateRange } from "../format.js";
 import { escapeHtml } from "../escape.js";
 
 const styles = `
+  /* Not focusable and not clickable itself: the page wraps the card in an
+     <a class="card-link"> (see trips-page.js), which owns the focus ring, the
+     pointer cursor and the navigation. */
   :host {
     display: block;
     height: 100%;
-    cursor: pointer;
-  }
-  :host(:focus-visible) {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 2px;
-    border-radius: 0.5rem;
   }
   /* .trip-grid's grid items stretch to the row height by default (grid's
-     align-items: stretch), but that stretch only reaches :host - nothing
+     align-items: stretch), but that stretch only reaches the grid item - the
+     wrapping .card-link, whose own height:100% passes it on to :host - and nothing
      here propagated it into the shadow tree, so two cards in the same row
      ended up different heights whenever one had a .dates line and the
      other didn't. height:100% + this flex column carries the stretched
@@ -70,26 +68,7 @@ class TripCard extends HTMLElement {
 
   connectedCallback() {
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
-    if (!this.hasAttribute("tabindex")) this.setAttribute("tabindex", "0");
-    this.setAttribute("role", "button");
     this.render();
-    this.addEventListener("click", () => this.open());
-    this.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        this.open();
-      }
-    });
-  }
-
-  open() {
-    this.dispatchEvent(
-      new CustomEvent("trip-open", {
-        bubbles: true,
-        composed: true,
-        detail: { tripId: this.getAttribute("trip-id") },
-      })
-    );
   }
 
   attributeChangedCallback() {

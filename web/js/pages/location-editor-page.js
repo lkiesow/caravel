@@ -44,7 +44,7 @@ import { escapeHtml } from "../escape.js";
 // there left the location saved without it. The page did not adopt the item
 // it had just created, so it was still in create mode, and pressing Save
 // again made a *second* location.
-export async function renderLocationEditorPage(container, { tripId, itemId }) {
+export async function renderLocationEditorPage(container, { tripId, itemId }, signal) {
   let item = null;
   renderLoading(container, { size: "lg" });
 
@@ -60,9 +60,9 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
     renderNotFoundPage(container, { href: "/trips", labelKey: "common.home" });
     return;
   }
-  // The user navigated on while the trip loaded (the router has swapped in a
-  // fresh <main>): redirecting now would move them off the page they chose.
-  if (!container.isConnected) return;
+  // The user navigated on while the trip loaded: redirecting now would move
+  // them off the page they chose.
+  if (signal.aborted) return;
   if (!canEdit(trip)) {
     // The location they were trying to edit if there is one, the trip if not.
     // leaveEditor rather than navigate: a form every save would 403 is not a
@@ -299,6 +299,9 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       guardClick(deleteBtn, async () => {
         if (!(await confirmDialog({ messageKey: "item.deleteConfirm" }))) return;
         await api.delete(`/items/${item.id}`);
+        // Deleted either way; only the redirect waits on the user still being
+        // here (see router.js on the signal).
+        if (signal.aborted) return;
         // Not leaveEditor: the entry behind this one is the location that has
         // just been deleted, so popping back to it would render not-found.
         // Overwriting the editor entry is the best available. It does leave
@@ -425,6 +428,9 @@ export async function renderLocationEditorPage(container, { tripId, itemId }) {
       return;
     }
 
+    // Saved either way: the request is never aborted, only the redirect is
+    // skipped once the user has gone somewhere else.
+    if (signal.aborted) return;
     leaveEditor(`/trips/${tripId}/locations/${saved.id}`);
   }
 

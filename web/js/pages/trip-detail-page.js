@@ -20,7 +20,7 @@ import { renderNotFoundPage } from "./not-found-page.js";
 
 const TABS = TRIP_TABS.map(({ key }) => key);
 
-export async function renderTripDetailPage(container, { tripId, tab }) {
+export async function renderTripDetailPage(container, { tripId, tab }, signal) {
   renderLoading(container, { size: "lg" });
   if (tab === "map") preloadTripMap(tripId);
 
@@ -45,7 +45,15 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
     return;
   }
 
+  // Switching tabs is a re-render of this page, not a route, so the router's
+  // signal outlives it. Each tab gets its own, aborted by the next tab and by
+  // the router's.
+  let tabController = null;
+
   function render() {
+    tabController?.abort();
+    tabController = new AbortController();
+    const tabSignal = AbortSignal.any([signal, tabController.signal]);
     // Subtitle and date range share one line, joined by a "·" that only
     // appears between two pieces that both actually exist. The range is
     // plain text rather than a labeled dt/dd pair - it reads fine as prose
@@ -139,7 +147,7 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
 
     const content = container.querySelector(".trip-tab-content");
     if (tab === "locations") {
-      renderItemsTab(content, trip);
+      renderItemsTab(content, trip, { signal: tabSignal });
     } else if (tab === "map") {
       // The map remembers where it was looking, but only in *this* history
       // entry. A camera change is a replaceState, so panning and zooming never
@@ -189,6 +197,7 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
         onMembersChanged: (count) => {
           trip.member_count = count;
         },
+        pageSignal: signal,
       });
     } else if (tab === "settings") {
       renderSettingsTab(content, trip, {
@@ -200,6 +209,7 @@ export async function renderTripDetailPage(container, { tripId, tab }) {
           Object.assign(trip, updated);
           render();
         },
+        pageSignal: signal,
       });
     }
   }

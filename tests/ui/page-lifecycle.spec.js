@@ -4,9 +4,10 @@
 // render starts, and the router itself can be torn down. Each test here is one
 // thing that used to outlive the page it belonged to.
 //
-// Reads the seeded scenarios only; nothing here writes.
+// The first test reads the seeded scenarios only; the rest own their trips.
 import { test, expect } from "@playwright/test";
 import { login, gotoRoute, SCENARIO_TITLES, DEMO_USER } from "./helpers/scenarios.js";
+import { holdRoute } from "./helpers/gate.js";
 
 const DESKTOP = { width: 1280, height: 900 };
 
@@ -59,5 +60,117 @@ test.describe("page lifecycle", () => {
     await expect(card).toBeVisible();
     await page.evaluate(() => new Promise((r) => setTimeout(r, 300)));
     expect(listFetches, "one list fetch for one Back").toHaveLength(1);
+  });
+});
+
+// A save always finishes -- aborting a request in flight would not undo it on
+// the server -- but the redirect after it is skipped once the user has gone
+// somewhere else. Each test holds the request open, leaves, then releases it.
+test.describe("late saves", () => {
+  test.use({ viewport: DESKTOP });
+
+  let tripIds = [];
+
+  async function createTrip(page, title) {
+    const res = await page.request.post("/api/trips", { data: { title } });
+    expect(res.status(), "create the spec's own trip").toBe(201);
+    const trip = await res.json();
+    tripIds.push(trip.id);
+    return trip;
+  }
+
+  test.beforeEach(async ({ page }) => {
+    await login(page);
+  });
+
+  test.afterEach(async ({ page }) => {
+    // The delete tests have already removed theirs; a 404 here is fine.
+    for (const id of tripIds) await page.request.delete(`/api/trips/${id}`);
+    tripIds = [];
+  });
+
+  async function openUserSettings(page) {
+    await page.locator(".user-menu-slot .menu__trigger").click();
+    await page.locator(".user-menu-slot [role=menuitem]").first().click();
+    await expect(page).toHaveURL(/\/settings$/);
+  }
+
+  test("a location saved after the user left does not pull them back", async ({ page }) => {
+    const trip = await createTrip(page, "UI suite: late location save");
+    const res = await page.request.post(`/api/trips/${trip.id}/items`, {
+      data: { title: "Late Save", category: "site", tags: [], dates: [] },
+    });
+    expect(res.status()).toBe(201);
+    const item = await res.json();
+    await gotoRoute(page, `/trips/${trip.id}/locations/${item.id}/edit`);
+
+    const gate = await holdRoute(page, "**/api/items/*", { method: "PATCH" });
+    const saved = page.waitForResponse((r) => r.request().method() === "PATCH" && r.url().includes(`/api/items/${item.id}`));
+    await page.locator('[data-action="save"]').click();
+    await gate.arrived();
+
+    await page.locator(".app-brand").click();
+    await expect(page).toHaveURL(/\/trips$/);
+    gate.release();
+    expect((await saved).status(), "the save itself still lands").toBe(200);
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 300)));
+    expect(await page.evaluate(() => window.location.pathname)).toBe("/trips");
+  });
+
+  test("a trip deleted after the user left it does not pull them back", async ({ page }) => {
+    const trip = await createTrip(page, "UI suite: late trip delete");
+    await gotoRoute(page, `/trips/${trip.id}/settings`);
+
+    const gate = await holdRoute(page, `**/api/trips/${trip.id}`, { method: "DELETE" });
+    await page.locator('.trip-tab-content [data-action="delete"]').click();
+    await page.locator("dialog.dialog .btn-danger").click();
+    await gate.arrived();
+
+    await openUserSettings(page);
+    gate.release();
+    await expect.poll(async () => (await page.request.get(`/api/trips/${trip.id}`)).status()).toBe(404);
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 300)));
+    expect(await page.evaluate(() => window.location.pathname)).toBe("/settings");
+  });
+
+  // The other half of the same rule: switching tabs is not leaving the trip,
+  // and a trip that is gone has nothing left to show on any of its tabs.
+  test("a trip deleted while the user only switched tabs still goes to the list", async ({ page }) => {
+    const trip = await createTrip(page, "UI suite: delete then switch tab");
+    await gotoRoute(page, `/trips/${trip.id}/settings`);
+
+    const gate = await holdRoute(page, `**/api/trips/${trip.id}`, { method: "DELETE" });
+    await page.locator('.trip-tab-content [data-action="delete"]').click();
+    await page.locator("dialog.dialog .btn-danger").click();
+    await gate.arrived();
+
+    await page.locator('a[data-tab="locations"]').click();
+    await expect(page).toHaveURL(/\/locations$/);
+    gate.release();
+    await expect(page).toHaveURL(/\/trips$/);
+  });
+
+  // While a confirm is open the modal blocks every click, so Back is the one
+  // way off the page. The dialog used to survive it, and confirming then
+  // deleted the trip from the page the user had gone back to.
+  test("Back closes an open confirm as a cancel", async ({ page }) => {
+    const trip = await createTrip(page, "UI suite: Back over a confirm");
+    await gotoRoute(page, `/trips/${trip.id}/locations`);
+    // A plain JS click: Settings may sit in the "More" menu at this width,
+    // and what is under test is the history entry it pushes.
+    await page.evaluate(() => document.querySelector('a[data-tab="settings"]').click());
+    await expect(page).toHaveURL(/\/settings$/);
+
+    const deletes = [];
+    page.on("request", (req) => {
+      if (req.method() === "DELETE") deletes.push(req.url());
+    });
+    await page.locator('.trip-tab-content [data-action="delete"]').click();
+    await expect(page.locator("dialog.dialog")).toBeVisible();
+
+    await page.goBack();
+    await expect(page).toHaveURL(/\/locations$/);
+    await expect(page.locator("dialog.dialog")).toHaveCount(0);
+    expect(deletes, "nothing was deleted").toHaveLength(0);
   });
 });

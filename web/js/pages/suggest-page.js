@@ -31,7 +31,7 @@ import { CATEGORIES } from "../categories.js";
 // Nothing is written until that button is pressed, which is the same guarantee
 // internal/assist makes: the agent proposes and a person decides.
 
-export async function renderSuggestPage(container, { tripId }) {
+export async function renderSuggestPage(container, { tripId }, signal) {
   if (!hasCapability("assist")) {
     // Typeable URL, and an instance with no assistant has no such page. Not a
     // 403: the route genuinely does not exist here.
@@ -414,7 +414,11 @@ export async function renderSuggestPage(container, { tripId }) {
         })),
       });
 
+      // The covers are finished even when the user has already left: they are
+      // part of what was chosen, and leaving is not a cancel. Only the
+      // redirect waits on the user still being here (see router.js).
       await attachCovers(created, chosen);
+      if (signal.aborted) return;
       navigate(`/trips/${tripId}/locations`);
     } catch (err) {
       console.error("adding suggested locations failed:", err?.body?.error || err?.message || err);

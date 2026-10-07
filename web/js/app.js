@@ -29,7 +29,7 @@ const app = document.getElementById("app");
 // canonicalizes itself to "/trips/:tripId/locations" on render.
 const tripTabRoutes = TRIP_TABS.map(({ key }) => ({
   pattern: `/trips/:tripId/${key}`,
-  render: (container, params) => renderTripDetailPage(container, { ...params, tab: key }),
+  render: (container, params, signal) => renderTripDetailPage(container, { ...params, tab: key }, signal),
 }));
 
 const routes = [

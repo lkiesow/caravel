@@ -24,28 +24,14 @@ older stage plan or an earlier version of this file without asking.
 
 ## Bugs and rough edges
 
-- **Pages have no lifecycle: late saves redirect, and nothing is torn down.**
+- **Pages have no teardown: listeners and assist streams outlive the page.**
   **(soon)** (Stale-render fix, 2026-10-06; two entries folded 2026-10-07.)
-  The router gives every render a fresh `<main>`, so a late *render* writes into
-  a detached element and is harmless. Two things it does not cover:
-
-  - **A late save still redirects.** An awaited save that ends in `navigate`
-    or `leaveEditor` moves the user off whatever page they went to meanwhile
-    -- about nine call sites in admin-page, suggest-page, members-tab,
-    settings-tab, location-editor-page and trip-editor-page. The location
-    editor's viewer redirect already guards with `container.isConnected`.
-  - **Nothing is torn down.** Each render now gets an `AbortSignal` (Stage 48
-    milestone 1), but nothing listens to it yet. notes-tab's mention picker
-    leaves `window` resize listeners behind; assist streams in suggest-page
-    and the location editor's assist panel run on after navigation -- paid
-    model calls nobody is waiting for.
-
-  The approach agreed in review: one router-level "this page is gone" signal,
-  an `AbortSignal` per render. Late saves check `signal.aborted` instead of
-  nine hand-written `isConnected` checks, listeners register with
-  `{ signal }`, and streams pass it to `fetch`. Wants doing before offline
-  mode, which makes slow and failed requests more common. Planned as Stage 48
-  (`plans/stage-48.md`).
+  Each render now gets an `AbortSignal` from the router, and late saves no
+  longer redirect (Stage 48 milestones 1-2). Nothing listens to the signal for
+  teardown yet: notes-tab's mention picker leaves `window` resize listeners
+  behind, and assist streams in suggest-page and the location editor's assist
+  panel run on after navigation -- paid model calls nobody is waiting for.
+  Stage 48 milestone 3 (`plans/stage-48.md`). Wants doing before offline mode.
 
 ---
 

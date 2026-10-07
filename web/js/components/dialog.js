@@ -192,10 +192,20 @@ function open({ messageKey, message, buttons, input, select }) {
 
   document.body.appendChild(dialog);
 
+  // Back closes the dialog as a dismissal. While it is open the modal blocks
+  // every click, so history is the only way off the page underneath, and a
+  // dialog that survived it would let its caller resume on the next page -- a
+  // confirmed delete landing after the user had already left. Leaving by any
+  // other route would first need the dialog closed, so this one listener
+  // covers every caller.
+  const showing = new AbortController();
+  window.addEventListener("popstate", () => dialog.close(), { signal: showing.signal });
+
   return new Promise((resolve) => {
-    // One "close" event covers every exit: a button, or Escape (which the
-    // browser turns into cancel + close with an empty returnValue).
+    // One "close" event covers every exit: a button, Escape (which the
+    // browser turns into cancel + close with an empty returnValue), or Back.
     dialog.addEventListener("close", () => {
+      showing.abort();
       const value = dialog.returnValue;
       const text = inputEl?.value ?? "";
       const chosen = selectEl?.value ?? "";

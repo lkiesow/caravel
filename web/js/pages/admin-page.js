@@ -22,7 +22,7 @@ import { escapeHtml } from "../escape.js";
 // the URL is typeable. The real boundary is requireAdmin on the server; both
 // client checks exist so a non-admin gets an honest screen rather than a wall of
 // 403s.
-export async function renderAdminPage(container) {
+export async function renderAdminPage(container, params, signal) {
   const me = getCurrentUser();
   if (!me?.is_admin) {
     renderNotFoundPage(container, { href: "/trips", labelKey: "common.home" });
@@ -171,9 +171,10 @@ export async function renderAdminPage(container) {
       return;
     }
     // Demoting yourself removes your own access to this screen, so there is
-    // nothing here to re-render into.
+    // nothing here to re-render into -- unless you have already left it, in
+    // which case wherever you went is fine (see router.js on the signal).
     if (u.is_self && u.is_admin) {
-      navigate("/trips");
+      if (!signal.aborted) navigate("/trips");
       return;
     }
     await load();
@@ -214,6 +215,9 @@ export async function renderAdminPage(container) {
     }
     if (u.is_self) {
       // You have just deleted your own account; the session is gone with it.
+      // Not skipped when the user has already left this page, unlike every
+      // other redirect after a save: no page works without a session, so a
+      // full reload to the login screen is right wherever they are.
       window.location.href = "/";
       return;
     }

@@ -26,7 +26,7 @@ import { icon } from "../icon.js";
 // error shows inline on the form, and the page stays where it is with the
 // staged pick intact. On success this navigates straight to the trip's view
 // page, unambiguous feedback that the save happened.
-export async function renderTripEditorPage(container) {
+export async function renderTripEditorPage(container, params, signal) {
   let stagedImage = null;
 
   function render() {
@@ -55,7 +55,11 @@ export async function renderTripEditorPage(container) {
     const form = renderTripForm(container.querySelector(".trip-form-slot"), null, {
       showActions: false,
       createRequest: (body) => api.postForm("/trips", buildCreateForm(body)),
-      onSaved: (saved) => leaveEditor(`/trips/${saved.id}`),
+      // The trip exists either way; only the redirect waits on the user still
+      // being on this page (see router.js on the signal).
+      onSaved: (saved) => {
+        if (!signal.aborted) leaveEditor(`/trips/${saved.id}`);
+      },
     });
 
     renderImageField(container.querySelector(".image-field-slot"), {

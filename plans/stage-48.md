@@ -148,6 +148,52 @@ Verify, in `page-lifecycle.spec.js`, using `holdRoute` from
 - Open a confirm dialog and run `page.goBack()`. Expect the dialog to be gone
   and no DELETE to have been sent.
 
+**Done.** Each late-redirect site checks `signal.aborted` after its last
+`await`:
+- location-editor: the viewer guard (it replaces `container.isConnected`),
+  delete and save.
+- trip-editor: `onSaved`.
+- suggest-page: `addSelected`.
+- admin-page: demoting yourself.
+- locations-tab: both paths after the distance filter's
+  `getCurrentPosition`.
+- settings-tab and members-tab: trip delete and leave, through `pageSignal`.
+
+Supporting changes:
+- trip-detail-page now creates the per-tab signal (moved here from milestone
+  1) with `AbortSignal.any`, and passes it to locations-tab.
+- `app.js`'s tab routes pass the router's third argument through. They used
+  to drop it.
+- admin-page's `window.location.href` after deleting your own account
+  deliberately stays unconditional, with a comment explaining why.
+
+Deviations from the plan:
+- **Confirm dialogs close on `popstate`** inside `dialog.js`, rather than
+  taking a `signal` per call site (agreed at the milestone 1 checkpoint).
+  While a modal is open, Back is the only way off the page, so one listener
+  covers every caller, including expenses and itinerary, which the plan did
+  not list.
+- **suggest-page still finishes `attachCovers`** after the user leaves. The
+  covers are part of what was chosen, so stopping the loop would have broken
+  the "saves always finish" rule. Only the redirect is skipped.
+
+Verified:
+- `make ci` and the full `make test-ui` are green.
+- Four new tests in `page-lifecycle.spec.js` ("late saves"). Each holds the
+  request with `holdRoute`, leaves, then releases:
+  - A location PATCH lands (200), and the user stays on `/trips`.
+  - A trip DELETE lands, and the user stays on `/settings`.
+  - Deleting a trip and then only switching tabs still redirects to
+    `/trips`.
+  - Back over an open confirm removes the dialog and sends no DELETE.
+
+  Against the milestone-1 code, the first, second and fourth fail. The tab
+  switch case passes both ways; it is there to stop the guard from being too
+  eager.
+- By hand on `make dev` at 324×756: Back over the trip-delete confirm closes
+  it, and the trip is still there. A tab loaded before the edit still showed
+  the old behaviour until reloaded, as expected with `make dev`.
+
 ## 3. Teardown: listeners and streams
 
 - **mention-picker:** `bindMentionPicker(..., { signal })` registers its

@@ -68,7 +68,7 @@ const SCHEDULED = "scheduled";
 // Takes the whole trip rather than just its id since Stage 14 Milestone 4: the
 // toolbar has to know whether the reader may add a location, and `trip.role` is
 // where that lives.
-export async function renderItemsTab(container, trip) {
+export async function renderItemsTab(container, trip, { signal } = {}) {
   const tripId = trip.id;
   const editable = canEdit(trip);
   // What the toolbar was set to when this history entry was last left. See
@@ -454,6 +454,7 @@ export async function renderItemsTab(container, trip) {
               maxAgeMs: 30000,
             });
           } catch (err) {
+            if (signal?.aborted) return;
             // The filter cannot be honored, so it must not look active: the
             // row goes back to "any distance" rather than showing a radius
             // that is not being applied.
@@ -463,6 +464,10 @@ export async function renderItemsTab(container, trip) {
             applyFilters();
             return;
           }
+          // A fix can take up to twelve seconds, and applyFilters writes the
+          // toolbar into the *current* history entry -- which by then may
+          // belong to another page or tab (see router.js on the signal).
+          if (signal?.aborted) return;
           setStatus(null);
           applyFilters();
         },

@@ -22,7 +22,7 @@ import { confirmDialog } from "../components/dialog.js";
 // Passed in rather than derived here so the tab has one source of truth for the
 // role — trip-detail-page.js, which already consults trip-role.js for the other
 // tabs.
-export function renderSettingsTab(content, trip, { onTripUpdated, canEdit = true, canDelete = true }) {
+export function renderSettingsTab(content, trip, { onTripUpdated, canEdit = true, canDelete = true, pageSignal }) {
   function render() {
     content.innerHTML = `
       ${
@@ -85,6 +85,10 @@ export function renderSettingsTab(content, trip, { onTripUpdated, canEdit = true
       guardClick(deleteBtn, async () => {
         if (!(await confirmDialog({ messageKey: "trip.deleteConfirm" }))) return;
         await api.delete(`/trips/${trip.id}`);
+        // The page's signal, not the tab's: switching to another tab of the
+        // trip just deleted still leaves the user on a trip that is gone, so
+        // only leaving the trip altogether makes the redirect wrong.
+        if (pageSignal?.aborted) return;
         navigate("/trips");
       });
     }

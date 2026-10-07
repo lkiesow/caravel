@@ -29,7 +29,7 @@ import { escapeHtml } from "../escape.js";
 // choice — until the page was reloaded. The Files tab reads the count when it
 // renders, which happens on tab switch, so updating the shared object in place is
 // enough; nothing on screen right now depends on it.
-export function renderMembersTab(content, trip, { onMembersChanged } = {}) {
+export function renderMembersTab(content, trip, { onMembersChanged, pageSignal } = {}) {
   let members = [];
   let suggest = null;
 
@@ -207,7 +207,10 @@ export function renderMembersTab(content, trip, { onMembersChanged } = {}) {
       return;
     await api.delete(`/trips/${trip.id}/members/${m.user_id}`);
     // Access is gone the moment that returns, so staying on the trip would
-    // just render a 404. The trips list is the only honest destination.
+    // just render a 404. The trips list is the only honest destination --
+    // unless the user has left the trip's page meanwhile. The page's signal,
+    // not the tab's, for the reason settings-tab.js gives on deleting a trip.
+    if (pageSignal?.aborted) return;
     navigate("/trips");
   }
 

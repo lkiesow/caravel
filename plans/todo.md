@@ -46,7 +46,8 @@ older stage plan or an earlier version of this file without asking.
   an `AbortSignal` per render. Late saves check `signal.aborted` instead of
   nine hand-written `isConnected` checks, listeners register with
   `{ signal }`, and streams pass it to `fetch`. Wants doing before offline
-  mode, which makes slow and failed requests more common.
+  mode, which makes slow and failed requests more common. Planned as Stage 48
+  (`plans/stage-48.md`).
 
 ---
 

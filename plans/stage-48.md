@@ -218,6 +218,39 @@ Verify:
   `removeEventListener` to count live `resize` listeners. Open the notes
   editor, switch to another tab, and expect the count to be back at baseline.
 
+**Done.** Each page now hands its own existing teardown to the signal, with
+one `abort` listener per page:
+- notes-tab: `picker.destroy()`, on the per-tab signal that trip-detail-page
+  now passes it. notes-tab also returns early if the tab was left while the
+  note loaded, because a picker bound after the abort would never be torn
+  down.
+- suggest-page: `controller.abort()`, the same thing Cancel does.
+- location-editor: `assistPanel.destroy()`.
+
+Deviation: the plan threaded the signal into `bindMentionPicker` and
+`renderAssistPanel` and combined it with `AbortSignal.any`. Hooking the
+existing `destroy()`/`abort()` instead needs no component changes and keeps
+each component with one teardown path. The re-check of global listeners
+found nothing new: map-view cleans up in `disconnectedCallback`, and popup
+and suggest-input remove theirs on the next outside click.
+
+Verified:
+- `make ci` and the full `make test-ui` are green.
+- Three new tests in `page-lifecycle.spec.js` ("teardown"):
+  - The suggest page's stream signal is aborted after clicking away. The
+    request is held with `holdRoute` and the signal is recorded by an init
+    script.
+  - The same for the location editor's assist panel.
+  - The mention picker's `resize` listeners are back at baseline after
+    switching from the notes editor to Locations.
+
+  All three fail against the milestone-2 code.
+- By hand on `make dev` at 324×756: the picker's listener count returns to 0
+  both after a tab switch and after leaving by route. The dev server has no
+  assistant configured, so the stream cases were checked only in the suite
+  (stub LLM). The plan's "server log shows the context cancelled" check was
+  dropped for the same reason: the held request never reaches the server.
+
 ## Build order
 
 0 → 1 → 2 → 3. Milestones 2 and 3 consume the signal that milestone 1

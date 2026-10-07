@@ -29,7 +29,7 @@ import { canEdit } from "../trip-role.js";
 // Typing @ in the editor offers the trip's locations and inserts a markdown
 // link to the one picked -- components/mention-picker.js, which is all this
 // file knows about it.
-export async function renderNotesTab(container, trip) {
+export async function renderNotesTab(container, trip, { signal } = {}) {
   const editable = canEdit(trip);
 
   renderLoading(container);
@@ -44,6 +44,9 @@ export async function renderNotesTab(container, trip) {
     container.querySelector(".trip-notes__error").textContent = t("tripNotes.loadFailed");
     return;
   }
+  // Gone while the note loaded: an abort fires once, so a picker bound after
+  // it would never be torn down.
+  if (signal?.aborted) return;
 
   // The saved state, replaced only by a save that succeeded. `editing` is the
   // mode; `draft` is what the textarea holds while in it, kept across
@@ -52,6 +55,9 @@ export async function renderNotesTab(container, trip) {
   let draft = note.body;
   let error = null;
   let picker = null;
+  // The picker's window listeners outlive the textarea when the user leaves
+  // mid-edit -- by tab or by route -- rather than through render() below.
+  signal?.addEventListener("abort", () => picker?.destroy(), { once: true });
 
   function render() {
     // Torn down first: this runs again on every save and every cancel, and an

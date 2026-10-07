@@ -174,3 +174,101 @@ test.describe("late saves", () => {
     expect(deletes, "nothing was deleted").toHaveLength(0);
   });
 });
+
+// What a page started outside its own markup stops when the page goes.
+test.describe("teardown", () => {
+  test.use({ viewport: DESKTOP });
+
+  let tripId;
+
+  test.beforeEach(async ({ page }) => {
+    await login(page);
+    const res = await page.request.post("/api/trips", { data: { title: "UI suite: teardown" } });
+    expect(res.status(), "create the spec's own trip").toBe(201);
+    tripId = (await res.json()).id;
+  });
+
+  test.afterEach(async ({ page }) => {
+    if (tripId) await page.request.delete(`/api/trips/${tripId}`);
+    tripId = null;
+  });
+
+  // Keeps the signal each assist stream was started with, so the test can ask
+  // it directly whether leaving aborted it. The request itself is held at the
+  // network and never released: the stub would otherwise answer before the
+  // test could leave.
+  const RECORD_STREAM_SIGNALS = `
+    window.__streamSignals = [];
+    const recordedFetch = window.fetch;
+    window.fetch = function (input, init) {
+      if (String(input).includes("/assist/")) window.__streamSignals.push(init?.signal);
+      return recordedFetch.apply(this, arguments);
+    };
+  `;
+
+  async function assistOrSkip(page) {
+    const me = await (await page.request.get("/api/auth/me")).json();
+    test.skip(!me.capabilities.assist, "needs a server started with CARAVEL_LLM_URL=stub");
+  }
+
+  test("leaving the suggest page cancels its stream", async ({ page }) => {
+    await assistOrSkip(page);
+    await page.addInitScript(RECORD_STREAM_SIGNALS);
+    await gotoRoute(page, `/trips/${tripId}/suggest`);
+
+    const gate = await holdRoute(page, "**/api/trips/*/assist/locations");
+    await page.locator(".suggest-page__prompt").fill("things to do in Reykjavik");
+    await page.locator('[data-action="suggest-run"]').click();
+    await gate.arrived();
+    expect(await page.evaluate(() => window.__streamSignals.map((s) => s.aborted))).toEqual([false]);
+
+    await page.locator(".app-brand").click();
+    await expect(page).toHaveURL(/\/trips$/);
+    expect(await page.evaluate(() => window.__streamSignals.map((s) => s.aborted))).toEqual([true]);
+  });
+
+  test("leaving the location editor cancels its assist stream", async ({ page }) => {
+    await assistOrSkip(page);
+    await page.addInitScript(RECORD_STREAM_SIGNALS);
+    await gotoRoute(page, `/trips/${tripId}/locations/new`);
+
+    const gate = await holdRoute(page, "**/api/trips/*/assist/location");
+    await page.locator(".assist__prompt").fill("Harpa concert hall");
+    await page.locator('[data-action="assist-run"]').click();
+    await gate.arrived();
+    expect(await page.evaluate(() => window.__streamSignals.map((s) => s.aborted))).toEqual([false]);
+
+    await page.locator(".app-brand").click();
+    await expect(page).toHaveURL(/\/trips$/);
+    expect(await page.evaluate(() => window.__streamSignals.map((s) => s.aborted))).toEqual([true]);
+  });
+
+  // The @-picker closes itself on resize, through a listener on window. It used
+  // to be removed only when the notes tab re-rendered itself, so leaving the
+  // editor by switching tabs left it behind -- one more each time.
+  test("switching away from the notes editor removes the mention picker's listeners", async ({ page }) => {
+    await page.addInitScript(`
+      window.__resizeListeners = 0;
+      const add = window.addEventListener, remove = window.removeEventListener;
+      window.addEventListener = function (type, ...rest) {
+        if (type === "resize") window.__resizeListeners++;
+        return add.call(this, type, ...rest);
+      };
+      window.removeEventListener = function (type, ...rest) {
+        if (type === "resize") window.__resizeListeners--;
+        return remove.call(this, type, ...rest);
+      };
+    `);
+    await gotoRoute(page, `/trips/${tripId}/locations`);
+    const baseline = await page.evaluate(() => window.__resizeListeners);
+
+    // A new trip's note is empty, which opens the tab straight in the editor.
+    await page.evaluate(() => document.querySelector('a[data-tab="notes"]').click());
+    await expect(page.locator(".trip-notes textarea")).toBeVisible();
+    expect(await page.evaluate(() => window.__resizeListeners), "the picker is listening").toBe(baseline + 1);
+
+    await page.locator('a[data-tab="locations"]').click();
+    await expect(page).toHaveURL(/\/locations$/);
+    expect(await page.evaluate(() => window.__resizeListeners), "and stops when the tab goes").toBe(baseline);
+  });
+});

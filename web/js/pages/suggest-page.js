@@ -118,6 +118,9 @@ export async function renderSuggestPage(container, { tripId }, signal) {
   const trace = createRunTrace(container.querySelector(".suggest-page__trace-slot"));
 
   let controller = null;
+  // Leaving the page cancels a run as the Cancel button does: the stream is a
+  // paid model call, and nobody is left to read its answer.
+  signal.addEventListener("abort", () => controller?.abort(), { once: true });
   // One entry per candidate on screen: the candidate as the server sent it,
   // and the checkbox that decides whether it is added.
   let cards = [];

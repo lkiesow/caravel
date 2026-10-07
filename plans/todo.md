@@ -24,14 +24,19 @@ older stage plan or an earlier version of this file without asking.
 
 ## Bugs and rough edges
 
-- **Pages have no teardown: listeners and assist streams outlive the page.**
-  **(soon)** (Stale-render fix, 2026-10-06; two entries folded 2026-10-07.)
-  Each render now gets an `AbortSignal` from the router, and late saves no
-  longer redirect (Stage 48 milestones 1-2). Nothing listens to the signal for
-  teardown yet: notes-tab's mention picker leaves `window` resize listeners
-  behind, and assist streams in suggest-page and the location editor's assist
-  panel run on after navigation -- paid model calls nobody is waiting for.
-  Stage 48 milestone 3 (`plans/stage-48.md`). Wants doing before offline mode.
+- **Abort a page's stale GETs when it is left.** (Stage 48.) The router's
+  per-render signal (`router.js`) cancels redirects, listeners and assist
+  streams, but not ordinary fetches: `api.request` and `postForm` take no
+  signal, so a page that has been left still finishes its loads into a
+  detached `<main>`. Harmless today, wasted bandwidth only. Worth doing with
+  offline mode, where slow requests become common. Never for mutating
+  requests: aborting one does not undo it on the server.
+
+- **Small leftovers that outlive a page.** (Stage 48.) `popup.js` keeps its
+  document click and keydown listeners if a popup is open during a
+  navigation (they go on the next click), and `<map-view>`'s gesture-hint
+  `setTimeout` is not cleared on disconnect (it only hides a node). Neither
+  does harm; fold them into the page signal if either is touched.
 
 ---
 

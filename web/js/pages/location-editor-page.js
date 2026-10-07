@@ -107,6 +107,10 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
   // legitimately knows an identity. See the note above coordinatesChanged.
   let osmIdentity = null;
   let assistPanel = null;
+  // Leaving the page is the other way a run loses its audience, besides a
+  // re-render: without this a paid model call streams on into a page nobody
+  // is looking at (see router.js on the signal).
+  signal.addEventListener("abort", () => assistPanel?.destroy(), { once: true });
 
   const draft = {
     image: null,

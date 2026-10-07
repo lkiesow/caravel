@@ -176,7 +176,7 @@ export async function renderTripDetailPage(container, { tripId, tab }, signal) {
       // The tab owns both modes, so a viewer is not a separate render path
       // here the way it is for files and checklists — it simply never gets
       // the Edit button. notes-tab.js asks canEdit() itself.
-      renderNotesTab(content, trip);
+      renderNotesTab(content, trip, { signal: tabSignal });
     } else if (tab === "files") {
       // file-list.js has had a documented read-only mode since Stage 11 (used
       // by the location view); a viewer is simply the second caller for it.

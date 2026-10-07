@@ -84,6 +84,29 @@ Verify:
     `page.on("request")`. Expect exactly 1. Today it is 2.
   - Click one `data-link` and expect one route fetch.
 
+**Done.** `router.js`'s `render()` aborts the previous render's controller and
+passes a fresh signal as the third argument to `route.render`. The `popstate`
+and `[data-link]` click listeners register with a router-lifetime signal, and
+the new `destroy()` aborts both. `app.js` keeps the router at module scope,
+destroys the old one before creating a new one, and destroys it in `onLogout`
+before `boot()`. The comment that described the leaked-router workaround now
+explains the signal instead.
+
+Deviation: the trip page's per-tab signal moved to milestone 2. Nothing
+consumes it before then, so creating it here would only have added unused
+plumbing.
+
+Verified:
+- `make ci` is green. The full `make test-ui` run gave 343 passed and 1
+  failed: map.spec.js "a fix that disagrees is ridden out" (the course
+  marker). It passed on its own re-run, and it does not touch routing.
+- New `tests/ui/page-lifecycle.spec.js` ("logging out and back in leaves one
+  router") fakes logout and login at the network, then counts one
+  `GET /api/trips/:id` for a card click and one `GET /api/trips` for Back.
+  Against the old `router.js`/`app.js` it fails with 2 trip fetches.
+- By hand on `make dev` at 324×756: a real logout and login, then a card click
+  and Back, issue one trip fetch and one list fetch.
+
 ## 2. Late saves don't redirect
 
 The pattern at every site: after the last `await`,

@@ -34,13 +34,11 @@ older stage plan or an earlier version of this file without asking.
     -- about nine call sites in admin-page, suggest-page, members-tab,
     settings-tab, location-editor-page and trip-editor-page. The location
     editor's viewer redirect already guards with `container.isConnected`.
-  - **Nothing is torn down.** There is no teardown hook; cleanup relies on
-    detached DOM (`<map-view>`'s `disconnectedCallback` and the like). Logging
-    out and back in creates a second router without removing the first one's
-    `popstate` and click listeners (`boot` in app.js); notes-tab's mention
-    picker leaves `window` resize listeners behind; assist streams in
-    suggest-page and the location editor's assist panel run on after
-    navigation -- paid model calls nobody is waiting for.
+  - **Nothing is torn down.** Each render now gets an `AbortSignal` (Stage 48
+    milestone 1), but nothing listens to it yet. notes-tab's mention picker
+    leaves `window` resize listeners behind; assist streams in suggest-page
+    and the location editor's assist panel run on after navigation -- paid
+    model calls nobody is waiting for.
 
   The approach agreed in review: one router-level "this page is gone" signal,
   an `AbortSignal` per render. Late saves check `signal.aborted` instead of

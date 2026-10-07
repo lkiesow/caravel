@@ -85,17 +85,24 @@ export function createRouter(routes, container) {
   // the user has already navigated away from used to finish late and write
   // over the page that replaced it -- tap a location, press Back quickly, and
   // the list's URL showed the location. Now the late render writes into the
-  // detached old element, which nobody sees. The reference is held here
-  // rather than looked up by id: logging out and back in leaves the previous
-  // router's listeners behind, and two routers that both found the live
-  // <main> would keep replacing each other's pages.
+  // detached old element, which nobody sees.
+  //
+  // A fresh element only covers the page's own markup. Anything a page does
+  // outside it -- navigating after a save, listening on window, streaming --
+  // is what the signal is for: each render gets one, aborted the moment the
+  // next render starts (or the router is torn down), so a page can tell it is
+  // gone. It is the third argument so a page that has nothing to tear down can
+  // ignore it.
+  let current = null;
   async function render() {
     const result = match(window.location.pathname);
     if (!result) return;
+    current?.abort();
+    current = new AbortController();
     const fresh = container.cloneNode(false);
     container.replaceWith(fresh);
     container = fresh;
-    await result.route.render(container, result.params);
+    await result.route.render(container, result.params, current.signal);
   }
 
   function navigate(path) {
@@ -108,7 +115,11 @@ export function createRouter(routes, container) {
     render();
   }
 
-  window.addEventListener("popstate", render);
+  // The router's own listeners live as long as the router does: destroy()
+  // below removes them, so logging out and back in does not leave the old
+  // router rendering every navigation a second time into its detached <main>.
+  const lifetime = new AbortController();
+  window.addEventListener("popstate", render, { signal: lifetime.signal });
 
   // Intercept clicks on same-origin links marked data-link so navigation
   // stays client-side instead of doing a full page load.
@@ -128,7 +139,12 @@ export function createRouter(routes, container) {
     // an <a> rather than a button would still leave the form in the history.
     if (link.hasAttribute("data-leave-editor")) leaveEditor(link.getAttribute("href"));
     else navigate(link.getAttribute("href"));
-  });
+  }, { signal: lifetime.signal });
 
-  return { render, navigate };
+  function destroy() {
+    lifetime.abort();
+    current?.abort();
+  }
+
+  return { render, navigate, destroy };
 }

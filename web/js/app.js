@@ -64,6 +64,9 @@ const routes = [
 // scope so a re-mount (logging out and back in) replaces it instead of stacking
 // a second copy that renders into a detached header.
 let onLocaleChanged = null;
+// The router, for the same reason: a re-mount destroys the old one first, so
+// its listeners and the page it was showing are gone before the new one starts.
+let router = null;
 
 async function renderAuthenticated(user) {
   app.innerHTML = `
@@ -84,12 +87,16 @@ async function renderAuthenticated(user) {
 
   async function onLogout() {
     await api.post("/auth/logout");
+    // Before boot() replaces the page with the login form: the page that was
+    // open is gone too, and anything it still had running should hear so.
+    router.destroy();
     boot();
   }
 
   renderUserMenu(app.querySelector(".user-menu-slot"), user, { onLogout });
 
-  const router = createRouter(routes, document.getElementById("main"));
+  router?.destroy();
+  router = createRouter(routes, document.getElementById("main"));
 
   // i18n.js's setLocale re-runs translatePage, which only rewrites declarative
   // data-i18n attributes - every string built through t() in JS (menu labels,

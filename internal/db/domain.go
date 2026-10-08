@@ -144,13 +144,13 @@ type Expense struct {
 	Currency    *string
 	SpentOn     string
 	PayerUserID *string
-	// ItemID is the location this expense was for, or nil. Nil is the common
-	// case and stays valid: groceries and fuel are not about one place. It goes
-	// to nil rather than taking the expense with it when the location is
-	// deleted (ON DELETE SET NULL, migration 0003), because the money was still
-	// spent.
-	ItemID    *string
-	CreatedAt time.Time
+	// LocationID is the location this expense was for, or nil. Nil is the
+	// common case and stays valid: groceries and fuel are not about one place.
+	// It goes to nil rather than taking the expense with it when the location
+	// is deleted (ON DELETE SET NULL, migration 0003), because the money was
+	// still spent.
+	LocationID *string
+	CreatedAt  time.Time
 }
 
 // ExpenseShare records that one person is among those an expense was for. No
@@ -246,9 +246,9 @@ type TripForUser struct {
 	MemberCount int64
 }
 
-// MapItem is a lightweight projection for the map view: items with a
-// resolvable location and show_on_map=true. Lat/Lng are always present here
-// (the query only returns items with non-null coordinates).
+// MapLocation is a lightweight projection for the map view: locations with
+// coordinates and show_on_map=true. Lat/Lng are always present here (the query
+// only returns locations with non-null coordinates).
 //
 // Address is the exception: it is nil for a place positioned by dropping a pin
 // rather than by searching for an address. It is here for the outbound Google
@@ -257,8 +257,9 @@ type TripForUser struct {
 // what keeps a chain from resolving to the wrong branch.
 //
 // ImageID is nil for a place with no photo, and is an id rather than a URL for
-// the same reason Item carries one: media assets are resolved in the API layer.
-type MapItem struct {
+// the same reason Location carries one: media assets are resolved in the API
+// layer.
+type MapLocation struct {
 	ID       string
 	Category string
 	Title    string
@@ -268,19 +269,20 @@ type MapItem struct {
 	ImageID  *string
 }
 
-// ItemCoordinate is one item's position, for callers that need coordinates
-// across a whole trip without the rest of each item. Unlike MapItem it
-// ignores show_on_map — that flag governs whether a place is *drawn* on the
-// map, not whether it has a position — and only rows with both values set are
-// returned, so "has no coordinates" never arrives disguised as 0,0.
-type ItemCoordinate struct {
-	ItemID string
-	Lat    float64
-	Lng    float64
+// LocationCoordinate is one location's position, for callers that need
+// coordinates across a whole trip without the rest of each location. Unlike
+// MapLocation it ignores show_on_map — that flag governs whether a place is
+// *drawn* on the map, not whether it has a position — and only rows with both
+// values set are returned, so "has no coordinates" never arrives disguised as
+// 0,0.
+type LocationCoordinate struct {
+	LocationID string
+	Lat        float64
+	Lng        float64
 }
 
-// File.ItemID is nil for trip-level "general files" and set for
-// files attached to a specific item — see plan Section 2.2.
+// File.LocationID is nil for trip-level "general files" and set for
+// files attached to a specific location — see plan Section 2.2.
 // FileVisibility is who can see a file on a shared trip. Two values only, and
 // the reason there is no third is worth knowing: checklists get a `shared`
 // state because being *ticked* is a second axis, and a file has no equivalent —
@@ -303,7 +305,7 @@ func (v FileVisibility) Valid() bool {
 type File struct {
 	ID          string
 	TripID      string
-	ItemID      *string
+	LocationID  *string
 	Filename    string
 	StoragePath string
 	ContentType *string
@@ -320,14 +322,14 @@ type File struct {
 // FileDetail is a file plus the title of the location it is attached
 // to, for the trip-level Files list: that list mixes trip-level files with
 // location-attached ones, and a filename alone doesn't say which location a
-// file belongs to. ItemTitle is nil exactly when ItemID is - i.e. for a
+// file belongs to. LocationTitle is nil exactly when LocationID is - i.e. for a
 // trip-level file - so the two are read together, and it is a *join
 // projection*, not a field of File: nothing writes it.
 //
 // Same shape as ItineraryEntryDetail below, for the same reason.
 type FileDetail struct {
 	File
-	ItemTitle *string
+	LocationTitle *string
 }
 
 // ChecklistVisibility is who can see and who can tick a checklist. Three
@@ -377,8 +379,8 @@ type ChecklistItem struct {
 // as /trips/{tripId}/notes and there is no note id to hand out.
 //
 // Body is the markdown as typed. It is rendered to HTML on read, by the same
-// internal/markdown call the item notes use, rather than stored rendered — one
-// source of truth, and no cached column that could drift from it.
+// internal/markdown call the location notes use, rather than stored rendered —
+// one source of truth, and no cached column that could drift from it.
 //
 // A trip with nothing written down has no row at all, rather than a row with
 // an empty body: clearing a note deletes it. Callers see that as ErrNotFound
@@ -404,24 +406,24 @@ type ItineraryDay struct {
 type ItineraryEntry struct {
 	ID             string
 	ItineraryDayID string
-	ItemID         string
+	LocationID     string
 	SortOrder      int
 	Note           *string
 }
 
 // ItineraryEntryDetail is a lightweight join projection: an entry plus the
-// summary fields of the item it references, for rendering the itinerary
+// summary fields of the location it references, for rendering the itinerary
 // without a separate fetch per entry.
 type ItineraryEntryDetail struct {
 	ItineraryEntry
-	ItemTitle    string
-	ItemCategory string
-	ItemImageID  *string
+	LocationTitle    string
+	LocationCategory string
+	LocationImageID  *string
 }
 
-// ItemItineraryDate is one appearance of a location on one day: the entry, the
-// day it sits on, and that day's date. A join projection like
-// ItineraryEntryDetail and ItemCoordinate — nothing writes it.
+// LocationItineraryDate is one appearance of a location on one day: the entry,
+// the day it sits on, and that day's date. A join projection like
+// ItineraryEntryDetail and LocationCoordinate — nothing writes it.
 //
 // This is what a location's "dates" are made of since Stage 25. There is no
 // item_dates table any more: the ranges the location page shows are these
@@ -430,15 +432,15 @@ type ItineraryEntryDetail struct {
 //
 // Date is a "YYYY-MM-DD" string, as ItineraryDay.Date is, so the two compare
 // directly and sort lexically.
-type ItemItineraryDate struct {
-	ItemID    string
-	EntryID   string
-	DayID     string
-	Date      string
-	SortOrder int
+type LocationItineraryDate struct {
+	LocationID string
+	EntryID    string
+	DayID      string
+	Date       string
+	SortOrder  int
 }
 
-// MediaAsset backs both trips.preview_image_id and items.image_id. Kind is
+// MediaAsset backs both trips.preview_image_id and locations.image_id. Kind is
 // "upload" (StoragePath set, resolved via internal/storagefs) or "url"
 // (ExternalURL set, used directly — see Section 3.4 of the plan).
 type MediaAsset struct {
@@ -462,7 +464,7 @@ type MediaAsset struct {
 	CreatedAt time.Time
 }
 
-type Item struct {
+type Location struct {
 	ID        string
 	TripID    string
 	Category  string // one of the seven in internal/httpapi.validCategories (renamed from "location" in migration 0002; "area" added in 0010, "food"/"event"/"shop" in 0011)
@@ -474,40 +476,40 @@ type Item struct {
 	UpdatedAt time.Time
 }
 
-// ItemLocation is where a place is. OSMType and OSMID are its OpenStreetMap
+// LocationGeo is where a place is. OSMType and OSMID are its OpenStreetMap
 // identity, and are nil for all but a location saved through the address
 // search -- a dropped pin is not an OSM feature. They exist to link out to the
 // feature's own page on openstreetmap.org, which carries the hours, phone and
 // tag set somebody already mapped (Stage 29). OSMID is a string because it is
 // only ever echoed into a URL.
-type ItemLocation struct {
-	ID      string
-	ItemID  string
-	Lat     *float64
-	Lng     *float64
-	Address *string
-	OSMType *string
-	OSMID   *string
+type LocationGeo struct {
+	ID         string
+	LocationID string
+	Lat        *float64
+	Lng        *float64
+	Address    *string
+	OSMType    *string
+	OSMID      *string
 }
 
-type ItemLink struct {
-	ID        string
-	ItemID    string
-	URL       string
-	Label     *string
-	SortOrder int
+type LocationLink struct {
+	ID         string
+	LocationID string
+	URL        string
+	Label      *string
+	SortOrder  int
 }
 
-// ItemTag is one keyword on one location. There is no id and no tags table: a
-// tag is its own name, nothing hangs off it, and the pair is the primary key.
+// LocationTag is one keyword on one location. There is no id and no tags table:
+// a tag is its own name, nothing hangs off it, and the pair is the primary key.
 // See migration 0005 for why that is preferred to a lookup table.
 //
-// The set is replaced as a whole on write, like ItemLink and unlike the
-// itinerary entries behind ItemItineraryDate -- a tag carries nothing worth
+// The set is replaced as a whole on write, like LocationLink and unlike the
+// itinerary entries behind LocationItineraryDate -- a tag carries nothing worth
 // preserving across a rewrite, so there is no reason to diff.
-type ItemTag struct {
-	ItemID string
-	Tag    string
+type LocationTag struct {
+	LocationID string
+	Tag        string
 }
 
 // InstanceCounts are the instance-wide totals the metrics endpoint exports.

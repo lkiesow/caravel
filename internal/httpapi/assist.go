@@ -386,15 +386,15 @@ func (s *Server) buildAssistSuggestRequest(r *http.Request, trip db.Trip, req as
 // and the user can untick. Failing the whole run over it would be a much
 // worse trade.
 func (s *Server) tripExistingPlaces(r *http.Request, tripID string) []assist.ExistingPlace {
-	items, err := s.Store.ListItemsByTrip(r.Context(), tripID, nil)
+	items, err := s.Store.ListLocationsByTrip(r.Context(), tripID, nil)
 	if err != nil {
 		return nil
 	}
 
-	located := map[string]db.ItemCoordinate{}
-	if rows, err := s.Store.ListItemCoordinates(r.Context(), tripID); err == nil {
+	located := map[string]db.LocationCoordinate{}
+	if rows, err := s.Store.ListLocationCoordinates(r.Context(), tripID); err == nil {
 		for _, c := range rows {
-			located[c.ItemID] = c
+			located[c.LocationID] = c
 		}
 	}
 
@@ -494,7 +494,7 @@ const assistMaxTagVocabulary = 30
 // the tag rows rather than the items, so it no longer needs to load every
 // location to collect one field from each.
 func (s *Server) tripTagVocabulary(r *http.Request, tripID string) []string {
-	rows, err := s.Store.ListItemTagsByTrip(r.Context(), tripID)
+	rows, err := s.Store.ListLocationTagsByTrip(r.Context(), tripID)
 	if err != nil {
 		return nil
 	}

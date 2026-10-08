@@ -157,8 +157,8 @@ func (s *postgresStore) InstanceCounts(ctx context.Context) (InstanceCounts, err
 
 const dateLayout = "2006-01-02"
 
-func (s *postgresStore) CreateItem(ctx context.Context, p CreateItemParams) (Item, error) {
-	row, err := s.q.CreateItem(ctx, postgresgen.CreateItemParams{
+func (s *postgresStore) CreateLocation(ctx context.Context, p CreateLocationParams) (Location, error) {
+	row, err := s.q.CreateLocation(ctx, postgresgen.CreateLocationParams{
 		ID:        p.ID,
 		TripID:    p.TripID,
 		Category:  p.Category,
@@ -169,36 +169,36 @@ func (s *postgresStore) CreateItem(ctx context.Context, p CreateItemParams) (Ite
 		UpdatedAt: p.UpdatedAt.UTC(),
 	})
 	if err != nil {
-		return Item{}, err
+		return Location{}, err
 	}
-	return postgresItemToDomain(row), nil
+	return postgresLocationToDomain(row), nil
 }
 
-func (s *postgresStore) GetItemByID(ctx context.Context, id string) (Item, error) {
-	row, err := s.q.GetItemByID(ctx, id)
+func (s *postgresStore) GetLocationByID(ctx context.Context, id string) (Location, error) {
+	row, err := s.q.GetLocationByID(ctx, id)
 	if err != nil {
-		return Item{}, mapNotFound(err)
+		return Location{}, mapNotFound(err)
 	}
-	return postgresItemToDomain(row), nil
+	return postgresLocationToDomain(row), nil
 }
 
-func (s *postgresStore) ListItemsByTrip(ctx context.Context, tripID string, category *string) ([]Item, error) {
-	rows, err := s.q.ListItemsByTrip(ctx, postgresgen.ListItemsByTripParams{
+func (s *postgresStore) ListLocationsByTrip(ctx context.Context, tripID string, category *string) ([]Location, error) {
+	rows, err := s.q.ListLocationsByTrip(ctx, postgresgen.ListLocationsByTripParams{
 		TripID:   tripID,
 		Category: nullString(category),
 	})
 	if err != nil {
 		return nil, err
 	}
-	items := make([]Item, len(rows))
+	locations := make([]Location, len(rows))
 	for i, row := range rows {
-		items[i] = postgresItemToDomain(row)
+		locations[i] = postgresLocationToDomain(row)
 	}
-	return items, nil
+	return locations, nil
 }
 
-func (s *postgresStore) UpdateItem(ctx context.Context, p UpdateItemParams) (Item, error) {
-	row, err := s.q.UpdateItem(ctx, postgresgen.UpdateItemParams{
+func (s *postgresStore) UpdateLocation(ctx context.Context, p UpdateLocationParams) (Location, error) {
+	row, err := s.q.UpdateLocation(ctx, postgresgen.UpdateLocationParams{
 		ID:        p.ID,
 		TripID:    p.TripID,
 		Category:  p.Category,
@@ -208,111 +208,111 @@ func (s *postgresStore) UpdateItem(ctx context.Context, p UpdateItemParams) (Ite
 		UpdatedAt: p.UpdatedAt.UTC(),
 	})
 	if err != nil {
-		return Item{}, mapNotFound(err)
+		return Location{}, mapNotFound(err)
 	}
-	return postgresItemToDomain(row), nil
+	return postgresLocationToDomain(row), nil
 }
 
-func (s *postgresStore) DeleteItem(ctx context.Context, id, tripID string) (bool, error) {
-	n, err := s.q.DeleteItem(ctx, postgresgen.DeleteItemParams{ID: id, TripID: tripID})
+func (s *postgresStore) DeleteLocation(ctx context.Context, id, tripID string) (bool, error) {
+	n, err := s.q.DeleteLocation(ctx, postgresgen.DeleteLocationParams{ID: id, TripID: tripID})
 	if err != nil {
 		return false, err
 	}
 	return n > 0, nil
 }
 
-func (s *postgresStore) SetItemImage(ctx context.Context, id, tripID string, imageID *string, updatedAt time.Time) (Item, error) {
-	row, err := s.q.SetItemImage(ctx, postgresgen.SetItemImageParams{
+func (s *postgresStore) SetLocationImage(ctx context.Context, id, tripID string, imageID *string, updatedAt time.Time) (Location, error) {
+	row, err := s.q.SetLocationImage(ctx, postgresgen.SetLocationImageParams{
 		ID:        id,
 		TripID:    tripID,
 		ImageID:   nullString(imageID),
 		UpdatedAt: updatedAt.UTC(),
 	})
 	if err != nil {
-		return Item{}, mapNotFound(err)
+		return Location{}, mapNotFound(err)
 	}
-	return postgresItemToDomain(row), nil
+	return postgresLocationToDomain(row), nil
 }
 
-func (s *postgresStore) UpsertItemLocation(ctx context.Context, p UpsertItemLocationParams) (ItemLocation, error) {
-	n, err := s.q.UpdateItemLocation(ctx, postgresgen.UpdateItemLocationParams{
-		ItemID:  p.ItemID,
-		Lat:     nullFloat64(p.Lat),
-		Lng:     nullFloat64(p.Lng),
-		Address: nullString(p.Address),
-		OsmType: nullString(p.OSMType),
-		OsmID:   nullString(p.OSMID),
+func (s *postgresStore) UpsertLocationGeo(ctx context.Context, p UpsertLocationGeoParams) (LocationGeo, error) {
+	n, err := s.q.UpdateLocationGeo(ctx, postgresgen.UpdateLocationGeoParams{
+		LocationID: p.LocationID,
+		Lat:        nullFloat64(p.Lat),
+		Lng:        nullFloat64(p.Lng),
+		Address:    nullString(p.Address),
+		OsmType:    nullString(p.OSMType),
+		OsmID:      nullString(p.OSMID),
 	})
 	if err != nil {
-		return ItemLocation{}, err
+		return LocationGeo{}, err
 	}
 	if n > 0 {
-		return s.GetItemLocationByItemID(ctx, p.ItemID)
+		return s.GetLocationGeoByLocationID(ctx, p.LocationID)
 	}
 
-	row, err := s.q.InsertItemLocation(ctx, postgresgen.InsertItemLocationParams{
-		ID:      p.ID,
-		ItemID:  p.ItemID,
-		Lat:     nullFloat64(p.Lat),
-		Lng:     nullFloat64(p.Lng),
-		Address: nullString(p.Address),
-		OsmType: nullString(p.OSMType),
-		OsmID:   nullString(p.OSMID),
+	row, err := s.q.InsertLocationGeo(ctx, postgresgen.InsertLocationGeoParams{
+		ID:         p.ID,
+		LocationID: p.LocationID,
+		Lat:        nullFloat64(p.Lat),
+		Lng:        nullFloat64(p.Lng),
+		Address:    nullString(p.Address),
+		OsmType:    nullString(p.OSMType),
+		OsmID:      nullString(p.OSMID),
 	})
 	if err != nil {
-		return ItemLocation{}, err
+		return LocationGeo{}, err
 	}
-	return postgresItemLocationToDomain(row), nil
+	return postgresLocationGeoToDomain(row), nil
 }
 
-func (s *postgresStore) GetItemLocationByItemID(ctx context.Context, itemID string) (ItemLocation, error) {
-	row, err := s.q.GetItemLocationByItemID(ctx, itemID)
+func (s *postgresStore) GetLocationGeoByLocationID(ctx context.Context, locationID string) (LocationGeo, error) {
+	row, err := s.q.GetLocationGeoByLocationID(ctx, locationID)
 	if err != nil {
-		return ItemLocation{}, mapNotFound(err)
+		return LocationGeo{}, mapNotFound(err)
 	}
-	return postgresItemLocationToDomain(row), nil
+	return postgresLocationGeoToDomain(row), nil
 }
 
-func (s *postgresStore) CreateItemLink(ctx context.Context, p CreateItemLinkParams) (ItemLink, error) {
-	row, err := s.q.CreateItemLink(ctx, postgresgen.CreateItemLinkParams{
-		ID:        p.ID,
-		ItemID:    p.ItemID,
-		Url:       p.URL,
-		Label:     nullString(p.Label),
-		SortOrder: int32(p.SortOrder),
+func (s *postgresStore) CreateLocationLink(ctx context.Context, p CreateLocationLinkParams) (LocationLink, error) {
+	row, err := s.q.CreateLocationLink(ctx, postgresgen.CreateLocationLinkParams{
+		ID:         p.ID,
+		LocationID: p.LocationID,
+		Url:        p.URL,
+		Label:      nullString(p.Label),
+		SortOrder:  int32(p.SortOrder),
 	})
 	if err != nil {
-		return ItemLink{}, err
+		return LocationLink{}, err
 	}
-	return postgresItemLinkToDomain(row), nil
+	return postgresLocationLinkToDomain(row), nil
 }
 
-func (s *postgresStore) ListItemLinksByItem(ctx context.Context, itemID string) ([]ItemLink, error) {
-	rows, err := s.q.ListItemLinksByItem(ctx, itemID)
+func (s *postgresStore) ListLocationLinksByLocation(ctx context.Context, locationID string) ([]LocationLink, error) {
+	rows, err := s.q.ListLocationLinksByLocation(ctx, locationID)
 	if err != nil {
 		return nil, err
 	}
-	links := make([]ItemLink, len(rows))
+	links := make([]LocationLink, len(rows))
 	for i, row := range rows {
-		links[i] = postgresItemLinkToDomain(row)
+		links[i] = postgresLocationLinkToDomain(row)
 	}
 	return links, nil
 }
 
-func (s *postgresStore) DeleteItemLink(ctx context.Context, id, itemID string) (bool, error) {
-	n, err := s.q.DeleteItemLink(ctx, postgresgen.DeleteItemLinkParams{ID: id, ItemID: itemID})
+func (s *postgresStore) DeleteLocationLink(ctx context.Context, id, locationID string) (bool, error) {
+	n, err := s.q.DeleteLocationLink(ctx, postgresgen.DeleteLocationLinkParams{ID: id, LocationID: locationID})
 	if err != nil {
 		return false, err
 	}
 	return n > 0, nil
 }
 
-func (s *postgresStore) CreateItemTag(ctx context.Context, itemID, tag string) error {
-	return s.q.CreateItemTag(ctx, postgresgen.CreateItemTagParams{ItemID: itemID, Tag: tag})
+func (s *postgresStore) CreateLocationTag(ctx context.Context, locationID, tag string) error {
+	return s.q.CreateLocationTag(ctx, postgresgen.CreateLocationTagParams{LocationID: locationID, Tag: tag})
 }
 
-func (s *postgresStore) ListItemTagsByItem(ctx context.Context, itemID string) ([]string, error) {
-	tags, err := s.q.ListItemTagsByItem(ctx, itemID)
+func (s *postgresStore) ListLocationTagsByLocation(ctx context.Context, locationID string) ([]string, error) {
+	tags, err := s.q.ListLocationTagsByLocation(ctx, locationID)
 	if err != nil {
 		return nil, err
 	}
@@ -324,24 +324,24 @@ func (s *postgresStore) ListItemTagsByItem(ctx context.Context, itemID string) (
 	return tags, nil
 }
 
-func (s *postgresStore) ListItemTagsByTrip(ctx context.Context, tripID string) ([]ItemTag, error) {
-	rows, err := s.q.ListItemTagsByTrip(ctx, tripID)
+func (s *postgresStore) ListLocationTagsByTrip(ctx context.Context, tripID string) ([]LocationTag, error) {
+	rows, err := s.q.ListLocationTagsByTrip(ctx, tripID)
 	if err != nil {
 		return nil, err
 	}
-	tags := make([]ItemTag, len(rows))
+	tags := make([]LocationTag, len(rows))
 	for i, row := range rows {
-		tags[i] = ItemTag{ItemID: row.ItemID, Tag: row.Tag}
+		tags[i] = LocationTag{LocationID: row.LocationID, Tag: row.Tag}
 	}
 	return tags, nil
 }
 
-func (s *postgresStore) DeleteItemTagsByItem(ctx context.Context, itemID string) error {
-	return s.q.DeleteItemTagsByItem(ctx, itemID)
+func (s *postgresStore) DeleteLocationTagsByLocation(ctx context.Context, locationID string) error {
+	return s.q.DeleteLocationTagsByLocation(ctx, locationID)
 }
 
-func postgresItemToDomain(i postgresgen.Item) Item {
-	return Item{
+func postgresLocationToDomain(i postgresgen.Location) Location {
+	return Location{
 		ID:        i.ID,
 		TripID:    i.TripID,
 		Category:  i.Category,
@@ -354,25 +354,25 @@ func postgresItemToDomain(i postgresgen.Item) Item {
 	}
 }
 
-func postgresItemLocationToDomain(l postgresgen.ItemLocation) ItemLocation {
-	return ItemLocation{
-		ID:      l.ID,
-		ItemID:  l.ItemID,
-		Lat:     floatPtr(l.Lat),
-		Lng:     floatPtr(l.Lng),
-		Address: strPtr(l.Address),
-		OSMType: strPtr(l.OsmType),
-		OSMID:   strPtr(l.OsmID),
+func postgresLocationGeoToDomain(l postgresgen.LocationGeo) LocationGeo {
+	return LocationGeo{
+		ID:         l.ID,
+		LocationID: l.LocationID,
+		Lat:        floatPtr(l.Lat),
+		Lng:        floatPtr(l.Lng),
+		Address:    strPtr(l.Address),
+		OSMType:    strPtr(l.OsmType),
+		OSMID:      strPtr(l.OsmID),
 	}
 }
 
-func postgresItemLinkToDomain(l postgresgen.ItemLink) ItemLink {
-	return ItemLink{
-		ID:        l.ID,
-		ItemID:    l.ItemID,
-		URL:       l.Url,
-		Label:     strPtr(l.Label),
-		SortOrder: int(l.SortOrder),
+func postgresLocationLinkToDomain(l postgresgen.LocationLink) LocationLink {
+	return LocationLink{
+		ID:         l.ID,
+		LocationID: l.LocationID,
+		URL:        l.Url,
+		Label:      strPtr(l.Label),
+		SortOrder:  int(l.SortOrder),
 	}
 }
 
@@ -701,7 +701,7 @@ func (s *postgresStore) CreateExpense(ctx context.Context, p CreateExpenseParams
 		Currency:    nullString(p.Currency),
 		SpentOn:     spentOn,
 		PayerUserID: nullString(p.PayerUserID),
-		ItemID:      nullString(p.ItemID),
+		LocationID:  nullString(p.LocationID),
 		CreatedAt:   p.CreatedAt.UTC(),
 	})
 	if err != nil {
@@ -743,7 +743,7 @@ func (s *postgresStore) UpdateExpense(ctx context.Context, p UpdateExpenseParams
 		Currency:    nullString(p.Currency),
 		SpentOn:     spentOn,
 		PayerUserID: nullString(p.PayerUserID),
-		ItemID:      nullString(p.ItemID),
+		LocationID:  nullString(p.LocationID),
 	})
 	if err != nil {
 		return Expense{}, mapNotFound(err)
@@ -849,7 +849,7 @@ func postgresExpenseToDomain(e postgresgen.Expense) Expense {
 		Currency:    strPtr(e.Currency),
 		SpentOn:     e.SpentOn.Format(dateLayout),
 		PayerUserID: strPtr(e.PayerUserID),
-		ItemID:      strPtr(e.ItemID),
+		LocationID:  strPtr(e.LocationID),
 		CreatedAt:   e.CreatedAt,
 	}
 }
@@ -869,17 +869,17 @@ func postgresTripToDomain(t postgresgen.Trip) Trip {
 	}
 }
 
-func (s *postgresStore) ListMapItems(ctx context.Context, tripID string) ([]MapItem, error) {
-	rows, err := s.q.ListMapItemsByTrip(ctx, tripID)
+func (s *postgresStore) ListMapLocations(ctx context.Context, tripID string) ([]MapLocation, error) {
+	rows, err := s.q.ListMapLocationsByTrip(ctx, tripID)
 	if err != nil {
 		return nil, err
 	}
-	items := make([]MapItem, 0, len(rows))
+	locations := make([]MapLocation, 0, len(rows))
 	for _, row := range rows {
 		if !row.ShowOnMap {
 			continue
 		}
-		items = append(items, MapItem{
+		locations = append(locations, MapLocation{
 			ID:       row.ID,
 			Category: row.Category,
 			Title:    row.Title,
@@ -889,15 +889,15 @@ func (s *postgresStore) ListMapItems(ctx context.Context, tripID string) ([]MapI
 			ImageID:  strPtr(row.ImageID),
 		})
 	}
-	return items, nil
+	return locations, nil
 }
 
-func (s *postgresStore) ListItemCoordinates(ctx context.Context, tripID string) ([]ItemCoordinate, error) {
-	rows, err := s.q.ListItemLocationsByTrip(ctx, tripID)
+func (s *postgresStore) ListLocationCoordinates(ctx context.Context, tripID string) ([]LocationCoordinate, error) {
+	rows, err := s.q.ListLocationCoordinatesByTrip(ctx, tripID)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]ItemCoordinate, 0, len(rows))
+	out := make([]LocationCoordinate, 0, len(rows))
 	for _, row := range rows {
 		// The query already excludes NULL lat/lng, but the generated types are
 		// still nullable because the columns are; a row that somehow arrived
@@ -905,7 +905,7 @@ func (s *postgresStore) ListItemCoordinates(ctx context.Context, tripID string) 
 		if !row.Lat.Valid || !row.Lng.Valid {
 			continue
 		}
-		out = append(out, ItemCoordinate{ItemID: row.ItemID, Lat: row.Lat.Float64, Lng: row.Lng.Float64})
+		out = append(out, LocationCoordinate{LocationID: row.LocationID, Lat: row.Lat.Float64, Lng: row.Lng.Float64})
 	}
 	return out, nil
 }
@@ -1000,7 +1000,7 @@ func (s *postgresStore) CreateItineraryEntry(ctx context.Context, p CreateItiner
 	row, err := s.q.CreateItineraryEntry(ctx, postgresgen.CreateItineraryEntryParams{
 		ID:             p.ID,
 		ItineraryDayID: p.ItineraryDayID,
-		ItemID:         p.ItemID,
+		LocationID:     p.LocationID,
 		SortOrder:      int32(p.SortOrder),
 		Note:           nullString(p.Note),
 	})
@@ -1021,13 +1021,13 @@ func (s *postgresStore) ListItineraryEntriesByTrip(ctx context.Context, tripID s
 			ItineraryEntry: ItineraryEntry{
 				ID:             row.ID,
 				ItineraryDayID: row.ItineraryDayID,
-				ItemID:         row.ItemID,
+				LocationID:     row.LocationID,
 				SortOrder:      int(row.SortOrder),
 				Note:           strPtr(row.Note),
 			},
-			ItemTitle:    row.ItemTitle,
-			ItemCategory: row.ItemCategory,
-			ItemImageID:  strPtr(row.ItemImageID),
+			LocationTitle:    row.LocationTitle,
+			LocationCategory: row.LocationCategory,
+			LocationImageID:  strPtr(row.LocationImageID),
 		}
 	}
 	return entries, nil
@@ -1087,37 +1087,37 @@ func (s *postgresStore) DeleteItineraryEntry(ctx context.Context, id, itineraryD
 // is a DATE rather than the TEXT it is on SQLite, so it is formatted back to
 // the "YYYY-MM-DD" the rest of the application passes around — exactly what
 // postgresItineraryDayToDomain below does with the same column.
-func (s *postgresStore) ListItineraryDatesByItem(ctx context.Context, itemID string) ([]ItemItineraryDate, error) {
-	rows, err := s.q.ListItineraryDatesByItem(ctx, itemID)
+func (s *postgresStore) ListItineraryDatesByLocation(ctx context.Context, locationID string) ([]LocationItineraryDate, error) {
+	rows, err := s.q.ListItineraryDatesByLocation(ctx, locationID)
 	if err != nil {
 		return nil, err
 	}
-	dates := make([]ItemItineraryDate, len(rows))
+	dates := make([]LocationItineraryDate, len(rows))
 	for i, row := range rows {
-		dates[i] = ItemItineraryDate{
-			ItemID:    row.ItemID,
-			EntryID:   row.EntryID,
-			DayID:     row.DayID,
-			Date:      row.Date.Format(dateLayout),
-			SortOrder: int(row.SortOrder),
+		dates[i] = LocationItineraryDate{
+			LocationID: row.LocationID,
+			EntryID:    row.EntryID,
+			DayID:      row.DayID,
+			Date:       row.Date.Format(dateLayout),
+			SortOrder:  int(row.SortOrder),
 		}
 	}
 	return dates, nil
 }
 
-func (s *postgresStore) ListItemDatesByTrip(ctx context.Context, tripID string) ([]ItemItineraryDate, error) {
-	rows, err := s.q.ListItemDatesByTrip(ctx, tripID)
+func (s *postgresStore) ListLocationDatesByTrip(ctx context.Context, tripID string) ([]LocationItineraryDate, error) {
+	rows, err := s.q.ListLocationDatesByTrip(ctx, tripID)
 	if err != nil {
 		return nil, err
 	}
-	dates := make([]ItemItineraryDate, len(rows))
+	dates := make([]LocationItineraryDate, len(rows))
 	for i, row := range rows {
-		dates[i] = ItemItineraryDate{
-			ItemID:    row.ItemID,
-			EntryID:   row.EntryID,
-			DayID:     row.DayID,
-			Date:      row.Date.Format(dateLayout),
-			SortOrder: int(row.SortOrder),
+		dates[i] = LocationItineraryDate{
+			LocationID: row.LocationID,
+			EntryID:    row.EntryID,
+			DayID:      row.DayID,
+			Date:       row.Date.Format(dateLayout),
+			SortOrder:  int(row.SortOrder),
 		}
 	}
 	return dates, nil
@@ -1136,7 +1136,7 @@ func postgresItineraryEntryToDomain(e postgresgen.ItineraryEntry) ItineraryEntry
 	return ItineraryEntry{
 		ID:             e.ID,
 		ItineraryDayID: e.ItineraryDayID,
-		ItemID:         e.ItemID,
+		LocationID:     e.LocationID,
 		SortOrder:      int(e.SortOrder),
 		Note:           strPtr(e.Note),
 	}
@@ -1146,7 +1146,7 @@ func (s *postgresStore) CreateFile(ctx context.Context, p CreateFileParams) (Fil
 	row, err := s.q.CreateFile(ctx, postgresgen.CreateFileParams{
 		ID:          p.ID,
 		TripID:      p.TripID,
-		ItemID:      nullString(p.ItemID),
+		LocationID:  nullString(p.LocationID),
 		Filename:    p.Filename,
 		StoragePath: p.StoragePath,
 		ContentType: nullString(p.ContentType),
@@ -1183,7 +1183,7 @@ func (s *postgresStore) ListTripFiles(ctx context.Context, tripID, userID string
 			File: File{
 				ID:          row.ID,
 				TripID:      row.TripID,
-				ItemID:      strPtr(row.ItemID),
+				LocationID:  strPtr(row.LocationID),
 				Filename:    row.Filename,
 				StoragePath: row.StoragePath,
 				ContentType: strPtr(row.ContentType),
@@ -1193,14 +1193,14 @@ func (s *postgresStore) ListTripFiles(ctx context.Context, tripID, userID string
 				Visibility:  FileVisibility(row.Visibility),
 				OwnerUserID: strPtr(row.OwnerUserID),
 			},
-			ItemTitle: strPtr(row.ItemTitle),
+			LocationTitle: strPtr(row.LocationTitle),
 		}
 	}
 	return files, nil
 }
 
-func (s *postgresStore) ListItemFiles(ctx context.Context, itemID, userID string) ([]File, error) {
-	rows, err := s.q.ListItemFiles(ctx, postgresgen.ListItemFilesParams{ItemID: nullString(&itemID), UserID: nullString(&userID)})
+func (s *postgresStore) ListLocationFiles(ctx context.Context, locationID, userID string) ([]File, error) {
+	rows, err := s.q.ListLocationFiles(ctx, postgresgen.ListLocationFilesParams{LocationID: nullString(&locationID), UserID: nullString(&userID)})
 	if err != nil {
 		return nil, err
 	}
@@ -1483,7 +1483,7 @@ func postgresFileToDomain(d postgresgen.File) File {
 	return File{
 		ID:          d.ID,
 		TripID:      d.TripID,
-		ItemID:      strPtr(d.ItemID),
+		LocationID:  strPtr(d.LocationID),
 		Filename:    d.Filename,
 		StoragePath: d.StoragePath,
 		ContentType: strPtr(d.ContentType),

@@ -11,15 +11,15 @@ import (
 )
 
 const createItineraryEntry = `-- name: CreateItineraryEntry :one
-INSERT INTO itinerary_entries (id, itinerary_day_id, item_id, sort_order, note)
+INSERT INTO itinerary_entries (id, itinerary_day_id, location_id, sort_order, note)
 VALUES (?1, ?2, ?3, ?4, ?5)
-RETURNING id, itinerary_day_id, item_id, sort_order, note
+RETURNING id, itinerary_day_id, location_id, sort_order, note
 `
 
 type CreateItineraryEntryParams struct {
 	ID             string         `json:"id"`
 	ItineraryDayID string         `json:"itinerary_day_id"`
-	ItemID         string         `json:"item_id"`
+	LocationID     string         `json:"location_id"`
 	SortOrder      int64          `json:"sort_order"`
 	Note           sql.NullString `json:"note"`
 }
@@ -28,7 +28,7 @@ func (q *Queries) CreateItineraryEntry(ctx context.Context, arg CreateItineraryE
 	row := q.db.QueryRowContext(ctx, createItineraryEntry,
 		arg.ID,
 		arg.ItineraryDayID,
-		arg.ItemID,
+		arg.LocationID,
 		arg.SortOrder,
 		arg.Note,
 	)
@@ -36,7 +36,7 @@ func (q *Queries) CreateItineraryEntry(ctx context.Context, arg CreateItineraryE
 	err := row.Scan(
 		&i.ID,
 		&i.ItineraryDayID,
-		&i.ItemID,
+		&i.LocationID,
 		&i.SortOrder,
 		&i.Note,
 	)
@@ -60,98 +60,42 @@ func (q *Queries) DeleteItineraryEntry(ctx context.Context, arg DeleteItineraryE
 	return result.RowsAffected()
 }
 
-const listItemDatesByTrip = `-- name: ListItemDatesByTrip :many
-SELECT e.item_id, e.id AS entry_id, e.itinerary_day_id AS day_id, e.sort_order, d.date
+const listItineraryDatesByLocation = `-- name: ListItineraryDatesByLocation :many
+SELECT e.location_id, e.id AS entry_id, e.itinerary_day_id AS day_id, e.sort_order, d.date
 FROM itinerary_entries e
 INNER JOIN itinerary_days d ON d.id = e.itinerary_day_id
-INNER JOIN items i ON i.id = e.item_id
-WHERE i.trip_id = ?1
-ORDER BY e.item_id, d.date, e.sort_order
-`
-
-type ListItemDatesByTripRow struct {
-	ItemID    string `json:"item_id"`
-	EntryID   string `json:"entry_id"`
-	DayID     string `json:"day_id"`
-	SortOrder int64  `json:"sort_order"`
-	Date      string `json:"date"`
-}
-
-// Every dated location on a trip in one query, for the locations list.
-//
-// The by-item version above answers one location, which is right for the
-// location page. Calling it once per card is a query per location, so the list
-// uses this and buckets the rows by item in Go -- the same shape as
-// ListItemCoordinates and ListItemTagsByTrip.
-//
-// Joined through items rather than through itinerary_days, because the trip is
-// reachable either way but only this direction also excludes an entry whose
-// item somehow belongs to another trip.
-func (q *Queries) ListItemDatesByTrip(ctx context.Context, tripID string) ([]ListItemDatesByTripRow, error) {
-	rows, err := q.db.QueryContext(ctx, listItemDatesByTrip, tripID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListItemDatesByTripRow
-	for rows.Next() {
-		var i ListItemDatesByTripRow
-		if err := rows.Scan(
-			&i.ItemID,
-			&i.EntryID,
-			&i.DayID,
-			&i.SortOrder,
-			&i.Date,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listItineraryDatesByItem = `-- name: ListItineraryDatesByItem :many
-SELECT e.item_id, e.id AS entry_id, e.itinerary_day_id AS day_id, e.sort_order, d.date
-FROM itinerary_entries e
-INNER JOIN itinerary_days d ON d.id = e.itinerary_day_id
-WHERE e.item_id = ?1
+WHERE e.location_id = ?1
 ORDER BY d.date, e.sort_order
 `
 
-type ListItineraryDatesByItemRow struct {
-	ItemID    string `json:"item_id"`
-	EntryID   string `json:"entry_id"`
-	DayID     string `json:"day_id"`
-	SortOrder int64  `json:"sort_order"`
-	Date      string `json:"date"`
+type ListItineraryDatesByLocationRow struct {
+	LocationID string `json:"location_id"`
+	EntryID    string `json:"entry_id"`
+	DayID      string `json:"day_id"`
+	SortOrder  int64  `json:"sort_order"`
+	Date       string `json:"date"`
 }
 
 // The days one location appears on, which is what a location date range is
-// made of since Stage 25. There is no separate table of dates on an item any
-// more: the itinerary is the record, and the ranges the location page shows
+// made of since Stage 25. There is no separate table of dates on a location
+// any more: the itinerary is the record, and the ranges the location page shows
 // are these dates with contiguous runs collapsed in Go.
 //
-// Nothing stops an item from being on one day twice -- there is no unique
+// Nothing stops a location from being on one day twice -- there is no unique
 // constraint on the pair -- so duplicate dates come back as they are and the
 // caller reduces them to a set. The entry id and day id ride along because the
 // reconcile path needs to delete exact rows, not dates.
-func (q *Queries) ListItineraryDatesByItem(ctx context.Context, itemID string) ([]ListItineraryDatesByItemRow, error) {
-	rows, err := q.db.QueryContext(ctx, listItineraryDatesByItem, itemID)
+func (q *Queries) ListItineraryDatesByLocation(ctx context.Context, locationID string) ([]ListItineraryDatesByLocationRow, error) {
+	rows, err := q.db.QueryContext(ctx, listItineraryDatesByLocation, locationID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListItineraryDatesByItemRow
+	var items []ListItineraryDatesByLocationRow
 	for rows.Next() {
-		var i ListItineraryDatesByItemRow
+		var i ListItineraryDatesByLocationRow
 		if err := rows.Scan(
-			&i.ItemID,
+			&i.LocationID,
 			&i.EntryID,
 			&i.DayID,
 			&i.SortOrder,
@@ -171,7 +115,7 @@ func (q *Queries) ListItineraryDatesByItem(ctx context.Context, itemID string) (
 }
 
 const listItineraryEntriesByDay = `-- name: ListItineraryEntriesByDay :many
-SELECT id, itinerary_day_id, item_id, sort_order, note FROM itinerary_entries
+SELECT id, itinerary_day_id, location_id, sort_order, note FROM itinerary_entries
 WHERE itinerary_day_id = ?1
 ORDER BY sort_order
 `
@@ -190,7 +134,7 @@ func (q *Queries) ListItineraryEntriesByDay(ctx context.Context, itineraryDayID 
 		if err := rows.Scan(
 			&i.ID,
 			&i.ItineraryDayID,
-			&i.ItemID,
+			&i.LocationID,
 			&i.SortOrder,
 			&i.Note,
 		); err != nil {
@@ -208,25 +152,25 @@ func (q *Queries) ListItineraryEntriesByDay(ctx context.Context, itineraryDayID 
 }
 
 const listItineraryEntriesByTrip = `-- name: ListItineraryEntriesByTrip :many
-SELECT e.id, e.itinerary_day_id, e.item_id, e.sort_order, e.note,
-       i.title AS item_title, i.category AS item_category,
-       i.image_id AS item_image_id
+SELECT e.id, e.itinerary_day_id, e.location_id, e.sort_order, e.note,
+       loc.title AS location_title, loc.category AS location_category,
+       loc.image_id AS location_image_id
 FROM itinerary_entries e
 INNER JOIN itinerary_days d ON d.id = e.itinerary_day_id
-INNER JOIN items i ON i.id = e.item_id
+INNER JOIN locations loc ON loc.id = e.location_id
 WHERE d.trip_id = ?1
 ORDER BY e.sort_order
 `
 
 type ListItineraryEntriesByTripRow struct {
-	ID             string         `json:"id"`
-	ItineraryDayID string         `json:"itinerary_day_id"`
-	ItemID         string         `json:"item_id"`
-	SortOrder      int64          `json:"sort_order"`
-	Note           sql.NullString `json:"note"`
-	ItemTitle      string         `json:"item_title"`
-	ItemCategory   string         `json:"item_category"`
-	ItemImageID    sql.NullString `json:"item_image_id"`
+	ID               string         `json:"id"`
+	ItineraryDayID   string         `json:"itinerary_day_id"`
+	LocationID       string         `json:"location_id"`
+	SortOrder        int64          `json:"sort_order"`
+	Note             sql.NullString `json:"note"`
+	LocationTitle    string         `json:"location_title"`
+	LocationCategory string         `json:"location_category"`
+	LocationImageID  sql.NullString `json:"location_image_id"`
 }
 
 func (q *Queries) ListItineraryEntriesByTrip(ctx context.Context, tripID string) ([]ListItineraryEntriesByTripRow, error) {
@@ -241,12 +185,68 @@ func (q *Queries) ListItineraryEntriesByTrip(ctx context.Context, tripID string)
 		if err := rows.Scan(
 			&i.ID,
 			&i.ItineraryDayID,
-			&i.ItemID,
+			&i.LocationID,
 			&i.SortOrder,
 			&i.Note,
-			&i.ItemTitle,
-			&i.ItemCategory,
-			&i.ItemImageID,
+			&i.LocationTitle,
+			&i.LocationCategory,
+			&i.LocationImageID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLocationDatesByTrip = `-- name: ListLocationDatesByTrip :many
+SELECT e.location_id, e.id AS entry_id, e.itinerary_day_id AS day_id, e.sort_order, d.date
+FROM itinerary_entries e
+INNER JOIN itinerary_days d ON d.id = e.itinerary_day_id
+INNER JOIN locations loc ON loc.id = e.location_id
+WHERE loc.trip_id = ?1
+ORDER BY e.location_id, d.date, e.sort_order
+`
+
+type ListLocationDatesByTripRow struct {
+	LocationID string `json:"location_id"`
+	EntryID    string `json:"entry_id"`
+	DayID      string `json:"day_id"`
+	SortOrder  int64  `json:"sort_order"`
+	Date       string `json:"date"`
+}
+
+// Every dated location on a trip in one query, for the locations list.
+//
+// The by-location version above answers one location, which is right for the
+// location page. Calling it once per card is a query per location, so the list
+// uses this and buckets the rows by location in Go -- the same shape as
+// ListLocationCoordinates and ListLocationTagsByTrip.
+//
+// Joined through locations rather than through itinerary_days, because the
+// trip is reachable either way but only this direction also excludes an entry
+// whose location somehow belongs to another trip.
+func (q *Queries) ListLocationDatesByTrip(ctx context.Context, tripID string) ([]ListLocationDatesByTripRow, error) {
+	rows, err := q.db.QueryContext(ctx, listLocationDatesByTrip, tripID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLocationDatesByTripRow
+	for rows.Next() {
+		var i ListLocationDatesByTripRow
+		if err := rows.Scan(
+			&i.LocationID,
+			&i.EntryID,
+			&i.DayID,
+			&i.SortOrder,
+			&i.Date,
 		); err != nil {
 			return nil, err
 		}

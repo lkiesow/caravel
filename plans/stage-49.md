@@ -93,6 +93,70 @@ rewritten. Finally migrate down to 12 and up again.
 existing dev DB (the real migration path). Click through a location view, the
 map, itinerary and expenses: everything still loads.
 
+**Done.** Migration `0013_rename_items_to_locations` renames the four tables,
+the six `item_id` columns and the six indexes in both dialects. SQLite does
+this in place with `RENAME TO`/`RENAME COLUMN`; it has no index rename, so the
+indexes are dropped and recreated. Postgres also renames all fourteen
+constraints that carried an item name. Before writing those I listed them from a
+scratch schema migrated to 12, rather than guessing Postgres's naming.
+`items_category_check` is the one rename that matters: 0010 and 0011 drop it by
+name, and the next change to the category list will drop
+`locations_category_check`.
+On that scratch schema, up leaves no name containing "item" outside the
+checklist tables, and down restores the catalog exactly.
+
+The Go side was renamed type-aware with gopls (`gopls rename`, built into a
+scratch directory, not installed), not with sed. `ItemID` is a field on the db
+structs *and* on httpapi's own request structs, and only the first belonged in
+this milestone. That covered 49 identifiers: the domain types (`Location`,
+`LocationGeo`, `LocationLink`, `LocationTag`, `MapLocation`,
+`LocationCoordinate`, `LocationItineraryDate`), the params structs, every
+`ItemID`/`ItemTitle`/`ItemCategory`/`ItemImageID` field on them, and the 20
+`Store` methods. gopls carried the references into httpapi and `cmd/seed`, so
+those files change only where they call the store. Their handler names, JSON
+tags and file names are untouched and wait for M2. The query files were renamed
+(`locations.sql`, `location_geo.sql`, `location_links.sql`,
+`location_tags.sql`), with query names following the store methods
+(`ListItemLocationsByTrip` became `ListLocationCoordinatesByTrip`, which is
+what it returns). Table aliases changed from `i`/`l` to `loc`/`g`. sqlc is not
+installed here either, so v1.31.1, the version stamped in the generated
+headers, was built into the scratch directory. The eight stale
+`gen/item*.sql.go` files were deleted by hand, and the generated SQL has no
+unsubstituted `sqlc.arg`.
+
+**Deviation: the older migration tests now pin their own version.** The tests
+for 0006, 0010, 0011 and 0012 seeded under the old names and then ran `Up()` to
+head, so 0013 broke all four by renaming the tables they query afterwards. Each
+now runs `Migrate(N)` for its own N, which is what it was testing all along, so
+a future rename cannot break it again.
+
+`migration_0013_test.go` seeds one location under the old names, with geo, a
+link, a tag, a file, an itinerary entry and an expense. It then migrates to 13
+and checks:
+- every row is present under its new name;
+- no schema object outside checklists still names an item;
+- the six indexes exist.
+
+It then goes down to 12 and back up. Finally it deletes the location and checks
+that all five satellites cascaded, that the expense survived with
+`location_id` NULL, and that `foreign_key_check` is clean. The test catches a
+real failure: with the migration sabotaged to run under
+`legacy_alter_table=ON` and `foreign_keys=OFF` (the one combination where SQLite
+leaves references pointing at the old name), it fails seven assertions. With
+only `legacy_alter_table=ON` it still passed, because foreign keys being on is
+enough for SQLite to rewrite the references. So the migration comment now says
+exactly that, instead of the "since 3.26" shorthand the plan used.
+
+Verified: `make ci` and `make test-postgres` green, and `make test-ui` green
+(run early, since every store write path was renamed). The dev DB was backed up,
+then migrated 12 → 13 by `make dev` at startup. Counts are unchanged
+(14 locations, 11 with geo, 2 files on a location, 10 itinerary entries) and
+`foreign_key_check` is clean. In the browser at 324×756 (Playwright), the
+locations, map, itinerary, expenses and files tabs, a location view and its
+editor all load, with no console errors. Every read endpoint returned 200 across
+all 7 trips, all 10 itinerary entries carry their location title, and both files
+on a location carry theirs.
+
 ## 2. HTTP API (and the JS fetch calls that must move with it)
 
 - Routes in `internal/httpapi/router.go`: `/trips/{id}/items[/batch]` →

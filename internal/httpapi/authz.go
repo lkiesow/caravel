@@ -104,19 +104,19 @@ func (s *Server) loadTrip(w http.ResponseWriter, r *http.Request, min db.TripRol
 }
 
 // loadItem fetches the item named by {itemId} and authorizes against its trip.
-func (s *Server) loadItem(w http.ResponseWriter, r *http.Request, min db.TripRole) (db.Item, db.TripRole, bool) {
-	item, err := s.Store.GetItemByID(r.Context(), chi.URLParam(r, "itemId"))
+func (s *Server) loadItem(w http.ResponseWriter, r *http.Request, min db.TripRole) (db.Location, db.TripRole, bool) {
+	item, err := s.Store.GetLocationByID(r.Context(), chi.URLParam(r, "itemId"))
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "item not found")
 		} else {
 			writeError(w, http.StatusInternalServerError, "could not load item")
 		}
-		return db.Item{}, "", false
+		return db.Location{}, "", false
 	}
 	_, role, ok := s.authorizeTrip(w, r, item.TripID, min, "item not found")
 	if !ok {
-		return db.Item{}, "", false
+		return db.Location{}, "", false
 	}
 	return item, role, true
 }

@@ -136,16 +136,17 @@ older stage plan or an earlier version of this file without asking.
 ## Consistency and cleanup
 
 - **Identifier sweep: "item" → "location", all the way down.** **(soon)** (Stage
-  05; depth decided 2026-10-03; scheduled 2026-10-07; planned as Stage 49.)
+  05; depth decided 2026-10-03; scheduled 2026-10-07; in progress as Stage 49.)
   Land it *before* the location summary and the visited flag, so their columns,
   API fields and code are written with the new names rather than renamed
-  afterwards. The
-  user-visible copy says "location"; below it, the `item.*` i18n namespace (27
-  keys in `en.json`) is still item-flavoured while
-  `location.form.*`/`location.editor.*` migrated, `location-form.js` exports
-  `renderItemForm`, `locations-tab.js` exports `renderItemsTab` and uses
-  `data-action="new-item"`, the list renders `<item-card>`, and the API and
-  schema say `items` (`/api/items/{id}`, the `items` table and its satellites).
+  afterwards. **The schema and `internal/db` are done** (Stage 49 Milestone 1:
+  migration 0013, `locations`/`location_geo`/`location_links`/`location_tags`,
+  `location_id` everywhere). What is left: the API still says `items`
+  (`/api/items/{id}`, `item_id`/`item_title` JSON fields, the nested
+  `"location"` object), and the frontend still has the `item.*` i18n namespace
+  (27 keys in `en.json`), `renderItemForm` in `location-form.js`,
+  `renderItemsTab` and `data-action="new-item"` in `locations-tab.js`, and the
+  `<item-card>` element.
   Decided: go all the way, API routes and a table-rename migration included --
   precedent is Stage 11 Milestone 1's "documents" → "files" rename, which
   renamed the table in `0006` and dropped the old URL outright. Do it as its own

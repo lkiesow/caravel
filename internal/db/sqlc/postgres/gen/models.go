@@ -50,7 +50,7 @@ type Expense struct {
 	SpentOn     time.Time      `json:"spent_on"`
 	PayerUserID sql.NullString `json:"payer_user_id"`
 	CreatedAt   time.Time      `json:"created_at"`
-	ItemID      sql.NullString `json:"item_id"`
+	LocationID  sql.NullString `json:"location_id"`
 	Currency    sql.NullString `json:"currency"`
 }
 
@@ -62,7 +62,7 @@ type ExpenseShare struct {
 type File struct {
 	ID          string         `json:"id"`
 	TripID      string         `json:"trip_id"`
-	ItemID      sql.NullString `json:"item_id"`
+	LocationID  sql.NullString `json:"location_id"`
 	Filename    string         `json:"filename"`
 	StoragePath string         `json:"storage_path"`
 	ContentType sql.NullString `json:"content_type"`
@@ -71,41 +71,6 @@ type File struct {
 	Note        sql.NullString `json:"note"`
 	Visibility  string         `json:"visibility"`
 	OwnerUserID sql.NullString `json:"owner_user_id"`
-}
-
-type Item struct {
-	ID        string         `json:"id"`
-	TripID    string         `json:"trip_id"`
-	Category  string         `json:"category"`
-	Title     string         `json:"title"`
-	Notes     sql.NullString `json:"notes"`
-	ImageID   sql.NullString `json:"image_id"`
-	ShowOnMap bool           `json:"show_on_map"`
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
-}
-
-type ItemLink struct {
-	ID        string         `json:"id"`
-	ItemID    string         `json:"item_id"`
-	Url       string         `json:"url"`
-	Label     sql.NullString `json:"label"`
-	SortOrder int32          `json:"sort_order"`
-}
-
-type ItemLocation struct {
-	ID      string          `json:"id"`
-	ItemID  string          `json:"item_id"`
-	Lat     sql.NullFloat64 `json:"lat"`
-	Lng     sql.NullFloat64 `json:"lng"`
-	Address sql.NullString  `json:"address"`
-	OsmType sql.NullString  `json:"osm_type"`
-	OsmID   sql.NullString  `json:"osm_id"`
-}
-
-type ItemTag struct {
-	ItemID string `json:"item_id"`
-	Tag    string `json:"tag"`
 }
 
 type ItineraryDay struct {
@@ -118,9 +83,44 @@ type ItineraryDay struct {
 type ItineraryEntry struct {
 	ID             string         `json:"id"`
 	ItineraryDayID string         `json:"itinerary_day_id"`
-	ItemID         string         `json:"item_id"`
+	LocationID     string         `json:"location_id"`
 	SortOrder      int32          `json:"sort_order"`
 	Note           sql.NullString `json:"note"`
+}
+
+type Location struct {
+	ID        string         `json:"id"`
+	TripID    string         `json:"trip_id"`
+	Category  string         `json:"category"`
+	Title     string         `json:"title"`
+	Notes     sql.NullString `json:"notes"`
+	ImageID   sql.NullString `json:"image_id"`
+	ShowOnMap bool           `json:"show_on_map"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+}
+
+type LocationGeo struct {
+	ID         string          `json:"id"`
+	LocationID string          `json:"location_id"`
+	Lat        sql.NullFloat64 `json:"lat"`
+	Lng        sql.NullFloat64 `json:"lng"`
+	Address    sql.NullString  `json:"address"`
+	OsmType    sql.NullString  `json:"osm_type"`
+	OsmID      sql.NullString  `json:"osm_id"`
+}
+
+type LocationLink struct {
+	ID         string         `json:"id"`
+	LocationID string         `json:"location_id"`
+	Url        string         `json:"url"`
+	Label      sql.NullString `json:"label"`
+	SortOrder  int32          `json:"sort_order"`
+}
+
+type LocationTag struct {
+	LocationID string `json:"location_id"`
+	Tag        string `json:"tag"`
 }
 
 type MediaAsset struct {

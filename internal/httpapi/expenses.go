@@ -175,7 +175,7 @@ func (p *expenseNamer) itemTitle(ctx context.Context, itemID *string) *string {
 		return cached
 	}
 	var title *string
-	if item, err := p.srv.Store.GetItemByID(ctx, *itemID); err == nil {
+	if item, err := p.srv.Store.GetLocationByID(ctx, *itemID); err == nil {
 		t := item.Title
 		title = &t
 	}
@@ -201,8 +201,8 @@ func (p *expenseNamer) toResponse(ctx context.Context, e db.Expense, convertedMi
 		PayerUserID:      e.PayerUserID,
 		PayerDisplayName: p.name(ctx, e.PayerUserID),
 		ShareUserIDs:     shareIDs,
-		ItemID:           e.ItemID,
-		ItemTitle:        p.itemTitle(ctx, e.ItemID),
+		ItemID:           e.LocationID,
+		ItemTitle:        p.itemTitle(ctx, e.LocationID),
 		CreatedAt:        e.CreatedAt.UTC().Format(time.RFC3339),
 	}
 	if share, ok := splitAmount(convertedMinor, shareIDs)[readerID]; ok {
@@ -426,7 +426,7 @@ func (s *Server) requireTripItem(w http.ResponseWriter, r *http.Request, trip db
 	if itemID == nil {
 		return true
 	}
-	item, err := s.Store.GetItemByID(r.Context(), *itemID)
+	item, err := s.Store.GetLocationByID(r.Context(), *itemID)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			writeError(w, http.StatusBadRequest, "location not found")
@@ -559,7 +559,7 @@ func (s *Server) handleCreateExpense(w http.ResponseWriter, r *http.Request) {
 			Currency:    currency,
 			SpentOn:     req.SpentOn,
 			PayerUserID: req.PayerUserID,
-			ItemID:      req.ItemID,
+			LocationID:  req.ItemID,
 			CreatedAt:   time.Now().UTC(),
 		})
 		if err != nil {
@@ -620,7 +620,7 @@ func (s *Server) handleUpdateExpense(w http.ResponseWriter, r *http.Request) {
 			Currency:    currency,
 			SpentOn:     req.SpentOn,
 			PayerUserID: req.PayerUserID,
-			ItemID:      req.ItemID,
+			LocationID:  req.ItemID,
 		})
 		if err != nil {
 			return err

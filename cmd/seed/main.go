@@ -288,9 +288,9 @@ type itemSpec struct {
 	links    []linkSpec
 }
 
-func (s seedCtx) addItems(scenarioName, tripID string, specs []itemSpec) ([]db.Item, error) {
+func (s seedCtx) addItems(scenarioName, tripID string, specs []itemSpec) ([]db.Location, error) {
 	now := time.Now().UTC()
-	items := make([]db.Item, 0, len(specs))
+	items := make([]db.Location, 0, len(specs))
 	for i, spec := range specs {
 		itemID := seedID(scenarioName, "item", spec.key)
 		// A second apart, in spec order. The locations list is ordered by
@@ -302,7 +302,7 @@ func (s seedCtx) addItems(scenarioName, tripID string, specs []itemSpec) ([]db.I
 		// layout, and backwards from now so the newest spec is still the
 		// newest row.
 		created := now.Add(time.Duration(i-len(specs)) * time.Second)
-		item, err := s.store.CreateItem(s.ctx, db.CreateItemParams{
+		item, err := s.store.CreateLocation(s.ctx, db.CreateLocationParams{
 			ID:        itemID,
 			TripID:    tripID,
 			Category:  spec.category,
@@ -316,27 +316,27 @@ func (s seedCtx) addItems(scenarioName, tripID string, specs []itemSpec) ([]db.I
 			return nil, fmt.Errorf("create item %s: %w", spec.key, err)
 		}
 		for _, tag := range spec.tags {
-			if err := s.store.CreateItemTag(s.ctx, itemID, tag); err != nil {
+			if err := s.store.CreateLocationTag(s.ctx, itemID, tag); err != nil {
 				return nil, fmt.Errorf("tag item %s: %w", spec.key, err)
 			}
 		}
 		if spec.lat != nil && spec.lng != nil {
-			if _, err := s.store.UpsertItemLocation(s.ctx, db.UpsertItemLocationParams{
-				ID:     seedID(scenarioName, "location", spec.key),
-				ItemID: itemID,
-				Lat:    spec.lat,
-				Lng:    spec.lng,
+			if _, err := s.store.UpsertLocationGeo(s.ctx, db.UpsertLocationGeoParams{
+				ID:         seedID(scenarioName, "location", spec.key),
+				LocationID: itemID,
+				Lat:        spec.lat,
+				Lng:        spec.lng,
 			}); err != nil {
 				return nil, fmt.Errorf("set location for %s: %w", spec.key, err)
 			}
 		}
 		for j, l := range spec.links {
-			if _, err := s.store.CreateItemLink(s.ctx, db.CreateItemLinkParams{
-				ID:        seedID(scenarioName, "link", spec.key, l.url),
-				ItemID:    itemID,
-				URL:       l.url,
-				Label:     ptr(l.label),
-				SortOrder: j,
+			if _, err := s.store.CreateLocationLink(s.ctx, db.CreateLocationLinkParams{
+				ID:         seedID(scenarioName, "link", spec.key, l.url),
+				LocationID: itemID,
+				URL:        l.url,
+				Label:      ptr(l.label),
+				SortOrder:  j,
 			}); err != nil {
 				return nil, fmt.Errorf("add link for %s: %w", spec.key, err)
 			}
@@ -354,7 +354,7 @@ func (s seedCtx) addEntry(scenarioName, dayID, itemID string, sortOrder int) err
 	_, err := s.store.CreateItineraryEntry(s.ctx, db.CreateItineraryEntryParams{
 		ID:             seedID(scenarioName, "entry", dayID, itemID),
 		ItineraryDayID: dayID,
-		ItemID:         itemID,
+		LocationID:     itemID,
 		SortOrder:      sortOrder,
 	})
 	return err
@@ -454,7 +454,7 @@ func (s seedCtx) addFile(scenarioName, tripID string, itemID *string, filename, 
 	_, err = s.store.CreateFile(s.ctx, db.CreateFileParams{
 		ID:          id,
 		TripID:      tripID,
-		ItemID:      itemID,
+		LocationID:  itemID,
 		Filename:    filename,
 		StoragePath: key,
 		ContentType: ptr("text/plain; charset=utf-8"),
@@ -568,7 +568,7 @@ func seedFull(s seedCtx) error {
 	if err != nil {
 		return err
 	}
-	if _, err := s.store.SetItemImage(s.ctx, items[0].ID, trip.ID, &itemImageID, time.Now().UTC()); err != nil {
+	if _, err := s.store.SetLocationImage(s.ctx, items[0].ID, trip.ID, &itemImageID, time.Now().UTC()); err != nil {
 		return fmt.Errorf("set location image: %w", err)
 	}
 

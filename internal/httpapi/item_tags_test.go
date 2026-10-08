@@ -209,14 +209,14 @@ type countingTagStore struct {
 	byTrip atomic.Int64
 }
 
-func (s *countingTagStore) ListItemTagsByItem(ctx context.Context, itemID string) ([]string, error) {
+func (s *countingTagStore) ListLocationTagsByLocation(ctx context.Context, itemID string) ([]string, error) {
 	s.byItem.Add(1)
-	return s.Store.ListItemTagsByItem(ctx, itemID)
+	return s.Store.ListLocationTagsByLocation(ctx, itemID)
 }
 
-func (s *countingTagStore) ListItemTagsByTrip(ctx context.Context, tripID string) ([]db.ItemTag, error) {
+func (s *countingTagStore) ListLocationTagsByTrip(ctx context.Context, tripID string) ([]db.LocationTag, error) {
 	s.byTrip.Add(1)
-	return s.Store.ListItemTagsByTrip(ctx, tripID)
+	return s.Store.ListLocationTagsByTrip(ctx, tripID)
 }
 
 func TestListItemsLoadsTagsInOneQuery(t *testing.T) {

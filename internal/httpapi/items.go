@@ -60,7 +60,7 @@ type itemResponse struct {
 	UpdatedAt string                  `json:"updated_at"`
 }
 
-func (s *Server) itemToResponse(ctx context.Context, i db.Item) itemResponse {
+func (s *Server) itemToResponse(ctx context.Context, i db.Location) itemResponse {
 	resp := itemResponse{
 		ID:        i.ID,
 		TripID:    i.TripID,
@@ -91,7 +91,7 @@ type itemLocationResponse struct {
 	OSMID   *string `json:"osm_id"`
 }
 
-func newItemLocationResponse(loc db.ItemLocation) itemLocationResponse {
+func newItemLocationResponse(loc db.LocationGeo) itemLocationResponse {
 	return itemLocationResponse{
 		Lat:     loc.Lat,
 		Lng:     loc.Lng,
@@ -129,7 +129,7 @@ func (s *Server) handleListItems(w http.ResponseWriter, r *http.Request) {
 		category = &c
 	}
 
-	items, err := s.Store.ListItemsByTrip(r.Context(), trip.ID, category)
+	items, err := s.Store.ListLocationsByTrip(r.Context(), trip.ID, category)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not list items")
 		return
@@ -138,26 +138,26 @@ func (s *Server) handleListItems(w http.ResponseWriter, r *http.Request) {
 	// One extra query for the whole trip rather than one per item. A failure
 	// here costs the distance filter, not the list, so it is not fatal: the
 	// tab still renders every location, just without coordinates to measure.
-	coordinates := map[string]db.ItemCoordinate{}
-	if located, err := s.Store.ListItemCoordinates(r.Context(), trip.ID); err == nil {
+	coordinates := map[string]db.LocationCoordinate{}
+	if located, err := s.Store.ListLocationCoordinates(r.Context(), trip.ID); err == nil {
 		for _, c := range located {
-			coordinates[c.ItemID] = c
+			coordinates[c.LocationID] = c
 		}
 	}
 
 	// Likewise one query for the trip rather than one per item, and likewise
 	// not fatal: a failure here costs the tag filter, not the list.
 	tags := map[string][]string{}
-	if rows, err := s.Store.ListItemTagsByTrip(r.Context(), trip.ID); err == nil {
+	if rows, err := s.Store.ListLocationTagsByTrip(r.Context(), trip.ID); err == nil {
 		tags = tagsByItem(rows)
 	}
 
 	// And once more for the dates. Three trip-wide reads to build this list,
 	// none of them per row, and none of them fatal -- see the note above.
 	dates := map[string][]string{}
-	if rows, err := s.Store.ListItemDatesByTrip(r.Context(), trip.ID); err == nil {
+	if rows, err := s.Store.ListLocationDatesByTrip(r.Context(), trip.ID); err == nil {
 		for _, row := range rows {
-			dates[row.ItemID] = append(dates[row.ItemID], row.Date)
+			dates[row.LocationID] = append(dates[row.LocationID], row.Date)
 		}
 	}
 
@@ -294,38 +294,38 @@ func validateLinkURL(raw string) error {
 // an existing item. It takes the Store to use rather than reading s.Store, so
 // the callers can hand it a transaction-bound one and have the whole item
 // commit or not at all.
-func writeItemNested(ctx context.Context, store db.Store, item db.Item, req itemRequest) error {
+func writeItemNested(ctx context.Context, store db.Store, item db.Location, req itemRequest) error {
 	if req.Location != nil {
-		if _, err := store.UpsertItemLocation(ctx, db.UpsertItemLocationParams{
-			ID:      uuid.NewString(),
-			ItemID:  item.ID,
-			Lat:     req.Location.Lat,
-			Lng:     req.Location.Lng,
-			Address: req.Location.Address,
-			OSMType: req.Location.OSMType,
-			OSMID:   req.Location.OSMID,
+		if _, err := store.UpsertLocationGeo(ctx, db.UpsertLocationGeoParams{
+			ID:         uuid.NewString(),
+			LocationID: item.ID,
+			Lat:        req.Location.Lat,
+			Lng:        req.Location.Lng,
+			Address:    req.Location.Address,
+			OSMType:    req.Location.OSMType,
+			OSMID:      req.Location.OSMID,
 		}); err != nil {
 			return err
 		}
 	}
 
 	if req.Links != nil {
-		existing, err := store.ListItemLinksByItem(ctx, item.ID)
+		existing, err := store.ListLocationLinksByLocation(ctx, item.ID)
 		if err != nil {
 			return err
 		}
 		for _, l := range existing {
-			if _, err := store.DeleteItemLink(ctx, l.ID, item.ID); err != nil {
+			if _, err := store.DeleteLocationLink(ctx, l.ID, item.ID); err != nil {
 				return err
 			}
 		}
 		for i, l := range *req.Links {
-			if _, err := store.CreateItemLink(ctx, db.CreateItemLinkParams{
-				ID:        uuid.NewString(),
-				ItemID:    item.ID,
-				URL:       l.URL,
-				Label:     l.Label,
-				SortOrder: i,
+			if _, err := store.CreateLocationLink(ctx, db.CreateLocationLinkParams{
+				ID:         uuid.NewString(),
+				LocationID: item.ID,
+				URL:        l.URL,
+				Label:      l.Label,
+				SortOrder:  i,
 			}); err != nil {
 				return err
 			}
@@ -393,29 +393,29 @@ func (s *Server) handleGetItem(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.buildItemDetail(r, item))
 }
 
-func (s *Server) buildItemDetail(r *http.Request, item db.Item) itemDetailResponse {
+func (s *Server) buildItemDetail(r *http.Request, item db.Location) itemDetailResponse {
 	detail := itemDetailResponse{itemResponse: s.itemToResponse(r.Context(), item), Links: []itemLinkResponse{}}
 
-	if loc, err := s.Store.GetItemLocationByItemID(r.Context(), item.ID); err == nil {
+	if loc, err := s.Store.GetLocationGeoByLocationID(r.Context(), item.ID); err == nil {
 		locResp := newItemLocationResponse(loc)
 		detail.Location = &locResp
 	}
 
-	if links, err := s.Store.ListItemLinksByItem(r.Context(), item.ID); err == nil {
+	if links, err := s.Store.ListLocationLinksByLocation(r.Context(), item.ID); err == nil {
 		for _, l := range links {
 			detail.Links = append(detail.Links, itemLinkResponse{ID: l.ID, URL: l.URL, Label: l.Label, SortOrder: l.SortOrder})
 		}
 	}
 
 	// Tolerant in the same way, and for the same reason.
-	if tags, err := s.Store.ListItemTagsByItem(r.Context(), item.ID); err == nil {
+	if tags, err := s.Store.ListLocationTagsByLocation(r.Context(), item.ID); err == nil {
 		detail.Tags = tags
 	}
 
 	// The days this location is on in the itinerary, collapsed into ranges.
 	// Tolerant of a failure the way the two blocks above are: losing the dates
 	// costs a card on the page, not the location.
-	if rows, err := s.Store.ListItineraryDatesByItem(r.Context(), item.ID); err == nil {
+	if rows, err := s.Store.ListItineraryDatesByLocation(r.Context(), item.ID); err == nil {
 		dates := make([]string, len(rows))
 		for i, row := range rows {
 			dates[i] = row.Date
@@ -446,9 +446,9 @@ func (s *Server) handleUpdateItem(w http.ResponseWriter, r *http.Request) {
 	if req.ShowOnMap != nil {
 		showOnMap = *req.ShowOnMap
 	}
-	var updated db.Item
+	var updated db.Location
 	err := s.Store.WithTx(r.Context(), func(store db.Store) error {
-		saved, err := store.UpdateItem(r.Context(), db.UpdateItemParams{
+		saved, err := store.UpdateLocation(r.Context(), db.UpdateLocationParams{
 			ID:        item.ID,
 			TripID:    item.TripID,
 			Category:  req.Category,
@@ -478,7 +478,7 @@ func (s *Server) handleDeleteItem(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if _, err := s.Store.DeleteItem(r.Context(), item.ID, item.TripID); err != nil {
+	if _, err := s.Store.DeleteLocation(r.Context(), item.ID, item.TripID); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not delete item")
 		return
 	}
@@ -561,14 +561,14 @@ func (s *Server) handlePutItemLocation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	loc, err := s.Store.UpsertItemLocation(r.Context(), db.UpsertItemLocationParams{
-		ID:      uuid.NewString(),
-		ItemID:  item.ID,
-		Lat:     req.Lat,
-		Lng:     req.Lng,
-		Address: req.Address,
-		OSMType: req.OSMType,
-		OSMID:   req.OSMID,
+	loc, err := s.Store.UpsertLocationGeo(r.Context(), db.UpsertLocationGeoParams{
+		ID:         uuid.NewString(),
+		LocationID: item.ID,
+		Lat:        req.Lat,
+		Lng:        req.Lng,
+		Address:    req.Address,
+		OSMType:    req.OSMType,
+		OSMID:      req.OSMID,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not save location")
@@ -600,11 +600,11 @@ func (s *Server) handleCreateItemLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	link, err := s.Store.CreateItemLink(r.Context(), db.CreateItemLinkParams{
-		ID:     uuid.NewString(),
-		ItemID: item.ID,
-		URL:    req.URL,
-		Label:  req.Label,
+	link, err := s.Store.CreateLocationLink(r.Context(), db.CreateLocationLinkParams{
+		ID:         uuid.NewString(),
+		LocationID: item.ID,
+		URL:        req.URL,
+		Label:      req.Label,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not create link")
@@ -619,7 +619,7 @@ func (s *Server) handleDeleteItemLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	linkID := chi.URLParam(r, "linkId")
-	deleted, err := s.Store.DeleteItemLink(r.Context(), linkID, item.ID)
+	deleted, err := s.Store.DeleteLocationLink(r.Context(), linkID, item.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not delete link")
 		return
@@ -661,7 +661,7 @@ func (s *Server) handleSetItemImage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	updated, err := s.Store.SetItemImage(r.Context(), item.ID, item.TripID, req.MediaAssetID, time.Now().UTC())
+	updated, err := s.Store.SetLocationImage(r.Context(), item.ID, item.TripID, req.MediaAssetID, time.Now().UTC())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not set image")
 		return

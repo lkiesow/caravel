@@ -61,8 +61,8 @@ func TestMigration0010AddsAreaAndKeepsEverything(t *testing.T) {
 	exec(`INSERT INTO item_links (id, item_id, url, sort_order) VALUES ('k','i','https://example.com',0)`)
 	exec(`INSERT INTO item_tags (item_id, tag) VALUES ('i','landmark')`)
 
-	if err := newM().Up(); err != nil && err != migrate.ErrNoChange {
-		t.Fatalf("up to head: %v", err)
+	if err := newM().Migrate(10); err != nil {
+		t.Fatalf("migrate to 10: %v", err)
 	}
 
 	count := func(q string) int {

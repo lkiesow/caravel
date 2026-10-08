@@ -41,8 +41,8 @@ func TestInstanceCounts(t *testing.T) {
 	}
 	for i, cat := range []string{"stay", "stay", "site", "food"} {
 		id := string(rune('a' + i))
-		if _, err := store.CreateItem(ctx, db.CreateItemParams{ID: id, TripID: "t1", Category: cat, Title: id, CreatedAt: now, UpdatedAt: now}); err != nil {
-			t.Fatalf("create item: %v", err)
+		if _, err := store.CreateLocation(ctx, db.CreateLocationParams{ID: id, TripID: "t1", Category: cat, Title: id, CreatedAt: now, UpdatedAt: now}); err != nil {
+			t.Fatalf("create location: %v", err)
 		}
 	}
 	for id, size := range map[string]int64{"f1": 1000, "f2": 2500} {

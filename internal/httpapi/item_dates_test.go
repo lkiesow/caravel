@@ -135,7 +135,7 @@ func TestListItineraryDatesByItem(t *testing.T) {
 		`{"item_id":"`+other+`"}`, http.StatusCreated,
 	)
 
-	rows, err := ts.Store.ListItineraryDatesByItem(context.Background(), hotel)
+	rows, err := ts.Store.ListItineraryDatesByLocation(context.Background(), hotel)
 	if err != nil {
 		t.Fatalf("ListItineraryDatesByItem: %v", err)
 	}
@@ -157,8 +157,8 @@ func TestListItineraryDatesByItem(t *testing.T) {
 		if _, err := time.Parse(isoDate, row.Date); err != nil {
 			t.Errorf("date %q is not a plain ISO date: %v", row.Date, err)
 		}
-		if row.ItemID != hotel {
-			t.Errorf("got a row for item %s, want only %s", row.ItemID, hotel)
+		if row.LocationID != hotel {
+			t.Errorf("got a row for item %s, want only %s", row.LocationID, hotel)
 		}
 		if row.EntryID == "" || row.DayID == "" {
 			t.Errorf("row is missing the ids the reconcile deletes by: %+v", row)
@@ -392,14 +392,14 @@ type countingDateStore struct {
 	byTrip atomic.Int64
 }
 
-func (s *countingDateStore) ListItineraryDatesByItem(ctx context.Context, itemID string) ([]db.ItemItineraryDate, error) {
+func (s *countingDateStore) ListItineraryDatesByLocation(ctx context.Context, itemID string) ([]db.LocationItineraryDate, error) {
 	s.byItem.Add(1)
-	return s.Store.ListItineraryDatesByItem(ctx, itemID)
+	return s.Store.ListItineraryDatesByLocation(ctx, itemID)
 }
 
-func (s *countingDateStore) ListItemDatesByTrip(ctx context.Context, tripID string) ([]db.ItemItineraryDate, error) {
+func (s *countingDateStore) ListLocationDatesByTrip(ctx context.Context, tripID string) ([]db.LocationItineraryDate, error) {
 	s.byTrip.Add(1)
-	return s.Store.ListItemDatesByTrip(ctx, tripID)
+	return s.Store.ListLocationDatesByTrip(ctx, tripID)
 }
 
 func TestListItemsCarriesCollapsedDatesInOneQuery(t *testing.T) {

@@ -90,9 +90,9 @@ func (s *Server) handleCreateItemsBatch(w http.ResponseWriter, r *http.Request) 
 }
 
 // createItemsTx writes every location in one transaction.
-func (s *Server) createItemsTx(r *http.Request, trip db.Trip, reqs []itemRequest) ([]db.Item, error) {
+func (s *Server) createItemsTx(r *http.Request, trip db.Trip, reqs []itemRequest) ([]db.Location, error) {
 	ctx := r.Context()
-	out := make([]db.Item, 0, len(reqs))
+	out := make([]db.Location, 0, len(reqs))
 
 	err := s.Store.WithTx(ctx, func(store db.Store) error {
 		out = out[:0]

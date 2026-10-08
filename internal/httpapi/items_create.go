@@ -297,9 +297,9 @@ func (s *Server) stageOneFile(ctx context.Context, tripID, itemID string,
 // createItemTx is the single write: the item, its nested rows, the cover and
 // the attachments, all inside one transaction.
 func (s *Server) createItemTx(ctx context.Context, trip db.Trip, itemID string, req itemRequest,
-	image *pendingImage, files []pendingFile) (db.Item, error) {
+	image *pendingImage, files []pendingFile) (db.Location, error) {
 
-	var item db.Item
+	var item db.Location
 	err := s.Store.WithTx(ctx, func(store db.Store) error {
 		created, err := createItemInStore(ctx, store, trip, itemID, req, image, files)
 		item = created
@@ -317,7 +317,7 @@ func (s *Server) createItemTx(ctx context.Context, trip db.Trip, itemID string, 
 // and the arguments do not already carry, and saying so keeps it obvious that
 // the only writes it makes are through the store it was handed.
 func createItemInStore(ctx context.Context, store db.Store, trip db.Trip, itemID string, req itemRequest,
-	image *pendingImage, files []pendingFile) (db.Item, error) {
+	image *pendingImage, files []pendingFile) (db.Location, error) {
 
 	showOnMap := true
 	if req.ShowOnMap != nil {
@@ -326,7 +326,7 @@ func createItemInStore(ctx context.Context, store db.Store, trip db.Trip, itemID
 	uploader, hasUploader := auth.UserFromContext(ctx)
 	now := time.Now().UTC()
 
-	created, err := store.CreateItem(ctx, db.CreateItemParams{
+	created, err := store.CreateLocation(ctx, db.CreateLocationParams{
 		ID:        itemID,
 		TripID:    trip.ID,
 		Category:  req.Category,
@@ -337,10 +337,10 @@ func createItemInStore(ctx context.Context, store db.Store, trip db.Trip, itemID
 		UpdatedAt: now,
 	})
 	if err != nil {
-		return db.Item{}, err
+		return db.Location{}, err
 	}
 	if err := writeItemNested(ctx, store, created, req); err != nil {
-		return db.Item{}, err
+		return db.Location{}, err
 	}
 
 	if image != nil {
@@ -359,11 +359,11 @@ func createItemInStore(ctx context.Context, store db.Store, trip db.Trip, itemID
 			CreatedAt:   now,
 		})
 		if err != nil {
-			return db.Item{}, err
+			return db.Location{}, err
 		}
-		updated, err := store.SetItemImage(ctx, created.ID, trip.ID, &asset.ID, now)
+		updated, err := store.SetLocationImage(ctx, created.ID, trip.ID, &asset.ID, now)
 		if err != nil {
-			return db.Item{}, err
+			return db.Location{}, err
 		}
 		created = updated
 	}
@@ -376,7 +376,7 @@ func createItemInStore(ctx context.Context, store db.Store, trip db.Trip, itemID
 		if _, err := store.CreateFile(ctx, db.CreateFileParams{
 			ID:          f.id,
 			TripID:      trip.ID,
-			ItemID:      &created.ID,
+			LocationID:  &created.ID,
 			Filename:    f.filename,
 			StoragePath: f.key,
 			ContentType: &f.contentType,
@@ -386,7 +386,7 @@ func createItemInStore(ctx context.Context, store db.Store, trip db.Trip, itemID
 			UploadedAt:  now,
 			Note:        f.note,
 		}); err != nil {
-			return db.Item{}, err
+			return db.Location{}, err
 		}
 	}
 

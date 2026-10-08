@@ -85,7 +85,7 @@ func fileToResponse(d db.File, readerID string) fileResponse {
 	return fileResponse{
 		ID:          d.ID,
 		TripID:      d.TripID,
-		ItemID:      d.ItemID,
+		ItemID:      d.LocationID,
 		Filename:    d.Filename,
 		ContentType: d.ContentType,
 		SizeBytes:   d.SizeBytes,
@@ -102,7 +102,7 @@ func fileToResponse(d db.File, readerID string) fileResponse {
 // other.
 func fileDetailToResponse(d db.FileDetail, readerID string) fileResponse {
 	resp := fileToResponse(d.File, readerID)
-	resp.ItemTitle = d.ItemTitle
+	resp.ItemTitle = d.LocationTitle
 	return resp
 }
 
@@ -164,7 +164,7 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request, tripID strin
 	row, err := s.Store.CreateFile(r.Context(), db.CreateFileParams{
 		ID:          id,
 		TripID:      tripID,
-		ItemID:      itemID,
+		LocationID:  itemID,
 		Filename:    filename,
 		StoragePath: key,
 		ContentType: contentTypePtr,
@@ -213,7 +213,7 @@ func (s *Server) handleListItemFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	me, _ := auth.UserFromContext(r.Context())
-	files, err := s.Store.ListItemFiles(r.Context(), item.ID, me.ID)
+	files, err := s.Store.ListLocationFiles(r.Context(), item.ID, me.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not list files")
 		return

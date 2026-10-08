@@ -38,10 +38,10 @@ type Querier interface {
 	CreateExpense(ctx context.Context, arg CreateExpenseParams) (Expense, error)
 	CreateExpenseShare(ctx context.Context, arg CreateExpenseShareParams) error
 	CreateFile(ctx context.Context, arg CreateFileParams) (File, error)
-	CreateItem(ctx context.Context, arg CreateItemParams) (Item, error)
-	CreateItemLink(ctx context.Context, arg CreateItemLinkParams) (ItemLink, error)
-	CreateItemTag(ctx context.Context, arg CreateItemTagParams) error
 	CreateItineraryEntry(ctx context.Context, arg CreateItineraryEntryParams) (ItineraryEntry, error)
+	CreateLocation(ctx context.Context, arg CreateLocationParams) (Location, error)
+	CreateLocationLink(ctx context.Context, arg CreateLocationLinkParams) (LocationLink, error)
+	CreateLocationTag(ctx context.Context, arg CreateLocationTagParams) error
 	CreateMediaAsset(ctx context.Context, arg CreateMediaAssetParams) (MediaAsset, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateTrip(ctx context.Context, arg CreateTripParams) (Trip, error)
@@ -56,18 +56,18 @@ type Querier interface {
 	DeleteExpenseSharesByExpense(ctx context.Context, expenseID string) error
 	DeleteExpiredSessions(ctx context.Context, now string) error
 	DeleteFile(ctx context.Context, arg DeleteFileParams) (int64, error)
-	DeleteItem(ctx context.Context, arg DeleteItemParams) (int64, error)
-	DeleteItemLink(ctx context.Context, arg DeleteItemLinkParams) (int64, error)
-	// The tag set is replaced as a whole rather than patched tag by tag, so a write
-	// deletes and reinserts inside one transaction. Two people editing the same
-	// location then produce one set or the other, never a mixture.
-	DeleteItemTagsByItem(ctx context.Context, itemID string) error
 	// Scoped by trip_id as well as id, mirroring DeleteItineraryEntry: the
 	// handler has already checked ownership, and this keeps a day from being
 	// deleted through the wrong trip even if that check is ever bypassed.
 	// Entries on the day go with it via itinerary_entries' ON DELETE CASCADE.
 	DeleteItineraryDay(ctx context.Context, arg DeleteItineraryDayParams) (int64, error)
 	DeleteItineraryEntry(ctx context.Context, arg DeleteItineraryEntryParams) (int64, error)
+	DeleteLocation(ctx context.Context, arg DeleteLocationParams) (int64, error)
+	DeleteLocationLink(ctx context.Context, arg DeleteLocationLinkParams) (int64, error)
+	// The tag set is replaced as a whole rather than patched tag by tag, so a write
+	// deletes and reinserts inside one transaction. Two people editing the same
+	// location then produce one set or the other, never a mixture.
+	DeleteLocationTagsByLocation(ctx context.Context, locationID string) error
 	DeleteSession(ctx context.Context, id string) error
 	DeleteSessionsByUserID(ctx context.Context, userID string) error
 	// Keeps its owner_id predicate where UpdateTrip and SetTripPreviewImage lost
@@ -99,10 +99,10 @@ type Querier interface {
 	GetChecklistByID(ctx context.Context, id string) (Checklist, error)
 	GetExpenseByID(ctx context.Context, id string) (Expense, error)
 	GetFileByID(ctx context.Context, id string) (File, error)
-	GetItemByID(ctx context.Context, id string) (Item, error)
-	GetItemLocationByItemID(ctx context.Context, itemID string) (ItemLocation, error)
 	GetItineraryDayByID(ctx context.Context, id string) (ItineraryDay, error)
 	GetItineraryDayByTripAndDate(ctx context.Context, arg GetItineraryDayByTripAndDateParams) (ItineraryDay, error)
+	GetLocationByID(ctx context.Context, id string) (Location, error)
+	GetLocationGeoByLocationID(ctx context.Context, locationID string) (LocationGeo, error)
 	GetMediaAssetByID(ctx context.Context, id string) (MediaAsset, error)
 	GetSessionByID(ctx context.Context, id string) (Session, error)
 	GetTripByID(ctx context.Context, id string) (Trip, error)
@@ -113,12 +113,12 @@ type Querier interface {
 	GetTripNote(ctx context.Context, tripID string) (TripNote, error)
 	GetUserByID(ctx context.Context, id string) (User, error)
 	GetUserByUsername(ctx context.Context, username string) (User, error)
-	InsertItemLocation(ctx context.Context, arg InsertItemLocationParams) (ItemLocation, error)
 	InsertItineraryDay(ctx context.Context, arg InsertItineraryDayParams) (ItineraryDay, error)
 	// For EnsureItineraryDay. A day that already exists is left alone rather
 	// than reported as a unique violation, so two requests creating the same
 	// day at once both succeed; the caller reads the row back afterwards.
 	InsertItineraryDayIfAbsent(ctx context.Context, arg InsertItineraryDayIfAbsentParams) error
+	InsertLocationGeo(ctx context.Context, arg InsertLocationGeoParams) (LocationGeo, error)
 	InsertTripNote(ctx context.Context, arg InsertTripNoteParams) (TripNote, error)
 	// Instance-wide totals for the metrics endpoint, one row per scrape.
 	// Every column is cast so both dialects generate a plain int64.
@@ -143,36 +143,52 @@ type Querier interface {
 	// expense on a trip is visible to everyone on it. That is deliberate -- hidden
 	// rows in a shared ledger make an incorrect total look correct.
 	ListExpensesByTrip(ctx context.Context, tripID string) ([]Expense, error)
-	// Every dated location on a trip in one query, for the locations list.
+	// The days one location appears on, which is what a location date range is
+	// made of since Stage 25. There is no separate table of dates on a location
+	// any more: the itinerary is the record, and the ranges the location page shows
+	// are these dates with contiguous runs collapsed in Go.
 	//
-	// The by-item version above answers one location, which is right for the
-	// location page. Calling it once per card is a query per location, so the list
-	// uses this and buckets the rows by item in Go -- the same shape as
-	// ListItemCoordinates and ListItemTagsByTrip.
+	// Nothing stops a location from being on one day twice -- there is no unique
+	// constraint on the pair -- so duplicate dates come back as they are and the
+	// caller reduces them to a set. The entry id and day id ride along because the
+	// reconcile path needs to delete exact rows, not dates.
+	ListItineraryDatesByLocation(ctx context.Context, locationID string) ([]ListItineraryDatesByLocationRow, error)
+	ListItineraryDaysByTrip(ctx context.Context, tripID string) ([]ItineraryDay, error)
+	// Entries of one day, in their stored order. Used to number a new entry and to
+	// validate a reorder against the set of entries the day actually has.
+	ListItineraryEntriesByDay(ctx context.Context, itineraryDayID string) ([]ItineraryEntry, error)
+	ListItineraryEntriesByTrip(ctx context.Context, tripID string) ([]ListItineraryEntriesByTripRow, error)
+	// ListLocationCoordinatesByTrip: every coordinate on the trip, keyed by
+	// location.
 	//
-	// Joined through items rather than through itinerary_days, because the trip is
-	// reachable either way but only this direction also excludes an entry whose
-	// item somehow belongs to another trip.
-	ListItemDatesByTrip(ctx context.Context, tripID string) ([]ListItemDatesByTripRow, error)
-	ListItemFiles(ctx context.Context, arg ListItemFilesParams) ([]File, error)
-	ListItemLinksByItem(ctx context.Context, itemID string) ([]ItemLink, error)
-	// ListItemLocationsByTrip: every coordinate on the trip, keyed by item.
-	//
-	// Deliberately NOT ListMapItemsByTrip below: that one also filters
+	// Deliberately NOT ListMapLocationsByTrip below: that one also filters
 	// show_on_map, which is about whether a place is drawn on the map and says
 	// nothing about whether it has a position. The locations list filters by
-	// distance, so it wants every located item regardless.
+	// distance, so it wants every location with coordinates regardless.
 	//
 	// Rows with only an address and no coordinates are excluded here rather than
 	// in Go: they are not "far away", they are unmeasurable, and the caller has
 	// to be able to tell those apart.
-	ListItemLocationsByTrip(ctx context.Context, tripID string) ([]ListItemLocationsByTripRow, error)
-	ListItemTagsByItem(ctx context.Context, itemID string) ([]string, error)
+	ListLocationCoordinatesByTrip(ctx context.Context, tripID string) ([]ListLocationCoordinatesByTripRow, error)
+	// Every dated location on a trip in one query, for the locations list.
+	//
+	// The by-location version above answers one location, which is right for the
+	// location page. Calling it once per card is a query per location, so the list
+	// uses this and buckets the rows by location in Go -- the same shape as
+	// ListLocationCoordinates and ListLocationTagsByTrip.
+	//
+	// Joined through locations rather than through itinerary_days, because the
+	// trip is reachable either way but only this direction also excludes an entry
+	// whose location somehow belongs to another trip.
+	ListLocationDatesByTrip(ctx context.Context, tripID string) ([]ListLocationDatesByTripRow, error)
+	ListLocationFiles(ctx context.Context, arg ListLocationFilesParams) ([]File, error)
+	ListLocationLinksByLocation(ctx context.Context, locationID string) ([]LocationLink, error)
+	ListLocationTagsByLocation(ctx context.Context, locationID string) ([]string, error)
 	// Every tag on a trip in one query, carrying the location each one belongs to.
 	// The locations list needs the tags of each of its rows, and asking per
 	// location is a query per row. The same rows, deduplicated, are the distinct
 	// tag list the editor offers as suggestions.
-	ListItemTagsByTrip(ctx context.Context, tripID string) ([]ItemTag, error)
+	ListLocationTagsByTrip(ctx context.Context, tripID string) ([]LocationTag, error)
 	// The CAST around the optional category is required, not decoration. Without
 	// it the generated Postgres query reads AND ($2 IS NULL OR category = $2) with
 	// an untyped parameter, and the server refuses it at prepare time: could not
@@ -183,23 +199,8 @@ type Querier interface {
 	// Until migration 0012 this read ORDER BY sort_order, created_at, and the
 	// sort_order column was the reason that sort was wrong. The id breaks a tie so
 	// the order is total and a list does not shuffle between two reads.
-	ListItemsByTrip(ctx context.Context, arg ListItemsByTripParams) ([]Item, error)
-	// The days one location appears on, which is what a location date range is
-	// made of since Stage 25. There is no separate table of dates on an item any
-	// more: the itinerary is the record, and the ranges the location page shows
-	// are these dates with contiguous runs collapsed in Go.
-	//
-	// Nothing stops an item from being on one day twice -- there is no unique
-	// constraint on the pair -- so duplicate dates come back as they are and the
-	// caller reduces them to a set. The entry id and day id ride along because the
-	// reconcile path needs to delete exact rows, not dates.
-	ListItineraryDatesByItem(ctx context.Context, itemID string) ([]ListItineraryDatesByItemRow, error)
-	ListItineraryDaysByTrip(ctx context.Context, tripID string) ([]ItineraryDay, error)
-	// Entries of one day, in their stored order. Used to number a new entry and to
-	// validate a reorder against the set of entries the day actually has.
-	ListItineraryEntriesByDay(ctx context.Context, itineraryDayID string) ([]ItineraryEntry, error)
-	ListItineraryEntriesByTrip(ctx context.Context, tripID string) ([]ListItineraryEntriesByTripRow, error)
-	// ListMapItemsByTrip: show_on_map is filtered in the store layer, not here,
+	ListLocationsByTrip(ctx context.Context, arg ListLocationsByTripParams) ([]Location, error)
+	// ListMapLocationsByTrip: show_on_map is filtered in the store layer, not here,
 	// since its Go type (int64 vs bool) diverges by dialect (plan Section 2.1).
 	//
 	// The address is selected for the outbound Google Maps link, which names the
@@ -213,7 +214,7 @@ type Querier interface {
 	// Creation order, as in the locations list. Without an ORDER BY the markers
 	// came out in whatever order the index scan gave, which on SQLite was sorted
 	// by category name and on Postgres is not promised at all.
-	ListMapItemsByTrip(ctx context.Context, tripID string) ([]ListMapItemsByTripRow, error)
+	ListMapLocationsByTrip(ctx context.Context, tripID string) ([]ListMapLocationsByTripRow, error)
 	// Every personal list belonging to one user on one trip, for the moment they
 	// stop being a member. Same treatment as their personal files.
 	ListPersonalChecklistsForUser(ctx context.Context, arg ListPersonalChecklistsForUserParams) ([]Checklist, error)
@@ -226,15 +227,15 @@ type Querier interface {
 	// picker list them the same way every time.
 	ListTripCurrencies(ctx context.Context, tripID string) ([]TripCurrency, error)
 	// Every file on the trip, including those attached to a location: each row
-	// carries the trip's id regardless of item_id (see uploadFile), so no join
+	// carries the trip's id regardless of location_id (see uploadFile), so no join
 	// is needed to find them - only to name the location for display. LEFT, not
-	// INNER: a trip-level row has a NULL item_id and must survive the join.
+	// INNER: a trip-level row has a NULL location_id and must survive the join.
 	//
-	// The visibility predicate is the same one on ListItemFiles and on the Go-side
-	// check in loadFile: a personal file is visible only to whoever uploaded it. It
-	// lives in the SQL as well as in Go on purpose - a list endpoint that forgot it
-	// would leak silently, where a single-file endpoint that forgot it at least
-	// needs an id to be guessed first.
+	// The visibility predicate is the same one on ListLocationFiles and on the
+	// Go-side check in loadFile: a personal file is visible only to whoever
+	// uploaded it. It lives in the SQL as well as in Go on purpose - a list
+	// endpoint that forgot it would leak silently, where a single-file endpoint
+	// that forgot it at least needs an id to be guessed first.
 	//
 	// NULL owner_user_id matches nobody, which is the intended failure: see
 	// migration 0009 on why that column is nullable.
@@ -302,7 +303,6 @@ type Querier interface {
 	// decision only the file's own uploader may make. Two different authorization
 	// rules should not share one statement.
 	SetFileVisibility(ctx context.Context, arg SetFileVisibilityParams) (File, error)
-	SetItemImage(ctx context.Context, arg SetItemImageParams) (Item, error)
 	// Moving an entry to another day. Both columns change together: an entry that
 	// arrives on a new day needs a place in that day order, and leaving the old
 	// number behind would put it in the middle of the target day rather than at
@@ -315,6 +315,7 @@ type Querier interface {
 	// The day id is part of the predicate, not just the id: it keeps a reorder from
 	// renumbering an entry that belongs to a different day.
 	SetItineraryEntrySortOrder(ctx context.Context, arg SetItineraryEntrySortOrderParams) (int64, error)
+	SetLocationImage(ctx context.Context, arg SetLocationImageParams) (Location, error)
 	SetTripPreviewImage(ctx context.Context, arg SetTripPreviewImageParams) (Trip, error)
 	TouchSession(ctx context.Context, arg TouchSessionParams) error
 	UpdateAuthIdentityPassword(ctx context.Context, arg UpdateAuthIdentityPasswordParams) error
@@ -334,9 +335,9 @@ type Querier interface {
 	// like DeleteFile, so a trip-role check is the whole authorization story.
 	// Passing NULL clears it.
 	UpdateFileNote(ctx context.Context, arg UpdateFileNoteParams) (File, error)
-	UpdateItem(ctx context.Context, arg UpdateItemParams) (Item, error)
-	UpdateItemLocation(ctx context.Context, arg UpdateItemLocationParams) (int64, error)
 	UpdateItineraryDayNotes(ctx context.Context, arg UpdateItineraryDayNotesParams) (int64, error)
+	UpdateLocation(ctx context.Context, arg UpdateLocationParams) (Location, error)
+	UpdateLocationGeo(ctx context.Context, arg UpdateLocationGeoParams) (int64, error)
 	UpdateTrip(ctx context.Context, arg UpdateTripParams) (Trip, error)
 	UpdateTripNote(ctx context.Context, arg UpdateTripNoteParams) (int64, error)
 	// Username is deliberately not updatable. It is the handle people are added to

@@ -10,7 +10,8 @@ import (
 )
 
 // ErrNotFound is returned by Store lookups that find no matching row,
-// regardless of dialect (wraps sql.ErrNoRows so errors.Is(err, ErrNotFound) works).
+// regardless of dialect (wraps sql.ErrNoRows so errors.Is(err, ErrNotFound)
+// works).
 var ErrNotFound = errors.New("not found")
 
 type CreateUserParams struct {
@@ -77,7 +78,7 @@ type UpdateTripParams struct {
 type CreateFileParams struct {
 	ID          string
 	TripID      string
-	ItemID      *string
+	LocationID  *string
 	Filename    string
 	StoragePath string
 	ContentType *string
@@ -99,10 +100,11 @@ type CreateExpenseParams struct {
 	Currency    *string
 	SpentOn     string
 	PayerUserID *string
-	// ItemID must name a location on the same trip, which the caller checks --
-	// the column has no way to express it, since items carry their own trip_id.
-	ItemID    *string
-	CreatedAt time.Time
+	// LocationID must name a location on the same trip, which the caller checks
+	// -- the column has no way to express it, since locations carry their own
+	// trip_id.
+	LocationID *string
+	CreatedAt  time.Time
 }
 
 // UpdateExpenseParams keeps TripID where UpdateTripParams dropped its OwnerID:
@@ -113,14 +115,14 @@ type UpdateExpenseParams struct {
 	TripID      string
 	Title       string
 	AmountMinor int64
-	// Currency, like ItemID below, is edited as a whole: nil means the trip's
-	// main currency, not "leave it alone".
+	// Currency, like LocationID below, is edited as a whole: nil means the
+	// trip's main currency, not "leave it alone".
 	Currency    *string
 	SpentOn     string
 	PayerUserID *string
 	// Absent means "no location", not "leave it alone": an expense is edited as
 	// a whole, the way its four original fields already are.
-	ItemID *string
+	LocationID *string
 }
 
 type CreateChecklistParams struct {
@@ -169,7 +171,7 @@ type CreateChecklistItemParams struct {
 type CreateItineraryEntryParams struct {
 	ID             string
 	ItineraryDayID string
-	ItemID         string
+	LocationID     string
 	SortOrder      int
 	Note           *string
 }
@@ -189,7 +191,7 @@ type CreateMediaAssetParams struct {
 	CreatedAt   time.Time
 }
 
-type CreateItemParams struct {
+type CreateLocationParams struct {
 	ID        string
 	TripID    string
 	Category  string
@@ -200,7 +202,7 @@ type CreateItemParams struct {
 	UpdatedAt time.Time
 }
 
-type UpdateItemParams struct {
+type UpdateLocationParams struct {
 	ID        string
 	TripID    string
 	Category  string
@@ -210,22 +212,22 @@ type UpdateItemParams struct {
 	UpdatedAt time.Time
 }
 
-type UpsertItemLocationParams struct {
-	ID      string
-	ItemID  string
-	Lat     *float64
-	Lng     *float64
-	Address *string
-	OSMType *string
-	OSMID   *string
+type UpsertLocationGeoParams struct {
+	ID         string
+	LocationID string
+	Lat        *float64
+	Lng        *float64
+	Address    *string
+	OSMType    *string
+	OSMID      *string
 }
 
-type CreateItemLinkParams struct {
-	ID        string
-	ItemID    string
-	URL       string
-	Label     *string
-	SortOrder int
+type CreateLocationLinkParams struct {
+	ID         string
+	LocationID string
+	URL        string
+	Label      *string
+	SortOrder  int
 }
 
 // Store is the dialect-agnostic data access interface. internal/db provides
@@ -316,43 +318,45 @@ type Store interface {
 	DeleteTripMember(ctx context.Context, tripID, userID string) (bool, error)
 	CountTripMembers(ctx context.Context, tripID string) (int64, error)
 
-	CreateItem(ctx context.Context, p CreateItemParams) (Item, error)
-	GetItemByID(ctx context.Context, id string) (Item, error)
-	// ListItemsByTrip lists items for a trip, optionally filtered by category.
-	ListItemsByTrip(ctx context.Context, tripID string, category *string) ([]Item, error)
-	UpdateItem(ctx context.Context, p UpdateItemParams) (Item, error)
-	DeleteItem(ctx context.Context, id, tripID string) (bool, error)
-	// SetItemImage sets (or clears, if imageID is nil) an item's image.
-	SetItemImage(ctx context.Context, id, tripID string, imageID *string, updatedAt time.Time) (Item, error)
+	CreateLocation(ctx context.Context, p CreateLocationParams) (Location, error)
+	GetLocationByID(ctx context.Context, id string) (Location, error)
+	// ListLocationsByTrip lists locations for a trip, optionally filtered by
+	// category.
+	ListLocationsByTrip(ctx context.Context, tripID string, category *string) ([]Location, error)
+	UpdateLocation(ctx context.Context, p UpdateLocationParams) (Location, error)
+	DeleteLocation(ctx context.Context, id, tripID string) (bool, error)
+	// SetLocationImage sets (or clears, if imageID is nil) a location's image.
+	SetLocationImage(ctx context.Context, id, tripID string, imageID *string, updatedAt time.Time) (Location, error)
 
-	UpsertItemLocation(ctx context.Context, p UpsertItemLocationParams) (ItemLocation, error)
-	GetItemLocationByItemID(ctx context.Context, itemID string) (ItemLocation, error)
+	UpsertLocationGeo(ctx context.Context, p UpsertLocationGeoParams) (LocationGeo, error)
+	GetLocationGeoByLocationID(ctx context.Context, locationID string) (LocationGeo, error)
 
-	CreateItemLink(ctx context.Context, p CreateItemLinkParams) (ItemLink, error)
-	ListItemLinksByItem(ctx context.Context, itemID string) ([]ItemLink, error)
-	DeleteItemLink(ctx context.Context, id, itemID string) (bool, error)
+	CreateLocationLink(ctx context.Context, p CreateLocationLinkParams) (LocationLink, error)
+	ListLocationLinksByLocation(ctx context.Context, locationID string) ([]LocationLink, error)
+	DeleteLocationLink(ctx context.Context, id, locationID string) (bool, error)
 
-	CreateItemTag(ctx context.Context, itemID, tag string) error
-	ListItemTagsByItem(ctx context.Context, itemID string) ([]string, error)
-	// ListItemTagsByTrip returns every tag on the trip with the item it is on,
-	// so the locations list can attach tags in one query rather than one per
-	// row. Deduplicated, it is also the trip vocabulary the editor suggests.
-	ListItemTagsByTrip(ctx context.Context, tripID string) ([]ItemTag, error)
-	// DeleteItemTagsByItem clears a location's tags. The set is replaced as a
-	// whole, so a write is this followed by CreateItemTag per tag, inside one
-	// transaction.
-	DeleteItemTagsByItem(ctx context.Context, itemID string) error
+	CreateLocationTag(ctx context.Context, locationID, tag string) error
+	ListLocationTagsByLocation(ctx context.Context, locationID string) ([]string, error)
+	// ListLocationTagsByTrip returns every tag on the trip with the location it
+	// is on, so the locations list can attach tags in one query rather than one
+	// per row. Deduplicated, it is also the trip vocabulary the editor
+	// suggests.
+	ListLocationTagsByTrip(ctx context.Context, tripID string) ([]LocationTag, error)
+	// DeleteLocationTagsByLocation clears a location's tags. The set is
+	// replaced as a whole, so a write is this followed by CreateLocationTag per
+	// tag, inside one transaction.
+	DeleteLocationTagsByLocation(ctx context.Context, locationID string) error
 
 	CreateMediaAsset(ctx context.Context, p CreateMediaAssetParams) (MediaAsset, error)
 	GetMediaAssetByID(ctx context.Context, id string) (MediaAsset, error)
 
-	// ListMapItems returns items with a resolvable location and show_on_map=true.
-	ListMapItems(ctx context.Context, tripID string) ([]MapItem, error)
+	// ListMapLocations returns locations with coordinates and show_on_map=true.
+	ListMapLocations(ctx context.Context, tripID string) ([]MapLocation, error)
 
-	// ListItemCoordinates returns every located item on the trip, regardless
-	// of show_on_map — see ItemCoordinate for why that differs from
-	// ListMapItems.
-	ListItemCoordinates(ctx context.Context, tripID string) ([]ItemCoordinate, error)
+	// ListLocationCoordinates returns every location on the trip that has
+	// coordinates, regardless of show_on_map — see LocationCoordinate for why
+	// that differs from ListMapLocations.
+	ListLocationCoordinates(ctx context.Context, tripID string) ([]LocationCoordinate, error)
 
 	// UpsertItineraryDayNotes creates the day row if needed (this is the only
 	// way itinerary_days rows come into existence — see plan Section 5) and
@@ -384,7 +388,8 @@ type Store interface {
 	// actually has.
 	ListItineraryEntriesByDay(ctx context.Context, itineraryDayID string) ([]ItineraryEntry, error)
 	// SetItineraryEntrySortOrder reports whether it matched a row, so a reorder
-	// naming an entry from another day fails rather than silently doing nothing.
+	// naming an entry from another day fails rather than silently doing
+	// nothing.
 	SetItineraryEntrySortOrder(ctx context.Context, id, itineraryDayID string, sortOrder int) (bool, error)
 	// SetItineraryEntryDay moves an entry to another day, giving it a position
 	// there at the same time. fromDayID is the day the entry is expected to be
@@ -392,28 +397,28 @@ type Store interface {
 	// a move safe to run against a client that read the itinerary a moment ago.
 	SetItineraryEntryDay(ctx context.Context, id, fromDayID, toDayID string, sortOrder int) (bool, error)
 	DeleteItineraryEntry(ctx context.Context, id, itineraryDayID string) (bool, error)
-	// ListItineraryDatesByItem returns every day one location appears on,
+	// ListItineraryDatesByLocation returns every day one location appears on,
 	// ordered by date. The read side of a location's dates and the starting
 	// point of the reconcile that writes them, so both agree by construction.
 	// Duplicates for one date are possible and are returned as they are.
-	ListItineraryDatesByItem(ctx context.Context, itemID string) ([]ItemItineraryDate, error)
-	// ListItemDatesByTrip is the trip-wide version, for the locations list.
-	// Bucket the rows by item in Go; calling the by-item query per card is a
-	// query per location.
-	ListItemDatesByTrip(ctx context.Context, tripID string) ([]ItemItineraryDate, error)
+	ListItineraryDatesByLocation(ctx context.Context, locationID string) ([]LocationItineraryDate, error)
+	// ListLocationDatesByTrip is the trip-wide version, for the locations list.
+	// Bucket the rows by location in Go; calling the by-location query per card
+	// is a query per location.
+	ListLocationDatesByTrip(ctx context.Context, tripID string) ([]LocationItineraryDate, error)
 
 	CreateFile(ctx context.Context, p CreateFileParams) (File, error)
 	GetFileByID(ctx context.Context, id string) (File, error)
-	// ListTripFiles returns every file on the trip — both trip-level
-	// ones and those attached to one of its locations — newest first, each
-	// carrying the title of the location it belongs to (nil for trip-level).
-	// It used to filter item_id IS NULL, which hid location-attached files
-	// from the trip's Files tab even though they are files on that trip.
-	// ListTripFiles and ListItemFiles both take the *reading* user, because a
-	// personal file belongs to whoever uploaded it and must not appear in
-	// anyone else's list.
+	// ListTripFiles returns every file on the trip — both trip-level ones and
+	// those attached to one of its locations — newest first, each carrying the
+	// title of the location it belongs to (nil for trip-level). It used to
+	// filter item_id IS NULL (location_id since migration 0013), which hid
+	// location-attached files from the trip's Files tab even though they are
+	// files on that trip. ListTripFiles and ListLocationFiles both take the
+	// *reading* user, because a personal file belongs to whoever uploaded it
+	// and must not appear in anyone else's list.
 	ListTripFiles(ctx context.Context, tripID, userID string) ([]FileDetail, error)
-	ListItemFiles(ctx context.Context, itemID, userID string) ([]File, error)
+	ListLocationFiles(ctx context.Context, locationID, userID string) ([]File, error)
 	// UpdateFileNote replaces a file's note, or clears it when note is nil —
 	// the one field a file has that can change after upload. Scoped by trip
 	// like DeleteFile; returns ErrNotFound if no row matches both.
@@ -483,7 +488,8 @@ type Store interface {
 	GetExpenseByID(ctx context.Context, id string) (Expense, error)
 	ListExpensesByTrip(ctx context.Context, tripID string) ([]Expense, error)
 	UpdateExpense(ctx context.Context, p UpdateExpenseParams) (Expense, error)
-	// DeleteExpense reports whether a matching (id, tripID) expense was deleted.
+	// DeleteExpense reports whether a matching (id, tripID) expense was
+	// deleted.
 	DeleteExpense(ctx context.Context, id, tripID string) (bool, error)
 
 	// Expense shares: who an expense was for. An expense with no shares is

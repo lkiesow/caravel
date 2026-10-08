@@ -11,7 +11,7 @@ import (
 
 const countLocationsByCategory = `-- name: CountLocationsByCategory :many
 SELECT category, CAST(COUNT(*) AS BIGINT) AS location_count
-FROM items
+FROM locations
 GROUP BY category
 ORDER BY category
 `

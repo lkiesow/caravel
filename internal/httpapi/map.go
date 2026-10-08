@@ -233,7 +233,7 @@ func looksLikeCoordinate(s string) bool {
 // A method rather than a function since Stage 34: resolving the image needs the
 // store, one lookup per item with a photo. The same shape the itinerary list
 // has -- a map is a page-sized payload, and only located items are in it.
-func (s *Server) mapItemToResponse(ctx context.Context, i db.MapItem) mapItemResponse {
+func (s *Server) mapItemToResponse(ctx context.Context, i db.MapLocation) mapItemResponse {
 	return mapItemResponse{
 		ID:            i.ID,
 		Title:         i.Title,
@@ -251,7 +251,7 @@ func (s *Server) handleGetTripMap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	items, err := s.Store.ListMapItems(r.Context(), trip.ID)
+	items, err := s.Store.ListMapLocations(r.Context(), trip.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load map")
 		return

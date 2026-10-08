@@ -62,8 +62,8 @@ func TestMigration0011AddsThreeCategoriesAndKeepsEverything(t *testing.T) {
 	exec(`INSERT INTO itinerary_days (id, trip_id, date) VALUES ('d','t','2026-06-01')`)
 	exec(`INSERT INTO itinerary_entries (id, itinerary_day_id, item_id, sort_order) VALUES ('e','d','i',0)`)
 
-	if err := newM().Up(); err != nil && err != migrate.ErrNoChange {
-		t.Fatalf("up to head: %v", err)
+	if err := newM().Migrate(11); err != nil {
+		t.Fatalf("migrate to 11: %v", err)
 	}
 
 	count := func(q string) int {

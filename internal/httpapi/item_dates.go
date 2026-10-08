@@ -161,20 +161,20 @@ func expandDateRanges(ranges []itemDateRangeRequest) (map[string]bool, error) {
 //
 // Takes the store it is given rather than reaching for s.Store: it runs inside
 // the transaction that saves the item, and WithTx does not nest.
-func reconcileItemDates(ctx context.Context, store db.Store, item db.Item, ranges []itemDateRangeRequest) error {
+func reconcileItemDates(ctx context.Context, store db.Store, item db.Location, ranges []itemDateRangeRequest) error {
 	desired, err := expandDateRanges(ranges)
 	if err != nil {
 		return err
 	}
 
-	current, err := store.ListItineraryDatesByItem(ctx, item.ID)
+	current, err := store.ListItineraryDatesByLocation(ctx, item.ID)
 	if err != nil {
 		return err
 	}
 	// A slice per date, not a single row: nothing constrains
 	// (itinerary_day_id, item_id), so a location can already be on one day
 	// twice and "remove that day" has to mean all of them.
-	byDate := map[string][]db.ItemItineraryDate{}
+	byDate := map[string][]db.LocationItineraryDate{}
 	for _, row := range current {
 		byDate[row.Date] = append(byDate[row.Date], row)
 	}
@@ -259,7 +259,7 @@ func reconcileItemDates(ctx context.Context, store db.Store, item db.Item, range
 		if _, err := store.CreateItineraryEntry(ctx, db.CreateItineraryEntryParams{
 			ID:             uuid.NewString(),
 			ItineraryDayID: day.ID,
-			ItemID:         item.ID,
+			LocationID:     item.ID,
 			SortOrder:      len(existing),
 		}); err != nil {
 			return err

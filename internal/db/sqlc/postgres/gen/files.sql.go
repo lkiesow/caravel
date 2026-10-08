@@ -12,15 +12,15 @@ import (
 )
 
 const createFile = `-- name: CreateFile :one
-INSERT INTO files (id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at, note, visibility, owner_user_id)
+INSERT INTO files (id, trip_id, location_id, filename, storage_path, content_type, size_bytes, uploaded_at, note, visibility, owner_user_id)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-RETURNING id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at, note, visibility, owner_user_id
+RETURNING id, trip_id, location_id, filename, storage_path, content_type, size_bytes, uploaded_at, note, visibility, owner_user_id
 `
 
 type CreateFileParams struct {
 	ID          string         `json:"id"`
 	TripID      string         `json:"trip_id"`
-	ItemID      sql.NullString `json:"item_id"`
+	LocationID  sql.NullString `json:"location_id"`
 	Filename    string         `json:"filename"`
 	StoragePath string         `json:"storage_path"`
 	ContentType sql.NullString `json:"content_type"`
@@ -35,7 +35,7 @@ func (q *Queries) CreateFile(ctx context.Context, arg CreateFileParams) (File, e
 	row := q.db.QueryRowContext(ctx, createFile,
 		arg.ID,
 		arg.TripID,
-		arg.ItemID,
+		arg.LocationID,
 		arg.Filename,
 		arg.StoragePath,
 		arg.ContentType,
@@ -49,7 +49,7 @@ func (q *Queries) CreateFile(ctx context.Context, arg CreateFileParams) (File, e
 	err := row.Scan(
 		&i.ID,
 		&i.TripID,
-		&i.ItemID,
+		&i.LocationID,
 		&i.Filename,
 		&i.StoragePath,
 		&i.ContentType,
@@ -80,7 +80,7 @@ func (q *Queries) DeleteFile(ctx context.Context, arg DeleteFileParams) (int64, 
 }
 
 const getFileByID = `-- name: GetFileByID :one
-SELECT id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at, note, visibility, owner_user_id FROM files WHERE id = $1
+SELECT id, trip_id, location_id, filename, storage_path, content_type, size_bytes, uploaded_at, note, visibility, owner_user_id FROM files WHERE id = $1
 `
 
 func (q *Queries) GetFileByID(ctx context.Context, id string) (File, error) {
@@ -89,7 +89,7 @@ func (q *Queries) GetFileByID(ctx context.Context, id string) (File, error) {
 	err := row.Scan(
 		&i.ID,
 		&i.TripID,
-		&i.ItemID,
+		&i.LocationID,
 		&i.Filename,
 		&i.StoragePath,
 		&i.ContentType,
@@ -102,20 +102,20 @@ func (q *Queries) GetFileByID(ctx context.Context, id string) (File, error) {
 	return i, err
 }
 
-const listItemFiles = `-- name: ListItemFiles :many
-SELECT id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at, note, visibility, owner_user_id FROM files
-WHERE item_id = $1
+const listLocationFiles = `-- name: ListLocationFiles :many
+SELECT id, trip_id, location_id, filename, storage_path, content_type, size_bytes, uploaded_at, note, visibility, owner_user_id FROM files
+WHERE location_id = $1
   AND (visibility = 'trip' OR owner_user_id = $2)
 ORDER BY uploaded_at DESC
 `
 
-type ListItemFilesParams struct {
-	ItemID sql.NullString `json:"item_id"`
-	UserID sql.NullString `json:"user_id"`
+type ListLocationFilesParams struct {
+	LocationID sql.NullString `json:"location_id"`
+	UserID     sql.NullString `json:"user_id"`
 }
 
-func (q *Queries) ListItemFiles(ctx context.Context, arg ListItemFilesParams) ([]File, error) {
-	rows, err := q.db.QueryContext(ctx, listItemFiles, arg.ItemID, arg.UserID)
+func (q *Queries) ListLocationFiles(ctx context.Context, arg ListLocationFilesParams) ([]File, error) {
+	rows, err := q.db.QueryContext(ctx, listLocationFiles, arg.LocationID, arg.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +126,7 @@ func (q *Queries) ListItemFiles(ctx context.Context, arg ListItemFilesParams) ([
 		if err := rows.Scan(
 			&i.ID,
 			&i.TripID,
-			&i.ItemID,
+			&i.LocationID,
 			&i.Filename,
 			&i.StoragePath,
 			&i.ContentType,
@@ -150,7 +150,7 @@ func (q *Queries) ListItemFiles(ctx context.Context, arg ListItemFilesParams) ([
 }
 
 const listPersonalFilesForUser = `-- name: ListPersonalFilesForUser :many
-SELECT id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at, note, visibility, owner_user_id FROM files
+SELECT id, trip_id, location_id, filename, storage_path, content_type, size_bytes, uploaded_at, note, visibility, owner_user_id FROM files
 WHERE trip_id = $1 AND owner_user_id = $2 AND visibility = 'personal'
 `
 
@@ -174,7 +174,7 @@ func (q *Queries) ListPersonalFilesForUser(ctx context.Context, arg ListPersonal
 		if err := rows.Scan(
 			&i.ID,
 			&i.TripID,
-			&i.ItemID,
+			&i.LocationID,
 			&i.Filename,
 			&i.StoragePath,
 			&i.ContentType,
@@ -198,11 +198,11 @@ func (q *Queries) ListPersonalFilesForUser(ctx context.Context, arg ListPersonal
 }
 
 const listTripFiles = `-- name: ListTripFiles :many
-SELECT f.id, f.trip_id, f.item_id, f.filename, f.storage_path, f.content_type,
+SELECT f.id, f.trip_id, f.location_id, f.filename, f.storage_path, f.content_type,
        f.size_bytes, f.uploaded_at, f.note, f.visibility, f.owner_user_id,
-       i.title AS item_title
+       loc.title AS location_title
 FROM files f
-LEFT JOIN items i ON i.id = f.item_id
+LEFT JOIN locations loc ON loc.id = f.location_id
 WHERE f.trip_id = $1
   AND (f.visibility = 'trip' OR f.owner_user_id = $2)
 ORDER BY f.uploaded_at DESC
@@ -214,30 +214,30 @@ type ListTripFilesParams struct {
 }
 
 type ListTripFilesRow struct {
-	ID          string         `json:"id"`
-	TripID      string         `json:"trip_id"`
-	ItemID      sql.NullString `json:"item_id"`
-	Filename    string         `json:"filename"`
-	StoragePath string         `json:"storage_path"`
-	ContentType sql.NullString `json:"content_type"`
-	SizeBytes   int64          `json:"size_bytes"`
-	UploadedAt  time.Time      `json:"uploaded_at"`
-	Note        sql.NullString `json:"note"`
-	Visibility  string         `json:"visibility"`
-	OwnerUserID sql.NullString `json:"owner_user_id"`
-	ItemTitle   sql.NullString `json:"item_title"`
+	ID            string         `json:"id"`
+	TripID        string         `json:"trip_id"`
+	LocationID    sql.NullString `json:"location_id"`
+	Filename      string         `json:"filename"`
+	StoragePath   string         `json:"storage_path"`
+	ContentType   sql.NullString `json:"content_type"`
+	SizeBytes     int64          `json:"size_bytes"`
+	UploadedAt    time.Time      `json:"uploaded_at"`
+	Note          sql.NullString `json:"note"`
+	Visibility    string         `json:"visibility"`
+	OwnerUserID   sql.NullString `json:"owner_user_id"`
+	LocationTitle sql.NullString `json:"location_title"`
 }
 
 // Every file on the trip, including those attached to a location: each row
-// carries the trip's id regardless of item_id (see uploadFile), so no join
+// carries the trip's id regardless of location_id (see uploadFile), so no join
 // is needed to find them - only to name the location for display. LEFT, not
-// INNER: a trip-level row has a NULL item_id and must survive the join.
+// INNER: a trip-level row has a NULL location_id and must survive the join.
 //
-// The visibility predicate is the same one on ListItemFiles and on the Go-side
-// check in loadFile: a personal file is visible only to whoever uploaded it. It
-// lives in the SQL as well as in Go on purpose - a list endpoint that forgot it
-// would leak silently, where a single-file endpoint that forgot it at least
-// needs an id to be guessed first.
+// The visibility predicate is the same one on ListLocationFiles and on the
+// Go-side check in loadFile: a personal file is visible only to whoever
+// uploaded it. It lives in the SQL as well as in Go on purpose - a list
+// endpoint that forgot it would leak silently, where a single-file endpoint
+// that forgot it at least needs an id to be guessed first.
 //
 // NULL owner_user_id matches nobody, which is the intended failure: see
 // migration 0009 on why that column is nullable.
@@ -253,7 +253,7 @@ func (q *Queries) ListTripFiles(ctx context.Context, arg ListTripFilesParams) ([
 		if err := rows.Scan(
 			&i.ID,
 			&i.TripID,
-			&i.ItemID,
+			&i.LocationID,
 			&i.Filename,
 			&i.StoragePath,
 			&i.ContentType,
@@ -262,7 +262,7 @@ func (q *Queries) ListTripFiles(ctx context.Context, arg ListTripFilesParams) ([
 			&i.Note,
 			&i.Visibility,
 			&i.OwnerUserID,
-			&i.ItemTitle,
+			&i.LocationTitle,
 		); err != nil {
 			return nil, err
 		}
@@ -280,7 +280,7 @@ func (q *Queries) ListTripFiles(ctx context.Context, arg ListTripFilesParams) ([
 const setFileVisibility = `-- name: SetFileVisibility :one
 UPDATE files SET visibility = $1
 WHERE id = $2 AND trip_id = $3
-RETURNING id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at, note, visibility, owner_user_id
+RETURNING id, trip_id, location_id, filename, storage_path, content_type, size_bytes, uploaded_at, note, visibility, owner_user_id
 `
 
 type SetFileVisibilityParams struct {
@@ -299,7 +299,7 @@ func (q *Queries) SetFileVisibility(ctx context.Context, arg SetFileVisibilityPa
 	err := row.Scan(
 		&i.ID,
 		&i.TripID,
-		&i.ItemID,
+		&i.LocationID,
 		&i.Filename,
 		&i.StoragePath,
 		&i.ContentType,
@@ -314,7 +314,7 @@ func (q *Queries) SetFileVisibility(ctx context.Context, arg SetFileVisibilityPa
 
 const updateFileNote = `-- name: UpdateFileNote :one
 UPDATE files SET note = $1 WHERE id = $2 AND trip_id = $3
-RETURNING id, trip_id, item_id, filename, storage_path, content_type, size_bytes, uploaded_at, note, visibility, owner_user_id
+RETURNING id, trip_id, location_id, filename, storage_path, content_type, size_bytes, uploaded_at, note, visibility, owner_user_id
 `
 
 type UpdateFileNoteParams struct {
@@ -334,7 +334,7 @@ func (q *Queries) UpdateFileNote(ctx context.Context, arg UpdateFileNoteParams) 
 	err := row.Scan(
 		&i.ID,
 		&i.TripID,
-		&i.ItemID,
+		&i.LocationID,
 		&i.Filename,
 		&i.StoragePath,
 		&i.ContentType,

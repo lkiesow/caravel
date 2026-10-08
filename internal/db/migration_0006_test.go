@@ -71,8 +71,8 @@ func TestMigration0006FoldsTypeIntoTags(t *testing.T) {
 	exec(`INSERT INTO item_tags (item_id, tag) VALUES ('dupe','hotel')`)
 	exec(`INSERT INTO item_tags (item_id, tag) VALUES ('alongside','west')`)
 
-	if err := newM().Up(); err != nil && err != migrate.ErrNoChange {
-		t.Fatalf("up to head: %v", err)
+	if err := newM().Migrate(6); err != nil {
+		t.Fatalf("migrate to 6: %v", err)
 	}
 
 	tags := func(id string) []string {

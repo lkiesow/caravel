@@ -23,11 +23,11 @@ import (
 // The caller passes a transaction-bound store, so the tags and the item commit
 // together.
 func writeItemTags(ctx context.Context, store db.Store, itemID string, tags []string) error {
-	if err := store.DeleteItemTagsByItem(ctx, itemID); err != nil {
+	if err := store.DeleteLocationTagsByLocation(ctx, itemID); err != nil {
 		return err
 	}
 	for _, tag := range tags {
-		if err := store.CreateItemTag(ctx, itemID, tag); err != nil {
+		if err := store.CreateLocationTag(ctx, itemID, tag); err != nil {
 			return err
 		}
 	}
@@ -37,10 +37,10 @@ func writeItemTags(ctx context.Context, store db.Store, itemID string, tags []st
 // tagsByItem buckets a trip-wide tag listing by location, for attaching tags to
 // the rows of the locations list in one query rather than one per row -- the
 // same shape as the coordinate map in handleListItems.
-func tagsByItem(rows []db.ItemTag) map[string][]string {
+func tagsByItem(rows []db.LocationTag) map[string][]string {
 	out := make(map[string][]string)
 	for _, row := range rows {
-		out[row.ItemID] = append(out[row.ItemID], row.Tag)
+		out[row.LocationID] = append(out[row.LocationID], row.Tag)
 	}
 	return out
 }
@@ -52,7 +52,7 @@ func tagsByItem(rows []db.ItemTag) map[string][]string {
 // Two spellings of one word can both appear here, which is the visible
 // consequence of the case rule in tags.Normalize. That is the point: seeing
 // Museum in the suggestions is what stops the next person typing museum.
-func distinctTags(rows []db.ItemTag) []string {
+func distinctTags(rows []db.LocationTag) []string {
 	seen := make(map[string]bool, len(rows))
 	out := make([]string, 0, len(rows))
 	for _, row := range rows {
@@ -85,7 +85,7 @@ func (s *Server) handleListTripTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := s.Store.ListItemTagsByTrip(r.Context(), trip.ID)
+	rows, err := s.Store.ListLocationTagsByTrip(r.Context(), trip.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not list tags")
 		return

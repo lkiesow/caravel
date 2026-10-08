@@ -55,10 +55,10 @@ func (s *Server) handleGetItinerary(w http.ResponseWriter, r *http.Request) {
 	for _, e := range entries {
 		entriesByDay[e.ItineraryDayID] = append(entriesByDay[e.ItineraryDayID], itineraryEntryResponse{
 			ID:           e.ID,
-			ItemID:       e.ItemID,
-			ItemTitle:    e.ItemTitle,
-			ItemCategory: e.ItemCategory,
-			ItemImageURL: s.resolveImageURL(r.Context(), e.ItemImageID),
+			ItemID:       e.LocationID,
+			ItemTitle:    e.LocationTitle,
+			ItemCategory: e.LocationCategory,
+			ItemImageURL: s.resolveImageURL(r.Context(), e.LocationImageID),
 			SortOrder:    e.SortOrder,
 			Note:         e.Note,
 		})
@@ -200,7 +200,7 @@ func (s *Server) handleCreateItineraryEntry(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	item, err := s.Store.GetItemByID(r.Context(), req.ItemID)
+	item, err := s.Store.GetLocationByID(r.Context(), req.ItemID)
 	if err != nil || item.TripID != day.TripID {
 		writeError(w, http.StatusBadRequest, "item does not belong to this trip")
 		return
@@ -220,7 +220,7 @@ func (s *Server) handleCreateItineraryEntry(w http.ResponseWriter, r *http.Reque
 	entry, err := s.Store.CreateItineraryEntry(r.Context(), db.CreateItineraryEntryParams{
 		ID:             uuid.NewString(),
 		ItineraryDayID: day.ID,
-		ItemID:         item.ID,
+		LocationID:     item.ID,
 		SortOrder:      len(existing),
 		Note:           req.Note,
 	})

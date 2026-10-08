@@ -120,6 +120,13 @@ older stage plan or an earlier version of this file without asking.
   not deleted: switching a feature back on shows its data again. Needs a
   per-trip settings column or table and the trip page honouring it.
 
+- **A content language for a trip's notes.** (Hyphenation commit, 2026-10-08.)
+  Rendered notes hyphenate with the dictionary for `<html lang>`, i.e. the UI
+  locale, so an English note read in the German UI is broken with German rules
+  (odd breaks, never a broken layout). A per-trip language that sets `lang` on
+  the rendered containers would fix it. Only worth it if mixed-language trips
+  turn out to be common; would sit naturally with the per-trip settings above.
+
 - **Locations with a shape: lines and areas.** (notes.md, reviewed 2026-10-03.)
   A road is a line through several points, perhaps with a start and an end; an
   area is a polygon. Today a location is exactly one lat/lng, and the `area`

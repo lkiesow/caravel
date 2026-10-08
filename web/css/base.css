@@ -3185,6 +3185,32 @@ button {
   padding-inline-start: 1.75em;
 }
 
+/* Hyphenated, because a note on a phone is ~30 characters a line, and at that
+   measure every long German word that misses the end of a line leaves a gap
+   a third of the column wide - the right edge went visibly ragged.
+   - Left-aligned, not justified: browsers fill lines one at a time rather than
+     setting the paragraph as a whole the way TeX does, so at this width justify
+     trades the ragged edge for wide holes between words.
+   - The dictionary is <html lang>, which i18n.js sets to the UI locale. A note
+     written in another language gets that locale's rules: odd breaks, never a
+     broken layout.
+   - The limits keep short words whole and two letters from being stranded on
+     either side. Safari ignores them and simply hyphenates more freely.
+   - text-wrap: pretty is a bonus where it exists (Chrome rebalances the last
+     lines, Safari the whole paragraph); Firefox ignores it. */
+:is(.trip-notes__rendered, .location-view__notes, .notes-field__preview) {
+  hyphens: auto;
+  hyphenate-limit-chars: 7 3 3;
+  text-wrap: pretty;
+}
+
+/* Headings stay whole - they are short and a broken one reads badly - and code
+   must never show a hyphen that is not in the source. */
+:is(.trip-notes__rendered, .location-view__notes, .notes-field__preview)
+  :is(h1, h2, h3, h4, h5, h6, code, pre, kbd) {
+  hyphens: manual;
+}
+
 
 .checklist-card__header {
   display: flex;

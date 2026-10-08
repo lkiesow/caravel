@@ -132,4 +132,58 @@ test.describe("trip notes, end to end", () => {
       await context.close();
     }
   });
+
+  // Prose hyphenates, headings and code do not. Asserted on layout, not just
+  // the computed style: each block is narrowed to just wider than the long
+  // word, so "aaa Luftfeuchtigkeit" cannot share a line. Unhyphenated, the
+  // word moves to the next line whole (one line box); hyphenated, it is split
+  // across two. The word itself always fits, so overflow-wrap cannot be what
+  // splits it. Firefox ships the German dictionary, which is what makes this
+  // assertable in this suite at all.
+  test("rendered prose hyphenates, headings and code do not", async ({ page }) => {
+    const body = ["aaa Luftfeuchtigkeit", "", "## aaa Luftfeuchtigkeit", "", "aaa `Luftfeuchtigkeit`"].join("\n");
+    await page.request.put(`/api/trips/${tripId}/notes`, { data: { body } });
+    await page.goto(`/trips/${tripId}/notes`);
+    await page.evaluate(() => window.caravel.setLocale("de"));
+    await expect(page.locator("html")).toHaveAttribute("lang", "de");
+
+    const rendered = page.locator(".trip-notes__rendered");
+    await expect(rendered.locator("h2")).toBeVisible();
+
+    const lineCount = (locator) =>
+      locator.evaluate((el) => {
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        let node;
+        while ((node = walker.nextNode()) && !node.data.includes("Luftfeuchtigkeit"));
+        const range = document.createRange();
+        const start = node.data.indexOf("Luftfeuchtigkeit");
+        range.setStart(node, start);
+        range.setEnd(node, start + "Luftfeuchtigkeit".length);
+
+        el.style.width = "100rem";
+        const wordWidth = range.getBoundingClientRect().width;
+        // A margin well under the width of "aaa ", which still cannot fit.
+        el.style.width = `${wordWidth + 12}px`;
+        return new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size;
+      });
+
+    expect(await lineCount(rendered.locator("p").first()), "a paragraph word is hyphenated").toBe(2);
+    expect(await lineCount(rendered.locator("h2")), "a heading word stays whole").toBe(1);
+    expect(await lineCount(rendered.locator("p:has(code)")), "a code word stays whole").toBe(1);
+
+    // The rule is shared by every place rendered markdown is shown, not only
+    // this tab: a location's notes and the location form's preview.
+    const hyphens = await page.evaluate(() =>
+      ["location-view__notes", "notes-field__preview"].map((cls) => {
+        const host = document.createElement("div");
+        host.className = cls;
+        const p = host.appendChild(document.createElement("p"));
+        document.body.appendChild(host);
+        const value = getComputedStyle(p).hyphens;
+        host.remove();
+        return value;
+      }),
+    );
+    expect(hyphens).toEqual(["auto", "auto"]);
+  });
 });

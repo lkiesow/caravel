@@ -218,12 +218,12 @@ async function main() {
       data: { media_asset_id: coverId },
     }));
 
-    const items = await (await ctx.request.get(`/api/trips/${full.id}/locations`)).json();
-    const kirkjufell = items.find((i) => i.title.includes("Kirkjufell")) || items[0];
+    const locations = await (await ctx.request.get(`/api/trips/${full.id}/locations`)).json();
+    const kirkjufell = locations.find((i) => i.title.includes("Kirkjufell")) || locations[0];
     if (kirkjufell) {
-      const itemImageId = await uploadMedia(ctx, full.id, cast(pics, "location", 1));
+      const locationImageId = await uploadMedia(ctx, full.id, cast(pics, "location", 1));
       await must("set the location image", ctx.request.put(`/api/locations/${kirkjufell.id}/image`, {
-        data: { media_asset_id: itemImageId },
+        data: { media_asset_id: locationImageId },
       }));
     }
 
@@ -324,8 +324,8 @@ async function main() {
   await page.goto(`/trips/${full.id}/locations`);
   await shoot(page, "locations", { scrollTo: TABS });
 
-  const items = await (await ctx.request.get(`/api/trips/${full.id}/locations`)).json();
-  const kirkjufell = items.find((i) => i.title.includes("Kirkjufell")) || items[0];
+  const locations = await (await ctx.request.get(`/api/trips/${full.id}/locations`)).json();
+  const kirkjufell = locations.find((i) => i.title.includes("Kirkjufell")) || locations[0];
   await page.goto(`/trips/${full.id}/locations/${kirkjufell.id}`);
   await shoot(page, "location-detail");
 

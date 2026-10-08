@@ -137,7 +137,7 @@ func TestListItineraryDatesByLocation(t *testing.T) {
 
 	rows, err := ts.Store.ListItineraryDatesByLocation(context.Background(), hotel)
 	if err != nil {
-		t.Fatalf("ListItineraryDatesByItem: %v", err)
+		t.Fatalf("ListItineraryDatesByLocation: %v", err)
 	}
 
 	// Four appearances, ordered by date, with the 7th twice. Sorted output is

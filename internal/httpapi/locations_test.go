@@ -221,7 +221,7 @@ func (f failingStore) WithTx(ctx context.Context, fn func(db.Store) error) error
 
 func (f failingStore) CreateLocationLink(ctx context.Context, p db.CreateLocationLinkParams) (db.LocationLink, error) {
 	if f.failCreateLocationLink {
-		return db.LocationLink{}, errors.New("injected CreateItemLink failure")
+		return db.LocationLink{}, errors.New("injected CreateLocationLink failure")
 	}
 	return f.Store.CreateLocationLink(ctx, p)
 }

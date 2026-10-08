@@ -1,10 +1,10 @@
 // The location categories and their colours, in one place.
 //
-// The server enforces the same set -- the CHECK constraint on items.category,
-// validCategories in internal/httpapi/locations.go and in internal/assist/agent.go
-// -- and TestCategoriesModuleMatchesTheServer pins this list to it, so adding a
-// category means a migration, those two Go lists, this file, and an
-// item.category.* key in every locale.
+// The server enforces the same set -- the CHECK constraint on
+// locations.category, validCategories in internal/httpapi/locations.go and in
+// internal/assist/agent.go -- and TestCategoriesModuleMatchesTheServer pins
+// this list to it, so adding a category means a migration, those two Go lists,
+// this file, and an location.category.* key in every locale.
 //
 // The colours are the light-map marker palette. Why each one, and the darker
 // twins the map switches to on a dark style, are in map-view.js next to the

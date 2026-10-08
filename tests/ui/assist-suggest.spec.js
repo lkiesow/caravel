@@ -126,24 +126,24 @@ test.describe("suggesting several locations", () => {
 
     // Back on the locations tab, holding exactly the three that were ticked.
     await expect(page).toHaveURL(new RegExp(`/trips/${tripId}/locations$`));
-    await expect(page.locator("item-card")).toHaveCount(3);
+    await expect(page.locator("location-card")).toHaveCount(3);
 
     // Read back through the API rather than off the cards: what matters is
     // that the whole candidate was written, not that a title was rendered.
-    const items = await (await page.request.get(`/api/trips/${tripId}/locations`)).json();
-    expect(items.map((i) => i.title).sort()).toEqual(["Hallgrimskirkja", "Harpa", "Kex Hostel"]);
+    const locations = await (await page.request.get(`/api/trips/${tripId}/locations`)).json();
+    expect(locations.map((i) => i.title).sort()).toEqual(["Hallgrimskirkja", "Harpa", "Kex Hostel"]);
 
     // The ambiguous one landed with its address and *no pin*. There is no
     // picker on this screen on purpose: the place gets onto the trip and the
     // position is settled in the location editor, which already has a map, an
     // address search and the map-link resolver.
-    const harpa = items.find((i) => i.title === "Harpa");
+    const harpa = locations.find((i) => i.title === "Harpa");
     expect(harpa.lat, "an unsettled position must not be written as a pin").toBeFalsy();
     const harpaDetail = await (await page.request.get(`/api/locations/${harpa.id}`)).json();
     expect(harpaDetail.geo.lat, "no coordinates").toBeNull();
     expect(harpaDetail.geo.address, "but the address it did have").toContain("Austurbakki 2");
 
-    const church = items.find((i) => i.title === "Hallgrimskirkja");
+    const church = locations.find((i) => i.title === "Hallgrimskirkja");
     expect(church.category, "the proposed category was written").toBe("site");
     expect(church.tags, "the proposed tags were split into a list").toContain("church");
     expect(typeof church.lat, "the geocoded position was written").toBe("number");
@@ -169,8 +169,8 @@ test.describe("suggesting several locations", () => {
     await page.locator('[data-action="suggest-run"]').click();
     await expect(page.locator(".suggest-card")).toHaveCount(5, { timeout: 30_000 });
 
-    const items = await (await page.request.get(`/api/trips/${tripId}/locations`)).json();
-    expect(items, "the trip is still empty while the candidates are on screen").toHaveLength(0);
+    const locations = await (await page.request.get(`/api/trips/${tripId}/locations`)).json();
+    expect(locations, "the trip is still empty while the candidates are on screen").toHaveLength(0);
   });
 
   // A place already on the trip is dropped by the server, and the page says so
@@ -218,7 +218,7 @@ test.describe("suggesting several locations", () => {
     await gotoRoute(page, `/trips/${tripId}/locations`);
 
     await expect(page.locator(".locations-new-slot .menu__trigger")).toHaveCount(0);
-    const button = page.locator('.locations-new-slot [data-action="new-item"]');
+    const button = page.locator('.locations-new-slot [data-action="new-location"]');
     await expect(button).toHaveCount(1);
 
     // And it opens the editor directly, with no menu in between.

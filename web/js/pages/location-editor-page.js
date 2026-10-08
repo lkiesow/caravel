@@ -2,7 +2,7 @@ import { api } from "../api.js";
 import { createGuard, guardClick } from "../busy.js";
 import { t, translatePage, getLocale } from "../i18n.js";
 import { navigate, leaveEditor } from "../router.js";
-import { renderItemForm } from "../components/location-form.js";
+import { renderLocationForm } from "../components/location-form.js";
 import { renderImageField } from "../components/image-field.js";
 import { renderFileList } from "../components/file-list.js";
 import { icon } from "../icon.js";
@@ -22,30 +22,30 @@ import { escapeHtml } from "../escape.js";
 // section order (location-view-page.js), and both commit through the same
 // single Save button at the bottom.
 //
-// Everything typed on the page is held in `draft` until then, and goes out
-// as ONE request: the item's own fields plus nested location/links/dates,
-// which handleCreateItem/handleUpdateItem write in a transaction (Stage 09
-// Milestone 1). Before that the page had five independent save paths, and
-// the visually primary Save only carried Basic info - so coordinates typed
-// into the card below it were silently discarded. One request also means
-// there is nothing to guard against navigating away from: either Save was
-// pressed and everything landed, or it wasn't and nothing did.
+// Everything typed on the page is held in `draft` until then, and goes out as
+// ONE request: the location's own fields plus nested geo/links/dates, which
+// handleCreateLocation/handleUpdateLocation write in a transaction (Stage 09
+// Milestone 1). Before that the page had five independent save paths, and the
+// visually primary Save only carried Basic info - so coordinates typed into the
+// card below it were silently discarded. One request also means there is
+// nothing to guard against navigating away from: either Save was pressed and
+// everything landed, or it wasn't and nothing did.
 //
 // The cover photo and the files cannot ride in a JSON body, so create mode
-// sends a multipart one instead (Stage 23 Milestones 3-4): the item as JSON
+// sends a multipart one instead (Stage 23 Milestones 3-4): the location as JSON
 // in a "location" part, the staged cover and the staged files alongside it, and
 // the server commits all of it in one transaction or none of it. In edit mode
-// they still write immediately against the existing item - image-field.js and
-// file-list.js each take a path and own their own request - because there is
-// already something to attach them to.
+// they still write immediately against the existing location - image-field.js
+// and file-list.js each take a path and own their own request - because there
+// is already something to attach them to.
 //
 // What that replaced is worth remembering, because the failure was quiet: the
 // create returned an ID, flushUploads() then wrote the cover, and a failure
-// there left the location saved without it. The page did not adopt the item
+// there left the location saved without it. The page did not adopt the location
 // it had just created, so it was still in create mode, and pressing Save
 // again made a *second* location.
-export async function renderLocationEditorPage(container, { tripId, itemId }, signal) {
-  let item = null;
+export async function renderLocationEditorPage(container, { tripId, locationId }, signal) {
+  let location = null;
   renderLoading(container, { size: "lg" });
 
   // A viewer reaching this route — by typed URL, a bookmark, or a back button
@@ -67,13 +67,13 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
     // The location they were trying to edit if there is one, the trip if not.
     // leaveEditor rather than navigate: a form every save would 403 is not a
     // place Back should return to either.
-    leaveEditor(itemId ? `/trips/${tripId}/locations/${itemId}` : `/trips/${tripId}/locations`);
+    leaveEditor(locationId ? `/trips/${tripId}/locations/${locationId}` : `/trips/${tripId}/locations`);
     return;
   }
 
-  if (itemId) {
+  if (locationId) {
     try {
-      item = await api.get(`/locations/${itemId}`);
+      location = await api.get(`/locations/${locationId}`);
     } catch {
       renderNotFoundPage(container, { href: `/trips/${tripId}`, labelKey: "common.back" });
       return;
@@ -88,11 +88,11 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
   // Set by render(); save() and the per-card Enter handlers reach it through
   // this binding rather than being passed it, since they're all closures over
   // the same single render.
-  let itemForm;
+  let locationForm;
   // The cover-photo field's handle, so the assistant's cover suggestion can
   // write through the component's own API rather than reaching into its DOM.
   let imageField = null;
-  // Assigned by renderLocationForm(). The assistant writes coordinates through
+  // Assigned by renderGeoForm(). The assistant writes coordinates through
   // it so the map and the "show on map" hint update exactly as they do when a
   // pin is dragged, rather than the fields being set behind their backs.
   let setCoordinates = null;
@@ -115,12 +115,12 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
   const draft = {
     image: null,
     files: [],
-    links: (item?.links ?? []).map((l) => ({ url: l.url, label: l.label ?? null })),
+    links: (location?.links ?? []).map((l) => ({ url: l.url, label: l.label ?? null })),
     // A date is a range of itinerary days, inclusive of both ends: a stay from
     // the 5th to the 7th means the location is on all three of those days. The
     // note that annotates one belongs to the itinerary entry, which is why
     // there is no label here.
-    dates: (item?.dates ?? []).map((d) => ({ start_date: d.start_date, end_date: d.end_date })),
+    dates: (location?.dates ?? []).map((d) => ({ start_date: d.start_date, end_date: d.end_date })),
   };
 
   // Whether the user touched the Dates card. Only then is `dates` sent.
@@ -145,10 +145,10 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
   function render() {
     // Everything below is about to be replaced; let go of the previous form's
     // suggestion listeners first (members-tab.js does the same).
-    itemForm?.destroy();
+    locationForm?.destroy();
     container.innerHTML = `
       <div class="page location-editor">
-        <a href="${item ? `/trips/${tripId}/locations/${item.id}` : `/trips/${tripId}/locations`}" data-link data-leave-editor class="back-link">${icon("arrow-left")} <span data-i18n="common.back"></span></a>
+        <a href="${location ? `/trips/${tripId}/locations/${location.id}` : `/trips/${tripId}/locations`}" data-link data-leave-editor class="back-link">${icon("arrow-left")} <span data-i18n="common.back"></span></a>
         <div class="page__header">
           <h1></h1>
         </div>
@@ -156,30 +156,30 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
         <div class="editor-card">
           <h2 data-i18n="location.editor.basicInfo"></h2>
           <div class="assist-slot" hidden></div>
-          <div class="item-form-slot"></div>
+          <div class="location-form-slot"></div>
           <div data-assist-field="sources"></div>
         </div>
 
         <div class="editor-card">
-          <h2 data-i18n="item.detail.image"></h2>
+          <h2 data-i18n="location.detail.image"></h2>
           <div class="image-field-slot"></div>
           <div data-assist-field="cover"></div>
         </div>
 
         <div class="editor-card">
-          <h2 data-i18n="item.detail.location"></h2>
-          <form class="location-form">
+          <h2 data-i18n="location.detail.geo"></h2>
+          <form class="geo-form">
             <label>
-              <span data-i18n="item.detail.lat"></span>
+              <span data-i18n="location.detail.lat"></span>
               <input type="number" step="any" name="lat" />
             </label>
             <label>
-              <span data-i18n="item.detail.lng"></span>
+              <span data-i18n="location.detail.lng"></span>
               <input type="number" step="any" name="lng" />
             </label>
             <div data-assist-field="coordinates"></div>
             <label>
-              <span data-i18n="item.detail.address"></span>
+              <span data-i18n="location.detail.address"></span>
               <input type="text" name="address" />
             </label>
             <div data-assist-field="address"></div>
@@ -191,11 +191,11 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
                 <button type="button" class="btn btn-secondary btn-row" data-action="accept-address">${icon("check")} <span data-i18n="location.form.lookupAccept"></span></button>
               </div>
             </div>
-            <label class="location-form__checkbox">
+            <label class="geo-form__checkbox">
               <input type="checkbox" name="showOnMap" checked />
               <span data-i18n="location.form.showOnMap"></span>
             </label>
-            <p class="location-form__hint" data-i18n="location.form.showOnMapHint" hidden></p>
+            <p class="geo-form__hint" data-i18n="location.form.showOnMapHint" hidden></p>
             <div class="location-search" hidden>
               <div class="location-search__row">
                 <input type="search" name="placeQuery" autocomplete="off" data-i18n-placeholder="location.form.searchPlaceholder" data-i18n-aria-label="location.form.searchPlaceholder" />
@@ -204,52 +204,52 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
               <p class="location-search__status" role="status" hidden></p>
               <ul class="location-search__results"></ul>
             </div>
-            <p class="location-form__pick-hint" data-i18n="location.form.pickHint"></p>
-            <map-view pick class="location-form__map"${
-              item?.geo?.lat != null && item?.geo?.lng != null
-                ? ` lat="${escapeHtml(item.geo.lat)}" lng="${escapeHtml(item.geo.lng)}"`
+            <p class="geo-form__pick-hint" data-i18n="location.form.pickHint"></p>
+            <map-view pick class="geo-form__map"${
+              location?.geo?.lat != null && location?.geo?.lng != null
+                ? ` lat="${escapeHtml(location.geo.lat)}" lng="${escapeHtml(location.geo.lng)}"`
                 : ""
             }></map-view>
           </form>
         </div>
 
         <div class="editor-card">
-          <h2 data-i18n="item.detail.links"></h2>
+          <h2 data-i18n="location.detail.links"></h2>
           <ul class="link-list"></ul>
           <div data-assist-field="links"></div>
           <form class="link-form">
-            <input type="url" name="url" data-i18n-placeholder="item.detail.linkUrl" required />
-            <input type="text" name="label" data-i18n-placeholder="item.detail.linkLabel" />
-            <button type="submit" class="btn btn-secondary btn-row">${icon("plus")} <span data-i18n="item.detail.addLink"></span></button>
+            <input type="url" name="url" data-i18n-placeholder="location.detail.linkUrl" required />
+            <input type="text" name="label" data-i18n-placeholder="location.detail.linkLabel" />
+            <button type="submit" class="btn btn-secondary btn-row">${icon("plus")} <span data-i18n="location.detail.addLink"></span></button>
           </form>
         </div>
 
         <div class="editor-card">
-          <h2 data-i18n="item.detail.dates"></h2>
+          <h2 data-i18n="location.detail.dates"></h2>
           <ul class="date-list"></ul>
           <form class="date-form">
-            <input type="date" name="startDate" required data-i18n-aria-label="item.detail.startDate" />
-            <input type="date" name="endDate" data-i18n-placeholder="item.detail.endDate" data-i18n-aria-label="item.detail.endDate" />
-            <button type="submit" class="btn btn-secondary btn-row">${icon("plus")} <span data-i18n="item.detail.addDate"></span></button>
+            <input type="date" name="startDate" required data-i18n-aria-label="location.detail.startDate" />
+            <input type="date" name="endDate" data-i18n-placeholder="location.detail.endDate" data-i18n-aria-label="location.detail.endDate" />
+            <button type="submit" class="btn btn-secondary btn-row">${icon("plus")} <span data-i18n="location.detail.addDate"></span></button>
           </form>
         </div>
 
         <div class="editor-card">
-          <h2 data-i18n="item.detail.files"></h2>
+          <h2 data-i18n="location.detail.files"></h2>
           <div class="file-list-slot"></div>
         </div>
 
         <div class="editor-actions">
-          <button class="btn btn-primary" data-action="save">${icon("check")} <span data-i18n="${item ? "common.save" : "location.editor.createButton"}"></span></button>
+          <button class="btn btn-primary" data-action="save">${icon("check")} <span data-i18n="${location ? "common.save" : "location.editor.createButton"}"></span></button>
           <button class="btn btn-secondary" data-action="cancel">${icon("x")} <span data-i18n="common.cancel"></span></button>
         </div>
 
         ${
-          item
+          location
             ? `
           <div class="editor-card">
-            <h2 data-i18n="item.deleteHeading"></h2>
-            <p class="editor-card__hint" data-i18n="item.deleteDescription"></p>
+            <h2 data-i18n="location.deleteHeading"></h2>
+            <p class="editor-card__hint" data-i18n="location.deleteDescription"></p>
             <button class="btn btn-danger" data-action="delete">${icon("trash-2")} <span data-i18n="common.delete"></span></button>
           </div>
         `
@@ -260,20 +260,20 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
     translatePage(container);
     setHeading();
 
-    itemForm = renderItemForm(container.querySelector(".item-form-slot"), item, { onSubmit: save, tripId });
+    locationForm = renderLocationForm(container.querySelector(".location-form-slot"), location, { onSubmit: save, tripId });
 
     imageField = renderImageField(container.querySelector(".image-field-slot"), {
       tripId,
-      imageUrl: item?.image_url,
-      attachPath: item ? `/locations/${item.id}/image` : undefined,
+      imageUrl: location?.image_url,
+      attachPath: location ? `/locations/${location.id}/image` : undefined,
       // The title the user has already typed is usually the whole search, so
       // the picker opens with it filled in. Read at press time rather than
       // captured: on a new location it is typed after this card is rendered.
-      searchSeed: () => container.querySelector('.item-form-slot [name="title"]')?.value ?? "",
+      searchSeed: () => container.querySelector('.location-form-slot [name="title"]')?.value ?? "",
       onChanged: (updated) => {
-        if (item) {
-          item.image_id = updated.image_id;
-          item.image_url = updated.image_url;
+        if (location) {
+          location.image_id = updated.image_id;
+          location.image_url = updated.image_url;
         }
       },
       onStaged: (image) => {
@@ -281,13 +281,13 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
       },
     });
 
-    renderLocationForm();
+    renderGeoForm();
     renderAssistSlot();
     renderLinksList();
     bindLinkForm();
     renderDatesList();
     bindDateForm();
-    renderFileList(container.querySelector(".file-list-slot"), item ? `/locations/${item.id}/files` : null, {
+    renderFileList(container.querySelector(".file-list-slot"), location ? `/locations/${location.id}/files` : null, {
       staged: draft.files,
       shared: isShared(trip),
     });
@@ -301,8 +301,8 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
     const deleteBtn = container.querySelector('[data-action="delete"]');
     if (deleteBtn) {
       guardClick(deleteBtn, async () => {
-        if (!(await confirmDialog({ messageKey: "item.deleteConfirm" }))) return;
-        await api.delete(`/locations/${item.id}`);
+        if (!(await confirmDialog({ messageKey: "location.deleteConfirm" }))) return;
+        await api.delete(`/locations/${location.id}`);
         // Deleted either way; only the redirect waits on the user still being
         // here (see router.js on the signal).
         if (signal.aborted) return;
@@ -311,8 +311,8 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
         // Overwriting the editor entry is the best available. It does leave
         // that dead entry in place -- Back from the overview lands on the
         // deleted location and gets not-found -- which is what pressing Back
-        // after a delete did before this too, when the entry it returned to
-        // was the editor for the same deleted item. Fixing it properly means
+        // after a delete did before this too, when the entry it returned to was
+        // the editor for the same deleted location. Fixing it properly means
         // rewriting the entry underneath, which the History API only allows
         // from inside the popstate that lands on it; deliberately left alone.
         navigate(`/trips/${tripId}/locations`, { replace: true });
@@ -336,27 +336,27 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
       // Read live rather than captured: the point of enriching is to see what
       // is in front of the user, including anything typed and not yet saved.
       readCurrent: () => {
-        const values = itemForm.readValues();
+        const values = locationForm.readValues();
         return {
           title: values.title ?? "",
           // Empty while the select is still showing its default on a new
           // location: see isCategoryChosen. Sending "site" unchosen would make
           // every category suggestion claim to overwrite something.
-          category: itemForm.isCategoryChosen() ? (values.category ?? "") : "",
+          category: locationForm.isCategoryChosen() ? (values.category ?? "") : "",
           // Comma-joined, which is the shape the proposal comes back in --
           // the assistant's field pipeline is string-shaped end to end.
           tags: (values.tags ?? []).join(", "),
           notes: values.notes ?? "",
-          address: container.querySelector('.location-form [name="address"]').value,
+          address: container.querySelector('.geo-form [name="address"]').value,
           links: draft.links.map((l) => ({ url: l.url, label: l.label ?? "" })),
         };
       },
       applyField: (name, value) => {
         if (name === "address") {
-          container.querySelector('.location-form [name="address"]').value = value;
+          container.querySelector('.geo-form [name="address"]').value = value;
           return;
         }
-        itemForm.setValues({ [name]: value });
+        locationForm.setValues({ [name]: value });
       },
       applyLink: (link) => {
         draft.links.push({ url: link.url, label: link.label || null });
@@ -382,53 +382,54 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
     });
   }
 
-  // The page's one and only write of the item itself: basic info plus the
-  // nested location, links and dates, committed together server-side.
+  // The page's one and only write of the location itself: basic info plus the
+  // nested geo, links and dates, committed together server-side.
   //
   // Never called directly: `save` above is this behind the page's guard, and
   // that is what the button and both Enter handlers are given.
   async function commitSave() {
-    itemForm.clearError();
+    locationForm.clearError();
 
-    // show_on_map is a field of the item itself, not of its nested location,
+    // show_on_map is a field of the location itself, not of its nested geo,
     // even though its checkbox sits in the Location card - see readValues().
     const body = {
-      ...itemForm.readValues(),
-      show_on_map: container.querySelector('.location-form [name="showOnMap"]').checked,
+      ...locationForm.readValues(),
+      show_on_map: container.querySelector('.geo-form [name="showOnMap"]').checked,
       links: draft.links,
     };
 
     // Only when the user actually edited the dates - see datesDirty. On create
     // there is nothing on the itinerary to protect and the card is the only
     // source of the dates, so an untouched card still sends its (empty) list.
-    if (datesDirty || !item) body.dates = draft.dates;
+    if (datesDirty || !location) body.dates = draft.dates;
 
     // Absent means "leave it alone", so only send the key when there is
     // something to say: the typed coordinates, or explicit nulls to clear a
-    // location the item already had. An untouched card on a location that
+    // geo the location already had. An untouched card on a location that
     // never had one sends nothing rather than creating an empty row.
-    const location = readLocationForm();
-    if (location) body.geo = location;
-    else if (item?.geo) body.geo = { lat: null, lng: null, address: null };
+    const geo = readGeoForm();
+    if (geo) body.geo = geo;
+    else if (location?.geo) body.geo = { lat: null, lng: null, address: null };
 
-    // Create sends the whole location at once, edit sends the item alone.
+    // Create sends the whole location at once, edit sends the location's own
+    // fields alone.
     //
     // The asymmetry is not an oversight: on an existing location the cover and
     // the files are written the moment they are picked, through their own
-    // endpoints, because there is already an item to attach them to. Only a
+    // endpoints, because there is already a location to attach them to. Only a
     // location that does not exist yet has to carry them along.
     let saved;
     try {
-      saved = item
-        ? await api.patch(`/locations/${item.id}`, body)
+      saved = location
+        ? await api.patch(`/locations/${location.id}`, body)
         : await api.postForm(`/trips/${tripId}/locations`, buildCreateForm(body));
     } catch (err) {
       // Nothing was created, so there is nothing to clean up and nothing to
       // adopt: the draft is still on the page and Save can simply be pressed
-      // again. This used to be the sharp edge -- the item was created, the
+      // again. This used to be the sharp edge -- the location was created, the
       // cover failed, and because the page never learned it was now editing
       // rather than creating, the next Save made a second location.
-      itemForm.showError(err.body?.error);
+      locationForm.showError(err.body?.error);
       return;
     }
 
@@ -438,9 +439,9 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
     leaveEditor(`/trips/${tripId}/locations/${saved.id}`);
   }
 
-  // Everything a new location is made of, in one multipart body: the item as
-  // JSON in a "location" part, the staged cover as either a file or a URL with
-  // its provenance, and the staged files.
+  // Everything a new location is made of, in one multipart body: the location
+  // as JSON in a "location" part, the staged cover as either a file or a URL
+  // with its provenance, and the staged files.
   //
   // The notes and visibilities are *positional* -- the nth file_note belongs
   // to the nth file -- which is what the server reads and the only ordering
@@ -473,25 +474,25 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
 
   function cancel() {
     if (draft.image?.kind === "file" && draft.image.previewUrl) URL.revokeObjectURL(draft.image.previewUrl);
-    leaveEditor(item ? `/trips/${tripId}/locations/${item.id}` : `/trips/${tripId}/locations`);
+    leaveEditor(location ? `/trips/${tripId}/locations/${location.id}` : `/trips/${tripId}/locations`);
   }
 
-  // "Edit {title}" needs the item's title interpolated into the string,
+  // "Edit {title}" needs the location's title interpolated into the string,
   // but translatePage() only ever calls t(key) with no params (see
   // i18n.js) - so this bypasses data-i18n on the <h1> entirely and sets
   // its text directly. Called once after the initial render, and again
   // after Basic Info is saved so the heading picks up a changed title
   // without needing a full page reload.
   function setHeading() {
-    container.querySelector(".page__header h1").textContent = item
-      ? t("location.editor.editTitle", { title: item.title })
+    container.querySelector(".page__header h1").textContent = location
+      ? t("location.editor.editTitle", { title: location.title })
       : t("location.editor.newTitle");
   }
 
   // null when nothing was filled in, so an untouched Location card says
-  // nothing about the item's location rather than clearing it.
-  function readLocationForm() {
-    const form = container.querySelector(".location-form");
+  // nothing about the location's geo rather than clearing it.
+  function readGeoForm() {
+    const form = container.querySelector(".geo-form");
     if (!form.lat.value && !form.lng.value && !form.address.value) return null;
     return {
       lat: form.lat.value ? Number(form.lat.value) : null,
@@ -504,20 +505,20 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
     };
   }
 
-  function renderLocationForm() {
-    const form = container.querySelector(".location-form");
-    if (item?.geo) {
-      form.lat.value = item.geo.lat ?? "";
-      form.lng.value = item.geo.lng ?? "";
-      form.address.value = item.geo.address ?? "";
+  function renderGeoForm() {
+    const form = container.querySelector(".geo-form");
+    if (location?.geo) {
+      form.lat.value = location.geo.lat ?? "";
+      form.lng.value = location.geo.lng ?? "";
+      form.address.value = location.geo.address ?? "";
       // Carried through an edit that does not touch the coordinates, so
       // renaming a location does not silently drop its OSM identity.
-      if (item.geo.osm_type && item.geo.osm_id) {
-        osmIdentity = { type: item.geo.osm_type, id: item.geo.osm_id };
+      if (location.geo.osm_type && location.geo.osm_id) {
+        osmIdentity = { type: location.geo.osm_type, id: location.geo.osm_id };
       }
     }
     // Checked by default for a new location, matching the API's own default.
-    if (item) form.showOnMap.checked = item.show_on_map;
+    if (location) form.showOnMap.checked = location.show_on_map;
 
     // "Show on map" only does anything once there are coordinates to show -
     // GET /trips/{id}/map filters on lat AND lng being present as well as on
@@ -526,7 +527,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
     // now, and says so when they're empty rather than silently doing nothing.
     // The box stays enabled either way: unchecking it isn't what's missing,
     // and the user's intent should survive until they fill the coordinates in.
-    const hint = container.querySelector(".location-form__hint");
+    const hint = container.querySelector(".geo-form__hint");
     const syncHint = () => {
       const hasCoordinates = Boolean(form.lat.value && form.lng.value);
       hint.hidden = hasCoordinates || !form.showOnMap.checked;
@@ -534,14 +535,14 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
     form.showOnMap.addEventListener("change", syncHint);
 
     // The picker and the number fields are two views of one value, and the
-    // fields are the authoritative one: readLocationForm() still reads them
+    // fields are the authoritative one: readGeoForm() still reads them
     // and nothing else, so the map cannot contribute to a save except by
     // writing here first.
     //
     // The initial coordinates are rendered straight onto the element in
     // render() rather than pushed from here, so an existing location's map
     // opens on its point instead of on the world view and then jumping.
-    const picker = container.querySelector(".location-form__map");
+    const picker = container.querySelector(".geo-form__map");
 
     // Fields -> map. A blank field removes the attribute rather than setting
     // an empty one, because "no coordinate" and "the coordinate 0" have to
@@ -778,8 +779,8 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
       //
       // Only into an empty title, like every other suggestion in this editor:
       // a name from a link does not get to overwrite what somebody typed.
-      const named = place.display_name && !itemForm.readValues().title.trim();
-      if (named) itemForm.setValues({ title: place.display_name });
+      const named = place.display_name && !locationForm.readValues().title.trim();
+      if (named) locationForm.setValues({ title: place.display_name });
 
       // The title lives in the card *above* this one, so on a phone it is off
       // screen -- which is why the message says what happened rather than
@@ -933,7 +934,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
             }
           )
           .join("")
-      : `<li class="empty">${t("item.detail.linksEmpty")}</li>`;
+      : `<li class="empty">${t("location.detail.linksEmpty")}</li>`;
 
     list.querySelectorAll('[data-action="delete-link"]').forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -966,7 +967,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
             return `<li>${escapeHtml(range)} <button class="icon-remove" data-action="delete-date" data-index="${i}" aria-label="${t("common.remove")}">${icon("x")}</button></li>`;
           })
           .join("")
-      : `<li class="empty">${t("item.detail.datesEmpty")}</li>`;
+      : `<li class="empty">${t("location.detail.datesEmpty")}</li>`;
 
     list.querySelectorAll('[data-action="delete-date"]').forEach((btn) => {
       btn.addEventListener("click", () => {

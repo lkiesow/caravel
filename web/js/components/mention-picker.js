@@ -39,21 +39,21 @@ const MAX_SPACES = 2;
 const escapeLinkText = (s) => s.trim().replace(/([\\[\]])/g, "\\$1");
 
 export function bindMentionPicker(textarea, listEl, { tripId }) {
-  let itemsPromise = null;
+  let locationsPromise = null;
 
   // Lazily, once, on first focus -- the same shape as tag-field.js's
   // loadVocabulary. A failure resolves empty: the picker is a convenience on
   // top of a textarea that works without it, so it has nothing to report.
-  function loadItems() {
-    if (!itemsPromise) {
-      itemsPromise = api
+  function loadLocations() {
+    if (!locationsPromise) {
+      locationsPromise = api
         .get(`/trips/${tripId}/locations`)
         .then((list) => (Array.isArray(list) ? list : []))
         .catch(() => []);
     }
-    return itemsPromise;
+    return locationsPromise;
   }
-  textarea.addEventListener("focus", loadItems, { once: true });
+  textarea.addEventListener("focus", loadLocations, { once: true });
 
   function readQuery(el) {
     // A selection is not a query, and replacing one would be a surprise.
@@ -127,19 +127,19 @@ export function bindMentionPicker(textarea, listEl, { tripId }) {
     minChars: 1,
     delay: 0,
     search: async (query) => {
-      const all = await loadItems();
+      const all = await loadLocations();
       const q = query.trim().toLowerCase();
-      const hits = all.filter((item) => item.title.toLowerCase().includes(q));
+      const hits = all.filter((location) => location.title.toLowerCase().includes(q));
       // Prefix matches lead: typing "ke" for Kex Hostel should not put it third
       // behind places with "ke" in the middle of a word.
       hits.sort(
         (a, b) =>
           Number(b.title.toLowerCase().startsWith(q)) - Number(a.title.toLowerCase().startsWith(q)),
       );
-      return hits.slice(0, 8).map((item) => ({
-        value: item.id,
-        label: item.title,
-        hint: t(`item.category.${item.category}`),
+      return hits.slice(0, 8).map((location) => ({
+        value: location.id,
+        label: location.title,
+        hint: t(`location.category.${location.category}`),
       }));
     },
   });

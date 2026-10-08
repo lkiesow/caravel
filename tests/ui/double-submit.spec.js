@@ -89,7 +89,7 @@ test.describe("a second press while a write is in flight", () => {
     strayTripIds.push(tripId);
 
     await gotoRoute(page, `/trips/${tripId}/locations/new`);
-    await page.locator('.item-form input[name="title"]').fill("Held waterfall");
+    await page.locator('.entry-form input[name="title"]').fill("Held waterfall");
 
     const gate = await holdRoute(page, `**/api/trips/${tripId}/locations`);
     const save = page.locator('[data-action="save"]');
@@ -105,8 +105,8 @@ test.describe("a second press while a write is in flight", () => {
     gate.release();
     await expect(page).toHaveURL(new RegExp(`/trips/${tripId}/locations/[0-9a-f-]+$`));
 
-    const items = await (await page.request.get(`/api/trips/${tripId}/locations`)).json();
-    expect(items.filter((i) => i.title === "Held waterfall"), "exactly one location").toHaveLength(1);
+    const locations = await (await page.request.get(`/api/trips/${tripId}/locations`)).json();
+    expect(locations.filter((i) => i.title === "Held waterfall"), "exactly one location").toHaveLength(1);
   });
 
   // Why the flag lives on the guard and not on the button. This page reaches
@@ -118,14 +118,14 @@ test.describe("a second press while a write is in flight", () => {
     strayTripIds.push(tripId);
 
     await gotoRoute(page, `/trips/${tripId}/locations/new`);
-    await page.locator('.item-form input[name="title"]').fill("Three doors");
+    await page.locator('.entry-form input[name="title"]').fill("Three doors");
 
     const gate = await holdRoute(page, `**/api/trips/${tripId}/locations`);
 
     // The button, then Enter in Basic info, then Enter in the Location card -
     // all in one synchronous turn, so all three land while the first request
     // is still held.
-    const inFlight = await pressAll(page, ['[data-action="save"]', ".item-form", ".location-form"]);
+    const inFlight = await pressAll(page, ['[data-action="save"]', ".entry-form", ".geo-form"]);
     await gate.arrived(1);
 
     expect(inFlight, "three controls, one request in flight").toBe(1);
@@ -134,8 +134,8 @@ test.describe("a second press while a write is in flight", () => {
     gate.release();
     await expect(page).toHaveURL(new RegExp(`/trips/${tripId}/locations/[0-9a-f-]+$`));
 
-    const items = await (await page.request.get(`/api/trips/${tripId}/locations`)).json();
-    expect(items.filter((i) => i.title === "Three doors"), "exactly one location").toHaveLength(1);
+    const locations = await (await page.request.get(`/api/trips/${tripId}/locations`)).json();
+    expect(locations.filter((i) => i.title === "Three doors"), "exactly one location").toHaveLength(1);
   });
 
   // The overflow menus are guarded in menu.js itself, so this one case stands

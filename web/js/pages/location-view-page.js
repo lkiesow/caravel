@@ -4,7 +4,7 @@ import { navigate } from "../router.js";
 import { icon } from "../icon.js";
 import "../components/map-view.js";
 import { renderLoading } from "../components/loading.js";
-import { loadTripItemIds, markInternalLinks } from "../rendered-markdown.js";
+import { loadTripLocationIds, markInternalLinks } from "../rendered-markdown.js";
 import { canEdit, isShared } from "../trip-role.js";
 import { renderFileList } from "../components/file-list.js";
 import { formatDateRange } from "../format.js";
@@ -23,7 +23,7 @@ function hostOf(raw) {
 import { renderNotFoundPage } from "./not-found-page.js";
 import { escapeHtml } from "../escape.js";
 
-// Read-only detail view for an item: image, category badge, notes,
+// Read-only detail view for a location: image, category badge, notes,
 // location as address text plus an embedded single-marker map (map-view
 // in single-marker mode, driven by lat/lng attributes instead of a
 // trip-id, since there's exactly one point to plot here - see
@@ -45,35 +45,36 @@ import { escapeHtml } from "../escape.js";
 // row by a long title, and looks stranded there once it's icon-only on
 // mobile. At the bottom it can be full-width and keep its label at every
 // width - editing isn't frequent enough to need to be above the fold.
-export async function renderLocationViewPage(container, { tripId, itemId }) {
+export async function renderLocationViewPage(container, { tripId, locationId }) {
   renderLoading(container, { size: "lg" });
 
   // The trip comes along for its `role` — this page has no other use for it,
   // but the Edit button has to know whether editing is possible, and the role
-  // lives on the trip rather than on the item. In parallel with the item so it
-  // costs latency rather than a second round trip. So do the trip's item ids,
-  // which say which links in the notes point at a deleted place; that call
-  // cannot fail the page, loadTripItemIds resolves null instead.
-  let item, trip, itemIds;
+  // lives on the trip rather than on the location. In parallel with the
+  // location so it costs latency rather than a second round trip. So do the
+  // trip's location ids, which say which links in the notes point at a deleted
+  // place; that call cannot fail the page, loadTripLocationIds resolves null
+  // instead.
+  let location, trip, locationIds;
   try {
-    [item, trip, itemIds] = await Promise.all([
-      api.get(`/locations/${itemId}`),
+    [location, trip, locationIds] = await Promise.all([
+      api.get(`/locations/${locationId}`),
       api.get(`/trips/${tripId}`),
-      loadTripItemIds(tripId),
+      loadTripLocationIds(tripId),
     ]);
   } catch {
     renderNotFoundPage(container, { href: `/trips/${tripId}`, labelKey: "common.back" });
     return;
   }
 
-  const color = categoryColor(item.category);
-  const files = await api.get(`/locations/${itemId}/files`);
+  const color = categoryColor(location.category);
+  const files = await api.get(`/locations/${locationId}/files`);
   const editable = canEdit(trip);
-  const hasCoords = item.geo?.lat != null && item.geo?.lng != null;
-  const hasAddress = Boolean(item.geo?.address);
+  const hasCoords = location.geo?.lat != null && location.geo?.lng != null;
+  const hasAddress = Boolean(location.geo?.address);
   // null unless this place was saved through the address search, which is the
   // only route that knows an OSM element. Absent, not broken, for a dropped pin.
-  const osmUrl = openStreetMapUrl(item.geo?.osm_type, item.geo?.osm_id);
+  const osmUrl = openStreetMapUrl(location.geo?.osm_type, location.geo?.osm_id);
 
   container.innerHTML = `
     <div class="page location-view">
@@ -84,32 +85,32 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
       <div class="location-view__meta">
         <span class="dot" style="background:${color}"></span>
         <span class="category-label"></span>
-        ${item.tags?.length ? `<ul class="tag-list location-view__tags"></ul>` : ""}
+        ${location.tags?.length ? `<ul class="tag-list location-view__tags"></ul>` : ""}
       </div>
       ${
-        item.image_url
+        location.image_url
           ? `
         <figure class="location-view__cover">
-          <img class="location-view__image" src="${escapeHtml(item.image_url)}" alt="" />
-          ${item.image_credit ? `<figcaption class="image-credit"></figcaption>` : ""}
+          <img class="location-view__image" src="${escapeHtml(location.image_url)}" alt="" />
+          ${location.image_credit ? `<figcaption class="image-credit"></figcaption>` : ""}
         </figure>
       `
           : ""
       }
-      ${item.notes ? `<div class="location-view__notes"></div>` : ""}
+      ${location.notes ? `<div class="location-view__notes"></div>` : ""}
 
       ${
         hasCoords || hasAddress
           ? `
         <div class="editor-card">
-          <h2 data-i18n="item.detail.location"></h2>
+          <h2 data-i18n="location.detail.geo"></h2>
           ${hasAddress ? `<p class="location-view__address"></p>` : ""}
           ${
             hasCoords
               ? `
-            <map-view lat="${item.geo.lat}" lng="${item.geo.lng}" marker-title="${escapeHtml(item.title)}" marker-address="${escapeHtml(item.geo.address ?? "")}" marker-category="${escapeHtml(item.category)}"></map-view>
+            <map-view lat="${location.geo.lat}" lng="${location.geo.lng}" marker-title="${escapeHtml(location.title)}" marker-address="${escapeHtml(location.geo.address ?? "")}" marker-category="${escapeHtml(location.category)}"></map-view>
             <div class="location-view__maps-links">
-              <a class="location-view__maps-link" href="${escapeHtml(googleMapsUrl(item.geo.lat, item.geo.lng, item.title, item.geo.address))}" target="_blank" rel="noopener" data-i18n="map.viewOnGoogleMaps"></a>
+              <a class="location-view__maps-link" href="${escapeHtml(googleMapsUrl(location.geo.lat, location.geo.lng, location.title, location.geo.address))}" target="_blank" rel="noopener" data-i18n="map.viewOnGoogleMaps"></a>
               ${
                 osmUrl
                   ? `<span class="location-view__maps-sep" aria-hidden="true">\u00b7</span>
@@ -126,12 +127,12 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
       }
 
       ${
-        item.links.length
+        location.links.length
           ? `
         <div class="editor-card">
-          <h2 data-i18n="item.detail.links"></h2>
+          <h2 data-i18n="location.detail.links"></h2>
           <ul class="link-list">
-            ${item.links.map(renderLink).join("")}
+            ${location.links.map(renderLink).join("")}
           </ul>
         </div>
       `
@@ -139,12 +140,12 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
       }
 
       ${
-        item.dates.length
+        location.dates.length
           ? `
         <div class="editor-card">
-          <h2 data-i18n="item.detail.dates"></h2>
+          <h2 data-i18n="location.detail.dates"></h2>
           <ul class="date-list">
-            ${item.dates
+            ${location.dates
               .map((d) => `<li>${escapeHtml(formatDateRange(d.start_date, d.end_date) ?? "")}</li>`)
               .join("")}
           </ul>
@@ -157,7 +158,7 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
         files.length
           ? `
         <div class="editor-card">
-          <h2 data-i18n="item.detail.files"></h2>
+          <h2 data-i18n="location.detail.files"></h2>
           <div class="file-list-slot"></div>
         </div>
       `
@@ -178,20 +179,20 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
     // readOnly, so no controls either way — but `shared` is still passed so a
     // personal file is *marked* as one here too. Seeing a lock on a file you
     // uploaded is the confirmation that it is not on show to the trip.
-    renderFileList(container.querySelector(".file-list-slot"), `/locations/${itemId}/files`, {
+    renderFileList(container.querySelector(".file-list-slot"), `/locations/${locationId}/files`, {
       rows: files,
       readOnly: true,
       shared: isShared(trip),
     });
   }
 
-  container.querySelector("h1").textContent = item.title;
-  container.querySelector(".category-label").textContent = t(`item.category.${item.category}`);
+  container.querySelector("h1").textContent = location.title;
+  container.querySelector(".category-label").textContent = t(`location.category.${location.category}`);
   // textContent per chip rather than interpolation: a tag is whatever somebody
   // typed, the same reason the title above is set this way.
-  if (item.tags?.length) {
+  if (location.tags?.length) {
     container.querySelector(".location-view__tags").replaceChildren(
-      ...item.tags.map((tag) => {
+      ...location.tags.map((tag) => {
         const li = document.createElement("li");
         li.className = "tag-chip";
         li.textContent = tag;
@@ -211,8 +212,8 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
   // the itinerary: a credit line under a 60px thumbnail is unreadable, and
   // those thumbnails link to this page, which carries it.
   const creditEl = container.querySelector(".image-credit");
-  if (creditEl && item.image_credit) {
-    const { text, license, source_url: sourceURL } = item.image_credit;
+  if (creditEl && location.image_credit) {
+    const { text, license, source_url: sourceURL } = location.image_credit;
     const link = document.createElement("a");
     link.href = sourceURL;
     link.target = "_blank";
@@ -229,15 +230,15 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
       creditEl.append(document.createTextNode(" · "), lic);
     }
   }
-  if (item.notes) {
+  if (location.notes) {
     const notes = container.querySelector(".location-view__notes");
-    notes.innerHTML = item.notes_html;
-    markInternalLinks(notes, { tripId, itemIds });
+    notes.innerHTML = location.notes_html;
+    markInternalLinks(notes, { tripId, locationIds });
   }
-  if (hasAddress) container.querySelector(".location-view__address").textContent = item.geo.address;
+  if (hasAddress) container.querySelector(".location-view__address").textContent = location.geo.address;
 
   container.querySelector('[data-action="edit"]')?.addEventListener("click", () => {
-    navigate(`/trips/${tripId}/locations/${itemId}/edit`);
+    navigate(`/trips/${tripId}/locations/${locationId}/edit`);
   });
 }
 

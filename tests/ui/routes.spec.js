@@ -326,7 +326,7 @@ for (const { scheme, viewport, locale } of COMBINATIONS) {
 
 // Stage 23 Milestone 8. Three near-identical rules used to declare the
 // label-and-input treatment -- .auth-form, .trip-form/.password-form and
-// .item-form -- so the next form added had three plausible rules to copy from
+// .entry-form -- so the next form added had three plausible rules to copy from
 // and no reason to prefer one. They are one rule now.
 //
 // The label blocks were already byte-identical; the inputs differed in exactly
@@ -409,11 +409,11 @@ test.describe("form fields look the same wherever they are", () => {
 
     const res = await page.request.post("/api/trips", { data: { title: "UI suite: form consistency" } });
     const tripId = (await res.json()).id;
-    let item;
+    let location;
     try {
       await gotoRoute(page, `/trips/${tripId}/locations/new`);
-      await page.waitForSelector(".item-form input");
-      item = await readField(page, ".item-form");
+      await page.waitForSelector(".entry-form input");
+      location = await readField(page, ".entry-form");
     } finally {
       await page.request.delete(`/api/trips/${tripId}`);
     }
@@ -424,7 +424,7 @@ test.describe("form fields look the same wherever they are", () => {
     const auth = await readField(page, ".auth-form");
 
     expect(auth, "the auth form should match the trip form").toEqual(trip);
-    expect(item, "the location form should match them too").toEqual(trip);
+    expect(location, "the location form should match them too").toEqual(trip);
 
     // And the value that was chosen, spelled out so a silent drift back to the
     // browser's control font is a failure rather than a shrug.

@@ -557,7 +557,7 @@ export function renderAssistPanel(container, { tripId, root, readCurrent, applyF
       if (!FIELD_NAMES.includes(field.name)) continue;
       // Category is an enum on the wire and a translated label in the select
       // it changes; show what the control will show.
-      const shown = field.name === "category" ? t(`item.category.${field.proposed}`) : field.proposed;
+      const shown = field.name === "category" ? t(`location.category.${field.proposed}`) : field.proposed;
       addSuggestion(field.name, {
         value: shown,
         overwrites: !!field.overwrites,

@@ -41,6 +41,21 @@ older stage plan or an earlier version of this file without asking.
   schemas, or pass `-timeout` in `scripts/test_postgres.sh`. Until then, do
   not run it alongside the UI suite.
 
+- **`de.json` and `en.json` are not in `i18n.py`'s canonical format.** (Stage
+  49.) A handful of values are written with `\u` escapes (`\u2014`,
+  `\u00fc`, ...) where the tool writes literal characters, so
+  `scripts/i18n.py unused` refuses to run rather than reformat the files.
+  Normalise both in a commit of their own (it changes no value), then the
+  unused-key check works again. Stage 49 ran it on a normalised scratch copy
+  instead: no unused keys.
+
+- **The assistant's build-from-a-prompt spec can time out under load.**
+  (Stage 49.) `assist.spec.js` "builds a location from a prompt" waited the
+  full 60 s for the title suggestion once in a full `make test-ui` run, then
+  passed alone, 24/24 with `--repeat-each 4`, and in the next full run. Not
+  reproduced; if it recurs, look at what the stub provider's stream waits on
+  when the machine is busy.
+
 - **Small leftovers that outlive a page.** (Stage 48.) `popup.js` keeps its
   document click and keydown listeners if a popup is open during a
   navigation (they go on the next click), and `<map-view>`'s gesture-hint
@@ -70,7 +85,7 @@ older stage plan or an earlier version of this file without asking.
   - **Editor.** One short text input in the location form, plus i18n.
   - **Display.** In the map popup, which was the original wish -- it shows the
     title, a photo and two links today, nothing about what the place is, and
-    `summary` has to join the map payload (`mapItemResponse` in
+    `summary` has to join the map payload (`mapLocationResponse` in
     `internal/httpapi/map.go`, which carries only the category). Naturally
     also under the title on the location page and the location card. The
     popup is capped at 200px wide (`popup()` in `map-view.js`).
@@ -80,8 +95,8 @@ older stage plan or an earlier version of this file without asking.
     helps pick between candidates.
 
   Effort about 4 of 10: every piece is small, but it touches schema, API,
-  three display surfaces, the editor and the assistant pipeline. Wants the
-  item -> location rename to land first (see Consistency and cleanup).
+  three display surfaces, the editor and the assistant pipeline. The item ->
+  location rename it was waiting for landed in Stage 49.
 
 - **Offline mode for the PWA, read-only first.** **(soon)** (notes.md, reviewed
   2026-10-03; absorbs the Stage 23 / Stage 45 "offline map needs one online
@@ -139,29 +154,6 @@ older stage plan or an earlier version of this file without asking.
   belongs here too: on one instance you know who you are inviting, and invite
   links only become genuinely interesting when the invitee is not a user of
   your instance at all.
-
----
-
-## Consistency and cleanup
-
-- **Identifier sweep: "item" → "location", all the way down.** **(soon)** (Stage
-  05; depth decided 2026-10-03; scheduled 2026-10-07; in progress as Stage 49.)
-  Land it *before* the location summary and the visited flag, so their columns,
-  API fields and code are written with the new names rather than renamed
-  afterwards. **The schema and `internal/db` are done** (Stage 49 Milestone 1:
-  migration 0013, `locations`/`location_geo`/`location_links`/`location_tags`,
-  `location_id` everywhere). **So is the API** (Milestone 2:
-  `/api/locations/{id}`, `location_*` JSON fields, the nested object is
-  `"geo"`; the old routes are gone). What is left is the frontend's own names:
-  the `item.*` i18n namespace (27 keys in `en.json`), `renderItemForm` in
-  `location-form.js`, `renderItemsTab` and `data-action="new-item"` in
-  `locations-tab.js`, the `<item-card>` element, the `:itemId` route parameter
-  (`app.js`, mirrored in `clientroutes.go`), and the `item`/`itemId` locals.
-  Decided: go all the way, API routes and a table-rename migration included --
-  precedent is Stage 11 Milestone 1's "documents" → "files" rename, which
-  renamed the table in `0006` and dropped the old URL outright. Do it as its own
-  milestone (or stage): a mechanical rename inside any other diff hides the real
-  changes, which is why Stage 26 declined to fold it in.
 
 ---
 

@@ -23,7 +23,7 @@ export async function renderItineraryTab(container, trip) {
   // Sorted by title for the "add an entry" select below: the API returns the
   // trip's own location order, which reads as random when you are scanning the
   // list for one place you already have in mind.
-  const items = (await api.get(`/trips/${trip.id}/locations`)).sort(byTitle());
+  const locations = (await api.get(`/trips/${trip.id}/locations`)).sort(byTitle());
 
   // Which days are expanded. Seeded from the rule below and then owned by the
   // user: toggling a day updates this set, so a re-render (adding or removing
@@ -118,12 +118,12 @@ export async function renderItineraryTab(container, trip) {
       <p class="itinerary-day__empty" data-i18n="itinerary.empty" hidden></p>
       ${
         editable
-          ? `<form class="itinerary-day__add-item">
-        <select name="itemId" aria-label="${escapeHtml(t("itinerary.addItemTo", { date: formatDate(day.date) }))}">
-          <option value="" data-i18n="itinerary.selectItem"></option>
-          ${items.map((i) => `<option value="${i.id}">${escapeHtml(i.title)}</option>`).join("")}
+          ? `<form class="itinerary-day__add-location">
+        <select name="locationId" aria-label="${escapeHtml(t("itinerary.addLocationTo", { date: formatDate(day.date) }))}">
+          <option value="" data-i18n="itinerary.selectLocation"></option>
+          ${locations.map((i) => `<option value="${i.id}">${escapeHtml(i.title)}</option>`).join("")}
         </select>
-        <button type="submit" class="btn btn-primary btn-collapse">${icon("plus")} <span data-i18n="itinerary.addItem"></span></button>
+        <button type="submit" class="btn btn-primary btn-collapse">${icon("plus")} <span data-i18n="itinerary.addLocation"></span></button>
       </form>`
           : ""
       }
@@ -182,10 +182,10 @@ export async function renderItineraryTab(container, trip) {
     // Two sequential writes on a day that does not exist yet (ensureDay, then
     // the entry), so a re-entry here is worse than a duplicate row: the second
     // pass would create the day again.
-    const addItemForm = el.querySelector(".itinerary-day__add-item");
-    if (addItemForm) {
-      guardForm(addItemForm, async (e) => {
-        const select = e.target.itemId;
+    const addLocationForm = el.querySelector(".itinerary-day__add-location");
+    if (addLocationForm) {
+      guardForm(addLocationForm, async (e) => {
+        const select = e.target.locationId;
         if (!select.value) return;
         const dayRecord = await ensureDay(day);
         const entry = await api.post(`/itinerary/days/${dayRecord.id}/entries`, { location_id: select.value });

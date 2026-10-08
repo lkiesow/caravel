@@ -2,7 +2,7 @@ import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
 import { preloadTripMap } from "../components/map-view.js";
-import { renderItemsTab } from "./locations-tab.js";
+import { renderLocationsTab } from "./locations-tab.js";
 import { renderItineraryTab } from "./itinerary-tab.js";
 import { renderNotesTab } from "./notes-tab.js";
 import { renderFileList } from "../components/file-list.js";
@@ -147,7 +147,7 @@ export async function renderTripDetailPage(container, { tripId, tab }, signal) {
 
     const content = container.querySelector(".trip-tab-content");
     if (tab === "locations") {
-      renderItemsTab(content, trip, { signal: tabSignal });
+      renderLocationsTab(content, trip, { signal: tabSignal });
     } else if (tab === "map") {
       // The map remembers where it was looking, but only in *this* history
       // entry. A camera change is a replaceState, so panning and zooming never
@@ -163,12 +163,12 @@ export async function renderTripDetailPage(container, { tripId, tab }, signal) {
         window.history.replaceState({ ...window.history.state, mapView: e.detail }, "");
       });
       // A marker popup's in-app link. map-view.js can't let the router's
-      // [data-link] interception handle it - that listener sits on document
-      // and a click inside a shadow root retargets to the host - so it
-      // dispatches the same "item-open" event location-card.js does, and the
-      // page turns it into a navigation exactly as locations-tab.js does.
-      content.addEventListener("item-open", (e) => {
-        navigate(`/trips/${trip.id}/locations/${e.detail.itemId}`);
+      // [data-link] interception handle it - that listener sits on document and
+      // a click inside a shadow root retargets to the host - so it dispatches
+      // the same "location-open" event location-card.js does, and the page
+      // turns it into a navigation exactly as locations-tab.js does.
+      content.addEventListener("location-open", (e) => {
+        navigate(`/trips/${trip.id}/locations/${e.detail.locationId}`);
       });
     } else if (tab === "itinerary") {
       renderItineraryTab(content, trip);

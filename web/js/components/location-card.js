@@ -112,9 +112,9 @@ const styles = `
   }
 `;
 
-class ItemCard extends HTMLElement {
+class LocationCard extends HTMLElement {
   static get observedAttributes() {
-    return ["item-id", "title", "category", "image-url", "tags", "dates"];
+    return ["location-id", "title", "category", "image-url", "tags", "dates"];
   }
 
   connectedCallback() {
@@ -268,4 +268,4 @@ class ItemCard extends HTMLElement {
   }
 }
 
-customElements.define("item-card", ItemCard);
+customElements.define("location-card", LocationCard);

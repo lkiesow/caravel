@@ -18,8 +18,8 @@ var clientRoutes = []string{
 	"/trips/new",
 	"/trips/:tripId/suggest",
 	"/trips/:tripId/locations/new",
-	"/trips/:tripId/locations/:itemId/edit",
-	"/trips/:tripId/locations/:itemId",
+	"/trips/:tripId/locations/:locationId/edit",
+	"/trips/:tripId/locations/:locationId",
 	"/trips/:tripId",
 }
 

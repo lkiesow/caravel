@@ -2,7 +2,7 @@ import { api } from "../api.js";
 import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
 import { renderTagField } from "./tag-field.js";
-import { loadTripItemIds, markInternalLinks } from "../rendered-markdown.js";
+import { loadTripLocationIds, markInternalLinks } from "../rendered-markdown.js";
 import { CATEGORIES } from "../categories.js";
 
 // One id per instance, because a <label for> needs one and this component could
@@ -10,7 +10,7 @@ import { CATEGORIES } from "../categories.js";
 let notesFieldSeq = 0;
 
 // Renders the Basic info fields of a location into `container`. Pass an
-// existing item to prefill them, or null to start empty.
+// existing location to prefill them, or null to start empty.
 //
 // The empty `[data-assist-field]` divs are where the assistant puts a
 // suggestion for that field. They live here, directly under the control each
@@ -26,11 +26,11 @@ let notesFieldSeq = 0;
 // component exposes instead is `readValues()`, `showError()` and the
 // `onSubmit` hook that fires when the user presses Enter in a field, so
 // Enter and the page's Save button do the same thing.
-export function renderItemForm(container, item, { onSubmit, tripId }) {
+export function renderLocationForm(container, location, { onSubmit, tripId }) {
   const notesId = `notes-${++notesFieldSeq}`;
   container.innerHTML = `
-    <form class="item-form" novalidate>
-      <p class="item-form__error" role="alert" hidden></p>
+    <form class="entry-form" novalidate>
+      <p class="entry-form__error" role="alert" hidden></p>
       <label>
         <span data-i18n="location.form.title"></span>
         <input type="text" name="title" required />
@@ -39,7 +39,7 @@ export function renderItemForm(container, item, { onSubmit, tripId }) {
       <label>
         <span data-i18n="location.form.category"></span>
         <select name="category">
-          ${CATEGORIES.map((c) => `<option value="${c}">${t(`item.category.${c}`)}</option>`).join("")}
+          ${CATEGORIES.map((c) => `<option value="${c}">${t(`location.category.${c}`)}</option>`).join("")}
         </select>
       </label>
       <div data-assist-field="category"></div>
@@ -67,17 +67,17 @@ export function renderItemForm(container, item, { onSubmit, tripId }) {
   translatePage(container);
 
   const form = container.querySelector("form");
-  const errorEl = container.querySelector(".item-form__error");
+  const errorEl = container.querySelector(".entry-form__error");
 
   const tagField = renderTagField(container.querySelector(".tag-field-slot"), {
     tripId,
-    tags: item?.tags ?? [],
+    tags: location?.tags ?? [],
   });
 
-  if (item) {
-    form.title.value = item.title;
-    form.category.value = item.category;
-    form.notes.value = item.notes ?? "";
+  if (location) {
+    form.title.value = location.title;
+    form.category.value = location.category;
+    form.notes.value = location.notes ?? "";
   }
 
   // A <select> is never empty, so on a new location the category reads as
@@ -87,7 +87,7 @@ export function renderItemForm(container, item, { onSubmit, tripId }) {
   // stop reading. So an untouched select on a new location reports itself as
   // unset; the moment it is changed, or when editing something saved, it is a
   // choice like any other.
-  let categoryChosen = Boolean(item);
+  let categoryChosen = Boolean(location);
   form.category.addEventListener("change", () => {
     categoryChosen = true;
   });
@@ -97,8 +97,8 @@ export function renderItemForm(container, item, { onSubmit, tripId }) {
   // Notes are markdown, and before Stage 15 Milestone 3 the only way to see
   // what they would look like was to save and leave the editor. The preview is
   // rendered by the server (POST /api/markdown/preview, which goes through the
-  // same renderNotesHTML the item payload uses), so what it shows is what the
-  // view page will show - a client-side renderer would be a second markdown
+  // same renderNotesHTML the location payload uses), so what it shows is what
+  // the view page will show - a client-side renderer would be a second markdown
   // implementation free to disagree with the first.
   //
   // One request per switch into Preview, not one per keystroke, and skipped
@@ -111,7 +111,7 @@ export function renderItemForm(container, item, { onSubmit, tripId }) {
   let previewedSource = null;
   // Fetched on the first preview and kept: which links in the notes point at a
   // deleted place (rendered-markdown.js). Nothing is deleted from in here.
-  let itemIdsPromise = null;
+  let locationIdsPromise = null;
 
   function setMode(mode) {
     const preview = mode === "preview";
@@ -136,13 +136,13 @@ export function renderItemForm(container, item, { onSubmit, tripId }) {
     try {
       // Trusted: the server sanitized it (bluemonday, in internal/markdown),
       // which is the entire reason the preview is a round trip.
-      itemIdsPromise ??= loadTripItemIds(tripId);
-      const [{ html }, itemIds] = await Promise.all([
+      locationIdsPromise ??= loadTripLocationIds(tripId);
+      const [{ html }, locationIds] = await Promise.all([
         api.post("/markdown/preview", { markdown: source }),
-        itemIdsPromise,
+        locationIdsPromise,
       ]);
       previewEl.innerHTML = html;
-      markInternalLinks(previewEl, { tripId, itemIds });
+      markInternalLinks(previewEl, { tripId, locationIds });
       previewedSource = source;
       setMode("preview");
     } catch (err) {
@@ -202,7 +202,7 @@ export function renderItemForm(container, item, { onSubmit, tripId }) {
     // binds document listeners and cannot be torn down is the kind of thing
     // that only becomes a bug once somebody adds a second render.
     destroy: () => tagField.destroy(),
-    // No show_on_map here: it gates whether the item's *coordinates* put it
+    // No show_on_map here: it gates whether the location's *coordinates* put it
     // on the map, so the checkbox lives in the Location card next to them
     // (Stage 09 Milestone 3) and the page reads it from there.
     // Tags are always reported, and the editor always sends them. No dirty

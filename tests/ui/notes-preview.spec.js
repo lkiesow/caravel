@@ -8,8 +8,8 @@
 // markup it checks for (a real <h1>, a real <strong>, a hard-wrap <br>) is
 // goldmark's output, and a client-side renderer that happened to disagree would
 // show up here. The stronger form of that claim - that the preview matches the
-// saved item byte for byte - is a Go test, since it needs two API responses to
-// compare.
+// saved location byte for byte - is a Go test, since it needs two API responses
+// to compare.
 import { test, expect } from "@playwright/test";
 import { login, gotoRoute, resolveScenarioTrips } from "./helpers/scenarios.js";
 

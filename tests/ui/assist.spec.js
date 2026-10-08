@@ -142,7 +142,7 @@ test.describe("AI assistant", () => {
     // marker moves exactly as it does when a pin is dragged.
     await page.locator('[data-assist-field="coordinates"] .assist-suggestion')
       .getByRole("button", { name: "Accept" }).click();
-    await expect(page.locator('.location-form [name="lat"]')).not.toHaveValue("");
+    await expect(page.locator('.geo-form [name="lat"]')).not.toHaveValue("");
     await expect(page.locator("map-view")).toHaveAttribute("lat", /\d/);
 
     // The cover: the one suggestion whose value cannot be judged as text, so
@@ -228,10 +228,10 @@ test.describe("AI assistant", () => {
   // freely licensed photograph is not an unencumbered one, and an image saved
   // with no record of whose it is cannot be credited afterwards.
   test("shows the credit for an image that came with one", async ({ page }) => {
-    const itemRes = await page.request.post(`/api/trips/${tripId}/locations`, {
+    const locationRes = await page.request.post(`/api/trips/${tripId}/locations`, {
       data: { title: "Heger Tor", category: "site", tags: ["landmark"] },
     });
-    const itemId = (await itemRes.json()).id;
+    const locationId = (await locationRes.json()).id;
 
     // The image itself comes from the assistant's own fixture host, which is
     // the only image this suite can reach; the provenance is what a Wikimedia
@@ -257,9 +257,9 @@ test.describe("AI assistant", () => {
     });
     expect(media.status()).toBe(201);
     const assetId = (await media.json()).id;
-    expect((await page.request.put(`/api/locations/${itemId}/image`, { data: { media_asset_id: assetId } })).status()).toBe(200);
+    expect((await page.request.put(`/api/locations/${locationId}/image`, { data: { media_asset_id: assetId } })).status()).toBe(200);
 
-    await page.goto(`/trips/${tripId}/locations/${itemId}`);
+    await page.goto(`/trips/${tripId}/locations/${locationId}`);
     const credit = page.locator(".image-credit");
     await expect(credit).toBeVisible();
     await expect(credit).toContainText("MrsMyer");
@@ -315,7 +315,7 @@ test.describe("AI assistant", () => {
     await page.locator('[data-action="assist-accept-all"]').click();
     await expect(page.locator(".assist-suggestion")).toHaveCount(1);
     await expect(row).toBeVisible();
-    await expect(page.locator('.location-form [name="lat"]')).toHaveValue("");
+    await expect(page.locator('.geo-form [name="lat"]')).toHaveValue("");
     // Other fields did land, so this is a skip rather than a jam.
     await expect(page.locator('select[name="category"]')).toHaveValue("site");
     await expect(page.locator(".assist__count")).toContainText("1 needs a choice");
@@ -329,7 +329,7 @@ test.describe("AI assistant", () => {
     await expect(page.locator(".assist-suggestion")).toHaveCount(0);
     // The *second* option was chosen, so the second option's coordinates are
     // what the form holds -- not the one that happened to lead.
-    await expect(page.locator('.location-form [name="lng"]')).toHaveValue(/^-21\.86/);
+    await expect(page.locator('.geo-form [name="lng"]')).toHaveValue(/^-21\.86/);
   });
 
   test("marks an overwrite, and rejecting one leaves the text alone", async ({ page }) => {
@@ -340,9 +340,9 @@ test.describe("AI assistant", () => {
       data: { title: "Kex Hostel", category: "site", tags: ["guesthouse"], notes: handwritten },
     });
     expect(res.status()).toBe(201);
-    const itemId = (await res.json()).id;
+    const locationId = (await res.json()).id;
 
-    await page.goto(`/trips/${tripId}/locations/${itemId}/edit`);
+    await page.goto(`/trips/${tripId}/locations/${locationId}/edit`);
     await page.locator('[data-action="assist-run"]').click();
 
     const notesSuggestion = page.locator('[data-assist-field="notes"] .assist-suggestion');
@@ -382,7 +382,7 @@ test.describe("AI assistant", () => {
     await expect(page.locator('textarea[name="notes"]')).toHaveValue(handwritten);
 
     // And the note is still intact in the database, not merely on screen.
-    const after = await (await page.request.get(`/api/locations/${itemId}`)).json();
+    const after = await (await page.request.get(`/api/locations/${locationId}`)).json();
     expect(after.notes, "the handwritten note survives a dismissed proposal").toBe(handwritten);
   });
 

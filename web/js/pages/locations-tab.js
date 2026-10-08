@@ -68,7 +68,7 @@ const SCHEDULED = "scheduled";
 // Takes the whole trip rather than just its id since Stage 14 Milestone 4: the
 // toolbar has to know whether the reader may add a location, and `trip.role` is
 // where that lives.
-export async function renderItemsTab(container, trip, { signal } = {}) {
+export async function renderLocationsTab(container, trip, { signal } = {}) {
   const tripId = trip.id;
   const editable = canEdit(trip);
   // What the toolbar was set to when this history entry was last left. See
@@ -76,7 +76,7 @@ export async function renderItemsTab(container, trip, { signal } = {}) {
   const saved = window.history.state?.locationsToolbar ?? {};
   let activeFilter = saved.category ?? "all";
   let query = saved.query ?? "";
-  let allItems = [];
+  let allLocations = [];
   let radiusKm = null;
   let sort = saved.sort ?? DEFAULT_SORT;
   let reversed = saved.reversed ?? false;
@@ -95,7 +95,7 @@ export async function renderItemsTab(container, trip, { signal } = {}) {
   let devicePosition = null;
 
   container.innerHTML = `
-    <div class="items-tab">
+    <div class="locations-tab">
       <div class="list-toolbar">
         <div class="list-search">
           ${icon("search", { className: "list-search__icon" })}
@@ -107,19 +107,19 @@ export async function renderItemsTab(container, trip, { signal } = {}) {
       </div>
       <p class="locations-distance-status" role="status" hidden></p>
       <p class="locations-distance-note" hidden></p>
-      <p class="items-empty" data-i18n="locations.empty" hidden></p>
-      <p class="items-empty items-empty--no-matches" data-i18n="locations.noMatches" hidden></p>
-      <div class="item-list"></div>
+      <p class="locations-empty" data-i18n="locations.empty" hidden></p>
+      <p class="locations-empty locations-empty--no-matches" data-i18n="locations.noMatches" hidden></p>
+      <div class="location-list"></div>
     </div>
   `;
   translatePage(container);
 
-  const list = container.querySelector(".item-list");
-  const emptyState = container.querySelector(".items-empty:not(.items-empty--no-matches)");
-  const noMatchesState = container.querySelector(".items-empty--no-matches");
+  const list = container.querySelector(".location-list");
+  const emptyState = container.querySelector(".locations-empty:not(.locations-empty--no-matches)");
+  const noMatchesState = container.querySelector(".locations-empty--no-matches");
 
-  function hasCoordinates(item) {
-    return typeof item.lat === "number" && typeof item.lng === "number";
+  function hasCoordinates(location) {
+    return typeof location.lat === "number" && typeof location.lng === "number";
   }
 
   function distanceActive() {
@@ -128,28 +128,28 @@ export async function renderItemsTab(container, trip, { signal } = {}) {
 
   // ignoreDistance is for counting what the radius left out: everything the
   // other filters keep, regardless of where it is.
-  function matches(item, { ignoreDistance = false } = {}) {
-    if (activeFilter !== "all" && item.category !== activeFilter) return false;
+  function matches(location, { ignoreDistance = false } = {}) {
+    if (activeFilter !== "all" && location.category !== activeFilter) return false;
     // A location with no coordinates cannot be within a radius, so a radius
     // hides it. Keeping them used to be the rule (Stage 13), but when nothing
     // measurable was in range the list was only unplaced locations and read as
     // "the filter did nothing". The note below says how many were left out,
     // so the gap in the data is still visible.
     if (!ignoreDistance && distanceActive()) {
-      if (!hasCoordinates(item)) return false;
-      if (distanceKm(devicePosition, { lat: item.lat, lng: item.lng }) > radiusKm) return false;
+      if (!hasCoordinates(location)) return false;
+      if (distanceKm(devicePosition, { lat: location.lat, lng: location.lng }) > radiusKm) return false;
     }
-    if (activeTag !== ANY_TAG && !(item.tags ?? []).includes(activeTag)) return false;
-    if (!matchesDate(item)) return false;
+    if (activeTag !== ANY_TAG && !(location.tags ?? []).includes(activeTag)) return false;
+    if (!matchesDate(location)) return false;
     if (!query) return true;
     // Tags are searched as well as the title: they are words somebody chose
     // for this location, so a search that ignored them would miss the most
     // deliberate labels on the page.
-    return `${item.title} ${(item.tags ?? []).join(" ")}`.toLowerCase().includes(query);
+    return `${location.title} ${(location.tags ?? []).join(" ")}`.toLowerCase().includes(query);
   }
 
-  function matchesDate(item) {
-    const dates = item.dates ?? [];
+  function matchesDate(location) {
+    const dates = location.dates ?? [];
     switch (dateFilter.mode) {
       case UNSCHEDULED:
         return dates.length === 0;
@@ -177,8 +177,8 @@ export async function renderItemsTab(container, trip, { signal } = {}) {
   // whole trip to learn three words.)
   function tripTags() {
     const seen = new Map();
-    for (const item of allItems) {
-      for (const tag of item.tags ?? []) {
+    for (const location of allLocations) {
+      for (const tag of location.tags ?? []) {
         if (!seen.has(tag)) seen.set(tag, tag);
       }
     }
@@ -190,7 +190,7 @@ export async function renderItemsTab(container, trip, { signal } = {}) {
     });
   }
 
-  // Sorts a copy rather than in place. allItems is in the order the API
+  // Sorts a copy rather than in place. allLocations is in the order the API
   // returned, which is exactly what "as added" means, so it must never be
   // reordered.
   //
@@ -198,10 +198,10 @@ export async function renderItemsTab(container, trip, { signal } = {}) {
   // misattribute: the caller already hands this a fresh array from .filter(),
   // so today the spread is belt and braces rather than the thing doing the
   // work -- removing it does not break anything, and no test catches it. It
-  // stays so that sorted() is safe to call on any array, including allItems
+  // stays so that sorted() is safe to call on any array, including allLocations
   // itself if a later caller skips the filter. Same shape as trips-page.js.
-  function sorted(items) {
-    const out = [...items];
+  function sorted(locations) {
+    const out = [...locations];
     // -1 while the reader has flipped the order. It multiplies the primary
     // comparison only: whatever a rule puts last (undated locations) stays
     // last in both directions.
@@ -225,7 +225,7 @@ export async function renderItemsTab(container, trip, { signal } = {}) {
       // trip with no start date, and it matters more here, since on a
       // half-planned trip most locations have no days yet and they would
       // otherwise bury the ones that do.
-      const startOf = (item) => item.dates?.[0]?.start_date ?? null;
+      const startOf = (location) => location.dates?.[0]?.start_date ?? null;
       out.sort((a, b) => {
         const x = startOf(a);
         const y = startOf(b);
@@ -292,39 +292,39 @@ export async function renderItemsTab(container, trip, { signal } = {}) {
 
   function applyFilters() {
     saveToolbarState();
-    const visible = sorted(allItems.filter((item) => matches(item)));
+    const visible = sorted(allLocations.filter((location) => matches(location)));
 
     // Only while a radius is active, and only if there is actually something
     // it could not measure - otherwise it is a warning about nothing. Counted
     // against the other filters, so it never mentions a location they hide.
     const unplaced = distanceActive()
-      ? allItems.filter((item) => !hasCoordinates(item) && matches(item, { ignoreDistance: true })).length
+      ? allLocations.filter((location) => !hasCoordinates(location) && matches(location, { ignoreDistance: true })).length
       : 0;
     distanceNote.textContent = unplaced ? t("locations.distance.unplaced", { count: unplaced }, unplaced) : "";
     distanceNote.hidden = !unplaced;
 
     // Two distinct empty states: an untouched trip with no locations at
     // all reads differently from a search that matched none of them.
-    emptyState.hidden = allItems.length > 0;
-    noMatchesState.hidden = allItems.length === 0 || visible.length > 0;
+    emptyState.hidden = allLocations.length > 0;
+    noMatchesState.hidden = allLocations.length === 0 || visible.length > 0;
 
     list.innerHTML = "";
-    for (const item of visible) {
-      const card = document.createElement("item-card");
-      card.setAttribute("item-id", item.id);
-      card.setAttribute("title", item.title);
-      card.setAttribute("category", item.category);
-      if (item.tags?.length) card.setAttribute("tags", JSON.stringify(item.tags));
-      if (item.dates?.length) card.setAttribute("dates", JSON.stringify(item.dates));
-      if (item.image_url) card.setAttribute("image-url", item.image_url);
+    for (const location of visible) {
+      const card = document.createElement("location-card");
+      card.setAttribute("location-id", location.id);
+      card.setAttribute("title", location.title);
+      card.setAttribute("category", location.category);
+      if (location.tags?.length) card.setAttribute("tags", JSON.stringify(location.tags));
+      if (location.dates?.length) card.setAttribute("dates", JSON.stringify(location.dates));
+      if (location.image_url) card.setAttribute("image-url", location.image_url);
       // A real <a href> around the card, for the reason itinerary-tab.js gives
       // for its entry links: middle-click, open-in-new-tab and "copy link
       // address" need an href. Outside the shadow root on purpose: a click in
-      // the card retargets to the <item-card> host, and the router's
+      // the card retargets to the <location-card> host, and the router's
       // closest("[data-link]") finds this wrapper from there.
       const link = document.createElement("a");
       link.className = "card-link";
-      link.href = `/trips/${tripId}/locations/${item.id}`;
+      link.href = `/trips/${tripId}/locations/${location.id}`;
       link.setAttribute("data-link", "");
       link.appendChild(card);
       list.appendChild(link);
@@ -408,7 +408,7 @@ export async function renderItemsTab(container, trip, { signal } = {}) {
         activeValue: activeFilter,
         items: [
           { value: "all", label: t("locations.filter.all") },
-          ...CATEGORIES.map((c) => ({ value: c, label: t(`item.category.${c}`) })),
+          ...CATEGORIES.map((c) => ({ value: c, label: t(`location.category.${c}`) })),
         ],
         onSelect: (value) => {
           activeFilter = value;
@@ -618,14 +618,14 @@ export async function renderItemsTab(container, trip, { signal } = {}) {
         },
       });
     } else {
-      newSlot.innerHTML = `<button class="btn btn-primary btn-collapse" data-action="new-item">${icon("plus")} <span data-i18n="locations.new"></span></button>`;
+      newSlot.innerHTML = `<button class="btn btn-primary btn-collapse" data-action="new-location">${icon("plus")} <span data-i18n="locations.new"></span></button>`;
       translatePage(newSlot);
-      newSlot.querySelector('[data-action="new-item"]').addEventListener("click", goToNew);
+      newSlot.querySelector('[data-action="new-location"]').addEventListener("click", goToNew);
     }
   }
 
   renderLoading(list);
-  allItems = await api.get(`/trips/${tripId}/locations`);
+  allLocations = await api.get(`/trips/${tripId}/locations`);
 
   // The tag options only exist once the locations do.
   const tags = tripTags();

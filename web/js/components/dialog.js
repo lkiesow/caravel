@@ -106,7 +106,7 @@ export function alertDialog({ messageKey, message }) {
   return open({
     messageKey,
     message,
-    buttons: [{ labelKey: "item.detail.close", value: "close", className: "btn-primary", iconName: "check" }],
+    buttons: [{ labelKey: "common.close", value: "close", className: "btn-primary", iconName: "check" }],
   }).then(() => undefined);
 }
 

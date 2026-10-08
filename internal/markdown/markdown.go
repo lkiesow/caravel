@@ -1,4 +1,4 @@
-// Package markdown renders user-supplied item notes to safe HTML.
+// Package markdown renders user-supplied location notes to safe HTML.
 // Rendering happens server-side so the sanitization boundary lives in
 // one trusted place — the frontend never needs to parse or sanitize
 // markdown itself, it just inserts the HTML this package returns.

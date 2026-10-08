@@ -105,7 +105,7 @@ test.describe("expenses tab, end to end", () => {
   test("refuses an amount it cannot parse, and writes nothing", async ({ page }) => {
     await page.goto(`/trips/${tripId}/expenses`);
     const form = page.locator(".expenses__form");
-    const error = form.locator(".item-form__error");
+    const error = form.locator(".entry-form__error");
 
     await form.locator('[name="title"]').fill("Nonsense");
     await form.locator('[name="amount"]').fill("about twelve");
@@ -154,7 +154,7 @@ test.describe("expenses tab, end to end", () => {
     await form.locator('[name="title"]').fill("Coffee");
     await form.locator('[name="amount"]').fill("4.50");
     await form.locator('button[type="submit"]').click();
-    await expect(form.locator(".item-form__error")).toBeVisible();
+    await expect(form.locator(".entry-form__error")).toBeVisible();
     await expect(page.locator(".expenses__row")).toHaveCount(1);
   });
 
@@ -285,7 +285,7 @@ test.describe("an expense that names a location", () => {
   test.use({ viewport: MOBILE });
 
   let tripId;
-  let itemId;
+  let locationId;
 
   test.beforeEach(async ({ page }) => {
     await login(page);
@@ -295,11 +295,11 @@ test.describe("an expense that names a location", () => {
     expect(trip.status(), "create the spec's own trip").toBe(201);
     tripId = (await trip.json()).id;
 
-    const item = await page.request.post(`/api/trips/${tripId}/locations`, {
+    const location = await page.request.post(`/api/trips/${tripId}/locations`, {
       data: { title: "Foss Hotel", category: "stay" },
     });
-    expect(item.status(), "create a location to point at").toBe(201);
-    itemId = (await item.json()).id;
+    expect(location.status(), "create a location to point at").toBe(201);
+    locationId = (await location.json()).id;
   });
 
   test.afterEach(async ({ page }) => {
@@ -311,19 +311,19 @@ test.describe("an expense that names a location", () => {
     await page.goto(`/trips/${tripId}/expenses`);
 
     const form = page.locator(".expenses__form");
-    const select = form.locator('[name="itemId"]');
+    const select = form.locator('[name="locationId"]');
     // Optional, and off by default: most expenses are not about one place.
     await expect(select).toHaveValue("");
     await expect(select.locator("option")).toHaveCount(2);
 
     await form.locator('[name="title"]').fill("Two nights");
     await form.locator('[name="amount"]').fill("240.00");
-    await select.selectOption(itemId);
+    await select.selectOption(locationId);
     await form.locator('button[type="submit"]').click();
 
     const row = page.locator(".expenses__row").first();
     await expect(row).toBeVisible();
-    const link = row.locator(".expenses__row-item-link");
+    const link = row.locator(".expenses__row-location-link");
     await expect(link).toHaveText("Foss Hotel");
 
     // A real link, so the row is followable by every means a link offers -
@@ -331,10 +331,10 @@ test.describe("an expense that names a location", () => {
     // give. The click itself stays client-side, via the router's [data-link].
     await expect(link).toHaveAttribute(
       "href",
-      `/trips/${tripId}/locations/${itemId}`,
+      `/trips/${tripId}/locations/${locationId}`,
     );
     await link.click();
-    await expect(page).toHaveURL(`/trips/${tripId}/locations/${itemId}`);
+    await expect(page).toHaveURL(`/trips/${tripId}/locations/${locationId}`);
     await expect(page.locator("h1")).toHaveText("Foss Hotel");
 
     // It reached the database, not just the row that drew it.
@@ -352,26 +352,26 @@ test.describe("an expense that names a location", () => {
         title: "Two nights",
         amount_minor: 24000,
         spent_on: "2026-08-20",
-        location_id: itemId,
+        location_id: locationId,
       },
     });
     expect(created.status()).toBe(201);
 
     await page.goto(`/trips/${tripId}/expenses`);
     const row = page.locator(".expenses__row").first();
-    await expect(row.locator(".expenses__row-item-link")).toHaveText("Foss Hotel");
+    await expect(row.locator(".expenses__row-location-link")).toHaveText("Foss Hotel");
 
     // The form opens with the expense's own location already chosen, which is
     // what makes clearing it possible at all.
     await row.locator(".expenses__row-trigger").click();
     await row.locator('.menu__dropdown [data-value="edit"]').click();
-    const select = page.locator('.expenses__form [name="itemId"]');
-    await expect(select).toHaveValue(itemId);
+    const select = page.locator('.expenses__form [name="locationId"]');
+    await expect(select).toHaveValue(locationId);
 
     await select.selectOption("");
     await page.locator('.expenses__form button[type="submit"]').click();
 
-    await expect(page.locator(".expenses__row-item-link")).toHaveCount(0);
+    await expect(page.locator(".expenses__row-location-link")).toHaveCount(0);
     // Still an expense, and still the same money: only the pointer went.
     await expect(page.locator(".expenses__total")).toHaveText("€240.00");
     const stored = await (
@@ -386,13 +386,13 @@ test.describe("an expense that names a location", () => {
         title: "Two nights",
         amount_minor: 24000,
         spent_on: "2026-08-20",
-        location_id: itemId,
+        location_id: locationId,
       },
     });
     expect(created.status()).toBe(201);
 
     expect(
-      (await page.request.delete(`/api/locations/${itemId}`)).status(),
+      (await page.request.delete(`/api/locations/${locationId}`)).status(),
       "delete the location the expense named",
     ).toBe(204);
 
@@ -401,6 +401,6 @@ test.describe("an expense that names a location", () => {
     // location must never change what the trip cost. All that goes is the link.
     await expect(page.locator(".expenses__row")).toHaveCount(1);
     await expect(page.locator(".expenses__total")).toHaveText("€240.00");
-    await expect(page.locator(".expenses__row-item-link")).toHaveCount(0);
+    await expect(page.locator(".expenses__row-location-link")).toHaveCount(0);
   });
 });

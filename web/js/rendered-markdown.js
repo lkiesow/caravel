@@ -22,14 +22,14 @@ import { icon } from "./icon.js";
 // client-side router -- and a divergent copy of that is a hole, not a
 // rendering bug.
 //
-// A link to a place that has since been deleted is not a link any more: the
-// @ picker writes a plain markdown link, nothing ties it to the place, and
-// following it lands on a 404. Given the trip's live item ids, such a link is
-// turned back into its text, muted and struck through, so the note still says
-// what it said and no longer offers a dead end. Only links into the trip being
-// shown are judged -- another trip's places are not ours to know about -- and
-// without the ids nothing is: a failed fetch must not declare every place in
-// the note gone, and a link that 404s is the lesser mistake.
+// A link to a place that has since been deleted is not a link any more: the @
+// picker writes a plain markdown link, nothing ties it to the place, and
+// following it lands on a 404. Given the trip's live location ids, such a link
+// is turned back into its text, muted and struck through, so the note still
+// says what it said and no longer offers a dead end. Only links into the trip
+// being shown are judged -- another trip's places are not ours to know about --
+// and without the ids nothing is: a failed fetch must not declare every place
+// in the note gone, and a link that 404s is the lesser mistake.
 
 // The location page route, as app.js defines it. Matching it exactly, rather
 // than accepting anything under /trips/, is what keeps the pin honest: it goes
@@ -51,28 +51,28 @@ function isInternalPath(href) {
   return href.startsWith("/") && !href.startsWith("//") && !href.startsWith("/\\");
 }
 
-// loadTripItemIds resolves to the set of the trip's live item ids, for
+// loadTripLocationIds resolves to the set of the trip's live location ids, for
 // markInternalLinks -- or to null when they cannot be had, which turns the
 // dead-link check off rather than failing every link.
-export function loadTripItemIds(tripId) {
+export function loadTripLocationIds(tripId) {
   return api
     .get(`/trips/${tripId}/locations`)
-    .then((list) => (Array.isArray(list) ? new Set(list.map((item) => item.id)) : null))
+    .then((list) => (Array.isArray(list) ? new Set(list.map((location) => location.id)) : null))
     .catch(() => null);
 }
 
 // markInternalLinks marks the anchors in a freshly rendered note so the router
 // picks them up, and puts a pin on the ones that point at a place. Call it
 // straight after the innerHTML assignment, on the element that received it.
-// With `tripId` and `itemIds` (from loadTripItemIds), links to that trip's
-// deleted places are unlinked instead -- see the top of this file.
-export function markInternalLinks(root, { tripId, itemIds } = {}) {
+// With `tripId` and `locationIds` (from loadTripLocationIds), links to that
+// trip's deleted places are unlinked instead -- see the top of this file.
+export function markInternalLinks(root, { tripId, locationIds } = {}) {
   if (!root) return;
   for (const link of root.querySelectorAll("a[href]")) {
     const href = link.getAttribute("href");
     if (!isInternalPath(href)) continue;
     const place = LOCATION_PATH.exec(href);
-    if (place && itemIds && place[1] === tripId && !itemIds.has(place[2])) {
+    if (place && locationIds && place[1] === tripId && !locationIds.has(place[2])) {
       unlinkDeleted(link);
       continue;
     }

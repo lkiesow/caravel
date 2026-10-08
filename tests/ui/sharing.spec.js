@@ -20,7 +20,7 @@ const MOBILE = { width: 324, height: 756 };
 // where the instance has no assistant, a menu trigger where it has one. Both
 // are the thing a person presses; the menu's own rows are not, which is why
 // this names the trigger rather than counting buttons in the slot.
-const NEW_LOCATION_CONTROL = '.locations-new-slot [data-action="new-item"], .locations-new-slot .menu__trigger';
+const NEW_LOCATION_CONTROL = '.locations-new-slot [data-action="new-location"], .locations-new-slot .menu__trigger';
 
 // Hard-coded per locale rather than read from the locale files, for the reason
 // menu.spec.js gives: a wrong *translation* should fail, not be mirrored.
@@ -57,10 +57,10 @@ for (const locale of ["en", "de"]) {
       // One location and one checklist, so the read-only assertions below have
       // something to *not* offer controls for. A tab with no content renders no
       // controls either way, which is the trap Milestone 4 walked into.
-      const item = await page.request.post(`/api/trips/${tripId}/locations`, {
+      const location = await page.request.post(`/api/trips/${tripId}/locations`, {
         data: { title: "Somewhere", category: "site", tags: ["landmark"] },
       });
-      expect(item.status()).toBe(201);
+      expect(location.status()).toBe(201);
       const list = await page.request.post(`/api/trips/${tripId}/checklists`, { data: { title: "Shared list" } });
       expect(list.status()).toBe(201);
       const listId = (await list.json()).id;
@@ -74,8 +74,8 @@ for (const locale of ["en", "de"]) {
     });
 
     test.afterEach(async ({ page }) => {
-      // Cascades to the items, checklists and memberships. Runs even on failure,
-      // so a red run leaves nothing for the next one to trip over.
+      // Cascades to the locations, checklists and memberships. Runs even on
+      // failure, so a red run leaves nothing for the next one to trip over.
       if (tripId) await page.request.delete(`/api/trips/${tripId}`);
       tripId = null;
     });
@@ -113,7 +113,7 @@ for (const locale of ["en", "de"]) {
         await expect(theirPage.locator(".trip-detail__role")).toHaveText(copy.viewerBadge);
         // The content is there; the controls are not. Asserting both halves,
         // because zero controls on an empty page proves nothing.
-        await expect(theirPage.locator("item-card")).toHaveCount(1);
+        await expect(theirPage.locator("location-card")).toHaveCount(1);
         // The way to add a location -- a plain button or a menu trigger
         // depending on whether the instance has an assistant, which is not
         // this spec's business. A viewer gets neither.

@@ -66,18 +66,18 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
   // convenience on top of them. Read-only callers skip the request entirely --
   // they get no form to put a select in, and the rows carry the location's
   // title from the server.
-  let items = [];
+  let locations = [];
   if (!readOnly) {
     try {
-      items = await api.get(`/trips/${trip.id}/locations`);
+      locations = await api.get(`/trips/${trip.id}/locations`);
       // Alphabetically, not in the trip's own location order: this select is
       // for finding one known place by name, and the manual/creation order the
       // API returns reads as random when you are scanning for a title. Same
       // collator settings as the locations tab, so umlauts and "Hut 2" before
       // "Hut 10" behave the way they do there.
-      items.sort(byTitle());
+      locations.sort(byTitle());
     } catch {
-      items = [];
+      locations = [];
     }
   }
   // The expense being edited, or null when the form is an add form.
@@ -386,7 +386,7 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
     li.innerHTML = `
       <span class="expenses__row-main">
         <span class="expenses__row-title"></span>
-        <span class="expenses__row-item" hidden></span>
+        <span class="expenses__row-location" hidden></span>
         ${shared ? `<span class="expenses__row-payer"></span>` : ""}
         ${shared ? `<span class="expenses__row-share"></span>` : ""}
         ${shared ? `<span class="expenses__row-shares"></span>` : ""}
@@ -434,15 +434,15 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
     // This is the whole point of the link: reading "Ferry, 45.00" a month later
     // and wanting to know which ferry, the answer is one tap away, where the
     // picture and the notes are.
-    const itemEl = li.querySelector(".expenses__row-item");
+    const locationEl = li.querySelector(".expenses__row-location");
     if (expense.location_id && expense.location_title) {
       const link = document.createElement("a");
       link.href = `/trips/${trip.id}/locations/${expense.location_id}`;
       link.dataset.link = "";
-      link.className = "expenses__row-item-link";
+      link.className = "expenses__row-location-link";
       link.textContent = expense.location_title;
-      itemEl.appendChild(link);
-      itemEl.hidden = false;
+      locationEl.appendChild(link);
+      locationEl.hidden = false;
     }
 
     // On its own line rather than joined to the payer with a "·". Together they
@@ -503,8 +503,8 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
     const isEditing = editing !== null;
     card.innerHTML = `
       <h2 data-i18n="${isEditing ? "expenses.editHeading" : "expenses.addHeading"}"></h2>
-      <form class="item-form expenses__form" novalidate>
-        <p class="item-form__error" role="alert" hidden></p>
+      <form class="entry-form expenses__form" novalidate>
+        <p class="entry-form__error" role="alert" hidden></p>
         <label>
           <span data-i18n="expenses.form.title"></span>
           <input type="text" name="title" required />
@@ -535,15 +535,15 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
           <input type="date" name="spentOn" required />
         </label>
         ${
-          items.length
+          locations.length
             ? `<label>
-          <span data-i18n="expenses.form.item"></span>
+          <span data-i18n="expenses.form.location"></span>
           <!-- Optional, and empty by default: most expenses are not about one
                place, and a select that insisted would mean inventing a
                location for the groceries. -->
-          <select name="itemId">
-            <option value="" data-i18n="expenses.form.itemNone"></option>
-            ${items.map((i) => `<option value="${i.id}"></option>`).join("")}
+          <select name="locationId">
+            <option value="" data-i18n="expenses.form.locationNone"></option>
+            ${locations.map((i) => `<option value="${i.id}"></option>`).join("")}
           </select>
         </label>`
             : ""
@@ -590,7 +590,7 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
     translatePage(card);
 
     const form = card.querySelector("form");
-    const errorEl = card.querySelector(".item-form__error");
+    const errorEl = card.querySelector(".entry-form__error");
     const previewEl = card.querySelector(".expenses__converted-preview");
 
     // The label, the placeholder and the example all name the *selected*
@@ -647,10 +647,10 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
 
     // Location options, named the same way and for the same reason: a location
     // title is whatever somebody typed.
-    if (form.elements.itemId) {
-      const options = [...form.elements.itemId.options];
-      items.forEach((item, i) => {
-        options[i + 1].textContent = item.title;
+    if (form.elements.locationId) {
+      const options = [...form.elements.locationId.options];
+      locations.forEach((location, i) => {
+        options[i + 1].textContent = location.title;
       });
     }
 
@@ -699,7 +699,7 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
       // A location deleted since is no longer in the select, and the value
       // falls through to "none" -- which is what the server holds for it too,
       // the column being ON DELETE SET NULL.
-      if (form.elements.itemId) form.elements.itemId.value = editing.location_id || "";
+      if (form.elements.locationId) form.elements.locationId.value = editing.location_id || "";
     } else {
       // A new expense defaults to today, clamped into the trip's own dates when
       // it has them: entering yesterday's dinner is a correction, entering one
@@ -765,7 +765,7 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
         // Empty means "no location", and is sent rather than omitted: the
         // server reads an absent location_id as none, so on a PATCH that clears an
         // existing link either way -- sending it explicitly says so out loud.
-        location_id: form.elements.itemId?.value || null,
+        location_id: form.elements.locationId?.value || null,
       };
 
       try {

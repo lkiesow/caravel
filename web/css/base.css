@@ -634,7 +634,7 @@ textarea {
 /* Every stacked form field in the app, in one place.
    
    This was three near-identical copies -- .auth-form, .trip-form/.password-form
-   and .item-form -- each declaring the same label-and-input treatment, which
+   and .entry-form -- each declaring the same label-and-input treatment, which
    meant the next form added had three plausible rules to copy from and no
    reason to prefer one. The label blocks were byte-identical. The input blocks
    turned out to differ in exactly one declaration: .auth-form said
@@ -659,7 +659,7 @@ textarea {
 .auth-form label,
 .trip-form label,
 .password-form label,
-.item-form label,
+.entry-form label,
 .members-add__field,
 .admin-new-user__field {
   display: flex;
@@ -674,9 +674,9 @@ textarea {
 .trip-form textarea,
 .trip-form select,
 .password-form input,
-.item-form input,
-.item-form select,
-.item-form textarea,
+.entry-form input,
+.entry-form select,
+.entry-form textarea,
 .members-add input,
 .members-add select,
 .admin-new-user input:not([type="checkbox"]) {
@@ -707,7 +707,7 @@ textarea {
 .auth-form__error,
 .trip-form__error,
 .password-form__error,
-.item-form__error,
+.entry-form__error,
 .file-list__error,
 .members-add__error,
 .admin-new-user__error,
@@ -1386,9 +1386,9 @@ button {
   margin-bottom: 1rem;
 }
 
-/* Headings here hold user-supplied trip/item titles of arbitrary length; without
-   min-width/overflow-wrap the flex item refuses to shrink and pushes the
-   action button off screen instead of wrapping. margin:0 because
+/* Headings here hold user-supplied trip/location titles of arbitrary length;
+   without min-width/overflow-wrap the flex item refuses to shrink and pushes
+   the action button off screen instead of wrapping. margin:0 because
    .page__header's own margin-bottom already provides deliberate spacing
    below the title - the browser's default h1 margin would otherwise stack
    on top of that. */
@@ -1829,7 +1829,7 @@ button {
 }
 
 .trips-empty,
-.items-empty {
+.locations-empty {
   color: var(--color-text-muted);
 }
 
@@ -1882,7 +1882,7 @@ button {
   outline-offset: -1px;
 }
 
-.item-list {
+.location-list {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -1915,7 +1915,7 @@ button {
   height: 100%;
 }
 
-.item-form {
+.entry-form {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -2013,8 +2013,8 @@ button {
    coordinates it gates (Stage 09 Milestone 3). Row rather than the stacked
    label-above-input the sibling fields use, and a full-width flex item so it
    gets its own line under them. `label.` in the selector outspecifies
-   `.location-form label` without needing !important. */
-.location-form label.location-form__checkbox {
+   `.geo-form label` without needing !important. */
+.geo-form label.geo-form__checkbox {
   flex: 1 1 100%;
   flex-direction: row;
   align-items: center;
@@ -2037,28 +2037,28 @@ button {
 }
 
 /* Shown only while "Show on map" is ticked but the coordinates are empty. */
-.location-form__hint {
+.geo-form__hint {
   flex: 1 1 100%;
   margin: 0;
   font-size: 0.875rem;
   color: var(--color-text-muted);
 }
 
-.location-form__hint[hidden] {
+.geo-form__hint[hidden] {
   display: none;
 }
 
 /* The coordinate picker and the line introducing it. Both are full-width
    flex items so they take their own rows under the fields they belong to;
    the map's own height comes from :host([pick]) inside the component. */
-.location-form__pick-hint {
+.geo-form__pick-hint {
   flex: 1 1 100%;
   margin: 0;
   font-size: 0.875rem;
   color: var(--color-text-muted);
 }
 
-.location-form__map {
+.geo-form__map {
   flex: 1 1 100%;
 }
 
@@ -2195,7 +2195,7 @@ button {
 /* Same treatment as .itinerary-day__notes: without an explicit width and
    resize the UA default (resize: both) lets the drag handle pull the
    textarea wider than the card containing it. Vertical-only dragging still
-   works, on top of the `field-sizing` on .item-form textarea. */
+   works, on top of the `field-sizing` on .entry-form textarea. */
 /* The notes field, with its Edit/Preview toggle (Stage 15 Milestone 3). The
    header is the label and the toggle on one row, so the tabs sit above the box
    they switch rather than below it. .notes-field itself is the column the
@@ -2305,14 +2305,14 @@ button {
    and without the failure mode that needed a re-measure on the way back from
    the markdown preview: a display:none textarea reports scrollHeight 0, so the
    height the JS had grown to was stale. min-height is still the floor. */
-.item-form textarea {
+.entry-form textarea {
   width: 100%;
   min-height: 7rem;
   field-sizing: content;
   resize: vertical;
 }
 
-.location-form,
+.geo-form,
 .link-form,
 .date-form,
 /* The address-search row is one of these too, not a bespoke layout: same
@@ -2336,7 +2336,7 @@ button {
    min-width: 0 is load-bearing for input[type=date], which carries a
    browser-imposed intrinsic minimum that otherwise wins over flex-shrink
    (same reason .trip-form__dates needs it). */
-.location-form label,
+.geo-form label,
 .link-form input,
 .date-form input,
 .location-search__row input {
@@ -2344,9 +2344,9 @@ button {
   min-width: 0;
 }
 
-/* Stacked label-above-input, matching .item-form's fields in the card above
+/* Stacked label-above-input, matching .entry-form's fields in the card above
    rather than the label-beside-input row this used to be. */
-.location-form label {
+.geo-form label {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
@@ -2354,7 +2354,7 @@ button {
   color: var(--color-text-muted);
 }
 
-.location-form input,
+.geo-form input,
 .link-form input,
 .date-form input,
 /* Joined onto this group rather than given a rule of its own. todo.md already
@@ -2362,7 +2362,7 @@ button {
    apart; a fourth copy for one field would make that worse, and the assistant
    prompt has no reason to look different from the address search two cards
    below it -- which is also an input[type=search] and is covered here via
-   `.location-form input`. */
+   `.geo-form input`. */
 .assist__prompt,
 .dialog__input,
 .dialog__select {
@@ -2808,13 +2808,13 @@ button {
   font-size: 0.875rem;
 }
 
-.itinerary-day__add-item,
+.itinerary-day__add-location,
 .itinerary-add-day {
   display: flex;
   gap: 0.5rem;
 }
 
-.itinerary-day__add-item select,
+.itinerary-day__add-location select,
 .itinerary-add-day input {
   padding: 0.5rem;
   border-radius: var(--radius);
@@ -3107,7 +3107,7 @@ button {
    the drag handle pull the box wider than the card holding it. Vertical
    dragging still works, on top of the `field-sizing` below.
    `field-sizing: content` replaced a hand-rolled auto-grow handler in
-   notes-tab.js in Sep 2026 -- see the longer note on .item-form textarea. */
+   notes-tab.js in Sep 2026 -- see the longer note on .entry-form textarea. */
 .trip-notes__form textarea {
   width: 100%;
   min-height: 12rem;
@@ -3274,7 +3274,7 @@ button {
      purpose: a native checkbox is ~14px and blowing it up to 44 looks wrong.
      For those the *label* is the tap target - clicking it toggles the control -
      so the label carries the min-height instead (see .checklist-item label and
-     .location-form__checkbox below), which is also what the spec measures. */
+     .geo-form__checkbox below), which is also what the spec measures. */
   button,
   input:not([type="checkbox"]):not([type="radio"]),
   select,
@@ -3286,7 +3286,7 @@ button {
   .link-list li a,
   .location-view__maps-link,
   .checklist-item label,
-  .location-form label.location-form__checkbox,
+  .geo-form label.geo-form__checkbox,
   .setting-choice,
   /* The header lockup became a link in Stage 18 Milestone 2, which made it a
      tap target: 24px tall before this, which routes.spec.js caught. */
@@ -3301,7 +3301,7 @@ button {
   .link-list li a,
   .location-view__maps-link,
   .checklist-item label,
-  .location-form label.location-form__checkbox {
+  .geo-form label.geo-form__checkbox {
     display: flex;
     align-items: center;
   }
@@ -3335,7 +3335,7 @@ button {
     flex-direction: column;
   }
 
-  .location-form label,
+  .geo-form label,
   .link-form input,
   .date-form input,
   .location-search__row input,
@@ -4458,7 +4458,7 @@ button {
 .expenses__row-title,
 .expenses__row-payer,
 .expenses__row-share,
-.expenses__row-item,
+.expenses__row-location,
 .expenses__row-shares {
   min-width: 0;
   overflow: hidden;
@@ -4468,7 +4468,7 @@ button {
 
 .expenses__row-payer,
 .expenses__row-share,
-.expenses__row-item,
+.expenses__row-location,
 .expenses__row-shares {
   font-size: 0.8125rem;
   color: var(--color-text-muted);
@@ -4478,13 +4478,13 @@ button {
    the one thing on the row you can follow, and a muted line that happens to be
    clickable would not be found. It keeps the muted size of its neighbours
    rather than competing with the title above it. */
-.expenses__row-item-link {
+.expenses__row-location-link {
   color: var(--color-accent);
   text-decoration: none;
 }
 
-.expenses__row-item-link:hover,
-.expenses__row-item-link:focus-visible {
+.expenses__row-location-link:hover,
+.expenses__row-location-link:focus-visible {
   text-decoration: underline;
 }
 
@@ -4759,12 +4759,12 @@ button {
    belongs beside its box. The 44px min-height is the tap target -- a checkbox
    and one name is a small thing to hit on a phone.
    
-   `.item-form label` in the selector is load-bearing: that rule sets
+   `.entry-form label` in the selector is load-bearing: that rule sets
    flex-direction: column for the form's real fields and, at one class plus one
    element, outspecifies a lone class here. Without it the box sat centred above
    its own label. Same trick and the same reason as
-   `.location-form label.location-form__checkbox` above. */
-.item-form label.expenses__share-choice {
+   `.geo-form label.geo-form__checkbox` above. */
+.entry-form label.expenses__share-choice {
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -4851,7 +4851,7 @@ button {
   font-size: 0.875rem;
   color: var(--color-text-muted);
   /* The checkbox itself is 14px, so the label is the tap target - the same
-   * arrangement as .location-form__checkbox, matched to its 44px so the two do
+   * arrangement as .geo-form__checkbox, matched to its 44px so the two do
    * not disagree about how big a checkbox row is. */
   min-height: 44px;
 }
@@ -4956,7 +4956,7 @@ button {
  * width rather than the line it needed.
  *
  * `flex: 1 1 100%` is the idiom this file already uses for "give me my own
- * line" (see .location-form__checkbox), and it does both jobs at once. The
+ * line" (see .geo-form__checkbox), and it does both jobs at once. The
  * suggestion gets the full width, and because a 100%-basis item consumes the
  * whole line, Address is pushed to the next one -- but only when a suggestion
  * is actually there. That is the conditional behaviour rather than moving
@@ -4967,17 +4967,17 @@ button {
  * assist-panel.js ever fills them, so a stray text node would be a bug in
  * that file rather than an expected case to tolerate.
  */
-.location-form [data-assist-field] {
+.geo-form [data-assist-field] {
   flex: 1 1 100%;
 }
 
-.location-form [data-assist-field]:empty {
+.geo-form [data-assist-field]:empty {
   display: none;
 }
 
 /* The row's own 0.5rem gap does the spacing here, so the stacked-field margins
    below would double it. */
-.location-form [data-assist-field] .assist-suggestion {
+.geo-form [data-assist-field] .assist-suggestion {
   margin: 0;
 }
 

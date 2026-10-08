@@ -97,7 +97,7 @@ function parseArgs(argv) {
         [
           "usage: node tests/ui/contrast.js [options]",
           "  --route <path>       route to measure; repeatable (default /trips).",
-          "                       {trip} and {item} are filled from the seeded",
+          "                       {trip} and {location} are filled from the seeded",
           "                       demo data, e.g. /trips/{trip}/map",
           "  --scheme <s>         light | dark | both (default light)",
           "  --selector <sel>     add a selector; repeatable. Default: a common set",
@@ -251,10 +251,10 @@ const MEASURE = ({ selectors }) => {
 // adds scenarios.
 const SCENARIO_TRIP_TITLE = "Demo: Iceland Ring Road";
 
-// Fills {trip} and {item} in a route. Routes worth measuring are trip tabs and
-// the location editor, and their ids are not knowable when the Makefile writes
-// the route list down -- so the list carries holes and they are filled here,
-// after login, from the seed.
+// Fills {trip} and {location} in a route. Routes worth measuring are trip tabs
+// and the location editor, and their ids are not knowable when the Makefile
+// writes the route list down -- so the list carries holes and they are filled
+// here, after login, from the seed.
 async function resolveRoute(page, route) {
   if (!route.includes("{")) return route;
 
@@ -263,16 +263,16 @@ async function resolveRoute(page, route) {
     if (!Array.isArray(trips)) return { error: "could not list trips" };
     const trip = trips.find((t) => t.title === title);
     if (!trip) return { error: `no seeded trip titled ${title}` };
-    const items = await (await fetch(`/api/trips/${trip.id}/locations`)).json();
-    if (!Array.isArray(items) || !items.length) return { error: `trip ${title} has no locations` };
-    return { trip: trip.id, item: items[0].id };
+    const locations = await (await fetch(`/api/trips/${trip.id}/locations`)).json();
+    if (!Array.isArray(locations) || !locations.length) return { error: `trip ${title} has no locations` };
+    return { trip: trip.id, location: locations[0].id };
   }, SCENARIO_TRIP_TITLE);
 
   if (data.error) {
     console.error(`contrast: ${data.error} — run \`make dev-reset FORCE=1\` first`);
     process.exit(1);
   }
-  return route.replace("{trip}", data.trip).replace("{item}", data.item);
+  return route.replace("{trip}", data.trip).replace("{location}", data.location);
 }
 
 async function measureScheme(browser, opts, scheme, route) {

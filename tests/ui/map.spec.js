@@ -89,7 +89,7 @@ async function openFirstPopup(page) {
     }
   });
   await page.waitForFunction(
-    () => document.querySelector("map-view").shadowRoot.querySelector(".maplibregl-popup-content [data-item-id]") !== null
+    () => document.querySelector("map-view").shadowRoot.querySelector(".maplibregl-popup-content [data-location-id]") !== null
   );
 }
 
@@ -227,7 +227,7 @@ test.describe("the trip map at phone width", () => {
           geo: { lat: 64.9631, lng: -19.0208, address: null },
         },
       });
-      const itemId = (await created.json()).id;
+      const locationId = (await created.json()).id;
 
       const heightOf = async (route, selector) => {
         await gotoRoute(page, route);
@@ -240,11 +240,11 @@ test.describe("the trip map at phone width", () => {
 
       // 16rem and 20rem, i.e. what their own desktop rules already say.
       expect(
-        await heightOf(`/trips/${tripId}/locations/${itemId}`, "map-view"),
+        await heightOf(`/trips/${tripId}/locations/${locationId}`, "map-view"),
         "a single-marker map on a location page"
       ).toBe(256);
       expect(
-        await heightOf(`/trips/${tripId}/locations/new`, ".location-form__map"),
+        await heightOf(`/trips/${tripId}/locations/new`, ".geo-form__map"),
         "the coordinate picker inside a form card"
       ).toBe(320);
     } finally {
@@ -670,7 +670,7 @@ test.describe("the trip map with a mouse", () => {
 
 // Milestone 2. A marker popup used to offer the title and a Google Maps link
 // and nothing else, so the map could show you where a location was but not
-// take you to it. The item id was already in the payload.
+// take you to it. The location id was already in the payload.
 test.describe("a marker popup links back into the app", () => {
   test("opens the location client-side, without a page load", async ({ page }) => {
     await login(page);
@@ -687,18 +687,18 @@ test.describe("a marker popup links back into the app", () => {
 
     await openFirstPopup(page);
     const link = await page.evaluate(() => {
-      const a = document.querySelector("map-view").shadowRoot.querySelector(".maplibregl-popup-content [data-item-id]");
-      return { href: a.getAttribute("href"), text: a.textContent.trim(), itemId: a.dataset.itemId };
+      const a = document.querySelector("map-view").shadowRoot.querySelector(".maplibregl-popup-content [data-location-id]");
+      return { href: a.getAttribute("href"), text: a.textContent.trim(), locationId: a.dataset.locationId };
     });
 
     // A real <a href>, so middle-click and "open in new tab" still work.
     expect(link.href, "the popup link should be a real, resolvable route").toBe(
-      `${mapPath.replace(/\/map$/, "")}/locations/${link.itemId}`
+      `${mapPath.replace(/\/map$/, "")}/locations/${link.locationId}`
     );
     expect(link.text, "the in-app link should be labelled").toBeTruthy();
 
     await page.evaluate(() => {
-      document.querySelector("map-view").shadowRoot.querySelector(".maplibregl-popup-content [data-item-id]").click();
+      document.querySelector("map-view").shadowRoot.querySelector(".maplibregl-popup-content [data-location-id]").click();
     });
     await page.waitForFunction((href) => window.location.pathname === href, link.href);
 
@@ -719,7 +719,7 @@ test.describe("a marker popup links back into the app", () => {
     // Ctrl-click means "new tab". The handler must not preventDefault it, or
     // the link loses every affordance it was kept an <a href> for.
     const defaultPrevented = await page.evaluate(() => {
-      const a = document.querySelector("map-view").shadowRoot.querySelector(".maplibregl-popup-content [data-item-id]");
+      const a = document.querySelector("map-view").shadowRoot.querySelector(".maplibregl-popup-content [data-location-id]");
       const e = new MouseEvent("click", { bubbles: true, cancelable: true, view: window, button: 0, ctrlKey: true });
       a.dispatchEvent(e);
       return e.defaultPrevented;
@@ -758,9 +758,9 @@ test.describe("a marker popup links back into the app", () => {
 // picture must not push the two links below the fold of a short map. Places
 // without a photo get no image and no placeholder box.
 test.describe("a marker popup shows the location photo", () => {
-  // The seeded trip has one located item with a cover and others without, and
-  // the marker order is the payload order, so this walks them rather than
-  // assuming which one is first.
+  // The seeded trip has one location with coordinates and a cover and others
+  // without, and the marker order is the payload order, so this walks them
+  // rather than assuming which one is first.
   async function popupsByMarker(page) {
     return page.evaluate(async () => {
       const sr = document.querySelector("map-view").shadowRoot;
@@ -807,7 +807,7 @@ test.describe("a marker popup shows the location photo", () => {
 
     expect(
       withPhoto.length,
-      "no marker popup showed a photo - does the seeded trip still give a located item a cover image?"
+      "no marker popup showed a photo - does the seeded trip still give a located location a cover image?"
     ).toBeGreaterThan(0);
     expect(
       withoutPhoto.length,
@@ -1183,28 +1183,28 @@ test.describe("the location editor's coordinate picker", () => {
 
   async function openNewLocation(page) {
     await gotoRoute(page, `/trips/${tripId}/locations/new`);
-    await page.waitForFunction(() => document.querySelector(".location-form__map")?.hasAttribute("data-ready"));
+    await page.waitForFunction(() => document.querySelector(".geo-form__map")?.hasAttribute("data-ready"));
   }
 
   test("a click fills both coordinate fields, and Save persists them", async ({ page }) => {
     await openNewLocation(page);
 
-    const lat = page.locator('.location-form input[name="lat"]');
-    const lng = page.locator('.location-form input[name="lng"]');
+    const lat = page.locator('.geo-form input[name="lat"]');
+    const lng = page.locator('.geo-form input[name="lng"]');
     await expect(lat, "a new location starts with no coordinates").toHaveValue("");
     await expect(lng).toHaveValue("");
 
     // The "Show on map" hint is shown precisely while the box is ticked and
     // the coordinates are empty, so it doubles as a check that picking on the
     // map runs the same sync typing does.
-    await expect(page.locator(".location-form__hint")).toBeVisible();
+    await expect(page.locator(".geo-form__hint")).toBeVisible();
 
-    await page.locator('.item-form input[name="title"]').fill("Picked by map");
-    await clickPickerAt(page, 0.5, 0.4, ".location-form__map");
+    await page.locator('.entry-form input[name="title"]').fill("Picked by map");
+    await clickPickerAt(page, 0.5, 0.4, ".geo-form__map");
 
     await expect(lat, "a map click should fill the latitude field").not.toHaveValue("");
     await expect(lng, "a map click should fill the longitude field").not.toHaveValue("");
-    await expect(page.locator(".location-form__hint"), "the coordinates are no longer missing").toBeHidden();
+    await expect(page.locator(".geo-form__hint"), "the coordinates are no longer missing").toBeHidden();
 
     const typed = { lat: await lat.inputValue(), lng: await lng.inputValue() };
 
@@ -1214,10 +1214,10 @@ test.describe("the location editor's coordinate picker", () => {
     // The fields are the source of truth, so what the server stored has to
     // match what they showed - not merely "something was saved". The list
     // endpoint returns a summary with no nested location, so this reads the
-    // item's own route.
-    const items = await (await page.request.get(`/api/trips/${tripId}/locations`)).json();
-    expect(items.length, "the location should have been created").toBe(1);
-    const detail = await (await page.request.get(`/api/locations/${items[0].id}`)).json();
+    // location's own route.
+    const locations = await (await page.request.get(`/api/trips/${tripId}/locations`)).json();
+    expect(locations.length, "the location should have been created").toBe(1);
+    const detail = await (await page.request.get(`/api/locations/${locations[0].id}`)).json();
     expect(detail.geo, "the picked coordinates should have been saved with it").toBeTruthy();
     expect(detail.geo.lat).toBeCloseTo(Number(typed.lat), 6);
     expect(detail.geo.lng).toBeCloseTo(Number(typed.lng), 6);
@@ -1226,22 +1226,22 @@ test.describe("the location editor's coordinate picker", () => {
   test("typing a coordinate moves the marker, and clearing it removes it", async ({ page }) => {
     await openNewLocation(page);
 
-    const picker = page.locator(".location-form__map");
-    await page.locator('.location-form input[name="lat"]').fill("48.8584");
-    await page.locator('.location-form input[name="lng"]').fill("2.2945");
+    const picker = page.locator(".geo-form__map");
+    await page.locator('.geo-form input[name="lat"]').fill("48.8584");
+    await page.locator('.geo-form input[name="lng"]').fill("2.2945");
 
     await expect(picker).toHaveAttribute("lat", "48.8584");
     await expect(picker).toHaveAttribute("lng", "2.2945");
     await expect
-      .poll(() => page.evaluate(() => document.querySelector(".location-form__map").shadowRoot.querySelectorAll(".maplibregl-marker").length))
+      .poll(() => page.evaluate(() => document.querySelector(".geo-form__map").shadowRoot.querySelectorAll(".maplibregl-marker").length))
       .toBe(1);
 
     // A cleared field must remove the attribute, not set it blank: "no
     // coordinate" and "the coordinate 0" are different answers.
-    await page.locator('.location-form input[name="lat"]').fill("");
+    await page.locator('.geo-form input[name="lat"]').fill("");
     await expect(picker).not.toHaveAttribute("lat", /.*/);
     await expect
-      .poll(() => page.evaluate(() => document.querySelector(".location-form__map").shadowRoot.querySelectorAll(".maplibregl-marker").length))
+      .poll(() => page.evaluate(() => document.querySelector(".geo-form__map").shadowRoot.querySelectorAll(".maplibregl-marker").length))
       .toBe(0);
   });
 
@@ -1255,7 +1255,7 @@ test.describe("the location editor's coordinate picker", () => {
   // typing moved a pin nobody could see.
   const view = (page) =>
     page.evaluate(() => {
-      const el = document.querySelector(".location-form__map");
+      const el = document.querySelector(".geo-form__map");
       const c = el._map.getCenter();
       return { zoom: el._map.getZoom(), lat: c.lat, lng: c.lng };
     });
@@ -1266,8 +1266,8 @@ test.describe("the location editor's coordinate picker", () => {
     const before = await view(page);
     expect(before.zoom, "an empty editor should start at the world view").toBe(2);
 
-    await page.locator('.location-form input[name="lat"]').fill("48.8584");
-    await page.locator('.location-form input[name="lng"]').fill("2.2945");
+    await page.locator('.geo-form input[name="lat"]').fill("48.8584");
+    await page.locator('.geo-form input[name="lng"]').fill("2.2945");
 
     await expect.poll(async () => (await view(page)).zoom, {
       message: "the map should zoom to the typed point, not stay at world view",
@@ -1285,7 +1285,7 @@ test.describe("the location editor's coordinate picker", () => {
     // deliberately not one: it scrolls the page and leaves the map alone, so
     // it must not count as the person having positioned this map either.
     await page.evaluate(() => {
-      const mapEl = document.querySelector(".location-form__map").shadowRoot.getElementById("map");
+      const mapEl = document.querySelector(".geo-form__map").shadowRoot.getElementById("map");
       mapEl.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: -100, ctrlKey: true }));
     });
     await expect.poll(async () => (await view(page)).zoom).toBeGreaterThan(2);
@@ -1294,13 +1294,13 @@ test.describe("the location editor's coordinate picker", () => {
     // caught the end of it; MapLibre eases over 150ms and the poll catches a
     // fractional zoom mid-flight, so "the view the person chose" has to mean
     // the one they were left with.
-    await settleMap(page, ".location-form__map");
+    await settleMap(page, ".geo-form__map");
     const moved = await view(page);
 
-    await page.locator('.location-form input[name="lat"]').fill("48.8584");
-    await page.locator('.location-form input[name="lng"]').fill("2.2945");
+    await page.locator('.geo-form input[name="lat"]').fill("48.8584");
+    await page.locator('.geo-form input[name="lng"]').fill("2.2945");
     await expect
-      .poll(() => page.evaluate(() => document.querySelector(".location-form__map").shadowRoot.querySelectorAll(".maplibregl-marker").length))
+      .poll(() => page.evaluate(() => document.querySelector(".geo-form__map").shadowRoot.querySelectorAll(".maplibregl-marker").length))
       .toBe(1);
 
     // The point is inside the visible bounds at this zoom, so nothing should
@@ -1319,14 +1319,14 @@ test.describe("the location editor's coordinate picker", () => {
     await openNewLocation(page);
 
     await page.evaluate(() => {
-      const mapEl = document.querySelector(".location-form__map").shadowRoot.getElementById("map");
+      const mapEl = document.querySelector(".geo-form__map").shadowRoot.getElementById("map");
       mapEl.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 240 }));
     });
     await page.waitForTimeout(200);
     expect((await view(page)).zoom, "a plain wheel must not have zoomed the map").toBe(2);
 
-    await page.locator('.location-form input[name="lat"]').fill("48.8584");
-    await page.locator('.location-form input[name="lng"]').fill("2.2945");
+    await page.locator('.geo-form input[name="lat"]').fill("48.8584");
+    await page.locator('.geo-form input[name="lng"]').fill("2.2945");
 
     await expect
       .poll(async () => (await view(page)).zoom, {
@@ -1339,8 +1339,8 @@ test.describe("the location editor's coordinate picker", () => {
     await openNewLocation(page);
 
     const before = await view(page);
-    await clickPickerAt(page, 0.5, 0.4, ".location-form__map");
-    await expect(page.locator(".location-form__map")).toHaveAttribute("lat", /.+/);
+    await clickPickerAt(page, 0.5, 0.4, ".geo-form__map");
+    await expect(page.locator(".geo-form__map")).toHaveAttribute("lat", /.+/);
 
     // Clicking is how you say "there", at the zoom you are already looking at.
     // Zooming to 14 underneath that would throw away the view they chose --
@@ -1358,16 +1358,16 @@ test.describe("the location editor's coordinate picker", () => {
         geo: { lat: 64.9631, lng: -19.0208, address: null },
       },
     });
-    expect(created.status(), "create a located item to edit").toBe(201);
-    const itemId = (await created.json()).id;
+    expect(created.status(), "create a located location to edit").toBe(201);
+    const locationId = (await created.json()).id;
 
-    await gotoRoute(page, `/trips/${tripId}/locations/${itemId}/edit`);
-    await page.waitForFunction(() => document.querySelector(".location-form__map")?.hasAttribute("data-ready"));
+    await gotoRoute(page, `/trips/${tripId}/locations/${locationId}/edit`);
+    await page.waitForFunction(() => document.querySelector(".geo-form__map")?.hasAttribute("data-ready"));
 
     // Rendered onto the element in the page template rather than pushed after
     // mount, so the map never shows the world view and then jumps.
     const view = await page.evaluate(() => {
-      const el = document.querySelector(".location-form__map");
+      const el = document.querySelector(".geo-form__map");
       const c = el._map.getCenter();
       return { zoom: el._map.getZoom(), lat: c.lat, lng: c.lng };
     });
@@ -1415,7 +1415,7 @@ test.describe("address search in the location editor", () => {
 
   async function openNewLocation(page) {
     await gotoRoute(page, `/trips/${tripId}/locations/new`);
-    await page.waitForFunction(() => document.querySelector(".location-form__map")?.hasAttribute("data-ready"));
+    await page.waitForFunction(() => document.querySelector(".geo-form__map")?.hasAttribute("data-ready"));
   }
 
   test("finds a place and fills the coordinates and the empty address", async ({ page }) => {
@@ -1441,17 +1441,17 @@ test.describe("address search in the location editor", () => {
     await expect(results.first()).toHaveText(GEOCODE_RESULTS[0].display_name);
 
     await results.first().click();
-    await expect(page.locator('.location-form input[name="lat"]')).toHaveValue("64.1466");
-    await expect(page.locator('.location-form input[name="lng"]')).toHaveValue("-21.9426");
+    await expect(page.locator('.geo-form input[name="lat"]')).toHaveValue("64.1466");
+    await expect(page.locator('.geo-form input[name="lng"]')).toHaveValue("-21.9426");
     // An empty address gets the result's formatted name - it is the one thing
     // a geocoder knows that the map click cannot tell you.
-    await expect(page.locator('.location-form input[name="address"]')).toHaveValue(GEOCODE_RESULTS[0].display_name);
+    await expect(page.locator('.geo-form input[name="address"]')).toHaveValue(GEOCODE_RESULTS[0].display_name);
     await expect(results, "choosing a result should close the list").toHaveCount(0);
 
     // And the picker followed, which is the whole point of filling the fields.
-    await expect(page.locator(".location-form__map")).toHaveAttribute("lat", "64.1466");
+    await expect(page.locator(".geo-form__map")).toHaveAttribute("lat", "64.1466");
     await expect
-      .poll(() => page.evaluate(() => document.querySelector(".location-form__map").shadowRoot.querySelectorAll(".maplibregl-marker").length))
+      .poll(() => page.evaluate(() => document.querySelector(".geo-form__map").shadowRoot.querySelectorAll(".maplibregl-marker").length))
       .toBe(1);
   });
 
@@ -1461,14 +1461,14 @@ test.describe("address search in the location editor", () => {
     );
     await openNewLocation(page);
 
-    const address = page.locator('.location-form input[name="address"]');
+    const address = page.locator('.geo-form input[name="address"]');
     await address.fill("The blue house past the bridge");
     await page.locator('.location-search input[name="placeQuery"]').fill("Reykjavik");
     await page.locator('[data-action="search-place"]').click();
     await page.locator(".location-search__result").first().click();
 
     // The coordinates are what was asked for; the wording was not.
-    await expect(page.locator('.location-form input[name="lat"]')).toHaveValue("64.1466");
+    await expect(page.locator('.geo-form input[name="lat"]')).toHaveValue("64.1466");
     await expect(address).toHaveValue("The blue house past the bridge");
   });
 
@@ -1493,8 +1493,8 @@ test.describe("address search in the location editor", () => {
 
     // A failed search must leave the rest of the card working: the map is
     // still the way to set a point.
-    await clickPickerAt(page, 0.5, 0.5, ".location-form__map");
-    await expect(page.locator('.location-form input[name="lat"]')).not.toHaveValue("");
+    await clickPickerAt(page, 0.5, 0.5, ".geo-form__map");
+    await expect(page.locator('.geo-form input[name="lat"]')).not.toHaveValue("");
   });
 
   test("Enter in the search box searches instead of saving the page", async ({ page }) => {
@@ -1737,13 +1737,13 @@ test.describe("the locate control", () => {
     const tripId = (await res.json()).id;
     try {
       await gotoRoute(page, `/trips/${tripId}/locations/new`);
-      await page.waitForFunction(() => document.querySelector(".location-form__map")?.hasAttribute("data-ready"));
+      await page.waitForFunction(() => document.querySelector(".geo-form__map")?.hasAttribute("data-ready"));
       const counts = await page.evaluate(() => {
-        const root = document.querySelector(".location-form__map").shadowRoot;
+        const root = document.querySelector(".geo-form__map").shadowRoot;
         return {
           button: root.querySelectorAll('[data-action="locate"]').length,
           status: root.querySelectorAll(".locate-status").length,
-          coarse: document.querySelectorAll(".location-form__coarse").length,
+          coarse: document.querySelectorAll(".geo-form__coarse").length,
         };
       });
       expect(counts).toEqual({ button: 0, status: 0, coarse: 0 });
@@ -2836,7 +2836,7 @@ test.describe("distance filter on the locations list", () => {
     const routes = await buildRoutes(page);
     await gotoRoute(page, routes.find((r) => r.label === "trip locations").path);
 
-    const cards = page.locator("item-card");
+    const cards = page.locator("location-card");
     const before = await cards.count();
     expect(before, "the seeded trip should have several locations").toBeGreaterThan(2);
 
@@ -2857,7 +2857,7 @@ test.describe("distance filter on the locations list", () => {
     const routes = await buildRoutes(page);
     await gotoRoute(page, routes.find((r) => r.label === "trip locations").path);
 
-    const cards = page.locator("item-card");
+    const cards = page.locator("location-card");
     const all = await cards.count();
 
     // Two filters at once, which is the case Clear exists for: undoing them
@@ -2901,14 +2901,14 @@ test.describe("distance filter on the locations list", () => {
       }
 
       await gotoRoute(page, `/trips/${tripId}/locations`);
-      await expect(page.locator("item-card")).toHaveCount(3);
+      await expect(page.locator("location-card")).toHaveCount(3);
 
       await pickRadius(page, "5");
 
       // The far one goes, and so does the one with no coordinates: it cannot
       // be within 5 km. Keeping it meant a radius with nothing in range still
       // listed every unplaced location, and read as a filter that did nothing.
-      const titles = await page.locator("item-card").evaluateAll((els) => els.map((el) => el.getAttribute("title")));
+      const titles = await page.locator("location-card").evaluateAll((els) => els.map((el) => el.getAttribute("title")));
       expect(titles).toEqual(["Right here"]);
 
       // The gap in the data is still visible, in the note rather than the list.
@@ -2919,7 +2919,7 @@ test.describe("distance filter on the locations list", () => {
       // The note counts against the other filters: a search that already
       // hides the unplaced location must not have it reported as left out.
       await page.locator(".list-search input").fill("right");
-      await expect(page.locator("item-card")).toHaveCount(1);
+      await expect(page.locator("location-card")).toHaveCount(1);
       await expect(note).toBeHidden();
     } finally {
       await page.request.delete(`/api/trips/${tripId}`);
@@ -2942,18 +2942,18 @@ test.describe("distance filter on the locations list", () => {
       }
 
       await gotoRoute(page, `/trips/${tripId}/locations`);
-      await expect(page.locator("item-card")).toHaveCount(3);
+      await expect(page.locator("location-card")).toHaveCount(3);
 
       await pickRadius(page, "5");
 
-      await expect(page.locator("item-card")).toHaveCount(0);
-      await expect(page.locator(".items-empty--no-matches")).toBeVisible();
+      await expect(page.locator("location-card")).toHaveCount(0);
+      await expect(page.locator(".locations-empty--no-matches")).toBeVisible();
       await expect(page.locator(".locations-distance-note")).toHaveText(
         "2 locations without coordinates are not included."
       );
 
       await pickRadius(page, "any");
-      await expect(page.locator("item-card")).toHaveCount(3);
+      await expect(page.locator("location-card")).toHaveCount(3);
       await expect(page.locator(".locations-distance-note")).toBeHidden();
     } finally {
       await page.request.delete(`/api/trips/${tripId}`);
@@ -2968,7 +2968,7 @@ test.describe("distance filter when the position cannot be had", () => {
     const routes = await buildRoutes(page);
     await gotoRoute(page, routes.find((r) => r.label === "trip locations").path);
 
-    const before = await page.locator("item-card").count();
+    const before = await page.locator("location-card").count();
     await pickRadius(page, "5");
 
     // Settles rather than hanging - the same own-timer guarantee the locate
@@ -2986,7 +2986,7 @@ test.describe("distance filter when the position cannot be had", () => {
       .not.toBe(IN_PROGRESS);
 
     // The list is untouched and the trigger no longer claims to be filtering.
-    await expect(page.locator("item-card")).toHaveCount(before);
+    await expect(page.locator("location-card")).toHaveCount(before);
     // One trigger for every filter since Stage 26 Milestone 4, so "not
     // filtering" is now a claim about the whole menu -- which is right here,
     // since the category filter is untouched and distance fell back to "any".
@@ -3230,7 +3230,7 @@ test.describe("Stage 13's surfaces in German at 324px", () => {
     const tripId = (await res.json()).id;
     try {
       await gotoRoute(page, `/trips/${tripId}/locations/new`);
-      await page.waitForFunction(() => document.querySelector(".location-form__map")?.hasAttribute("data-ready"));
+      await page.waitForFunction(() => document.querySelector(".geo-form__map")?.hasAttribute("data-ready"));
 
       await page.locator('.location-search input[name="placeQuery"]').fill("Kirkjufell");
       await page.locator('[data-action="search-place"]').click();
@@ -3284,7 +3284,7 @@ test.describe("Stage 13's surfaces in German at 324px", () => {
       }
     });
 
-    await assertFitsAndTappable(page, ".items-tab");
+    await assertFitsAndTappable(page, ".locations-tab");
   });
 });
 
@@ -3302,9 +3302,10 @@ test.describe("Stage 13's surfaces in German at 324px", () => {
 // location's own page, and the location view's own link beside the map. Two of
 // those three are in a shadow root.
 test.describe("the Google Maps link is built in one place", () => {
-  // The single-marker popup, unlike the trip-wide one, has no [data-item-id]
-  // link to wait for -- it is on the location's own page, so linking there
-  // would link to itself. So this waits for the popup's only anchor instead.
+  // The single-marker popup, unlike the trip-wide one, has no
+  // [data-location-id] link to wait for -- it is on the location's own page, so
+  // linking there would link to itself. So this waits for the popup's only
+  // anchor instead.
   async function openSingleMarkerPopup(page) {
     await page.evaluate(() => {
       const sr = document.querySelector("map-view").shadowRoot;
@@ -3330,7 +3331,7 @@ test.describe("the Google Maps link is built in one place", () => {
       const sr = document.querySelector("map-view").shadowRoot;
       const links = [...sr.querySelectorAll(".maplibregl-popup-content a")];
       const google = links.find((a) => a.getAttribute("target") === "_blank");
-      return { href: google?.getAttribute("href") ?? null, itemId: sr.querySelector("[data-item-id]").dataset.itemId };
+      return { href: google?.getAttribute("href") ?? null, locationId: sr.querySelector("[data-location-id]").dataset.locationId };
     });
     expect(fromTripMap.href, "the trip map popup should offer a Google Maps link").toBeTruthy();
 
@@ -3353,7 +3354,7 @@ test.describe("the Google Maps link is built in one place", () => {
 
     // Now the same location's own page, which renders the other two.
     const tripId = mapPath.split("/")[2];
-    await gotoRoute(page, `/trips/${tripId}/locations/${fromTripMap.itemId}`);
+    await gotoRoute(page, `/trips/${tripId}/locations/${fromTripMap.locationId}`);
     await page.waitForFunction(() => document.querySelector("map-view")?.hasAttribute("data-ready"));
 
     // Not a bare .location-view__maps-link: Stage 29 Milestone 3 added an
@@ -3479,10 +3480,10 @@ test.describe("the fullscreen trip map", () => {
       const created = await page.request.post(`/api/trips/${tripId}/locations`, {
         data: { category: "site", tags: [], title: "Somewhere", geo: { lat: 64.9631, lng: -19.0208, address: null } },
       });
-      const itemId = (await created.json()).id;
+      const locationId = (await created.json()).id;
       for (const [route, selector] of [
-        [`/trips/${tripId}/locations/${itemId}`, "map-view"],
-        [`/trips/${tripId}/locations/new`, ".location-form__map"],
+        [`/trips/${tripId}/locations/${locationId}`, "map-view"],
+        [`/trips/${tripId}/locations/new`, ".geo-form__map"],
       ]) {
         await gotoRoute(page, route);
         await page.waitForFunction((s) => document.querySelector(s)?.hasAttribute("data-ready"), selector);
@@ -3580,7 +3581,7 @@ test.describe("the fullscreen trip map", () => {
 
     await openFirstPopup(page);
     await page.evaluate(() => {
-      document.querySelector("map-view").shadowRoot.querySelector(".maplibregl-popup-content [data-item-id]").click();
+      document.querySelector("map-view").shadowRoot.querySelector(".maplibregl-popup-content [data-location-id]").click();
     });
     await page.waitForFunction((p) => window.location.pathname !== p, mapPath);
     await expect(page.locator("h1")).toBeVisible();
@@ -3647,11 +3648,11 @@ test.describe("the fullscreen trip map", () => {
 
 
 // The backlog entry from Stage 45 Milestone 2: a reload of the Map tab used to
-// ask for /auth/me, then the trip, then the map items and the map config, each
-// only once the one before had answered. Only /auth/me has to come first. Each
-// test holds back one response and checks that the requests meant to run beside
-// it go out while it is held, which says the same thing as timing the load but
-// does not depend on how fast the test machine is.
+// ask for /auth/me, then the trip, then the map locations and the map config,
+// each only once the one before had answered. Only /auth/me has to come first.
+// Each test holds back one response and checks that the requests meant to run
+// beside it go out while it is held, which says the same thing as timing the
+// load but does not depend on how fast the test machine is.
 test.describe("a trip map load does not queue its requests", () => {
   // The service worker would answer the locale itself on the second navigation,
   // out of sight of page.route.
@@ -3689,7 +3690,7 @@ test.describe("a trip map load does not queue its requests", () => {
     await gotoRoute(page, mapPath);
     await waitForMapInstance(page);
 
-    expect(result.released, "the map items and map config should be requested while the trip is still loading").toBe(
+    expect(result.released, "the map locations and map config should be requested while the trip is still loading").toBe(
       "early"
     );
     // The page hands its request to the map rather than both asking.

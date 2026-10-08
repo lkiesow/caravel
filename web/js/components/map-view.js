@@ -44,24 +44,24 @@ function loadMapConfig() {
 
 // A trip page that is about to mount a map calls this before it fetches the
 // trip, so the map's own requests run alongside that one instead of after it:
-// none of them needs more than the trip id from the URL. The items are held
+// none of them needs more than the trip id from the URL. The locations are held
 // for exactly one load() of the same trip and then dropped, so any later
 // render (a tab switch back to the map) fetches them fresh, as it always has.
 // The no-op catch keeps a 404 for a trip that does not exist from being
 // reported as unhandled; the page shows its not-found state from its own fetch.
-let preloadedItems = null;
+let preloadedLocations = null;
 
 export function preloadTripMap(tripId) {
   const promise = api.get(`/trips/${tripId}/map`);
   promise.catch(() => {});
-  preloadedItems = { tripId, promise };
+  preloadedLocations = { tripId, promise };
   loadMapConfig();
   import(assetURL("/js/vendor/maplibre/maplibre-gl.mjs")).catch(() => {});
 }
 
-function takePreloadedItems(tripId) {
-  const preloaded = preloadedItems;
-  preloadedItems = null;
+function takePreloadedLocations(tripId) {
+  const preloaded = preloadedLocations;
+  preloadedLocations = null;
   return preloaded?.tripId === tripId ? preloaded.promise : null;
 }
 
@@ -596,7 +596,7 @@ const styles = `
   }
   .legend > legend {
     /* A fieldset's legend is taken out of the flex flow by the UA, so it
-       cannot be a flex item here; float: left with a full-width clear is the
+       cannot be a flex location here; float: left with a full-width clear is the
        arrangement that puts it on its own line above the wrapped checkboxes
        in every engine. padding: 0 overrides the UA's inline padding, which
        would otherwise indent it past the checkboxes below. */
@@ -1190,7 +1190,7 @@ class MapView extends HTMLElement {
         return;
       }
       this._singleMarker = null;
-      this._items = [];
+      this._locations = [];
       await this.render((this._generation = (this._generation || 0) + 1));
       return;
     }
@@ -1212,7 +1212,7 @@ class MapView extends HTMLElement {
     const lat = this.getAttribute("lat");
     const lng = this.getAttribute("lng");
     if (lat != null && lng != null) {
-      // Single-marker mode: an item's own location page embeds one point,
+      // Single-marker mode: a location's own page embeds one point,
       // driven directly by attributes - no trip-wide fetch, no legend.
       this._singleMarker = {
         lat: Number(lat),
@@ -1223,7 +1223,7 @@ class MapView extends HTMLElement {
         address: this.getAttribute("marker-address") || "",
         category: this.getAttribute("marker-category") || "",
       };
-      this._items = [];
+      this._locations = [];
       await this.render(generation);
       return;
     }
@@ -1232,9 +1232,9 @@ class MapView extends HTMLElement {
     const tripId = this.getAttribute("trip-id");
     if (!tripId) return;
 
-    const items = await (takePreloadedItems(tripId) || api.get(`/trips/${tripId}/map`));
+    const locations = await (takePreloadedLocations(tripId) || api.get(`/trips/${tripId}/map`));
     if (generation !== this._generation) return;
-    this._items = items;
+    this._locations = locations;
     await this.render(generation);
   }
 
@@ -1290,7 +1290,7 @@ class MapView extends HTMLElement {
             <label>
               <input type="checkbox" data-category="${cat}" checked />
               <span class="dot" style="background:${markerColorVar(cat)}"></span>
-              ${t(`item.category.${cat}`)}
+              ${t(`location.category.${cat}`)}
             </label>`
           )
           .join("")}
@@ -1298,7 +1298,7 @@ class MapView extends HTMLElement {
       }
     `;
 
-    if (!chromeless && !this._items.length) {
+    if (!chromeless && !this._locations.length) {
       this.shadowRoot.querySelector(".map-wrap").insertAdjacentHTML(
         "beforeend",
         `<p class="empty">${t("map.empty")}</p>`
@@ -1519,10 +1519,10 @@ class MapView extends HTMLElement {
     // click inside a shadow root retargets e.target to the <map-view>
     // host, so the link would never be found and the click would fall
     // through to a full page load. Hence a listener on this side of the
-    // boundary, dispatching the same "item-open" contract location-card.js
+    // boundary, dispatching the same "location-open" contract location-card.js
     // uses, which trip-detail-page.js turns into a navigation.
     mapEl.addEventListener("click", (e) => {
-      const link = e.target.closest?.("[data-item-id]");
+      const link = e.target.closest?.("[data-location-id]");
       if (!link) return;
       // A real <a href> on purpose (the reason itinerary-tab.js gives for its
       // entry links): middle-click, open-in-new-tab, "copy link address" and
@@ -1532,10 +1532,10 @@ class MapView extends HTMLElement {
       if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
       e.preventDefault();
       this.dispatchEvent(
-        new CustomEvent("item-open", {
+        new CustomEvent("location-open", {
           bubbles: true,
           composed: true,
-          detail: { itemId: link.dataset.itemId },
+          detail: { locationId: link.dataset.locationId },
         })
       );
     });
@@ -1646,33 +1646,33 @@ class MapView extends HTMLElement {
       return;
     }
 
-    const visible = this._items.filter((item) => this._activeCategories.has(item.category));
+    const visible = this._locations.filter((location) => this._activeCategories.has(location.category));
 
     // The trip-wide popup's primary action is opening the location *in
     // Caravel*; Google Maps is the secondary one. Until Stage 13 Milestone 2
     // only the latter existed, so a marker was a dead end - the payload has
-    // carried item.id all along (mapItemResponse in internal/httpapi/map.go),
-    // the popup just never used it.
+    // carried location.id all along (mapLocationResponse in
+    // internal/httpapi/map.go), the popup just never used it.
     //
     // The single-marker branch above deliberately gets no such link: it is
     // embedded on that location's own page, so it would link to itself.
     const tripId = this.getAttribute("trip-id");
 
-    for (const item of visible) {
-      const marker = new maplibre.Marker({ element: markerElement(item.category) })
-        .setLngLat([item.lng, item.lat])
+    for (const location of visible) {
+      const marker = new maplibre.Marker({ element: markerElement(location.category) })
+        .setLngLat([location.lng, location.lat])
         .setPopup(
           this.popup(
-            `<strong>${escapeHtml(item.title)}</strong>` +
+            `<strong>${escapeHtml(location.title)}</strong>` +
               // alt="" on purpose: the title is right above it, so the photo
               // carries nothing a screen reader has not already been told.
               // loading="lazy" because setHTML builds the content up front for
               // every marker while only the opened popup is ever in the DOM.
-              (item.image_url
-                ? `<img class="popup-image" src="${escapeHtml(item.image_url)}" alt="" loading="lazy" />`
+              (location.image_url
+                ? `<img class="popup-image" src="${escapeHtml(location.image_url)}" alt="" loading="lazy" />`
                 : "") +
-              `<a class="popup-link" data-item-id="${escapeHtml(item.id)}" href="${escapeHtml(`/trips/${tripId}/locations/${item.id}`)}">${t("map.openLocation")}</a>` +
-              `<a class="popup-link" href="${escapeHtml(item.google_maps_url)}" target="_blank" rel="noopener">${t("map.viewOnGoogleMaps")}</a>`
+              `<a class="popup-link" data-location-id="${escapeHtml(location.id)}" href="${escapeHtml(`/trips/${tripId}/locations/${location.id}`)}">${t("map.openLocation")}</a>` +
+              `<a class="popup-link" href="${escapeHtml(location.google_maps_url)}" target="_blank" rel="noopener">${t("map.viewOnGoogleMaps")}</a>`
           )
         )
         .addTo(this._map);

@@ -675,8 +675,8 @@ test.describe("locations filter menu", () => {
 
     // Choosing closes the menu and applies the filter.
     await expect(menu.locator(".menu__dropdown")).toBeHidden();
-    const stays = page.locator('item-card[category="stay"]');
-    await expect(page.locator("item-card")).toHaveCount(await stays.count());
+    const stays = page.locator('location-card[category="stay"]');
+    await expect(page.locator("location-card")).toHaveCount(await stays.count());
 
     // The trigger is accented, and -- because with several filters it can no
     // longer say *which* one is narrowing the list -- the row says so too.
@@ -699,7 +699,7 @@ test.describe("locations filter menu", () => {
     const menu = page.locator(".locations-filter-slot .menu");
     const trigger = menu.locator('[data-action="toggle"]');
     const clear = menu.locator('[data-action="clear"]');
-    const cards = page.locator("item-card");
+    const cards = page.locator("location-card");
     const all = await cards.count();
 
     // Nothing filtering, nothing to clear: the row is absent rather than

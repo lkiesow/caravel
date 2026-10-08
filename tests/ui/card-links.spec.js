@@ -32,7 +32,7 @@ test.describe("cards are links", () => {
     return trip;
   }
 
-  async function createItem(page, tripId, title) {
+  async function createLocation(page, tripId, title) {
     const res = await page.request.post(`/api/trips/${tripId}/locations`, {
       data: { title, category: "stay", tags: ["hotel"], dates: [] },
     });
@@ -55,30 +55,30 @@ test.describe("cards are links", () => {
     context,
   }) => {
     const trip = await createTrip(page, { title: "UI suite: card links" });
-    const item = await createItem(page, trip.id, "Hotel Ranga");
+    const location = await createLocation(page, trip.id, "Hotel Ranga");
     const listPath = `/trips/${trip.id}/locations`;
-    const itemPath = `/trips/${trip.id}/locations/${item.id}`;
+    const locationPath = `/trips/${trip.id}/locations/${location.id}`;
     await gotoRoute(page, listPath);
 
     const link = page.getByRole("link", { name: /Hotel Ranga/ });
-    await expect(link).toHaveAttribute("href", itemPath);
+    await expect(link).toHaveAttribute("href", locationPath);
     // The card is the link's content, not a second control beside it.
-    await expect(link.locator("item-card")).toHaveCount(1);
-    await expect(page.locator('item-card[role="button"], item-card[tabindex]')).toHaveCount(0);
+    await expect(link.locator("location-card")).toHaveCount(1);
+    await expect(page.locator('location-card[role="button"], location-card[tabindex]')).toHaveCount(0);
     // The global link colour must not leak into the card through inheritance.
     expect(await link.evaluate((el) => getComputedStyle(el).textDecorationLine)).toBe("none");
     const titleColor = await page
-      .locator("item-card")
+      .locator("location-card")
       .evaluate((el) => getComputedStyle(el.shadowRoot.querySelector("h2")).color);
     const bodyColor = await page.evaluate(() => getComputedStyle(document.body).color);
     expect(titleColor, "the card title keeps the text colour, not the link colour").toBe(bodyColor);
 
     for (const how of [{ modifiers: ["ControlOrMeta"] }, { button: "middle" }]) {
       const opened = context.waitForEvent("page");
-      await page.locator("item-card").click(how);
+      await page.locator("location-card").click(how);
       const tab = await opened;
       await tab.waitForLoadState();
-      expect(new URL(tab.url()).pathname, `${JSON.stringify(how)} opens the location`).toBe(itemPath);
+      expect(new URL(tab.url()).pathname, `${JSON.stringify(how)} opens the location`).toBe(locationPath);
       await tab.close();
       expect(
         await page.evaluate(() => window.location.pathname),
@@ -88,9 +88,9 @@ test.describe("cards are links", () => {
 
     // A plain click is still the router's: same document, new route.
     await page.evaluate(() => (window.__sameDocument = true));
-    await page.locator("item-card").click();
+    await page.locator("location-card").click();
     await expect(page.getByRole("heading", { level: 1, name: "Hotel Ranga" })).toBeVisible();
-    expect(await page.evaluate(() => window.location.pathname)).toBe(itemPath);
+    expect(await page.evaluate(() => window.location.pathname)).toBe(locationPath);
     expect(await page.evaluate(() => window.__sameDocument)).toBe(true);
 
     // Enter on the focused link, the keyboard path the old keydown handler had.
@@ -114,8 +114,9 @@ test.describe("cards are links", () => {
     await expect(link).toHaveAttribute("href", `/trips/${trip.id}`);
 
     // The equal-height row trip-card.js carries down from the grid: the grid
-    // item is now the link, so the stretch has to pass through it. Alpha has a
-    // dates line and Beta does not, which is what used to make them differ.
+    // location is now the link, so the stretch has to pass through it. Alpha
+    // has a dates line and Beta does not, which is what used to make them
+    // differ.
     const boxes = await page
       .locator("trip-card")
       .evaluateAll((els) => els.map((el) => el.shadowRoot.querySelector(".card").getBoundingClientRect()));

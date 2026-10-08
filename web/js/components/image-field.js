@@ -355,7 +355,7 @@ export function renderImageField(container, { tripId, imageUrl, attachPath, onCh
   // moment it is stored, because it cannot be recovered afterwards.
   //
   // Exposed on the returned handle so the panel writes through this component
-  // rather than reaching into its DOM -- the same shape renderItemForm's
+  // rather than reaching into its DOM -- the same shape renderLocationForm's
   // setValues took in Stage 16.
   async function setFromURL(url, provenance = null) {
     if (!url) return;

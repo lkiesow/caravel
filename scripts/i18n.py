@@ -63,9 +63,9 @@ LITERAL_CALL_RE = re.compile(r"""\bt\(\s*(?P<q>["'`])(?P<key>[^"'`${}]+?)(?P=q)"
 #    The closing quote is required: without it, data-i18n="trip.tabs.${key}"
 #    matched up to the `$` and invented a phantom "trip.tabs." key.
 LITERAL_ATTR_RE = re.compile(r"""data-i18n(?:-placeholder|-aria-label)?=\\?(?P<q>["'])(?P<key>[^"'${}\\]+)(?P=q)""")
-# 3. Composed at runtime, in a t() call — t(`item.category.${c}`). Unresolvable,
-#    but the literal prefix is recoverable, and nothing under it may be called
-#    unused.
+# 3. Composed at runtime, in a t() call — t(`location.category.${c}`).
+#    Unresolvable, but the literal prefix is recoverable, and nothing under it
+#    may be called unused.
 DYNAMIC_CALL_RE = re.compile(r"""\bt\(\s*`(?P<prefix>[^`${}]*)\$\{""")
 # 4. Composed at runtime, in an attribute — data-i18n="trip.tabs.${key}" in
 #    trip-detail-page.js. Same treatment; missing this made all six tab keys

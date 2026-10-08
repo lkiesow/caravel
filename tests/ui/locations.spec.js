@@ -55,14 +55,14 @@ test.describe("the location editor, end to end", () => {
     // And offers no way to delete a thing that does not exist yet.
     await expect(page.locator('[data-action="delete"]')).toHaveCount(0);
 
-    await page.locator('.item-form input[name="title"]').fill("Hotel Ranga");
-    await page.locator('.item-form select[name="category"]').selectOption("stay");
+    await page.locator('.entry-form input[name="title"]').fill("Hotel Ranga");
+    await page.locator('.entry-form select[name="category"]').selectOption("stay");
     await page.locator(".tag-field__input").fill("hotel");
-    await page.locator('.item-form textarea[name="notes"]').fill("Check in **after 15:00**.");
+    await page.locator('.entry-form textarea[name="notes"]').fill("Check in **after 15:00**.");
 
-    await page.locator('.location-form input[name="lat"]').fill("63.8333");
-    await page.locator('.location-form input[name="lng"]').fill("-20.3167");
-    await page.locator('.location-form input[name="address"]').fill("Sudurlandsvegur, 851 Hella");
+    await page.locator('.geo-form input[name="lat"]').fill("63.8333");
+    await page.locator('.geo-form input[name="lng"]').fill("-20.3167");
+    await page.locator('.geo-form input[name="address"]').fill("Sudurlandsvegur, 851 Hella");
 
     // Links and dates are staged in memory by their own little forms and only
     // written by the Save below - so the list growing here is not yet evidence
@@ -121,8 +121,8 @@ test.describe("the location editor, end to end", () => {
 
     // And the list the trip shows now has it, under the title the form gave it.
     await gotoRoute(page, `/trips/${tripId}/locations`);
-    await expect(page.locator("item-card")).toHaveCount(1);
-    await expect(page.locator("item-card")).toHaveAttribute("title", "Hotel Ranga");
+    await expect(page.locator("location-card")).toHaveCount(1);
+    await expect(page.locator("location-card")).toHaveAttribute("title", "Hotel Ranga");
   });
 
   test("edits an existing location, and the form opens on what is already there", async ({ page }) => {
@@ -136,9 +136,9 @@ test.describe("the location editor, end to end", () => {
       },
     });
     expect(created.status(), "create the location to edit").toBe(201);
-    const itemId = (await created.json()).id;
+    const locationId = (await created.json()).id;
 
-    await gotoRoute(page, `/trips/${tripId}/locations/${itemId}/edit`);
+    await gotoRoute(page, `/trips/${tripId}/locations/${locationId}/edit`);
 
     // Edit mode: the heading names the thing, the button says Save, and the
     // delete card exists. All three are the create/edit branch being taken.
@@ -148,19 +148,19 @@ test.describe("the location editor, end to end", () => {
 
     // The form opens on the stored values rather than empty - an editor that
     // silently blanked a field would erase it on the next Save.
-    await expect(page.locator('.item-form input[name="title"]')).toHaveValue("Skogafoss");
-    await expect(page.locator('.item-form select[name="category"]')).toHaveValue("site");
+    await expect(page.locator('.entry-form input[name="title"]')).toHaveValue("Skogafoss");
+    await expect(page.locator('.entry-form select[name="category"]')).toHaveValue("site");
     await expect(page.locator(".tag-field__chip")).toHaveText(["waterfall"]);
-    await expect(page.locator('.item-form textarea[name="notes"]')).toHaveValue("Bring a raincoat.");
+    await expect(page.locator('.entry-form textarea[name="notes"]')).toHaveValue("Bring a raincoat.");
     await expect(page.locator(".link-list li")).toHaveCount(1);
 
-    await page.locator('.item-form input[name="title"]').fill("Skogafoss waterfall");
-    await page.locator('.item-form select[name="category"]').selectOption("transport");
-    await page.locator('.item-form textarea[name="notes"]').fill("");
+    await page.locator('.entry-form input[name="title"]').fill("Skogafoss waterfall");
+    await page.locator('.entry-form select[name="category"]').selectOption("transport");
+    await page.locator('.entry-form textarea[name="notes"]').fill("");
     await page.locator('.link-list button[data-action="delete-link"]').first().click();
 
     await page.locator('[data-action="save"]').click();
-    await expect(page).toHaveURL(`/trips/${tripId}/locations/${itemId}`);
+    await expect(page).toHaveURL(`/trips/${tripId}/locations/${locationId}`);
 
     await expect(page.locator("h1")).toHaveText("Skogafoss waterfall");
     await expect(page.locator(".category-label")).toHaveText("Transport");
@@ -169,7 +169,7 @@ test.describe("the location editor, end to end", () => {
     await expect(page.locator(".location-view__notes")).toHaveCount(0);
     await expect(page.locator(".link-list")).toHaveCount(0);
 
-    const detail = await (await page.request.get(`/api/locations/${itemId}`)).json();
+    const detail = await (await page.request.get(`/api/locations/${locationId}`)).json();
     expect(detail.title).toBe("Skogafoss waterfall");
     expect(detail.category).toBe("transport");
     expect(detail.links, "clearing the last link should clear it server-side too").toEqual([]);
@@ -180,16 +180,16 @@ test.describe("the location editor, end to end", () => {
       data: { title: "Delete me", category: "site" },
     });
     expect(created.status(), "create the location to delete").toBe(201);
-    const itemId = (await created.json()).id;
+    const locationId = (await created.json()).id;
 
-    await gotoRoute(page, `/trips/${tripId}/locations/${itemId}/edit`);
+    await gotoRoute(page, `/trips/${tripId}/locations/${locationId}/edit`);
 
     // Cancel first. A destructive action that fires anyway is the bug this
     // half of the test exists for.
     await page.locator('[data-action="delete"]').click();
     await page.locator(".dialog__actions button", { hasText: "Cancel" }).click();
-    await expect(page).toHaveURL(`/trips/${tripId}/locations/${itemId}/edit`);
-    expect((await page.request.get(`/api/locations/${itemId}`)).status()).toBe(200);
+    await expect(page).toHaveURL(`/trips/${tripId}/locations/${locationId}/edit`);
+    expect((await page.request.get(`/api/locations/${locationId}`)).status()).toBe(200);
 
     await page.locator('[data-action="delete"]').click();
     await page.locator(".dialog__actions button", { hasText: "Delete" }).click();
@@ -198,9 +198,9 @@ test.describe("the location editor, end to end", () => {
     // The trip detail page canonicalises /trips/{id} to its first tab, so this
     // is the locations list with nothing left on it.
     await expect(page).toHaveURL(`/trips/${tripId}/locations`);
-    await expect(page.locator(".items-empty:not(.items-empty--no-matches)")).toBeVisible();
+    await expect(page.locator(".locations-empty:not(.locations-empty--no-matches)")).toBeVisible();
     expect(
-      (await page.request.get(`/api/locations/${itemId}`)).status(),
+      (await page.request.get(`/api/locations/${locationId}`)).status(),
       "the location should be gone, not merely hidden"
     ).toBe(404);
   });
@@ -212,8 +212,8 @@ test.describe("the location editor, end to end", () => {
   test("dates set on a location put it on those itinerary days", async ({ page }) => {
     await gotoRoute(page, `/trips/${tripId}/locations/new`);
 
-    await page.locator('.item-form input[name="title"]').fill("Hotel Ranga");
-    await page.locator('.item-form select[name="category"]').selectOption("stay");
+    await page.locator('.entry-form input[name="title"]').fill("Hotel Ranga");
+    await page.locator('.entry-form select[name="category"]').selectOption("stay");
     await page.locator('.date-form input[name="startDate"]').fill("2026-08-20");
     await page.locator('.date-form input[name="endDate"]').fill("2026-08-22");
     await page.locator('.date-form button[type="submit"]').click();
@@ -253,10 +253,10 @@ test.describe("the location editor, end to end", () => {
       },
     });
     expect(created.status(), "create the location with dates").toBe(201);
-    const itemId = (await created.json()).id;
+    const locationId = (await created.json()).id;
 
     // Open the editor, which reads the two days it currently has.
-    await gotoRoute(page, `/trips/${tripId}/locations/${itemId}/edit`);
+    await gotoRoute(page, `/trips/${tripId}/locations/${locationId}/edit`);
     await expect(page.locator(".date-list li")).toHaveCount(1);
 
     // Someone else extends the stay by a day, through the itinerary.
@@ -265,24 +265,24 @@ test.describe("the location editor, end to end", () => {
     });
     expect(day.status()).toBe(200);
     const added = await page.request.post(`/api/itinerary/days/${(await day.json()).id}/entries`, {
-      data: { location_id: itemId, note: "late checkout" },
+      data: { location_id: locationId, note: "late checkout" },
     });
     expect(added.status()).toBe(201);
 
     // The open editor still believes in two days. Rename, touching nothing else.
-    await page.locator('.item-form input[name="title"]').fill("Hotel Ranga Reykjavik");
+    await page.locator('.entry-form input[name="title"]').fill("Hotel Ranga Reykjavik");
     await page.locator('[data-action="save"]').click();
     await expect(page.locator("h1")).toHaveText("Hotel Ranga Reykjavik");
 
     const itinerary = await (await page.request.get(`/api/trips/${tripId}/itinerary`)).json();
     const third = itinerary.find((d) => d.date === "2026-08-22");
     expect(third, "the day added while the editor was open must survive").toBeTruthy();
-    expect(third.entries.map((e) => e.location_id)).toEqual([itemId]);
+    expect(third.entries.map((e) => e.location_id)).toEqual([locationId]);
     expect(third.entries[0].note).toBe("late checkout");
 
     // And the location now reports all three days, as one range.
-    const item = await (await page.request.get(`/api/locations/${itemId}`)).json();
-    expect(item.dates).toEqual([{ start_date: "2026-08-20", end_date: "2026-08-22" }]);
+    const location = await (await page.request.get(`/api/locations/${locationId}`)).json();
+    expect(location.dates).toEqual([{ start_date: "2026-08-20", end_date: "2026-08-22" }]);
   });
 
   // Tags, added in Stage 26 Milestone 2. The interesting cases are not "a chip
@@ -292,7 +292,7 @@ test.describe("the location editor, end to end", () => {
   // reaching the second location that would use it.
   test("tags: committing, correcting, suggesting, and surviving a reload", async ({ page }) => {
     await gotoRoute(page, `/trips/${tripId}/locations/new`);
-    await page.locator('.item-form input[name="title"]').fill("Hallgrimskirkja");
+    await page.locator('.entry-form input[name="title"]').fill("Hallgrimskirkja");
 
     const input = page.locator(".tag-field__input");
     const chips = page.locator(".tag-field__chip");
@@ -305,7 +305,7 @@ test.describe("the location editor, end to end", () => {
     // else catches that: a field that is too small is not an overflow.
     const widthOf = (sel) => page.locator(sel).evaluate((el) => Math.round(el.getBoundingClientRect().width));
     expect(await widthOf(".tag-field__input"), "tag box matches the title field").toBe(
-      await widthOf('.item-form input[name="title"]')
+      await widthOf('.entry-form input[name="title"]')
     );
 
     // Enter commits a tag. It must NOT submit the form -- the form treats Enter
@@ -370,7 +370,7 @@ test.describe("the location editor, end to end", () => {
     // has its own test below, so this excludes the overflow badge and ignores
     // the hidden attribute.
     await gotoRoute(page, `/trips/${tripId}/locations`);
-    const cardTags = await page.locator("item-card").first().evaluate((el) =>
+    const cardTags = await page.locator("location-card").first().evaluate((el) =>
       [...el.shadowRoot.querySelectorAll(".tag:not(.tag--more)")].map((t) => t.textContent)
     );
     expect(cardTags).toEqual(["Reykjavik", "church", "uncommitted"]);
@@ -379,7 +379,7 @@ test.describe("the location editor, end to end", () => {
     // whole defence against Museum and museum both existing, since the server
     // deduplicates within a location but not across the trip.
     await gotoRoute(page, `/trips/${tripId}/locations/new`);
-    await page.locator('.item-form input[name="title"]').fill("Second");
+    await page.locator('.entry-form input[name="title"]').fill("Second");
     await page.locator(".tag-field__input").pressSequentially("rey");
     const options = page.locator(".tag-field .suggest__list [role=option]");
     await expect(options).toHaveText(["Reykjavik"]);
@@ -415,7 +415,7 @@ test.describe("the location editor, end to end", () => {
     // Reads the row as the reader sees it: the visible chip labels, whether the
     // badge is showing, and how many chip-heights tall the row is.
     const readRow = async () =>
-      page.locator("item-card").first().evaluate((el) => {
+      page.locator("location-card").first().evaluate((el) => {
         const wrap = el.shadowRoot.querySelector(".tags");
         const chips = [...wrap.querySelectorAll(".tag:not(.tag--more)")].filter((c) => !c.hidden);
         const badge = wrap.querySelector(".tag--more");
@@ -430,7 +430,7 @@ test.describe("the location editor, end to end", () => {
     // A badge here would cost more width than the tag it replaced.
     await page.setViewportSize({ width: 1280, height: 720 });
     await gotoRoute(page, `/trips/${tripId}/locations`);
-    await expect(page.locator("item-card")).toHaveCount(1);
+    await expect(page.locator("location-card")).toHaveCount(1);
     await expect.poll(async () => (await readRow()).shown).toEqual([
       "asakusa",
       "landmark",
@@ -483,18 +483,18 @@ test.describe("the location editor, end to end", () => {
 
     // One request for the whole list. If dates were fetched per card this
     // would be four, which is the regression the Go test also guards.
-    const itemRequests = [];
+    const locationRequests = [];
     page.on("request", (req) => {
       const u = new URL(req.url());
-      if (u.pathname.startsWith("/api/") && req.method() === "GET") itemRequests.push(u.pathname);
+      if (u.pathname.startsWith("/api/") && req.method() === "GET") locationRequests.push(u.pathname);
     });
 
     await gotoRoute(page, `/trips/${tripId}/locations`);
-    await expect(page.locator("item-card")).toHaveCount(3);
+    await expect(page.locator("location-card")).toHaveCount(3);
 
     const read = async (title) =>
       page
-        .locator(`item-card[title="${title}"]`)
+        .locator(`location-card[title="${title}"]`)
         .evaluate((el) => el.shadowRoot.querySelector(".dates")?.textContent ?? null);
 
     // Formatted, not the ISO strings, and collapsed into one range.
@@ -507,7 +507,7 @@ test.describe("the location editor, end to end", () => {
     expect(await read("Unscheduled")).toBeNull();
 
     expect(
-      itemRequests.filter((p) => p.endsWith("/locations")),
+      locationRequests.filter((p) => p.endsWith("/locations")),
       "the list is one request; dates must not be fetched per card"
     ).toHaveLength(1);
 
@@ -515,7 +515,7 @@ test.describe("the location editor, end to end", () => {
     // for anything else, and runs together as one separated row above 640px,
     // where three short stacked lines left most of a full-width card empty.
     const layout = async () =>
-      page.locator(`item-card[title="Twice"]`).evaluate((el) => {
+      page.locator(`location-card[title="Twice"]`).evaluate((el) => {
         const meta = el.shadowRoot.querySelector(".meta");
         return {
           direction: getComputedStyle(meta).flexDirection,
@@ -551,7 +551,7 @@ test.describe("the location editor, end to end", () => {
 
     const seps = async (title) =>
       page
-        .locator(`item-card[title="${title}"]`)
+        .locator(`location-card[title="${title}"]`)
         .evaluate((el) => el.shadowRoot.querySelectorAll(".meta__sep").length);
 
     expect(await seps("Tags only"), "one part means no separator").toBe(0);
@@ -559,7 +559,7 @@ test.describe("the location editor, end to end", () => {
     // And a location with nothing to say under its title renders no meta row
     // at all, rather than an empty one taking up space.
     const hasMeta = await page
-      .locator(`item-card[title="Nothing at all"]`)
+      .locator(`location-card[title="Nothing at all"]`)
       .evaluate((el) => Boolean(el.shadowRoot.querySelector(".meta")));
     expect(hasMeta, "no meta row when there is nothing to put in it").toBe(false);
 
@@ -589,7 +589,7 @@ test.describe("the location editor, end to end", () => {
 
     const menu = page.locator(".locations-sort-slot .menu");
     const titles = () =>
-      page.locator("item-card").evaluateAll((els) => els.map((e) => e.getAttribute("title")));
+      page.locator("location-card").evaluateAll((els) => els.map((e) => e.getAttribute("title")));
     const choose = async (label) => {
       await menu.locator('[data-action="toggle"]').click();
       await page.getByRole("menuitemradio", { name: label, exact: true }).click();
@@ -657,7 +657,7 @@ test.describe("the location editor, end to end", () => {
     const trigger = menu.locator('[data-action="toggle"]');
     const label = menu.locator(".menu__label");
     const titles = () =>
-      page.locator("item-card").evaluateAll((els) => els.map((e) => e.getAttribute("title")));
+      page.locator("location-card").evaluateAll((els) => els.map((e) => e.getAttribute("title")));
     const choose = async (name) => {
       await trigger.click();
       await page.getByRole("menuitemradio", { name, exact: true }).click();
@@ -713,10 +713,10 @@ test.describe("the location editor, end to end", () => {
 
     // --- the direction rides on the history entry like the rest of the toolbar ---
     const reversedDate = await titles();
-    await page.locator("item-card").first().click();
+    await page.locator("location-card").first().click();
     await expect(page).not.toHaveURL(/\/locations$/);
     await page.goBack();
-    await expect(page.locator("item-card").first()).toBeVisible();
+    await expect(page.locator("location-card").first()).toBeVisible();
     await expect(label).toHaveText("Date (last)");
     expect(await titles()).toEqual(reversedDate);
   });
@@ -731,7 +731,7 @@ test.describe("the location editor, end to end", () => {
       data: { title: "Slow to open", category: "site", dates: [] },
     });
     await gotoRoute(page, `/trips/${tripId}/locations`);
-    const card = page.locator("item-card").first();
+    const card = page.locator("location-card").first();
     await expect(card).toBeVisible();
 
     await page.route("**/api/locations/*/files", async (route) => {
@@ -747,7 +747,7 @@ test.describe("the location editor, end to end", () => {
     // Only once the stale render has had its chance is the list worth checking.
     await filesAnswered;
     await expect(page).toHaveURL(/\/locations$/);
-    await expect(page.locator("item-card")).toHaveCount(1);
+    await expect(page.locator("location-card")).toHaveCount(1);
     await expect(page.getByRole("heading", { level: 1, name: "Slow to open" })).toHaveCount(0);
   });
 
@@ -771,7 +771,7 @@ test.describe("the location editor, end to end", () => {
     await page.getByRole("menuitemradio", { name: "Name (A–Z)", exact: true }).click();
 
     const titles = await page
-      .locator("item-card")
+      .locator("location-card")
       .evaluateAll((els) => els.map((e) => e.getAttribute("title")));
     expect(titles, "the filter still narrows, the sort still orders").toEqual([
       "Alpha inn",
@@ -782,7 +782,7 @@ test.describe("the location editor, end to end", () => {
     // the order.
     await page.locator('input[name="q"]').fill("inn");
     expect(
-      await page.locator("item-card").evaluateAll((els) => els.map((e) => e.getAttribute("title")))
+      await page.locator("location-card").evaluateAll((els) => els.map((e) => e.getAttribute("title")))
     ).toEqual(["Alpha inn", "Zulu inn"]);
   });
 
@@ -816,7 +816,7 @@ test.describe("the location editor, end to end", () => {
     await expect(menu.locator("[data-value]")).toHaveText(["Any tag", "north", "south", "spa"]);
 
     await menu.locator('[data-value="south"]').click();
-    await expect(page.locator("item-card")).toHaveCount(2);
+    await expect(page.locator("location-card")).toHaveCount(2);
     await open();
     await expect(menu.locator('[data-group="tags"]')).toHaveText("south");
     await expect(menu.locator('[data-action="toggle"]')).toHaveClass(/menu__trigger--active/);
@@ -824,7 +824,7 @@ test.describe("the location editor, end to end", () => {
     // Back to Any tag restores the list.
     await menu.locator('[data-group="tags"]').click();
     await menu.locator('[data-value="any"]').click();
-    await expect(page.locator("item-card")).toHaveCount(3);
+    await expect(page.locator("location-card")).toHaveCount(3);
   });
 
   test("filters by date: not scheduled, scheduled, and a range that overlaps", async ({ page }) => {
@@ -843,7 +843,7 @@ test.describe("the location editor, end to end", () => {
     const menu = page.locator(".locations-filter-slot .menu");
     const open = async () => menu.locator('[data-action="toggle"]').click();
     const titles = () =>
-      page.locator("item-card").evaluateAll((els) => els.map((e) => e.getAttribute("title")));
+      page.locator("location-card").evaluateAll((els) => els.map((e) => e.getAttribute("title")));
 
     // "Not scheduled" is why this is a preset list and not only a range
     // picker: while planning, "what have I not placed yet" is the question
@@ -887,7 +887,7 @@ test.describe("the location editor, end to end", () => {
     await menu.locator('.date-filter input[name="from"]').fill("");
     await menu.locator('.date-filter input[name="to"]').fill("");
     await menu.locator('.date-filter button[type="submit"]').click();
-    await expect(page.locator("item-card")).toHaveCount(4);
+    await expect(page.locator("location-card")).toHaveCount(4);
     await open();
     await expect(menu.locator('[data-group="date"]')).toHaveText("Any date");
     await expect(menu.locator('[data-action="toggle"]')).not.toHaveClass(/menu__trigger--active/);
@@ -912,11 +912,11 @@ test.describe("the location editor, end to end", () => {
     await menu.locator('[data-group="date"]').click();
     await menu.locator('.date-filter input[name="from"]').fill("2026-09-05");
     await menu.locator('.date-filter button[type="submit"]').click();
-    await expect(page.locator("item-card")).toHaveCount(1);
+    await expect(page.locator("location-card")).toHaveCount(1);
 
     await open();
     await menu.locator('[data-action="clear"]').click();
-    await expect(page.locator("item-card")).toHaveCount(2);
+    await expect(page.locator("location-card")).toHaveCount(2);
     await open();
     await expect(menu.locator('[data-group="date"]')).toHaveText("Any date");
     await expect(menu.locator('[data-action="toggle"]')).not.toHaveClass(/menu__trigger--active/);
@@ -929,12 +929,12 @@ test.describe("the location editor, end to end", () => {
     const created = await page.request.post(`/api/trips/${tripId}/locations`, {
       data: { title: "Bare", category: "site", tags: ["kept"] },
     });
-    const item = await created.json();
+    const location = await created.json();
 
-    await gotoRoute(page, `/trips/${tripId}/locations/${item.id}/edit`);
+    await gotoRoute(page, `/trips/${tripId}/locations/${location.id}/edit`);
     await expect(page.locator(".tag-field__chip")).toHaveText(["kept"]);
 
-    await page.locator('.item-form input[name="title"]').fill("Bare, retitled");
+    await page.locator('.entry-form input[name="title"]').fill("Bare, retitled");
     await page.locator('[data-action="save"]').click();
     await expect(page.locator("h1")).toHaveText("Bare, retitled");
     await expect(page.locator(".location-view__tags .tag-chip")).toHaveText(["kept"]);
@@ -1006,7 +1006,7 @@ test.describe("looking up an address for a point", () => {
 
     const button = page.locator('[data-action="lookup-address"]');
     const offer = page.locator(".location-reverse__offer");
-    const address = page.locator('.location-form [name="address"]');
+    const address = page.locator('.geo-form [name="address"]');
 
     // Nothing to look up yet: visible, so it reads as something that will work
     // once there is a point, but disabled until there is one.
@@ -1014,8 +1014,8 @@ test.describe("looking up an address for a point", () => {
     await expect(button).toBeDisabled();
     await expect(offer).toBeHidden();
 
-    await page.locator('.location-form [name="lat"]').fill("64.1466");
-    await page.locator('.location-form [name="lng"]').fill("-21.9426");
+    await page.locator('.geo-form [name="lat"]').fill("64.1466");
+    await page.locator('.geo-form [name="lng"]').fill("-21.9426");
     await expect(button).toBeEnabled();
     // Filling coordinates must not fire a lookup by itself: every query costs a
     // volunteer-run service a request, and placing a pin takes several goes.
@@ -1039,11 +1039,11 @@ test.describe("looking up an address for a point", () => {
     await page.locator('[name="title"]').fill("Harpa");
     await page.locator('[data-action="save"]').click();
     await expect(page).toHaveURL(new RegExp(`/trips/${tripId}/locations/[0-9a-f-]+$`));
-    // Read from the item's own endpoint: the trip listing does not carry the
-    // address, it lives on the location detail (see itemLocationResponse).
-    const items = await (await page.request.get(`/api/trips/${tripId}/locations`)).json();
-    expect(items).toHaveLength(1);
-    const stored = await (await page.request.get(`/api/locations/${items[0].id}`)).json();
+    // Read from the location's own endpoint: the trip listing does not carry the
+    // address, it lives on the location detail (see geoResponse).
+    const locations = await (await page.request.get(`/api/trips/${tripId}/locations`)).json();
+    expect(locations).toHaveLength(1);
+    const stored = await (await page.request.get(`/api/locations/${locations[0].id}`)).json();
     expect(stored.geo?.address).toBe(ADDRESS);
   });
 
@@ -1051,14 +1051,14 @@ test.describe("looking up an address for a point", () => {
     await stubReverse(page);
     await gotoRoute(page, `/trips/${tripId}/locations/new`);
 
-    await page.locator('.location-form [name="lat"]').fill("64.1466");
-    await page.locator('.location-form [name="lng"]').fill("-21.9426");
+    await page.locator('.geo-form [name="lat"]').fill("64.1466");
+    await page.locator('.geo-form [name="lng"]').fill("-21.9426");
     await page.locator('[data-action="lookup-address"]').click();
     await expect(page.locator(".location-reverse__offer")).toBeVisible();
 
     // The offered address belongs to the old point. Accepting it after moving
     // the pin would file an address for somewhere else entirely.
-    await page.locator('.location-form [name="lat"]').fill("48.8584");
+    await page.locator('.geo-form [name="lat"]').fill("48.8584");
     await expect(page.locator(".location-reverse__offer")).toBeHidden();
     await expect(page.locator('[data-action="accept-address"]')).toBeHidden();
   });
@@ -1067,8 +1067,8 @@ test.describe("looking up an address for a point", () => {
     await stubReverse(page, { status: 404, body: { error: "no address found for that location" } });
     await gotoRoute(page, `/trips/${tripId}/locations/new`);
 
-    await page.locator('.location-form [name="lat"]').fill("0");
-    await page.locator('.location-form [name="lng"]').fill("0");
+    await page.locator('.geo-form [name="lat"]').fill("0");
+    await page.locator('.geo-form [name="lng"]').fill("0");
     await page.locator('[data-action="lookup-address"]').click();
 
     // 404 is an answer -- the middle of an ocean has no address -- and reads
@@ -1167,19 +1167,19 @@ test.describe("pasting a Google Maps link", () => {
     await page.locator('[name="placeQuery"]').fill(SHORT_LINK);
     await page.locator('[data-action="search-place"]').click();
 
-    await expect(page.locator('.location-form [name="lat"]')).toHaveValue("64.1418");
-    await expect(page.locator('.location-form [name="lng"]')).toHaveValue("-21.9266");
+    await expect(page.locator('.geo-form [name="lat"]')).toHaveValue("64.1418");
+    await expect(page.locator('.geo-form [name="lng"]')).toHaveValue("-21.9266");
     // The name the URL carries is the name of the *place*, so it goes in the
     // title -- which is in the card above this one. Putting it in the address
     // field is what the first version did, and "Brandenburg Gate" is not an
     // address.
-    await expect(page.locator('.item-form [name="title"]')).toHaveValue("Hallgrímskirkja");
+    await expect(page.locator('.entry-form [name="title"]')).toHaveValue("Hallgrímskirkja");
     // And the address is left empty rather than filled with something that is
     // not one. A Maps link carries no address (measured: the expanded page's
     // og: tags say "Google Maps" and the street address is not in the HTML at
     // all), so the honest answer is the Look up address button, one press away
     // and enabled by the coordinates this just set.
-    await expect(page.locator('.location-form [name="address"]')).toHaveValue("");
+    await expect(page.locator('.geo-form [name="address"]')).toHaveValue("");
     // The message names what happened, because the title it changed is off
     // screen at this width.
     await expect(page.locator(".location-search__status")).toHaveText(/Hallgrímskirkja.*used as the title/);
@@ -1196,12 +1196,12 @@ test.describe("pasting a Google Maps link", () => {
     await stubLink(page);
     await gotoRoute(page, `/trips/${tripId}/locations/new`);
 
-    const title = page.locator('.item-form [name="title"]');
+    const title = page.locator('.entry-form [name="title"]');
     await title.fill("The gate we meet at");
     await page.locator('[name="placeQuery"]').fill(SHORT_LINK);
     await page.locator('[data-action="search-place"]').click();
 
-    await expect(page.locator('.location-form [name="lat"]')).toHaveValue("64.1418");
+    await expect(page.locator('.geo-form [name="lat"]')).toHaveValue("64.1418");
     // The coordinates are what was asked for; the name is a guess about what to
     // call the place, and it does not get to overwrite what somebody typed.
     await expect(title).toHaveValue("The gate we meet at");
@@ -1219,7 +1219,7 @@ test.describe("pasting a Google Maps link", () => {
     // 404 is "that link names no single place" -- a search results page, say --
     // and it is worth saying, because the user can go back and pick the pin.
     await expect(page.locator(".location-search__status")).toHaveText(/does not point at a single place/);
-    await expect(page.locator('.location-form [name="lat"]')).toHaveValue("");
+    await expect(page.locator('.geo-form [name="lat"]')).toHaveValue("");
 
     await page.unroute("**/api/geocode/link*");
     await stubLink(page, { status: 502, body: { error: "unreachable" } });
@@ -1249,18 +1249,18 @@ test.describe("pasting a Google Maps link", () => {
     // A resolved map link.
     await page.locator('[name="placeQuery"]').fill(SHORT_LINK);
     await page.locator('[data-action="search-place"]').click();
-    await expect(page.locator('.location-form [name="lat"]')).toHaveValue("64.1418");
+    await expect(page.locator('.geo-form [name="lat"]')).toHaveValue("64.1418");
     await expect(lookup, "a resolved link must enable the lookup").toBeEnabled();
 
     // A chosen address-search result. This half was broken before the map-link
     // work existed -- the button shipped watching two of the five writers.
-    await page.locator('.location-form [name="lat"]').fill("");
-    await page.locator('.location-form [name="lng"]').fill("");
+    await page.locator('.geo-form [name="lat"]').fill("");
+    await page.locator('.geo-form [name="lng"]').fill("");
     await expect(lookup).toBeDisabled();
     await page.locator('[name="placeQuery"]').fill("Reykjavik");
     await page.locator('[data-action="search-place"]').click();
     await page.locator(".location-search__result").first().click();
-    await expect(page.locator('.location-form [name="lat"]')).toHaveValue("64.1466");
+    await expect(page.locator('.geo-form [name="lat"]')).toHaveValue("64.1466");
     await expect(lookup, "a chosen search result must enable the lookup").toBeEnabled();
   });
 
@@ -1365,9 +1365,9 @@ test.describe("creating a location is atomic", () => {
   //
   // Before Stage 23 Milestones 3-4, Create wrote the location first and then
   // attached the cover. A cover the server could not fetch failed *after* the
-  // location existed, and the page never adopted the item it had just made --
-  // so it was still in create mode, and the obvious thing to do next (fix the
-  // picture, press Create again) posted a second location. Once per retry.
+  // location existed, and the page never adopted the location it had just made
+  // -- so it was still in create mode, and the obvious thing to do next (fix
+  // the picture, press Create again) posted a second location. Once per retry.
   //
   // So the assertion here is not "an error is shown". It is that the trip has
   // no locations after the failure, and exactly one after the retry.
@@ -1381,8 +1381,8 @@ test.describe("creating a location is atomic", () => {
     };
 
     await gotoRoute(page, `/trips/${tripId}/locations/new`);
-    await page.locator('.item-form input[name="title"]').fill("Hotel Ranga");
-    await page.locator('.item-form select[name="category"]').selectOption("stay");
+    await page.locator('.entry-form input[name="title"]').fill("Hotel Ranga");
+    await page.locator('.entry-form select[name="category"]').selectOption("stay");
     await page.locator(".tag-field__input").fill("hotel");
 
     // Port 1 is not listening, so the server's fetch fails at dial without
@@ -1397,7 +1397,7 @@ test.describe("creating a location is atomic", () => {
     await page.locator('[data-action="save"]').click();
 
     // The failure is reported where the form's other failures are reported.
-    await expect(page.locator(".item-form__error")).toBeVisible();
+    await expect(page.locator(".entry-form__error")).toBeVisible();
 
     // The whole point. Before this change it was 1, and 2 after the retry.
     expect(await count(), "a failed create must leave no location behind").toBe(0);
@@ -1419,15 +1419,15 @@ test.describe("creating a location is atomic", () => {
     expect(await count(), "the retry must create one location, not a second one").toBe(1);
 
     // And the cover landed with it, in the same request.
-    const items = await (await page.request.get(`/api/trips/${tripId}/locations`)).json();
-    expect(items[0].image_url, "the cover must have ridden along with the create").toBeTruthy();
+    const locations = await (await page.request.get(`/api/trips/${tripId}/locations`)).json();
+    expect(locations[0].image_url, "the cover must have ridden along with the create").toBeTruthy();
   });
 
   // The other half: everything a create can carry, carried in one request.
-  test("create sends the cover and the files in the same request as the item", async ({ page }) => {
+  test("create sends the cover and the files in the same request as the location", async ({ page }) => {
     await gotoRoute(page, `/trips/${tripId}/locations/new`);
-    await page.locator('.item-form input[name="title"]').fill("Hotel Ranga");
-    await page.locator('.item-form select[name="category"]').selectOption("stay");
+    await page.locator('.entry-form input[name="title"]').fill("Hotel Ranga");
+    await page.locator('.entry-form select[name="category"]').selectOption("stay");
     await page.locator(".tag-field__input").fill("hotel");
 
     await page.locator('.image-field input[type="file"]').setInputFiles({
@@ -1441,8 +1441,8 @@ test.describe("creating a location is atomic", () => {
       buffer: Buffer.from("confirmation 12345"),
     });
 
-    // One POST to the items collection, and no separate media or file writes:
-    // that is what "one request" means, and it is checkable from here.
+    // One POST to the locations collection, and no separate media or file
+    // writes: that is what "one request" means, and it is checkable from here.
     const posts = [];
     page.on("request", (req) => {
       if (req.method() === "POST" && req.url().includes("/api/")) posts.push(new URL(req.url()).pathname);
@@ -1453,11 +1453,11 @@ test.describe("creating a location is atomic", () => {
 
     expect(posts, "the create must be a single POST carrying everything").toEqual([`/api/trips/${tripId}/locations`]);
 
-    const items = await (await page.request.get(`/api/trips/${tripId}/locations`)).json();
-    expect(items).toHaveLength(1);
-    expect(items[0].image_url, "the cover landed").toBeTruthy();
+    const locations = await (await page.request.get(`/api/trips/${tripId}/locations`)).json();
+    expect(locations).toHaveLength(1);
+    expect(locations[0].image_url, "the cover landed").toBeTruthy();
 
-    const files = await (await page.request.get(`/api/locations/${items[0].id}/files`)).json();
+    const files = await (await page.request.get(`/api/locations/${locations[0].id}/files`)).json();
     expect(files.map((f) => f.filename), "the file landed").toEqual(["booking.txt"]);
   });
 });
@@ -1516,7 +1516,7 @@ test.describe("the OpenStreetMap link on a location", () => {
   }
 
   test("appears for a place with an OSM identity, and points at the feature page", async ({ page }) => {
-    const itemId = await createLocation(page, tripId, "Stage 29: Hallgrimskirkja", {
+    const locationId = await createLocation(page, tripId, "Stage 29: Hallgrimskirkja", {
       lat: 64.1417951,
       lng: -21.9267103,
       address: "Hallgrimstorg 1, 101 Reykjavik",
@@ -1524,7 +1524,7 @@ test.describe("the OpenStreetMap link on a location", () => {
       osm_id: "1234567890123",
     });
 
-    await gotoRoute(page, `/trips/${tripId}/locations/${itemId}`);
+    await gotoRoute(page, `/trips/${tripId}/locations/${locationId}`);
 
     const links = page.locator(".location-view__maps-link");
     await expect(links).toHaveCount(2);
@@ -1539,12 +1539,12 @@ test.describe("the OpenStreetMap link on a location", () => {
   });
 
   test("is absent for a dropped pin, which has no OSM identity", async ({ page }) => {
-    const itemId = await createLocation(page, tripId, "Stage 29: just a pin", {
+    const locationId = await createLocation(page, tripId, "Stage 29: just a pin", {
       lat: 52.2799,
       lng: 8.0472,
     });
 
-    await gotoRoute(page, `/trips/${tripId}/locations/${itemId}`);
+    await gotoRoute(page, `/trips/${tripId}/locations/${locationId}`);
 
     // The Google link is still there -- it needs no identity -- so this is
     // asserting one link rather than none.
@@ -1584,7 +1584,7 @@ test.describe("the location editor stays out of the history", () => {
   // The scenario this was built for, clicked through exactly as described:
   // overview, location, edit, fix a small thing, save, Back.
   test("editing: one Back from the saved location reaches the overview", async ({ page }) => {
-    const item = await (
+    const location = await (
       await page.request.post(`/api/trips/${tripId}/locations`, { data: { title: "Kirkjufel", category: "site" } })
     ).json();
 
@@ -1592,11 +1592,11 @@ test.describe("the location editor stays out of the history", () => {
     // The card is wrapped in a real link since Stage 47, so a plain click on it
     // is the router's [data-link] navigation, no shadow DOM to reach through.
     await page.getByRole("link", { name: /Kirkjufel/ }).click();
-    await expect(page).toHaveURL(`/trips/${tripId}/locations/${item.id}`);
+    await expect(page).toHaveURL(`/trips/${tripId}/locations/${location.id}`);
 
     await page.locator('[data-action="edit"]').click();
-    await expect(page).toHaveURL(`/trips/${tripId}/locations/${item.id}/edit`);
-    await page.locator('.item-form input[name="title"]').fill("Kirkjufell");
+    await expect(page).toHaveURL(`/trips/${tripId}/locations/${location.id}/edit`);
+    await page.locator('.entry-form input[name="title"]').fill("Kirkjufell");
     await page.locator('[data-action="save"]').click();
     await expect(page.locator("h1")).toHaveText("Kirkjufell");
 
@@ -1611,7 +1611,7 @@ test.describe("the location editor stays out of the history", () => {
     await startNewLocation(page);
     await expect(page).toHaveURL(`/trips/${tripId}/locations/new`);
 
-    await page.locator('.item-form input[name="title"]').fill("Somewhere new");
+    await page.locator('.entry-form input[name="title"]').fill("Somewhere new");
     await page.locator('[data-action="save"]').click();
     await expect(page.locator("h1")).toHaveText("Somewhere new");
 
@@ -1623,10 +1623,10 @@ test.describe("the location editor stays out of the history", () => {
   // that is an <a>: it goes through the router's data-link interception, which
   // reads data-leave-editor to decide between popping and pushing.
   test("cancelling and the back-link both pop the editor entry", async ({ page }) => {
-    const item = await (
+    const location = await (
       await page.request.post(`/api/trips/${tripId}/locations`, { data: { title: "Unchanged", category: "site" } })
     ).json();
-    const view = `/trips/${tripId}/locations/${item.id}`;
+    const view = `/trips/${tripId}/locations/${location.id}`;
 
     await gotoRoute(page, view);
     await page.locator('[data-action="edit"]').click();
@@ -1657,14 +1657,14 @@ test.describe("the location editor stays out of the history", () => {
   // there was no back() to get wrong. It is here to catch the fallback being
   // dropped later, not as evidence of the change that introduced it.
   test("a directly-loaded editor saves without leaving the app", async ({ page }) => {
-    const item = await (
+    const location = await (
       await page.request.post(`/api/trips/${tripId}/locations`, { data: { title: "Direct", category: "site" } })
     ).json();
 
-    await gotoRoute(page, `/trips/${tripId}/locations/${item.id}/edit`);
-    await page.locator('.item-form input[name="title"]').fill("Direct, saved");
+    await gotoRoute(page, `/trips/${tripId}/locations/${location.id}/edit`);
+    await page.locator('.entry-form input[name="title"]').fill("Direct, saved");
     await page.locator('[data-action="save"]').click();
-    await expect(page).toHaveURL(`/trips/${tripId}/locations/${item.id}`);
+    await expect(page).toHaveURL(`/trips/${tripId}/locations/${location.id}`);
     await expect(page.locator("h1")).toHaveText("Direct, saved");
   });
 });
@@ -1675,7 +1675,7 @@ test.describe("the location editor stays out of the history", () => {
 // loading /new directly -- which is the whole point when the thing under test
 // is what the entry pushed.
 async function startNewLocation(page) {
-  const plain = page.locator('[data-action="new-item"]');
+  const plain = page.locator('[data-action="new-location"]');
   if (await plain.count()) {
     await plain.click();
     return;

@@ -282,8 +282,8 @@ func TestValidCategoryIsAcceptedCaseInsensitively(t *testing.T) {
 }
 
 // Pins the duplicated list against the schema the model is handed, the CHECK
-// constraint on items.category, and the map in internal/httpapi/items.go,
-// which this package cannot import.
+// constraint on locations.category, and the map in
+// internal/httpapi/locations.go, which this package cannot import.
 //
 // The literal is what pins the first and third of those. The schema is read
 // out of proposalSchema rather than retyped: until Stage 37 this test only

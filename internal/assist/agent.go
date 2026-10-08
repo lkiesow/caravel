@@ -887,8 +887,8 @@ func (a *Agent) buildCandidates(ctx context.Context, req SuggestRequest, raw mod
 
 	seen := newPlaceIndex(req.Existing)
 
-	for i, item := range proposed {
-		title := strings.TrimSpace(item.Title)
+	for i, proposal := range proposed {
+		title := strings.TrimSpace(proposal.Title)
 		if title == "" {
 			// Unlike an enrichment, where an empty title means "this place is
 			// already named", a candidate with no name is nothing at all: it
@@ -897,7 +897,7 @@ func (a *Agent) buildCandidates(ctx context.Context, req SuggestRequest, raw mod
 			continue
 		}
 
-		category := strings.ToLower(strings.TrimSpace(item.Category))
+		category := strings.ToLower(strings.TrimSpace(proposal.Category))
 		if !slices.Contains(validCategories, category) {
 			if category != "" {
 				log.Debug("assist: category dropped", "candidate", title, "proposed", category, "allowed", validCategories)
@@ -918,7 +918,7 @@ func (a *Agent) buildCandidates(ctx context.Context, req SuggestRequest, raw mod
 		// Before the place is assembled, because its tags include the city
 		// the position resolved to -- the same ordering, and the same reason,
 		// as buildProposal above.
-		position := a.resolvePosition(ctx, item, log)
+		position := a.resolvePosition(ctx, proposal, log)
 
 		c := Candidate{
 			Position: position,
@@ -927,15 +927,15 @@ func (a *Agent) buildCandidates(ctx context.Context, req SuggestRequest, raw mod
 				Category: category,
 				// No merge here: a candidate is a place that does not exist
 				// yet, so there is nothing of the user's to preserve.
-				Tags:    joinTags(cleanProposedTags(position.city(), item.Tags, req.TagVocabulary)),
-				Notes:   strings.TrimSpace(item.Notes),
-				Address: strings.TrimSpace(item.Address),
+				Tags:    joinTags(cleanProposedTags(position.city(), proposal.Tags, req.TagVocabulary)),
+				Notes:   strings.TrimSpace(proposal.Notes),
+				Address: strings.TrimSpace(proposal.Address),
 			},
 		}
 		// Nothing is already on a candidate, so nothing is filtered as a
 		// duplicate of what is there -- which is the only argument checkLinks
 		// takes beyond the proposal itself.
-		c.Links = a.checkLinks(ctx, nil, item.Links, events, log)
+		c.Links = a.checkLinks(ctx, nil, proposal.Links, events, log)
 		lat, lng := c.Position.latLng()
 
 		// The position is what catches the duplicate a name cannot: the same
@@ -950,7 +950,7 @@ func (a *Agent) buildCandidates(ctx context.Context, req SuggestRequest, raw mod
 		}
 
 		c.Place.Links = c.Links
-		c.Cover = a.chooseCover(ctx, req.Locale, item, c.Links, sources, log)
+		c.Cover = a.chooseCover(ctx, req.Locale, proposal, c.Links, sources, log)
 
 		seen.add(title, lat, lng)
 		out.Candidates = append(out.Candidates, c)
@@ -1134,9 +1134,9 @@ func (a *Agent) chooseCover(ctx context.Context, locale string, raw modelProposa
 	}
 }
 
-// validCategories mirrors the CHECK constraint on items.category and the map
-// in internal/httpapi/items.go. Duplicated rather than shared because this
-// package must not import the HTTP layer; the two are pinned together by
+// validCategories mirrors the CHECK constraint on locations.category and the
+// map in internal/httpapi/locations.go. Duplicated rather than shared because
+// this package must not import the HTTP layer; the two are pinned together by
 // TestValidCategoriesMatchTheSchema.
 var validCategories = []string{"site", "stay", "transport", "area", "food", "event", "shop"}
 

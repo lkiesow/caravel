@@ -20,7 +20,7 @@
 // Both entry points return a *proposal*, never a mutation. Nothing here writes
 // to the database, and no tool the model can reach has a side effect. The caller
 // shows the proposal to a person who accepts or rejects it field by field, and
-// only then does the ordinary item-update path run. That is what bounds the
+// only then does the ordinary location-update path run. That is what bounds the
 // blast radius of the obvious risk: the agent reads web pages, and a page can
 // carry text shaped like instructions. A prompt injection can therefore make
 // the model propose nonsense -- it cannot make it *do* anything, because there

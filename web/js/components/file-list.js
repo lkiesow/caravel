@@ -41,7 +41,7 @@ import { escapeHtml } from "../escape.js";
 // POSTed, ever; each pick is pushed as { file, note, visibility } and the list
 // renders from the File objects (name + size). The location create page uses
 // this so a brand-new location can carry files, then uploads them itself once
-// the item ID exists - a multipart upload can't be part of the JSON create
+// the location ID exists - a multipart upload can't be part of the JSON create
 // request, so post-create is the only option regardless (see todo.md).
 //
 // Staged picks are the create page's *only* list, so they sit in the main list
@@ -93,8 +93,8 @@ export async function renderFileList(container, path, { staged, rows: given, rea
   // copy would only be a second answer to the same question.
   let pending = [];
   // One id per component instance for the pending list's label, so two file
-  // lists on one page (the location editor has the item's, the trip tab has the
-  // trip's) do not both point aria-labelledby at the same node.
+  // lists on one page (the location editor has the location's, the trip tab has
+  // the trip's) do not both point aria-labelledby at the same node.
   const pendingTitleId = `file-pending-${sectionSeq++}`;
   // A selector rather than a node: render() rebuilds the whole subtree, so
   // whatever a handler wanted focused no longer exists by the time it could be
@@ -265,8 +265,8 @@ export async function renderFileList(container, path, { staged, rows: given, rea
       // every difference between them belongs here rather than in two copies
       // of the card template.
       const view = isPick
-        ? { filename: row.file.name, size: row.file.size, contentType: row.file.type, note: row.note, itemTitle: null, href: null, visibility: row.visibility || "trip", isMine: true }
-        : { filename: row.filename, size: row.size_bytes, contentType: row.content_type, note: row.note, itemTitle: row.location_title, href: row.download_url, visibility: row.visibility, isMine: row.is_mine };
+        ? { filename: row.file.name, size: row.file.size, contentType: row.file.type, note: row.note, locationTitle: null, href: null, visibility: row.visibility || "trip", isMine: true }
+        : { filename: row.filename, size: row.size_bytes, contentType: row.content_type, note: row.note, locationTitle: row.location_title, href: row.download_url, visibility: row.visibility, isMine: row.is_mine };
 
       // The note wins the title when there is one, and the filename drops to
       // the meta line. A note is the only readable name a file uploaded as
@@ -304,7 +304,7 @@ export async function renderFileList(container, path, { staged, rows: given, rea
       // row does not own. Staged rows keep it - those do have a per-row note.
       const metaTail =
         (view.note || kind === "pending" ? "" : `<span class="file-card__nonote">${escapeHtml(t("files.noNote"))}</span>`) +
-        (view.itemTitle ? `${sep("source")}<span class="file-card__source">${escapeHtml(view.itemTitle)}</span>` : "");
+        (view.locationTitle ? `${sep("source")}<span class="file-card__source">${escapeHtml(view.locationTitle)}</span>` : "");
 
       const body = `
         <span class="file-card__tile">${icon(tileIconName(view.contentType))}</span>

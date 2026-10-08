@@ -95,7 +95,7 @@ type TripContext struct {
 // tell "no trip context" from "a trip with an empty title".
 func (t TripContext) Sent() bool { return t.Title != "" || t.Start != "" || t.End != "" }
 
-// Link is a URL with an optional label, matching db.ItemLink minus the ids.
+// Link is a URL with an optional label, matching db.LocationLink minus the ids.
 type Link struct {
 	URL   string
 	Label string

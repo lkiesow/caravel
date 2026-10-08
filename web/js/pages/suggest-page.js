@@ -16,9 +16,10 @@ import { CATEGORIES } from "../categories.js";
 //
 // Two reasons, and the second is the practical one. Six candidate cards want
 // the whole width of a 324px screen, not the space under a toolbar. And
-// renderItemsTab is re-run from scratch on every tab render, with all of its
-// state in closure variables -- so a panel living inside it would be destroyed
-// by switching to the map and back, in the middle of a run that costs money.
+// renderLocationsTab is re-run from scratch on every tab render, with all of
+// its state in closure variables -- so a panel living inside it would be
+// destroyed by switching to the map and back, in the middle of a run that costs
+// money.
 //
 // # How this differs from the assistant in the location editor
 //
@@ -207,7 +208,7 @@ export async function renderSuggestPage(container, { tripId }, signal) {
     const meta = [];
     // The server validates against the same set and sends an empty string
     // rather than a guess, which renders as no category at all.
-    if (CATEGORIES.includes(candidate.category)) meta.push(t(`item.category.${candidate.category}`));
+    if (CATEGORIES.includes(candidate.category)) meta.push(t(`location.category.${candidate.category}`));
     if (candidate.tags) meta.push(candidate.tags);
     if (meta.length) {
       const metaEl = document.createElement("p");
@@ -434,7 +435,7 @@ export async function renderSuggestPage(container, { tripId }, signal) {
   //
   // Not part of the batch: a cover is fetched from somebody else's server and
   // stored as a blob, which is multipart-shaped work that does not belong in a
-  // JSON transaction -- see items_batch.go. So each is attached afterwards
+  // JSON transaction -- see locations_batch.go. So each is attached afterwards
   // through the endpoint the image field already uses.
   //
   // Best effort, deliberately. A cover that will not fetch must not undo a
@@ -460,8 +461,8 @@ export async function renderSuggestPage(container, { tripId }, signal) {
   }
 
   // The wire carries tags as one comma-separated string, because the whole
-  // proposal pipeline is string-shaped (see assist.Location.Tags). The items
-  // API takes a list.
+  // proposal pipeline is string-shaped (see assist.Location.Tags). The
+  // locations API takes a list.
   function splitTags(tags) {
     return String(tags ?? "")
       .split(",")

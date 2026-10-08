@@ -17,7 +17,7 @@ const DANGEROUS = "javascript:alert(document.domain)";
 
 test.describe("links with an unsafe scheme", () => {
   let tripId;
-  let itemId;
+  let locationId;
 
   test.beforeEach(async ({ page }) => {
     await login(page);
@@ -25,11 +25,11 @@ test.describe("links with an unsafe scheme", () => {
     expect(trip.status(), "create the spec's own trip").toBe(201);
     tripId = (await trip.json()).id;
 
-    const item = await page.request.post(`/api/trips/${tripId}/locations`, {
+    const location = await page.request.post(`/api/trips/${tripId}/locations`, {
       data: { title: "Kex Hostel", category: "stay" },
     });
-    expect(item.status(), "create the location").toBe(201);
-    itemId = (await item.json()).id;
+    expect(location.status(), "create the location").toBe(201);
+    locationId = (await location.json()).id;
   });
 
   test.afterEach(async ({ page }) => {
@@ -44,7 +44,7 @@ test.describe("links with an unsafe scheme", () => {
     });
     expect(res.status(), "a javascript: link is refused").toBe(400);
 
-    const standalone = await page.request.post(`/api/locations/${itemId}/links`, {
+    const standalone = await page.request.post(`/api/locations/${locationId}/links`, {
       data: { url: DANGEROUS },
     });
     expect(standalone.status(), "and refused by the standalone link endpoint too").toBe(400);
@@ -52,25 +52,25 @@ test.describe("links with an unsafe scheme", () => {
 
   // The client half: a row that predates the server check still renders safely.
   test("the location page renders a stored one as text, not a link", async ({ page }) => {
-    await plantLink(page, `**/api/locations/${itemId}`);
+    await plantLink(page, `**/api/locations/${locationId}`);
 
-    await gotoRoute(page, `/trips/${tripId}/locations/${itemId}`);
+    await gotoRoute(page, `/trips/${tripId}/locations/${locationId}`);
 
     await expect(page.locator(`a[href="${DANGEROUS}"]`), "no clickable javascript: link").toHaveCount(0);
     await expect(page.locator(".link-list__unsafe"), "shown as inert text instead").toHaveText(DANGEROUS);
   });
 
   test("the editor renders a stored one as text, not a link", async ({ page }) => {
-    await plantLink(page, `**/api/locations/${itemId}`);
+    await plantLink(page, `**/api/locations/${locationId}`);
 
-    await gotoRoute(page, `/trips/${tripId}/locations/${itemId}/edit`);
+    await gotoRoute(page, `/trips/${tripId}/locations/${locationId}/edit`);
 
     await expect(page.locator(`a[href="${DANGEROUS}"]`), "no clickable javascript: link").toHaveCount(0);
     await expect(page.locator(".link-list__unsafe"), "shown as inert text instead").toHaveText(DANGEROUS);
   });
 
-  // Answers the item detail request with the real response plus one link the
-  // server would no longer accept, which is what a row written before the
+  // Answers the location detail request with the real response plus one link
+  // the server would no longer accept, which is what a row written before the
   // check looks like coming out of the database.
   async function plantLink(page, pattern) {
     await page.route(pattern, async (route) => {

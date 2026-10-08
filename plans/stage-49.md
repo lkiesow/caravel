@@ -309,6 +309,130 @@ change". Then run the closing grep
 and review the remainder: it should be only the "not renamed" senses above.
 Do a manual pass at 324×756 and 1280×800 in both locales.
 
+**Done.** The frontend now says "location" in its own names, and the stage is
+complete.
+
+Two decisions taken at this checkpoint changed the plan:
+- **CSS classes went further than planned.** The shared form style `.item-form`
+  (the location form *and* the expenses form) is now `.entry-form`. The
+  editor's coordinates section, `.location-form*` (`__map`, `__hint`,
+  `__checkbox`, …), is now `.geo-form*`, matching the API. The rename went in
+  that order so the `location-form.js` file name was never touched.
+  `.item-form-slot` → `.location-form-slot`, `.item-list` → `.location-list`,
+  `.items-empty` → `.locations-empty`, `itinerary-day__add-item` →
+  `__add-location`, `expenses__row-item` → `expenses__row-location`.
+- **Visible copy changed after all.** Five strings said "item" where they meant
+  a location, so the "no visible change" rule was dropped for them:
+  - the delete dialog: "Delete this item?" → "Delete this location?", de
+    "Diesen Ort löschen?";
+  - the itinerary's "Add item", "Add an item to {date}" and "Choose an item…"
+    → "Add location", "Add a location to {date}", "Choose a location…"
+    ("Ort hinzufügen" …);
+  - the itinerary day count: "{count} item(s)" → "{count} location(s)",
+    "Ort/Orte";
+  - the empty map: "No items with a location yet …" → "No locations with
+    coordinates yet. Add coordinates to a location …".
+
+  The first four were agreed explicitly; the last two are the same case,
+  found by the closing grep. The heading the plan was about stays
+  "Location"/"Standort".
+
+**What landed:**
+- **i18n.** `item.*` → `location.*`, with `item.detail.location` →
+  `location.detail.geo`. `expenses.form.item[None]` →
+  `expenses.form.location[None]`, and `itinerary.addItem[To]`/`selectItem` →
+  `…Location…`. `item.detail.close` was only ever used by the generic alert
+  dialog in `dialog.js`, so it became `common.close` rather than a location
+  key.
+- **The editing approach for the locale files.** Both were edited as text,
+  because `de.json` is not in `i18n.py`'s canonical format (see todo.md). For
+  the same reason `i18n.py unused` refuses to run, so it ran on a normalised
+  scratch copy: all 482 keys are referenced. A separate scan checked the
+  reverse: every key the JS names exists.
+- **JS.**
+  - `<item-card>`/`ItemCard` → `<location-card>`/`LocationCard`, with its
+    `item-id` attribute → `location-id`.
+  - The map popup's `data-item-id` → `data-location-id`, and the `item-open`
+    event → `location-open` with `detail.locationId`.
+  - `data-action="new-item"` → `"new-location"`.
+  - `renderItemForm` → `renderLocationForm`, `renderItemsTab` →
+    `renderLocationsTab`, `loadTripItemIds` → `loadTripLocationIds`.
+  - The `:itemId` route parameter → `:locationId`, in `app.js` and
+    `clientroutes.go` together.
+  - The locals in the location pages, the map, the mention picker, expenses
+    and itinerary.
+  - Every "item" that is a menu option, a checklist entry, a suggestion pick,
+    a `<li>` or a `localStorage` call kept its name.
+- **Specs, the screenshot generator, and Go comments** in `internal/assist`,
+  `internal/markdown` and `scripts/i18n.py` followed. In `assist/agent.go` the
+  loop variable over model proposals became `proposal`.
+- **todo.md.** The sweep entry is gone, and with it the now-empty "Consistency
+  and cleanup" section. The summary entry cites `mapLocationResponse` and no
+  longer waits on this stage. A new entry covers the `de.json`/`en.json`
+  format.
+
+**Not renamed:**
+- `.location-search` and `.location-reverse`: they look up a place, which is
+  the location sense.
+- Comments about history (`items.sort_order`, `item_dates`, the
+  `item.google_maps_url` field).
+- `geocode.go`'s raw results.
+- The `items/` storage prefix (see M2).
+
+**JS has no type-aware rename, and these are the bugs that cost. All were caught
+before commit:**
+- **A hoisted name collision.** `location-editor-page.js` already had an inner
+  `function renderLocationForm()` for the coordinates section. Once the
+  imported `renderItemForm` took that name, the hoisted inner one would have
+  won at the call that builds the main form. `node --check` cannot see this. It
+  surfaced in review of the export/import list; the inner one is now
+  `renderGeoForm` (with `readGeoForm`, and the editor's local
+  `const location` → `geo`).
+- **The menu API's `items`.** The script protected `items:` keys but not a
+  property write, so `tagGroup.items = […]` became `tagGroup.locations`. The
+  tag filter's options came back empty, and the UI suite caught it.
+- **Other senses of "item".** Two checklist selectors (`li.dataset.itemId`, a
+  `.checklist-item[data-item-id]` in a spec), and two menu-sense comments.
+- **Comment wording.** About a dozen comments came out wrong: "a todo.md
+  location", "an locations.sort_order column", "nested location" where geo was
+  meant, "the location's location". All were found by reading every changed
+  comment line, and fixed.
+- **Shadowing `window.location`.** No JS file uses the bare global `location`,
+  so naming locals `location` shadows nothing in use. Any future code in those
+  functions has to write `window.location`.
+- **Comment rewrapping.** Only paragraphs this milestone pushed past 80 columns
+  were rewrapped, located from the diff, after M2's lesson.
+
+Verified:
+- `make ci` green.
+- `make test-ui`: 349 passed and 2 failed on the first run. One was the
+  `tagGroup` bug above, fixed. The other, the assistant's
+  build-from-a-prompt spec, timed out at 60 s under full-suite load. Run alone
+  it passes, and `--grep "AI assistant" --repeat-each 4` passed 24/24; its
+  file changed only by an i18n key. A full rerun after the fix passed 351/351,
+  the assistant spec included.
+- **Screenshots.** Two baseline runs of the pre-M3 tree were pixel-identical
+  except `assistant.png` (81 px of noise). Against that baseline, a run after
+  M3 differs only in `itinerary.png` and `mobile-itinerary.png`, and viewed
+  side by side those differences are exactly the new itinerary copy (the
+  select is a few pixels narrower beside the longer button). `assistant.png`
+  shows the same 81 px of noise. The committed screenshots had already drifted
+  from a fresh run (seeded dates are relative to the run day), so only the two
+  itinerary PNGs were replaced, from the post-M3 run. Their only other change
+  is the dates. `make docs` is green.
+- **Manual pass on `make dev`** (Playwright), in en and de at 324×756 and
+  1280×800. Nine pages each: locations, map, itinerary, expenses, files, a
+  location view, its editor, a new location, and an empty map on a throwaway
+  trip, since deleted. 36 loads in all, with:
+  - no raw i18n keys, and no "item"/"Eintrag" wording;
+  - `<location-card>` count 7 and `<item-card>` 0 on the list;
+  - `.entry-form` and `.geo-form` present where expected, and no
+    `.item-form`/`.location-form` left;
+  - no API errors and no console errors.
+
+  The delete dialog reads "Delete this location? This cannot be undone." /
+  "Diesen Ort löschen? Das kann nicht rückgängig gemacht werden."
+
 ## Build order
 
 0 → 1 → 2 → 3. Each one compiles and passes on its own. M1 touches httpapi only

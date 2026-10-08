@@ -200,17 +200,17 @@ export async function resolveScenarioTrips(page) {
 }
 
 // Every route the suite sweeps, as {path, label}. Built from web/js/app.js's
-// route patterns with the :tripId / :itemId holes filled from the seed.
+// route patterns with the :tripId / :locationId holes filled from the seed.
 export async function buildRoutes(page) {
   const trips = await resolveScenarioTrips(page);
   const fullTrip = trips.full;
 
-  const items = await page.evaluate(async (tripId) => {
+  const locations = await page.evaluate(async (tripId) => {
     const res = await fetch(`/api/trips/${tripId}/locations`);
     return res.json();
   }, fullTrip);
-  expect(items.length, "the `full` seed scenario should have locations").toBeGreaterThan(0);
-  const itemId = items[0].id;
+  expect(locations.length, "the `full` seed scenario should have locations").toBeGreaterThan(0);
+  const locationId = locations[0].id;
 
   const routes = [
     { path: "/trips", label: "trips list" },
@@ -220,8 +220,8 @@ export async function buildRoutes(page) {
     { path: "/admin", label: "administration" },
     { path: "/trips/new", label: "new trip" },
     { path: `/trips/${fullTrip}/locations/new`, label: "new location" },
-    { path: `/trips/${fullTrip}/locations/${itemId}/edit`, label: "edit location" },
-    { path: `/trips/${fullTrip}/locations/${itemId}`, label: "view location" },
+    { path: `/trips/${fullTrip}/locations/${locationId}/edit`, label: "edit location" },
+    { path: `/trips/${fullTrip}/locations/${locationId}`, label: "view location" },
     // Renders the real page only where the server has an assistant, which
     // with_server.sh arranges; elsewhere it is the not-found page, which is
     // still a page and still worth sweeping.

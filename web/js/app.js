@@ -43,16 +43,17 @@ const routes = [
   // Account *administration*, for admins only. The page checks that itself and
   // renders not-found otherwise, since the URL is typeable.
   { pattern: "/admin", render: renderAdminPage },
-  // "/trips/new" must precede "/trips/:tripId", and "/trips/:tripId/locations/new"
-  // must precede "/trips/:tripId/locations/:itemId" - same segment counts, and
-  // the router's match() takes the first pattern that fits, so the literal
-  // route would otherwise never be reached (":param" swallows "new"/"edit").
+  // "/trips/new" must precede "/trips/:tripId", and
+  // "/trips/:tripId/locations/new" must precede
+  // "/trips/:tripId/locations/:locationId" - same segment counts, and the
+  // router's match() takes the first pattern that fits, so the literal route
+  // would otherwise never be reached (":param" swallows "new"/"edit").
   { pattern: "/trips/new", render: renderTripEditorPage },
   // Its own route rather than a panel on the locations tab: see suggest-page.js.
   { pattern: "/trips/:tripId/suggest", render: renderSuggestPage },
   { pattern: "/trips/:tripId/locations/new", render: renderLocationEditorPage },
-  { pattern: "/trips/:tripId/locations/:itemId/edit", render: renderLocationEditorPage },
-  { pattern: "/trips/:tripId/locations/:itemId", render: renderLocationViewPage },
+  { pattern: "/trips/:tripId/locations/:locationId/edit", render: renderLocationEditorPage },
+  { pattern: "/trips/:tripId/locations/:locationId", render: renderLocationViewPage },
   ...tripTabRoutes,
   { pattern: "/trips/:tripId", render: renderTripDetailPage },
   // The catch-all. Must be last: the router takes the first pattern that

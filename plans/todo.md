@@ -136,9 +136,10 @@ older stage plan or an earlier version of this file without asking.
 ## Consistency and cleanup
 
 - **Identifier sweep: "item" → "location", all the way down.** **(soon)** (Stage
-  05; depth decided 2026-10-03; scheduled 2026-10-07.) Land it *before* the
-  location summary and the visited flag, so their columns, API fields and code
-  are written with the new names rather than renamed afterwards. The
+  05; depth decided 2026-10-03; scheduled 2026-10-07; planned as Stage 49.)
+  Land it *before* the location summary and the visited flag, so their columns,
+  API fields and code are written with the new names rather than renamed
+  afterwards. The
   user-visible copy says "location"; below it, the `item.*` i18n namespace (27
   keys in `en.json`) is still item-flavoured while
   `location.form.*`/`location.editor.*` migrated, `location-form.js` exports

@@ -40,7 +40,7 @@ type roleFixture struct {
 	owner       *http.Cookie
 	actor       *http.Cookie
 	tripID      string
-	itemID      string
+	locationID  string
 	checklistID string
 	fileID      string
 	mediaID     string
@@ -76,7 +76,7 @@ func setupRole(t *testing.T, role db.TripRole) *roleFixture {
 
 	f := &roleFixture{ts: ts, owner: owner}
 	f.tripID = ts.createTrip(owner, "Owner's trip")
-	f.itemID = ts.createItem(owner, f.tripID, "Owner's location")
+	f.locationID = ts.createLocation(owner, f.tripID, "Owner's location")
 	f.checklistID = ts.mustCreate(
 		http.MethodPost, "/api/trips/"+f.tripID+"/checklists", owner,
 		`{"title":"Packing"}`, http.StatusCreated,
@@ -113,7 +113,7 @@ func setupRole(t *testing.T, role db.TripRole) *roleFixture {
 	// One entry on that day, so the per-entry routes have something to name.
 	f.entryID = ts.mustCreate(
 		http.MethodPost, "/api/itinerary/days/"+f.dayID+"/entries", owner,
-		`{"item_id":"`+f.itemID+`"}`, http.StatusCreated,
+		`{"location_id":"`+f.locationID+`"}`, http.StatusCreated,
 	)
 
 	if role == db.RoleOwner {
@@ -173,13 +173,13 @@ func roleRoutes() []route {
 	trip := func(suffix string) func(*roleFixture) string {
 		return func(f *roleFixture) string { return "/api/trips/" + f.tripID + suffix }
 	}
-	item := func(suffix string) func(*roleFixture) string {
-		return func(f *roleFixture) string { return "/api/items/" + f.itemID + suffix }
+	location := func(suffix string) func(*roleFixture) string {
+		return func(f *roleFixture) string { return "/api/locations/" + f.locationID + suffix }
 	}
 	return []route{
 		// Reads — a viewer must be able to do all of these.
 		{http.MethodGet, trip(""), lit(""), db.RoleViewer},
-		{http.MethodGet, trip("/items"), lit(""), db.RoleViewer},
+		{http.MethodGet, trip("/locations"), lit(""), db.RoleViewer},
 		{http.MethodGet, trip("/tags"), lit(""), db.RoleViewer},
 		{http.MethodGet, trip("/map"), lit(""), db.RoleViewer},
 		{http.MethodGet, trip("/itinerary"), lit(""), db.RoleViewer},
@@ -188,8 +188,8 @@ func roleRoutes() []route {
 		{http.MethodGet, trip("/notes"), lit(""), db.RoleViewer},
 		{http.MethodGet, trip("/currencies"), lit(""), db.RoleViewer},
 		{http.MethodGet, trip("/expenses"), lit(""), db.RoleViewer},
-		{http.MethodGet, item(""), lit(""), db.RoleViewer},
-		{http.MethodGet, item("/files"), lit(""), db.RoleViewer},
+		{http.MethodGet, location(""), lit(""), db.RoleViewer},
+		{http.MethodGet, location("/files"), lit(""), db.RoleViewer},
 		{http.MethodGet, func(f *roleFixture) string { return "/api/files/" + f.fileID + "/download" }, lit(""), db.RoleViewer},
 		{http.MethodGet, func(f *roleFixture) string { return "/api/media/" + f.mediaID + "/file" }, lit(""), db.RoleViewer},
 
@@ -197,29 +197,29 @@ func roleRoutes() []route {
 		{http.MethodPatch, trip(""), lit(`{"title":"edited"}`), db.RoleEditor},
 		{http.MethodPut, trip("/preview-image"), func(f *roleFixture) string { return `{"media_asset_id":"` + f.mediaID + `"}` }, db.RoleEditor},
 		{http.MethodPost, trip("/media/url"), lit(`{"url":"https://example.com/x.png"}`), db.RoleEditor},
-		{http.MethodPost, trip("/items"), lit(`{"title":"new","category":"site","tags":["landmark"]}`), db.RoleEditor},
+		{http.MethodPost, trip("/locations"), lit(`{"title":"new","category":"site","tags":["landmark"]}`), db.RoleEditor},
 		{http.MethodPost, trip("/checklists"), lit(`{"title":"new list"}`), db.RoleEditor},
 		{http.MethodPut, trip("/notes"), lit(`{"body":"# plans"}`), db.RoleEditor},
 		{http.MethodPut, trip("/currencies"), lit(`{"currencies":[{"code":"JPY","rate_ppb":580000000}]}`), db.RoleEditor},
 		{http.MethodPost, trip("/expenses"), lit(`{"title":"new expense","amount_minor":250,"spent_on":"2026-08-21"}`), db.RoleEditor},
 		{http.MethodPut, trip("/itinerary/days/2026-08-21"), lit(`{"notes":"n"}`), db.RoleEditor},
-		// The dates block rides along on the item PATCH since Stage 25, where it
-		// writes itinerary entries — so this row gates those too.
-		{http.MethodPatch, item(""), lit(`{"title":"edited","category":"site","tags":["landmark"],"dates":[{"start_date":"2026-08-21"}]}`), db.RoleEditor},
-		{http.MethodPut, item("/location"), lit(`{"lat":1,"lng":2}`), db.RoleEditor},
-		{http.MethodPut, item("/image"), func(f *roleFixture) string { return `{"media_asset_id":"` + f.mediaID + `"}` }, db.RoleEditor},
-		{http.MethodPost, item("/links"), lit(`{"url":"https://example.com","label":"x"}`), db.RoleEditor},
+		// The dates block rides along on the location PATCH since Stage 25,
+		// where it writes itinerary entries — so this row gates those too.
+		{http.MethodPatch, location(""), lit(`{"title":"edited","category":"site","tags":["landmark"],"dates":[{"start_date":"2026-08-21"}]}`), db.RoleEditor},
+		{http.MethodPut, location("/geo"), lit(`{"lat":1,"lng":2}`), db.RoleEditor},
+		{http.MethodPut, location("/image"), func(f *roleFixture) string { return `{"media_asset_id":"` + f.mediaID + `"}` }, db.RoleEditor},
+		{http.MethodPost, location("/links"), lit(`{"url":"https://example.com","label":"x"}`), db.RoleEditor},
 		{http.MethodPatch, func(f *roleFixture) string { return "/api/files/" + f.fileID }, lit(`{"note":"n"}`), db.RoleEditor},
 		{http.MethodPost, func(f *roleFixture) string { return "/api/checklists/" + f.checklistID + "/items" }, lit(`{"text":"t"}`), db.RoleEditor},
 		{http.MethodPatch, func(f *roleFixture) string { return "/api/expenses/" + f.expenseID },
 			lit(`{"title":"edited","amount_minor":1600,"spent_on":"2026-08-20"}`), db.RoleEditor},
 		{http.MethodPost, func(f *roleFixture) string { return "/api/itinerary/days/" + f.dayID + "/entries" },
-			func(f *roleFixture) string { return `{"item_id":"` + f.itemID + `"}` }, db.RoleEditor},
+			func(f *roleFixture) string { return `{"location_id":"` + f.locationID + `"}` }, db.RoleEditor},
 		{http.MethodPatch, func(f *roleFixture) string { return "/api/itinerary/days/" + f.dayID + "/entries/" + f.entryID },
 			lit(`{"to_date":"2026-08-22"}`), db.RoleEditor},
 		// Deletes, last because they destroy the fixture — but each row gets a
 		// fresh one anyway, so the ordering is only belt and braces.
-		{http.MethodDelete, item(""), lit(""), db.RoleEditor},
+		{http.MethodDelete, location(""), lit(""), db.RoleEditor},
 		{http.MethodDelete, func(f *roleFixture) string { return "/api/files/" + f.fileID }, lit(""), db.RoleEditor},
 		{http.MethodDelete, func(f *roleFixture) string { return "/api/checklists/" + f.checklistID }, lit(""), db.RoleEditor},
 		{http.MethodDelete, func(f *roleFixture) string { return "/api/expenses/" + f.expenseID }, lit(""), db.RoleEditor},
@@ -294,7 +294,7 @@ func TestRoleMatrixUploads(t *testing.T) {
 			f := setupRole(t, tc.role)
 			for _, path := range []string{
 				"/api/trips/" + f.tripID + "/files",
-				"/api/items/" + f.itemID + "/files",
+				"/api/locations/" + f.locationID + "/files",
 				"/api/trips/" + f.tripID + "/media",
 			} {
 				content, filename, ct := []byte("x"), "f.txt", "text/plain"
@@ -362,7 +362,7 @@ func TestMediaAssetFromAnotherTripIsRejected(t *testing.T) {
 
 	for _, tc := range []struct{ method, path string }{
 		{http.MethodPut, "/api/trips/" + f.tripID + "/preview-image"},
-		{http.MethodPut, "/api/items/" + f.itemID + "/image"},
+		{http.MethodPut, "/api/locations/" + f.locationID + "/image"},
 	} {
 		w := f.ts.do(tc.method, tc.path, f.actor, `{"media_asset_id":"`+otherMedia+`"}`)
 		if w.Code != http.StatusBadRequest {

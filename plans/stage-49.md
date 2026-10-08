@@ -186,6 +186,95 @@ and check that only checklist hits remain. Do a manual pass at 324×756:
 create, edit (set geo by search and by pin), delete a location, attach a file,
 link an expense, and set dates.
 
+**Done.** The API now says "location" throughout:
+- **Routes:** `/api/trips/{id}/locations` (and `/batch`), and
+  `/api/locations/{locationId}/…` with `PUT …/geo` in place of `…/location`.
+- **JSON:** `location_id`, `location_title`, `location_category` and
+  `location_image_url` on files, expenses and itinerary entries. The nested
+  object is `"geo"`, the batch body is `{"locations": [...]}`, and the multipart
+  create part is `"location"`.
+- **Error messages** say "location".
+
+The checklist routes keep `/items/{itemId}`, since those really are items. The
+old routes are gone, not aliased. `TestItemRoutesAreGone` asks every one of them
+with a real trip and location id, so its 404s mean "no such route", not "no
+such row". It also checks that nothing was written through them.
+
+How it was done, in three passes over `internal/httpapi`:
+1. **Struct fields, with gopls.** 13 fields, among them `ItemID`/`ItemTitle`
+   and the request/response `Location` field, which became `Geo`.
+2. **Identifiers, with a Go-aware script.** It split each file into code,
+   comments and string literals and renamed by rule: every item identifier in
+   code, plus compound ones in comments (`itemRequest` → `locationRequest`,
+   `itemLocationRequest` → `geoRequest`, `handlePutItemLocation` →
+   `handlePutLocationGeo`, the test names). `checklists.go` and the checklist
+   tests were left out. Two locals that were not locations were renamed first so
+   the rule passed them by: an assistant `candidate` in `assist.go` and a
+   `checklistItemID` in `ownership_test.go`.
+3. **String literals.** URLs, JSON keys and messages were rewritten, skipping
+   any literal whose surrounding code names a checklist. `router.go` was edited
+   by hand because its checklist routes are bare `"/items"` strings.
+
+15 files were renamed (`items.go` → `locations.go`, `item_dates.go` →
+`location_dates.go`, `expense_item_test.go` → `expense_location_test.go`, …).
+
+**Deviation: httpapi comment prose is done here, not in M3.** Every file was
+already in this diff, and a second pass over the same files later would only
+split the review. The remaining "item" comments in httpapi are history
+(`items.sort_order`, `item_dates`, `item_id IS NULL`) or the checklist sense.
+`cmd/seed` got the same three passes. Its `seedID` namespace is now
+`"location"`, so seeded locations get new deterministic ids on the next
+`make dev-seed`. Nothing depends on the old ones, because every scenario's trip
+is deleted and recreated anyway. The seeded file names followed
+(`cascade-location.txt`).
+
+**Not renamed, on purpose:**
+- **The blob key prefix `{trip}/items/{id}/…`.** Every existing upload lives
+  under it, each row stores its own `storage_path`, and nothing parses the
+  layout. A new prefix would only split the tree on disk. `uploadFile` says so
+  in a comment.
+- **The client-side route parameter `:itemId` in `clientroutes.go`.** It
+  mirrors `app.js` and moves with it in M3.
+
+**Frontend, API surface only.** The URLs, the `location_*` field reads, and
+`.location` → `.geo` on detail objects in ten `web/js` files, with the editor's
+create and update bodies and the suggest page's batch body. Local names
+(`item`, `itemId`, `renderItemForm`) stay for M3. The same edits went through
+14 UI specs, `tests/ui/helpers/scenarios.js`, `contrast.js` and
+`gen_screenshots.mjs`. One spec passed the geo block through shorthand property
+syntax (`{ title, category, location }`), which no `location:` pattern can see.
+The UI suite caught it as a 400 from the server, which refuses unknown fields.
+That is reassuring: a client still sending the old key fails loudly instead of
+losing coordinates quietly.
+
+**Three snags, all caught before commit:**
+- The `"/location"` → `"/geo"` string rule also rewrote the real
+  `/assist/location` endpoint in nine assist tests. The tests failed, and those
+  calls were reverted.
+- The first string pass would have renamed the bare `"/items"` checklist
+  routes. They were excluded before it ran.
+- The comment reflow measured a tab as four columns, so it rewrapped 24
+  paragraphs here, and three in M1's `store.go`, that never mentioned an item.
+  All 27 are reverted, so the diff holds only renames.
+
+Verified:
+- `make ci` green.
+- `make test-postgres` green (exit 0, `internal/httpapi` in 330 s). An earlier
+  run with `make test-ui` going in parallel hit go test's 10-minute timeout
+  mid-`TestRoleMatrix`, with requests still answering in 20–60 ms. That is load,
+  not a hang; see todo.md.
+- `make test-ui`: 349 passed, and the 2 shorthand failures pass after the fix.
+- The closing grep for `item_(id|title|category|image_url)` and `/items` leaves
+  only checklists, history and the new 404 test.
+- Manual pass on `make dev` at 324×756 (Playwright, on a throwaway trip, since
+  deleted). It created a location by pin with an address and a date, re-placed
+  it by address search (geo came back with the OSM identity), uploaded a file
+  (201, listed with `location_title`), and added an expense through the form
+  (the POST body carries `location_id`, and the list links back). The itinerary
+  linked the location on its day. Deleting through the editor gave 204, a
+  follow-up GET 404, and the expense kept with `location_id` null. No API
+  errors and no console errors throughout.
+
 ## 3. Frontend identifiers, i18n, CSS, and the long tail
 
 - i18n: `item.*` → `location.*` in every `web/locales/*.json`.

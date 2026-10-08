@@ -295,7 +295,7 @@ test.describe("an expense that names a location", () => {
     expect(trip.status(), "create the spec's own trip").toBe(201);
     tripId = (await trip.json()).id;
 
-    const item = await page.request.post(`/api/trips/${tripId}/items`, {
+    const item = await page.request.post(`/api/trips/${tripId}/locations`, {
       data: { title: "Foss Hotel", category: "stay" },
     });
     expect(item.status(), "create a location to point at").toBe(201);
@@ -341,7 +341,7 @@ test.describe("an expense that names a location", () => {
     const stored = await (
       await page.request.get(`/api/trips/${tripId}/expenses`)
     ).json();
-    expect(stored.expenses.map((e) => [e.title, e.item_title])).toEqual([
+    expect(stored.expenses.map((e) => [e.title, e.location_title])).toEqual([
       ["Two nights", "Foss Hotel"],
     ]);
   });
@@ -352,7 +352,7 @@ test.describe("an expense that names a location", () => {
         title: "Two nights",
         amount_minor: 24000,
         spent_on: "2026-08-20",
-        item_id: itemId,
+        location_id: itemId,
       },
     });
     expect(created.status()).toBe(201);
@@ -377,7 +377,7 @@ test.describe("an expense that names a location", () => {
     const stored = await (
       await page.request.get(`/api/trips/${tripId}/expenses`)
     ).json();
-    expect(stored.expenses[0].item_id).toBeNull();
+    expect(stored.expenses[0].location_id).toBeNull();
   });
 
   test("keeps the expense when the location is deleted", async ({ page }) => {
@@ -386,13 +386,13 @@ test.describe("an expense that names a location", () => {
         title: "Two nights",
         amount_minor: 24000,
         spent_on: "2026-08-20",
-        item_id: itemId,
+        location_id: itemId,
       },
     });
     expect(created.status()).toBe(201);
 
     expect(
-      (await page.request.delete(`/api/items/${itemId}`)).status(),
+      (await page.request.delete(`/api/locations/${itemId}`)).status(),
       "delete the location the expense named",
     ).toBe(204);
 

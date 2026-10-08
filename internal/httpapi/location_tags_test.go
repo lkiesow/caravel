@@ -17,22 +17,22 @@ import (
 // links and dates, and read back on the detail, on the list, and as a trip
 // vocabulary for the editor to suggest.
 
-type taggedItem struct {
+type taggedLocation struct {
 	ID   string   `json:"id"`
 	Tags []string `json:"tags"`
 }
 
-func createTagged(ts *testServer, cookie *http.Cookie, tripID, title, tagsJSON string) taggedItem {
+func createTagged(ts *testServer, cookie *http.Cookie, tripID, title, tagsJSON string) taggedLocation {
 	ts.t.Helper()
 	body := `{"title":"` + title + `","category":"site","tags":` + tagsJSON + `}`
-	w := ts.do(http.MethodPost, "/api/trips/"+tripID+"/items", cookie, body)
+	w := ts.do(http.MethodPost, "/api/trips/"+tripID+"/locations", cookie, body)
 	if w.Code != http.StatusCreated {
 		ts.t.Fatalf("create %s: got %d, want 201, body %s", title, w.Code, w.Body.String())
 	}
-	return decode[taggedItem](ts.t, w)
+	return decode[taggedLocation](ts.t, w)
 }
 
-func TestItemTagsRoundTrip(t *testing.T) {
+func TestLocationTagsRoundTrip(t *testing.T) {
 	ts := newTestServer(t)
 	cookie := ts.login("demo")
 	tripID := ts.createTrip(cookie, "Iceland")
@@ -43,18 +43,18 @@ func TestItemTagsRoundTrip(t *testing.T) {
 		t.Errorf("create response tags = %q, want church,reykjavik", got)
 	}
 
-	w := ts.do(http.MethodGet, "/api/items/"+created.ID, cookie, "")
-	if got := strings.Join(decode[taggedItem](t, w).Tags, ","); got != "church,reykjavik" {
+	w := ts.do(http.MethodGet, "/api/locations/"+created.ID, cookie, "")
+	if got := strings.Join(decode[taggedLocation](t, w).Tags, ","); got != "church,reykjavik" {
 		t.Errorf("GET tags = %q, want church,reykjavik", got)
 	}
 
 	// Present replaces the set as a whole, like links.
-	w = ts.do(http.MethodPatch, "/api/items/"+created.ID, cookie,
+	w = ts.do(http.MethodPatch, "/api/locations/"+created.ID, cookie,
 		`{"title":"Hallgrimskirkja","category":"site","tags":["landmark"]}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("patch: got %d, body %s", w.Code, w.Body.String())
 	}
-	if got := strings.Join(decode[taggedItem](t, w).Tags, ","); got != "landmark" {
+	if got := strings.Join(decode[taggedLocation](t, w).Tags, ","); got != "landmark" {
 		t.Errorf("after replace, tags = %q, want landmark", got)
 	}
 }
@@ -62,35 +62,35 @@ func TestItemTagsRoundTrip(t *testing.T) {
 // The absent/empty distinction the other nested blocks make, made here too: a
 // client editing only the title must not silently drop the tags, and one that
 // means to clear them needs a way to say so.
-func TestItemTagsAbsentVersusEmpty(t *testing.T) {
+func TestLocationTagsAbsentVersusEmpty(t *testing.T) {
 	ts := newTestServer(t)
 	cookie := ts.login("demo")
 	tripID := ts.createTrip(cookie, "Iceland")
 	created := createTagged(ts, cookie, tripID, "Geysir", `["geothermal"]`)
 
-	w := ts.do(http.MethodPatch, "/api/items/"+created.ID, cookie,
+	w := ts.do(http.MethodPatch, "/api/locations/"+created.ID, cookie,
 		`{"title":"Geysir","category":"site"}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("patch without tags: got %d, body %s", w.Code, w.Body.String())
 	}
-	if got := decode[taggedItem](t, w).Tags; len(got) != 1 || got[0] != "geothermal" {
+	if got := decode[taggedLocation](t, w).Tags; len(got) != 1 || got[0] != "geothermal" {
 		t.Errorf("omitting tags changed them: %v", got)
 	}
 
-	w = ts.do(http.MethodPatch, "/api/items/"+created.ID, cookie,
+	w = ts.do(http.MethodPatch, "/api/locations/"+created.ID, cookie,
 		`{"title":"Geysir","category":"site","tags":[]}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("patch with empty tags: got %d, body %s", w.Code, w.Body.String())
 	}
-	if got := decode[taggedItem](t, w).Tags; len(got) != 0 {
+	if got := decode[taggedLocation](t, w).Tags; len(got) != 0 {
 		t.Errorf("empty tags did not clear: %v", got)
 	}
 }
 
 // Tags reach the list endpoint, which is what the locations tab filters on.
 // That they arrive without a query per row is asserted separately, in
-// TestListItemsLoadsTagsInOneQuery.
-func TestListItemsCarriesTags(t *testing.T) {
+// TestListLocationsLoadsTagsInOneQuery.
+func TestListLocationsCarriesTags(t *testing.T) {
 	ts := newTestServer(t)
 	cookie := ts.login("demo")
 	tripID := ts.createTrip(cookie, "Iceland")
@@ -98,24 +98,24 @@ func TestListItemsCarriesTags(t *testing.T) {
 	createTagged(ts, cookie, tripID, "Kirkjufell", `["mountain"]`)
 	createTagged(ts, cookie, tripID, "Untagged", `[]`)
 
-	w := ts.do(http.MethodGet, "/api/trips/"+tripID+"/items", cookie, "")
+	w := ts.do(http.MethodGet, "/api/trips/"+tripID+"/locations", cookie, "")
 	if w.Code != http.StatusOK {
 		t.Fatalf("list: got %d, body %s", w.Code, w.Body.String())
 	}
-	got := decode[[]taggedItem](t, w)
+	got := decode[[]taggedLocation](t, w)
 	if len(got) != 3 {
-		t.Fatalf("got %d items, want 3", len(got))
+		t.Fatalf("got %d locations, want 3", len(got))
 	}
 	byTags := map[string]string{}
 	for _, it := range got {
 		if it.Tags == nil {
-			t.Errorf("item %s has null tags; the field must always be an array", it.ID)
+			t.Errorf("location %s has null tags; the field must always be an array", it.ID)
 		}
 		byTags[strings.Join(it.Tags, ",")] = it.ID
 	}
 	for _, want := range []string{"geothermal,south", "mountain", ""} {
 		if _, ok := byTags[want]; !ok {
-			t.Errorf("no item carried tags %q; got %v", want, byTags)
+			t.Errorf("no location carried tags %q; got %v", want, byTags)
 		}
 	}
 }
@@ -141,7 +141,7 @@ func TestTripTagsVocabulary(t *testing.T) {
 	}
 }
 
-func TestItemTagsNormalizationAndLimits(t *testing.T) {
+func TestLocationTagsNormalizationAndLimits(t *testing.T) {
 	ts := newTestServer(t)
 	cookie := ts.login("demo")
 	tripID := ts.createTrip(cookie, "Iceland")
@@ -156,7 +156,7 @@ func TestItemTagsNormalizationAndLimits(t *testing.T) {
 	}
 
 	long := `"` + strings.Repeat("a", 41) + `"`
-	w := ts.do(http.MethodPost, "/api/trips/"+tripID+"/items", cookie,
+	w := ts.do(http.MethodPost, "/api/trips/"+tripID+"/locations", cookie,
 		`{"title":"Long","category":"site","tags":[`+long+`]}`)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("41-character tag: got %d, want 400", w.Code)
@@ -166,7 +166,7 @@ func TestItemTagsNormalizationAndLimits(t *testing.T) {
 	for i := range many {
 		many[i] = `"t` + string(rune('a'+i)) + `"`
 	}
-	w = ts.do(http.MethodPost, "/api/trips/"+tripID+"/items", cookie,
+	w = ts.do(http.MethodPost, "/api/trips/"+tripID+"/locations", cookie,
 		`{"title":"Many","category":"site","tags":[`+strings.Join(many, ",")+`]}`)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("21 tags: got %d, want 400", w.Code)
@@ -174,7 +174,7 @@ func TestItemTagsNormalizationAndLimits(t *testing.T) {
 
 	// 40 characters of multi-byte text is 40 characters, not 13: the limit
 	// counts runes, so this must be accepted.
-	w = ts.do(http.MethodPost, "/api/trips/"+tripID+"/items", cookie,
+	w = ts.do(http.MethodPost, "/api/trips/"+tripID+"/locations", cookie,
 		`{"title":"Runes","category":"site","tags":["`+strings.Repeat("ü", 40)+`"]}`)
 	if w.Code != http.StatusCreated {
 		t.Errorf("40 multi-byte characters: got %d, want 201, body %s", w.Code, w.Body.String())
@@ -183,13 +183,13 @@ func TestItemTagsNormalizationAndLimits(t *testing.T) {
 
 // Deleting a location takes its tags with it, so the trip vocabulary shrinks
 // and no row is left pointing at nothing.
-func TestDeletingItemRemovesItsTags(t *testing.T) {
+func TestDeletingLocationRemovesItsTags(t *testing.T) {
 	ts := newTestServer(t)
 	cookie := ts.login("demo")
 	tripID := ts.createTrip(cookie, "Iceland")
 	created := createTagged(ts, cookie, tripID, "Doomed", `["temporary"]`)
 
-	if w := ts.do(http.MethodDelete, "/api/items/"+created.ID, cookie, ""); w.Code != http.StatusNoContent {
+	if w := ts.do(http.MethodDelete, "/api/locations/"+created.ID, cookie, ""); w.Code != http.StatusNoContent {
 		t.Fatalf("delete: got %d", w.Code)
 	}
 	w := ts.do(http.MethodGet, "/api/trips/"+tripID+"/tags", cookie, "")
@@ -200,18 +200,18 @@ func TestDeletingItemRemovesItsTags(t *testing.T) {
 
 // countingTagStore records how often the per-location tag read is used, so the
 // list endpoint can be held to the rule the backlog entry stated for dates and
-// coordinates alike: one trip-wide query, bucketed in Go. Calling the by-item
-// query per card is a query per location, and it is the kind of regression
-// that is invisible until a trip is large.
+// coordinates alike: one trip-wide query, bucketed in Go. Calling the
+// by-location query per card is a query per location, and it is the kind of
+// regression that is invisible until a trip is large.
 type countingTagStore struct {
 	db.Store
-	byItem atomic.Int64
-	byTrip atomic.Int64
+	byLocation atomic.Int64
+	byTrip     atomic.Int64
 }
 
-func (s *countingTagStore) ListLocationTagsByLocation(ctx context.Context, itemID string) ([]string, error) {
-	s.byItem.Add(1)
-	return s.Store.ListLocationTagsByLocation(ctx, itemID)
+func (s *countingTagStore) ListLocationTagsByLocation(ctx context.Context, locationID string) ([]string, error) {
+	s.byLocation.Add(1)
+	return s.Store.ListLocationTagsByLocation(ctx, locationID)
 }
 
 func (s *countingTagStore) ListLocationTagsByTrip(ctx context.Context, tripID string) ([]db.LocationTag, error) {
@@ -219,7 +219,7 @@ func (s *countingTagStore) ListLocationTagsByTrip(ctx context.Context, tripID st
 	return s.Store.ListLocationTagsByTrip(ctx, tripID)
 }
 
-func TestListItemsLoadsTagsInOneQuery(t *testing.T) {
+func TestListLocationsLoadsTagsInOneQuery(t *testing.T) {
 	var counter *countingTagStore
 	ts := newTestServerWithStore(t, func(s db.Store) db.Store {
 		counter = &countingTagStore{Store: s}
@@ -231,16 +231,16 @@ func TestListItemsLoadsTagsInOneQuery(t *testing.T) {
 		createTagged(ts, cookie, tripID, name, `["shared"]`)
 	}
 
-	counter.byItem.Store(0)
+	counter.byLocation.Store(0)
 	counter.byTrip.Store(0)
 
-	if w := ts.do(http.MethodGet, "/api/trips/"+tripID+"/items", cookie, ""); w.Code != http.StatusOK {
+	if w := ts.do(http.MethodGet, "/api/trips/"+tripID+"/locations", cookie, ""); w.Code != http.StatusOK {
 		t.Fatalf("list: got %d, body %s", w.Code, w.Body.String())
 	}
 	if got := counter.byTrip.Load(); got != 1 {
 		t.Errorf("trip-wide tag query ran %d times, want exactly 1", got)
 	}
-	if got := counter.byItem.Load(); got != 0 {
+	if got := counter.byLocation.Load(); got != 0 {
 		t.Errorf("per-location tag query ran %d times for a 5-location list; the list must not use it", got)
 	}
 }

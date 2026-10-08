@@ -206,7 +206,7 @@ export async function buildRoutes(page) {
   const fullTrip = trips.full;
 
   const items = await page.evaluate(async (tripId) => {
-    const res = await fetch(`/api/trips/${tripId}/items`);
+    const res = await fetch(`/api/trips/${tripId}/locations`);
     return res.json();
   }, fullTrip);
   expect(items.length, "the `full` seed scenario should have locations").toBeGreaterThan(0);

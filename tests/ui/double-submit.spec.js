@@ -91,21 +91,21 @@ test.describe("a second press while a write is in flight", () => {
     await gotoRoute(page, `/trips/${tripId}/locations/new`);
     await page.locator('.item-form input[name="title"]').fill("Held waterfall");
 
-    const gate = await holdRoute(page, `**/api/trips/${tripId}/items`);
+    const gate = await holdRoute(page, `**/api/trips/${tripId}/locations`);
     const save = page.locator('[data-action="save"]');
 
     const inFlight = await doubleClick(page, '[data-action="save"]');
     await gate.arrived(1);
 
     expect(inFlight, "the second press must not have started a request").toBe(1);
-    expect(gate.seen, "POST .../items should have been sent once").toHaveLength(1);
+    expect(gate.seen, "POST .../locations should have been sent once").toHaveLength(1);
     await expect(save).toBeDisabled();
     await expect(save).toHaveAttribute("aria-busy", "true");
 
     gate.release();
     await expect(page).toHaveURL(new RegExp(`/trips/${tripId}/locations/[0-9a-f-]+$`));
 
-    const items = await (await page.request.get(`/api/trips/${tripId}/items`)).json();
+    const items = await (await page.request.get(`/api/trips/${tripId}/locations`)).json();
     expect(items.filter((i) => i.title === "Held waterfall"), "exactly one location").toHaveLength(1);
   });
 
@@ -120,7 +120,7 @@ test.describe("a second press while a write is in flight", () => {
     await gotoRoute(page, `/trips/${tripId}/locations/new`);
     await page.locator('.item-form input[name="title"]').fill("Three doors");
 
-    const gate = await holdRoute(page, `**/api/trips/${tripId}/items`);
+    const gate = await holdRoute(page, `**/api/trips/${tripId}/locations`);
 
     // The button, then Enter in Basic info, then Enter in the Location card -
     // all in one synchronous turn, so all three land while the first request
@@ -134,7 +134,7 @@ test.describe("a second press while a write is in flight", () => {
     gate.release();
     await expect(page).toHaveURL(new RegExp(`/trips/${tripId}/locations/[0-9a-f-]+$`));
 
-    const items = await (await page.request.get(`/api/trips/${tripId}/items`)).json();
+    const items = await (await page.request.get(`/api/trips/${tripId}/locations`)).json();
     expect(items.filter((i) => i.title === "Three doors"), "exactly one location").toHaveLength(1);
   });
 
@@ -201,7 +201,7 @@ test.describe("a second press while a write is in flight", () => {
     await gate.arrived(1);
 
     expect(inFlight, "the second press must not have started a request").toBe(1);
-    expect(gate.seen, "POST .../items should have been sent once").toHaveLength(1);
+    expect(gate.seen, "POST .../locations should have been sent once").toHaveLength(1);
     await expect(submit).toBeDisabled();
 
     gate.release();

@@ -158,7 +158,7 @@ func TestAssistSuggestDropsWhatTheTripAlreadyHas(t *testing.T) {
 
 	cookie := ts.login("alice")
 	tripID := ts.createTrip(cookie, "Iceland")
-	ts.createItem(cookie, tripID, "Kex Hostel")
+	ts.createLocation(cookie, tripID, "Kex Hostel")
 
 	resp := postAssistSuggest(t, srv, cookie, tripID, suggestBody)
 	if resp.StatusCode != http.StatusOK {

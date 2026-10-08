@@ -60,14 +60,14 @@ test.describe("itinerary entry order", () => {
     // Added one at a time and in order, which is also what makes the rendered
     // order meaningful below.
     for (const title of TITLES) {
-      const item = await page.request.post(`/api/trips/${tripId}/items`, {
+      const item = await page.request.post(`/api/trips/${tripId}/locations`, {
         data: { title, category: "site" },
       });
       expect(item.status(), `create item ${title}`).toBe(201);
       const entry = await page.request.post(
         `/api/itinerary/days/${dayId}/entries`,
         {
-          data: { item_id: (await item.json()).id },
+          data: { location_id: (await item.json()).id },
         },
       );
       expect(entry.status(), `add ${title} to the day`).toBe(201);
@@ -184,7 +184,7 @@ test.describe("itinerary entry order", () => {
       .poll(async () => {
         const days = await (await page.request.get(`/api/trips/${tripId}/itinerary`)).json();
         const day = days.find((d) => (d.entries || []).length === 3);
-        return (day?.entries || []).map((e) => e.item_title);
+        return (day?.entries || []).map((e) => e.location_title);
       }, { timeout: 10000 })
       .toEqual(["Dinner", "Breakfast", "Museum"]);
 
@@ -323,7 +323,7 @@ test.describe("the itinerary tab, end to end", () => {
   });
 
   test("adds a day, puts a location on it, and removing the entry keeps the location", async ({ page }) => {
-    const item = await page.request.post(`/api/trips/${tripId}/items`, {
+    const item = await page.request.post(`/api/trips/${tripId}/locations`, {
       data: { title: "Blue Lagoon", category: "site" },
     });
     expect(item.status(), "create a location to schedule").toBe(201);
@@ -364,12 +364,12 @@ test.describe("the itinerary tab, end to end", () => {
     await entryMenu(page.locator(".itinerary-day__entries > li").first(), "Remove");
     await expect(page.locator(".itinerary-day__entries > li")).toHaveCount(0);
 
-    const items = await (await page.request.get(`/api/trips/${tripId}/items`)).json();
+    const items = await (await page.request.get(`/api/trips/${tripId}/locations`)).json();
     expect(items.map((i) => i.title), "unscheduling must not delete the location").toEqual(["Blue Lagoon"]);
   });
 
   test("removing a day with entries on it asks first", async ({ page }) => {
-    const item = await page.request.post(`/api/trips/${tripId}/items`, {
+    const item = await page.request.post(`/api/trips/${tripId}/locations`, {
       data: { title: "Geysir", category: "site" },
     });
     expect(item.status()).toBe(201);
@@ -377,7 +377,7 @@ test.describe("the itinerary tab, end to end", () => {
     const day = await page.request.put(`/api/trips/${tripId}/itinerary/days/${DAY}`, { data: { notes: null } });
     expect(day.status()).toBe(200);
     const dayId = (await day.json()).id;
-    expect((await page.request.post(`/api/itinerary/days/${dayId}/entries`, { data: { item_id: itemId } })).status()).toBe(201);
+    expect((await page.request.post(`/api/itinerary/days/${dayId}/entries`, { data: { location_id: itemId } })).status()).toBe(201);
 
     await page.goto(`/trips/${tripId}/itinerary`);
     await expect(page.locator(".itinerary-day__entries > li")).toHaveCount(1);
@@ -395,7 +395,7 @@ test.describe("the itinerary tab, end to end", () => {
     await expect(page.locator(".itinerary-day")).toHaveCount(0);
 
     // The day and its entry are gone; the location is not.
-    const items = await (await page.request.get(`/api/trips/${tripId}/items`)).json();
+    const items = await (await page.request.get(`/api/trips/${tripId}/locations`)).json();
     expect(items.map((i) => i.title)).toEqual(["Geysir"]);
   });
 });
@@ -422,10 +422,10 @@ test.describe("moving an entry to another day", () => {
       const day = await page.request.put(`/api/trips/${tripId}/itinerary/days/${date}`, { data: { notes: null } });
       expect(day.status(), `create day ${date}`).toBe(200);
       if (date !== DAY) continue;
-      const item = await page.request.post(`/api/trips/${tripId}/items`, { data: { title: "Museum", category: "site" } });
+      const item = await page.request.post(`/api/trips/${tripId}/locations`, { data: { title: "Museum", category: "site" } });
       expect(item.status()).toBe(201);
       const entry = await page.request.post(`/api/itinerary/days/${(await day.json()).id}/entries`, {
-        data: { item_id: (await item.json()).id, note: "book ahead" },
+        data: { location_id: (await item.json()).id, note: "book ahead" },
       });
       expect(entry.status(), "add the entry with a note").toBe(201);
     }

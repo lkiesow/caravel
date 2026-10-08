@@ -41,7 +41,7 @@ test.describe("linking a location from the notepad", () => {
     expect(res.status(), "create the spec's own trip").toBe(201);
     tripId = (await res.json()).id;
     for (const place of PLACES) {
-      const made = await page.request.post(`/api/trips/${tripId}/items`, { data: place });
+      const made = await page.request.post(`/api/trips/${tripId}/locations`, { data: place });
       expect(made.status(), `create ${place.title}`).toBe(201);
       ids[place.title] = (await made.json()).id;
     }
@@ -307,11 +307,11 @@ test.describe("linking a location from the notepad", () => {
     expect(saved.ok(), "save the note").toBe(true);
     // The same link in a place's own notes, which render on the location page.
     // The PATCH is a full update, so the title and category go along.
-    const noted = await page.request.patch(`/api/items/${kept}`, {
+    const noted = await page.request.patch(`/api/locations/${kept}`, {
       data: { title: "Kex Hostel", category: "stay", notes: body },
     });
     expect(noted.ok(), "write the location's notes").toBe(true);
-    const deleted = await page.request.delete(`/api/items/${gone}`);
+    const deleted = await page.request.delete(`/api/locations/${gone}`);
     expect(deleted.ok(), "delete Blue Lagoon").toBe(true);
 
     await page.goto(`/trips/${tripId}/notes`);

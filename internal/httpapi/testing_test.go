@@ -43,7 +43,7 @@ func newTestServer(t *testing.T) *testServer {
 // newTestServerWithStore is newTestServer with a hook to decorate the Store
 // before the Server gets it — for tests that need a failure the real store
 // won't produce on demand, such as proving a transaction rolls back (see
-// failingStore in items_test.go). Pass nil for the plain store.
+// failingStore in locations_test.go). Pass nil for the plain store.
 func newTestServerWithStore(t *testing.T, wrap func(db.Store) db.Store) *testServer {
 	t.Helper()
 	return newTestServerWith(t, wrap, nil)
@@ -259,11 +259,11 @@ func (ts *testServer) createTrip(cookie *http.Cookie, title string) string {
 	return ts.mustCreate(http.MethodPost, "/api/trips", cookie, `{"title":"`+title+`"}`, http.StatusCreated)
 }
 
-// createItem makes an item on a trip and returns its ID.
-func (ts *testServer) createItem(cookie *http.Cookie, tripID, title string) string {
+// createLocation makes a location on a trip and returns its ID.
+func (ts *testServer) createLocation(cookie *http.Cookie, tripID, title string) string {
 	ts.t.Helper()
 	return ts.mustCreate(
-		http.MethodPost, "/api/trips/"+tripID+"/items", cookie,
+		http.MethodPost, "/api/trips/"+tripID+"/locations", cookie,
 		`{"title":"`+title+`","category":"site","tags":["landmark"]}`, http.StatusCreated,
 	)
 }

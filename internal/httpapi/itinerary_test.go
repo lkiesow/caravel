@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// seedDayWithEntry creates a trip, an item, an itinerary day and an entry on
+// seedDayWithEntry creates a trip, a location, an itinerary day and an entry on
 // that day, returning the trip and day IDs.
 func (ts *testServer) seedDayWithEntry(cookie *http.Cookie, date string) (tripID, dayID string) {
 	ts.t.Helper()
@@ -19,11 +19,11 @@ func (ts *testServer) seedDayWithEntry(cookie *http.Cookie, date string) (tripID
 	}
 	tripID = decode[map[string]any](ts.t, w)["id"].(string)
 
-	w = ts.do(http.MethodPost, "/api/trips/"+tripID+"/items", cookie, `{"title":"Kirkjufell","category":"site","tags":["landmark"]}`)
+	w = ts.do(http.MethodPost, "/api/trips/"+tripID+"/locations", cookie, `{"title":"Kirkjufell","category":"site","tags":["landmark"]}`)
 	if w.Code != http.StatusCreated {
-		ts.t.Fatalf("create item: got %d, body %s", w.Code, w.Body.String())
+		ts.t.Fatalf("create location: got %d, body %s", w.Code, w.Body.String())
 	}
-	itemID := decode[map[string]any](ts.t, w)["id"].(string)
+	locationID := decode[map[string]any](ts.t, w)["id"].(string)
 
 	w = ts.do(http.MethodPut, "/api/trips/"+tripID+"/itinerary/days/"+date, cookie, `{"notes":"packed"}`)
 	if w.Code != http.StatusOK {
@@ -31,7 +31,7 @@ func (ts *testServer) seedDayWithEntry(cookie *http.Cookie, date string) (tripID
 	}
 	dayID = *decode[itineraryDayResponse](ts.t, w).ID
 
-	w = ts.do(http.MethodPost, "/api/itinerary/days/"+dayID+"/entries", cookie, `{"item_id":"`+itemID+`"}`)
+	w = ts.do(http.MethodPost, "/api/itinerary/days/"+dayID+"/entries", cookie, `{"location_id":"`+locationID+`"}`)
 	if w.Code != http.StatusCreated {
 		ts.t.Fatalf("create entry: got %d, body %s", w.Code, w.Body.String())
 	}

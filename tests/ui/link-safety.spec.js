@@ -25,7 +25,7 @@ test.describe("links with an unsafe scheme", () => {
     expect(trip.status(), "create the spec's own trip").toBe(201);
     tripId = (await trip.json()).id;
 
-    const item = await page.request.post(`/api/trips/${tripId}/items`, {
+    const item = await page.request.post(`/api/trips/${tripId}/locations`, {
       data: { title: "Kex Hostel", category: "stay" },
     });
     expect(item.status(), "create the location").toBe(201);
@@ -39,12 +39,12 @@ test.describe("links with an unsafe scheme", () => {
 
   // The server half: it cannot be stored in the first place.
   test("the API refuses to store one", async ({ page }) => {
-    const res = await page.request.post(`/api/trips/${tripId}/items`, {
+    const res = await page.request.post(`/api/trips/${tripId}/locations`, {
       data: { title: "Planted", category: "site", links: [{ url: DANGEROUS }] },
     });
     expect(res.status(), "a javascript: link is refused").toBe(400);
 
-    const standalone = await page.request.post(`/api/items/${itemId}/links`, {
+    const standalone = await page.request.post(`/api/locations/${itemId}/links`, {
       data: { url: DANGEROUS },
     });
     expect(standalone.status(), "and refused by the standalone link endpoint too").toBe(400);
@@ -52,7 +52,7 @@ test.describe("links with an unsafe scheme", () => {
 
   // The client half: a row that predates the server check still renders safely.
   test("the location page renders a stored one as text, not a link", async ({ page }) => {
-    await plantLink(page, `**/api/items/${itemId}`);
+    await plantLink(page, `**/api/locations/${itemId}`);
 
     await gotoRoute(page, `/trips/${tripId}/locations/${itemId}`);
 
@@ -61,7 +61,7 @@ test.describe("links with an unsafe scheme", () => {
   });
 
   test("the editor renders a stored one as text, not a link", async ({ page }) => {
-    await plantLink(page, `**/api/items/${itemId}`);
+    await plantLink(page, `**/api/locations/${itemId}`);
 
     await gotoRoute(page, `/trips/${tripId}/locations/${itemId}/edit`);
 

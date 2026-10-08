@@ -38,9 +38,9 @@ type tripNoteRequest struct {
 }
 
 // writeTripNote renders the note and sends it. Rendering goes through
-// renderNotesHTML -- the same call the item payload and the markdown preview
-// endpoint make, not merely the same library -- so the tab, the preview and
-// the location view page cannot drift in how they read the same markdown.
+// renderNotesHTML -- the same call the location payload and the markdown
+// preview endpoint make, not merely the same library -- so the tab, the preview
+// and the location view page cannot drift in how they read the same markdown.
 func writeTripNote(w http.ResponseWriter, body string, updatedAt *time.Time) {
 	html := renderNotesHTML(&body)
 	if html == nil {

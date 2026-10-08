@@ -1,7 +1,7 @@
 // The location categories and their colours, in one place.
 //
 // The server enforces the same set -- the CHECK constraint on items.category,
-// validCategories in internal/httpapi/items.go and in internal/assist/agent.go
+// validCategories in internal/httpapi/locations.go and in internal/assist/agent.go
 // -- and TestCategoriesModuleMatchesTheServer pins this list to it, so adding a
 // category means a migration, those two Go lists, this file, and an
 // item.category.* key in every locale.

@@ -17,13 +17,13 @@ func TestListTripFilesIncludesLocationFiles(t *testing.T) {
 	ts := newTestServer(t)
 	cookie := ts.login("demo")
 	tripID := ts.createTrip(cookie, "Iceland")
-	itemID := ts.createItem(cookie, tripID, "Foss Hotel Reykjavik")
+	locationID := ts.createLocation(cookie, tripID, "Foss Hotel Reykjavik")
 
 	if w := ts.upload("/api/trips/"+tripID+"/files", cookie, "trip-notes.txt", "text/plain", []byte("trip level")); w.Code != http.StatusCreated {
 		t.Fatalf("upload trip file: %d %s", w.Code, w.Body.String())
 	}
-	if w := ts.upload("/api/items/"+itemID+"/files", cookie, "hotel-booking.txt", "text/plain", []byte("item level")); w.Code != http.StatusCreated {
-		t.Fatalf("upload item file: %d %s", w.Code, w.Body.String())
+	if w := ts.upload("/api/locations/"+locationID+"/files", cookie, "hotel-booking.txt", "text/plain", []byte("location level")); w.Code != http.StatusCreated {
+		t.Fatalf("upload location file: %d %s", w.Code, w.Body.String())
 	}
 
 	w := ts.do(http.MethodGet, "/api/trips/"+tripID+"/files", cookie, "")
@@ -44,43 +44,43 @@ func TestListTripFilesIncludesLocationFiles(t *testing.T) {
 	if !ok {
 		t.Fatal("the trip-level file is missing from the list")
 	}
-	if tripDoc.ItemID != nil {
-		t.Errorf("trip-level file has item_id %q, want null", *tripDoc.ItemID)
+	if tripDoc.LocationID != nil {
+		t.Errorf("trip-level file has location_id %q, want null", *tripDoc.LocationID)
 	}
-	// The LEFT JOIN's whole point: a trip-level row has no item to join to and
-	// must still come back. An INNER JOIN would have dropped this one.
-	if tripDoc.ItemTitle != nil {
-		t.Errorf("trip-level file has item_title %q, want null", *tripDoc.ItemTitle)
+	// The LEFT JOIN's whole point: a trip-level row has no location to join to
+	// and must still come back. An INNER JOIN would have dropped this one.
+	if tripDoc.LocationTitle != nil {
+		t.Errorf("trip-level file has location_title %q, want null", *tripDoc.LocationTitle)
 	}
 
-	itemDoc, ok := byName["hotel-booking.txt"]
+	locationDoc, ok := byName["hotel-booking.txt"]
 	if !ok {
 		t.Fatal("the location-attached file is missing from the list — this is the bug this test exists for")
 	}
-	if itemDoc.ItemID == nil || *itemDoc.ItemID != itemID {
-		t.Errorf("location-attached file has item_id %v, want %q", itemDoc.ItemID, itemID)
+	if locationDoc.LocationID == nil || *locationDoc.LocationID != locationID {
+		t.Errorf("location-attached file has location_id %v, want %q", locationDoc.LocationID, locationID)
 	}
-	if itemDoc.ItemTitle == nil || *itemDoc.ItemTitle != "Foss Hotel Reykjavik" {
-		t.Errorf("location-attached file has item_title %v, want %q", itemDoc.ItemTitle, "Foss Hotel Reykjavik")
+	if locationDoc.LocationTitle == nil || *locationDoc.LocationTitle != "Foss Hotel Reykjavik" {
+		t.Errorf("location-attached file has location_title %v, want %q", locationDoc.LocationTitle, "Foss Hotel Reykjavik")
 	}
 
 	// The location's own list is unchanged: its file, and not the trip's.
-	w = ts.do(http.MethodGet, "/api/items/"+itemID+"/files", cookie, "")
-	itemDocs := decode[[]fileResponse](t, w)
-	if len(itemDocs) != 1 || itemDocs[0].Filename != "hotel-booking.txt" {
+	w = ts.do(http.MethodGet, "/api/locations/"+locationID+"/files", cookie, "")
+	locationDocs := decode[[]fileResponse](t, w)
+	if len(locationDocs) != 1 || locationDocs[0].Filename != "hotel-booking.txt" {
 		t.Fatalf("location's own list should hold exactly its own file, got %s", w.Body.String())
 	}
-	// item_title is left null off the trip listing: on a location's own page
-	// every row belongs to that location, so labelling each one is noise.
-	if itemDocs[0].ItemTitle != nil {
-		t.Errorf("item-level list set item_title %q, want null", *itemDocs[0].ItemTitle)
+	// location_title is left null off the trip listing: on a location's own
+	// page every row belongs to that location, so labelling each one is noise.
+	if locationDocs[0].LocationTitle != nil {
+		t.Errorf("location-level list set location_title %q, want null", *locationDocs[0].LocationTitle)
 	}
 
 	// Deleting a location-attached file from the trip list works: DeleteFile
 	// scopes by (id, trip_id), which holds for both kinds of row - worth
-	// asserting rather than assuming, since the trip list can now offer a delete
-	// for a file it doesn't directly own.
-	if w := ts.do(http.MethodDelete, "/api/files/"+itemDoc.ID, cookie, ""); w.Code != http.StatusNoContent {
+	// asserting rather than assuming, since the trip list can now offer a
+	// delete for a file it doesn't directly own.
+	if w := ts.do(http.MethodDelete, "/api/files/"+locationDoc.ID, cookie, ""); w.Code != http.StatusNoContent {
 		t.Fatalf("delete location-attached file: %d %s", w.Code, w.Body.String())
 	}
 	w = ts.do(http.MethodGet, "/api/trips/"+tripID+"/files", cookie, "")
@@ -189,10 +189,10 @@ func TestUpdateFileNote(t *testing.T) {
 		})
 	}
 
-	// Everything else about the file is untouched, and item_title stays null on
-	// this endpoint the way it does on every non-list one.
+	// Everything else about the file is untouched, and location_title stays
+	// null on this endpoint the way it does on every non-list one.
 	after := ts.getFile(t, cookie, tripID, fileID)
-	if after.Filename != "passport.png" || after.SizeBytes != int64(len("not really a png")) || after.ItemTitle != nil {
+	if after.Filename != "passport.png" || after.SizeBytes != int64(len("not really a png")) || after.LocationTitle != nil {
 		t.Errorf("patching the note changed something else: %+v", after)
 	}
 

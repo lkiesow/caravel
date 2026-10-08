@@ -535,7 +535,7 @@ func TestAssistSendsTheTripsTagVocabulary(t *testing.T) {
 		`{"category":"stay","tags":["hotel"],"title":"C"}`,
 		`{"category":"site","tags":[],"title":"D"}`,
 	} {
-		ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/items", cookie, body, http.StatusCreated)
+		ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/locations", cookie, body, http.StatusCreated)
 	}
 
 	readSSE(t, bufio.NewReader(postAssist(t, srv, cookie, tripID, enrichBody).Body))

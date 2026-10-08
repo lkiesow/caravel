@@ -20,7 +20,7 @@ var validCategories = map[string]bool{
 	"food": true, "event": true, "shop": true,
 }
 
-type itemResponse struct {
+type locationResponse struct {
 	ID        string  `json:"id"`
 	TripID    string  `json:"trip_id"`
 	Category  string  `json:"category"`
@@ -30,14 +30,14 @@ type itemResponse struct {
 	ImageID   *string `json:"image_id"`
 	ImageURL  *string `json:"image_url"`
 	// ImageCredit is who the cover is owed to, or null -- which it is for
-	// every image somebody uploaded themselves. Carried on the item rather
+	// every image somebody uploaded themselves. Carried on the location rather
 	// than only on the media asset because this is where it gets rendered,
 	// and a second request to find out whether a credit exists would mean the
 	// page either flickers or waits.
 	ImageCredit *imageCreditResponse `json:"image_credit"`
 	ShowOnMap   bool                 `json:"show_on_map"`
-	// Lat/Lng are set only on the list endpoint, and only for items that have
-	// both. The list used to carry no position at all, which meant the
+	// Lat/Lng are set only on the list endpoint, and only for locations that
+	// have both. The list used to carry no position at all, which meant the
 	// locations tab could not filter by distance without a second request
 	// (Stage 13 Milestone 7). Flat rather than a nested "location" object
 	// because there is no address here - the detail endpoint remains the place
@@ -47,7 +47,7 @@ type itemResponse struct {
 	// Tags is always present and never null, on the list as well as the
 	// detail: the locations tab filters on it client-side, and a field that
 	// is sometimes absent would mean every caller writing the same guard.
-	// itemToResponse leaves it empty and both handlers fill it in -- the
+	// locationToResponse leaves it empty and both handlers fill it in -- the
 	// list from one trip-wide query, the detail from its own read.
 	Tags []string `json:"tags"`
 	// Dates is the itinerary days this location is on, collapsed into ranges.
@@ -55,13 +55,13 @@ type itemResponse struct {
 	// cards can show them and the tab can filter and sort on them without a
 	// request per card -- the same reasoning that put lat/lng here in Stage 13.
 	// Always present, never null.
-	Dates     []itemDateRangeResponse `json:"dates"`
-	CreatedAt string                  `json:"created_at"`
-	UpdatedAt string                  `json:"updated_at"`
+	Dates     []locationDateRangeResponse `json:"dates"`
+	CreatedAt string                      `json:"created_at"`
+	UpdatedAt string                      `json:"updated_at"`
 }
 
-func (s *Server) itemToResponse(ctx context.Context, i db.Location) itemResponse {
-	resp := itemResponse{
+func (s *Server) locationToResponse(ctx context.Context, i db.Location) locationResponse {
+	resp := locationResponse{
 		ID:        i.ID,
 		TripID:    i.TripID,
 		Category:  i.Category,
@@ -71,7 +71,7 @@ func (s *Server) itemToResponse(ctx context.Context, i db.Location) itemResponse
 		ImageID:   i.ImageID,
 		ShowOnMap: i.ShowOnMap,
 		Tags:      []string{},
-		Dates:     []itemDateRangeResponse{},
+		Dates:     []locationDateRangeResponse{},
 		CreatedAt: i.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt: i.UpdatedAt.UTC().Format(time.RFC3339),
 	}
@@ -79,7 +79,7 @@ func (s *Server) itemToResponse(ctx context.Context, i db.Location) itemResponse
 	return resp
 }
 
-type itemLocationResponse struct {
+type geoResponse struct {
 	Lat     *float64 `json:"lat"`
 	Lng     *float64 `json:"lng"`
 	Address *string  `json:"address"`
@@ -91,30 +91,30 @@ type itemLocationResponse struct {
 	OSMID   *string `json:"osm_id"`
 }
 
-func newItemLocationResponse(loc db.LocationGeo) itemLocationResponse {
-	return itemLocationResponse{
-		Lat:     loc.Lat,
-		Lng:     loc.Lng,
-		Address: loc.Address,
-		OSMType: loc.OSMType,
-		OSMID:   loc.OSMID,
+func newGeoResponse(geo db.LocationGeo) geoResponse {
+	return geoResponse{
+		Lat:     geo.Lat,
+		Lng:     geo.Lng,
+		Address: geo.Address,
+		OSMType: geo.OSMType,
+		OSMID:   geo.OSMID,
 	}
 }
 
-type itemLinkResponse struct {
+type locationLinkResponse struct {
 	ID        string  `json:"id"`
 	URL       string  `json:"url"`
 	Label     *string `json:"label"`
 	SortOrder int     `json:"sort_order"`
 }
 
-type itemDetailResponse struct {
-	itemResponse
-	Location *itemLocationResponse `json:"location"`
-	Links    []itemLinkResponse    `json:"links"`
+type locationDetailResponse struct {
+	locationResponse
+	Geo   *geoResponse           `json:"geo"`
+	Links []locationLinkResponse `json:"links"`
 }
 
-func (s *Server) handleListItems(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleListLocations(w http.ResponseWriter, r *http.Request) {
 	trip, _, ok := s.loadTrip(w, r, db.RoleViewer)
 	if !ok {
 		return
@@ -129,15 +129,16 @@ func (s *Server) handleListItems(w http.ResponseWriter, r *http.Request) {
 		category = &c
 	}
 
-	items, err := s.Store.ListLocationsByTrip(r.Context(), trip.ID, category)
+	locations, err := s.Store.ListLocationsByTrip(r.Context(), trip.ID, category)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not list items")
 		return
 	}
 
-	// One extra query for the whole trip rather than one per item. A failure
-	// here costs the distance filter, not the list, so it is not fatal: the
-	// tab still renders every location, just without coordinates to measure.
+	// One extra query for the whole trip rather than one per location. A
+	// failure here costs the distance filter, not the list, so it is not fatal:
+	// the tab still renders every location, just without coordinates to
+	// measure.
 	coordinates := map[string]db.LocationCoordinate{}
 	if located, err := s.Store.ListLocationCoordinates(r.Context(), trip.ID); err == nil {
 		for _, c := range located {
@@ -145,11 +146,11 @@ func (s *Server) handleListItems(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Likewise one query for the trip rather than one per item, and likewise
-	// not fatal: a failure here costs the tag filter, not the list.
+	// Likewise one query for the trip rather than one per location, and
+	// likewise not fatal: a failure here costs the tag filter, not the list.
 	tags := map[string][]string{}
 	if rows, err := s.Store.ListLocationTagsByTrip(r.Context(), trip.ID); err == nil {
-		tags = tagsByItem(rows)
+		tags = tagsByLocation(rows)
 	}
 
 	// And once more for the dates. Three trip-wide reads to build this list,
@@ -161,9 +162,9 @@ func (s *Server) handleListItems(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	resp := make([]itemResponse, len(items))
-	for i, it := range items {
-		resp[i] = s.itemToResponse(r.Context(), it)
+	resp := make([]locationResponse, len(locations))
+	for i, it := range locations {
+		resp[i] = s.locationToResponse(r.Context(), it)
 		if c, ok := coordinates[it.ID]; ok {
 			lat, lng := c.Lat, c.Lng
 			resp[i].Lat, resp[i].Lng = &lat, &lng
@@ -178,20 +179,20 @@ func (s *Server) handleListItems(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-type itemRequest struct {
+type locationRequest struct {
 	Category  string  `json:"category"`
 	Title     string  `json:"title"`
 	Notes     *string `json:"notes"`
 	ShowOnMap *bool   `json:"show_on_map"`
 
-	// Optional nested sub-resources, so one request can commit an item and
+	// Optional nested sub-resources, so one request can commit a location and
 	// everything hanging off it in a single transaction. Each is a pointer
 	// so "absent" and "present but empty" stay distinguishable: absent
 	// leaves that sub-resource untouched, present replaces it (an empty
 	// list clears it). The standalone /location and /links endpoints still
 	// exist and still work; these are additive.
 	//
-	// Location is an upsert (item_locations.item_id is UNIQUE). Links are
+	// Geo is an upsert (location_geo.location_id is UNIQUE). Links are
 	// replace-the-set rather than merge, because there is no per-row update
 	// endpoint anywhere — editing a link has always meant delete plus re-add
 	// — so the client edits them as a list and sends the list it wants. Array
@@ -200,17 +201,17 @@ type itemRequest struct {
 	// Dates are the exception, and the difference matters. Since Stage 25 they
 	// are not rows of their own but a view of the itinerary days this location
 	// appears on, so "present replaces it" is honoured by reconciling the day
-	// set — see reconcileItemDates — rather than by deleting and recreating.
-	// The consequence for callers is that sending this key asserts the
-	// location complete itinerary membership: a client that did not touch the
-	// dates should omit it, not echo back what it read.
-	Location *itemLocationRequest    `json:"location"`
-	Links    *[]itemLinkRequest      `json:"links"`
-	Dates    *[]itemDateRangeRequest `json:"dates"`
-	Tags     *[]string               `json:"tags"`
+	// set — see reconcileLocationDates — rather than by deleting and
+	// recreating. The consequence for callers is that sending this key asserts
+	// the location complete itinerary membership: a client that did not touch
+	// the dates should omit it, not echo back what it read.
+	Geo   *geoRequest                 `json:"geo"`
+	Links *[]locationLinkRequest      `json:"links"`
+	Dates *[]locationDateRangeRequest `json:"dates"`
+	Tags  *[]string                   `json:"tags"`
 }
 
-func (req itemRequest) validate() error {
+func (req locationRequest) validate() error {
 	if strings.TrimSpace(req.Title) == "" {
 		return errors.New("title is required")
 	}
@@ -219,8 +220,8 @@ func (req itemRequest) validate() error {
 	}
 	// Validate the nested blocks up front so a bad link or date is a 400
 	// before anything is written, rather than a rolled-back 500.
-	if req.Location != nil {
-		if err := req.Location.validate(); err != nil {
+	if req.Geo != nil {
+		if err := req.Geo.validate(); err != nil {
 			return err
 		}
 	}
@@ -232,7 +233,7 @@ func (req itemRequest) validate() error {
 		}
 	}
 	if req.Dates != nil {
-		if err := validateItemDateRanges(*req.Dates); err != nil {
+		if err := validateLocationDateRanges(*req.Dates); err != nil {
 			return err
 		}
 	}
@@ -290,39 +291,39 @@ func validateLinkURL(raw string) error {
 	return nil
 }
 
-// writeItemNested applies a request's optional nested location/links/dates to
-// an existing item. It takes the Store to use rather than reading s.Store, so
-// the callers can hand it a transaction-bound one and have the whole item
+// writeLocationNested applies a request's optional nested geo/links/dates to an
+// existing location. It takes the Store to use rather than reading s.Store, so
+// the callers can hand it a transaction-bound one and have the whole location
 // commit or not at all.
-func writeItemNested(ctx context.Context, store db.Store, item db.Location, req itemRequest) error {
-	if req.Location != nil {
+func writeLocationNested(ctx context.Context, store db.Store, location db.Location, req locationRequest) error {
+	if req.Geo != nil {
 		if _, err := store.UpsertLocationGeo(ctx, db.UpsertLocationGeoParams{
 			ID:         uuid.NewString(),
-			LocationID: item.ID,
-			Lat:        req.Location.Lat,
-			Lng:        req.Location.Lng,
-			Address:    req.Location.Address,
-			OSMType:    req.Location.OSMType,
-			OSMID:      req.Location.OSMID,
+			LocationID: location.ID,
+			Lat:        req.Geo.Lat,
+			Lng:        req.Geo.Lng,
+			Address:    req.Geo.Address,
+			OSMType:    req.Geo.OSMType,
+			OSMID:      req.Geo.OSMID,
 		}); err != nil {
 			return err
 		}
 	}
 
 	if req.Links != nil {
-		existing, err := store.ListLocationLinksByLocation(ctx, item.ID)
+		existing, err := store.ListLocationLinksByLocation(ctx, location.ID)
 		if err != nil {
 			return err
 		}
 		for _, l := range existing {
-			if _, err := store.DeleteLocationLink(ctx, l.ID, item.ID); err != nil {
+			if _, err := store.DeleteLocationLink(ctx, l.ID, location.ID); err != nil {
 				return err
 			}
 		}
 		for i, l := range *req.Links {
 			if _, err := store.CreateLocationLink(ctx, db.CreateLocationLinkParams{
 				ID:         uuid.NewString(),
-				LocationID: item.ID,
+				LocationID: location.ID,
 				URL:        l.URL,
 				Label:      l.Label,
 				SortOrder:  i,
@@ -333,13 +334,13 @@ func writeItemNested(ctx context.Context, store db.Store, item db.Location, req 
 	}
 
 	if req.Dates != nil {
-		if err := reconcileItemDates(ctx, store, item, *req.Dates); err != nil {
+		if err := reconcileLocationDates(ctx, store, location, *req.Dates); err != nil {
 			return err
 		}
 	}
 
 	if req.Tags != nil {
-		if err := writeItemTags(ctx, store, item.ID, tags.Normalize(*req.Tags)); err != nil {
+		if err := writeLocationTags(ctx, store, location.ID, tags.Normalize(*req.Tags)); err != nil {
 			return err
 		}
 	}
@@ -347,23 +348,23 @@ func writeItemNested(ctx context.Context, store db.Store, item db.Location, req 
 	return nil
 }
 
-func (s *Server) handleCreateItem(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleCreateLocation(w http.ResponseWriter, r *http.Request) {
 	trip, _, ok := s.loadTrip(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
 
 	// A multipart body carries the cover photo and the files alongside the
-	// item, so the whole location commits or does not -- see items_create.go.
-	// The JSON path below stays exactly as it was: it is what the assistant
-	// and every other caller send, and readJSON's unknown-field strictness is
-	// part of its contract.
+	// location, so the whole location commits or does not -- see
+	// locations_create.go. The JSON path below stays exactly as it was: it is
+	// what the assistant and every other caller send, and readJSON's
+	// unknown-field strictness is part of its contract.
 	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
-		s.createItemMultipart(w, r, trip)
+		s.createLocationMultipart(w, r, trip)
 		return
 	}
 
-	var req itemRequest
+	var req locationRequest
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -374,48 +375,48 @@ func (s *Server) handleCreateItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Same transaction as the multipart path, with no image and no files.
-	item, err := s.createItemTx(r.Context(), trip, uuid.NewString(), req, nil, nil)
+	location, err := s.createLocationTx(r.Context(), trip, uuid.NewString(), req, nil, nil)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not create item")
+		writeError(w, http.StatusInternalServerError, "could not create location")
 		return
 	}
-	// The detail shape, not the bare item: a create can now carry nested
+	// The detail shape, not the bare location: a create can now carry nested
 	// location/links/dates, and the client needs them (with their generated
 	// IDs) back without a second GET.
-	writeJSON(w, http.StatusCreated, s.buildItemDetail(r, item))
+	writeJSON(w, http.StatusCreated, s.buildLocationDetail(r, location))
 }
 
-func (s *Server) handleGetItem(w http.ResponseWriter, r *http.Request) {
-	item, _, ok := s.loadItem(w, r, db.RoleViewer)
+func (s *Server) handleGetLocation(w http.ResponseWriter, r *http.Request) {
+	location, _, ok := s.loadLocation(w, r, db.RoleViewer)
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, s.buildItemDetail(r, item))
+	writeJSON(w, http.StatusOK, s.buildLocationDetail(r, location))
 }
 
-func (s *Server) buildItemDetail(r *http.Request, item db.Location) itemDetailResponse {
-	detail := itemDetailResponse{itemResponse: s.itemToResponse(r.Context(), item), Links: []itemLinkResponse{}}
+func (s *Server) buildLocationDetail(r *http.Request, location db.Location) locationDetailResponse {
+	detail := locationDetailResponse{locationResponse: s.locationToResponse(r.Context(), location), Links: []locationLinkResponse{}}
 
-	if loc, err := s.Store.GetLocationGeoByLocationID(r.Context(), item.ID); err == nil {
-		locResp := newItemLocationResponse(loc)
-		detail.Location = &locResp
+	if geo, err := s.Store.GetLocationGeoByLocationID(r.Context(), location.ID); err == nil {
+		geoResp := newGeoResponse(geo)
+		detail.Geo = &geoResp
 	}
 
-	if links, err := s.Store.ListLocationLinksByLocation(r.Context(), item.ID); err == nil {
+	if links, err := s.Store.ListLocationLinksByLocation(r.Context(), location.ID); err == nil {
 		for _, l := range links {
-			detail.Links = append(detail.Links, itemLinkResponse{ID: l.ID, URL: l.URL, Label: l.Label, SortOrder: l.SortOrder})
+			detail.Links = append(detail.Links, locationLinkResponse{ID: l.ID, URL: l.URL, Label: l.Label, SortOrder: l.SortOrder})
 		}
 	}
 
 	// Tolerant in the same way, and for the same reason.
-	if tags, err := s.Store.ListLocationTagsByLocation(r.Context(), item.ID); err == nil {
+	if tags, err := s.Store.ListLocationTagsByLocation(r.Context(), location.ID); err == nil {
 		detail.Tags = tags
 	}
 
 	// The days this location is on in the itinerary, collapsed into ranges.
 	// Tolerant of a failure the way the two blocks above are: losing the dates
 	// costs a card on the page, not the location.
-	if rows, err := s.Store.ListItineraryDatesByLocation(r.Context(), item.ID); err == nil {
+	if rows, err := s.Store.ListItineraryDatesByLocation(r.Context(), location.ID); err == nil {
 		dates := make([]string, len(rows))
 		for i, row := range rows {
 			dates[i] = row.Date
@@ -426,13 +427,13 @@ func (s *Server) buildItemDetail(r *http.Request, item db.Location) itemDetailRe
 	return detail
 }
 
-func (s *Server) handleUpdateItem(w http.ResponseWriter, r *http.Request) {
-	item, _, ok := s.loadItem(w, r, db.RoleEditor)
+func (s *Server) handleUpdateLocation(w http.ResponseWriter, r *http.Request) {
+	location, _, ok := s.loadLocation(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
 
-	var req itemRequest
+	var req locationRequest
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -442,15 +443,15 @@ func (s *Server) handleUpdateItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	showOnMap := item.ShowOnMap
+	showOnMap := location.ShowOnMap
 	if req.ShowOnMap != nil {
 		showOnMap = *req.ShowOnMap
 	}
 	var updated db.Location
 	err := s.Store.WithTx(r.Context(), func(store db.Store) error {
 		saved, err := store.UpdateLocation(r.Context(), db.UpdateLocationParams{
-			ID:        item.ID,
-			TripID:    item.TripID,
+			ID:        location.ID,
+			TripID:    location.TripID,
 			Category:  req.Category,
 			Title:     req.Title,
 			Notes:     req.Notes,
@@ -460,32 +461,32 @@ func (s *Server) handleUpdateItem(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
-		if err := writeItemNested(r.Context(), store, saved, req); err != nil {
+		if err := writeLocationNested(r.Context(), store, saved, req); err != nil {
 			return err
 		}
 		updated = saved
 		return nil
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not update item")
+		writeError(w, http.StatusInternalServerError, "could not update location")
 		return
 	}
-	writeJSON(w, http.StatusOK, s.buildItemDetail(r, updated))
+	writeJSON(w, http.StatusOK, s.buildLocationDetail(r, updated))
 }
 
-func (s *Server) handleDeleteItem(w http.ResponseWriter, r *http.Request) {
-	item, _, ok := s.loadItem(w, r, db.RoleEditor)
+func (s *Server) handleDeleteLocation(w http.ResponseWriter, r *http.Request) {
+	location, _, ok := s.loadLocation(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
-	if _, err := s.Store.DeleteLocation(r.Context(), item.ID, item.TripID); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not delete item")
+	if _, err := s.Store.DeleteLocation(r.Context(), location.ID, location.TripID); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not delete location")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-type itemLocationRequest struct {
+type geoRequest struct {
 	Lat     *float64 `json:"lat"`
 	Lng     *float64 `json:"lng"`
 	Address *string  `json:"address"`
@@ -509,7 +510,7 @@ var osmElementTypes = map[string]bool{"node": true, "way": true, "relation": tru
 //
 // Both or neither. Half an identity cannot build a URL, and storing one half
 // only invites a render site to interpolate an empty string into the path.
-func (r itemLocationRequest) validate() error {
+func (r geoRequest) validate() error {
 	typeSet := r.OSMType != nil && strings.TrimSpace(*r.OSMType) != ""
 	idSet := r.OSMID != nil && strings.TrimSpace(*r.OSMID) != ""
 	if typeSet != idSet {
@@ -543,27 +544,27 @@ func isDigits(s string) bool {
 	return true
 }
 
-func (s *Server) handlePutItemLocation(w http.ResponseWriter, r *http.Request) {
-	item, _, ok := s.loadItem(w, r, db.RoleEditor)
+func (s *Server) handlePutLocationGeo(w http.ResponseWriter, r *http.Request) {
+	location, _, ok := s.loadLocation(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
 
-	var req itemLocationRequest
+	var req geoRequest
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	// The same check the nested location gets on item create/update: this
+	// The same check the nested geo gets on location create/update: this
 	// endpoint is a second door to the same columns.
 	if err := req.validate(); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	loc, err := s.Store.UpsertLocationGeo(r.Context(), db.UpsertLocationGeoParams{
+	geo, err := s.Store.UpsertLocationGeo(r.Context(), db.UpsertLocationGeoParams{
 		ID:         uuid.NewString(),
-		LocationID: item.ID,
+		LocationID: location.ID,
 		Lat:        req.Lat,
 		Lng:        req.Lng,
 		Address:    req.Address,
@@ -574,21 +575,21 @@ func (s *Server) handlePutItemLocation(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not save location")
 		return
 	}
-	writeJSON(w, http.StatusOK, newItemLocationResponse(loc))
+	writeJSON(w, http.StatusOK, newGeoResponse(geo))
 }
 
-type itemLinkRequest struct {
+type locationLinkRequest struct {
 	URL   string  `json:"url"`
 	Label *string `json:"label"`
 }
 
-func (s *Server) handleCreateItemLink(w http.ResponseWriter, r *http.Request) {
-	item, _, ok := s.loadItem(w, r, db.RoleEditor)
+func (s *Server) handleCreateLocationLink(w http.ResponseWriter, r *http.Request) {
+	location, _, ok := s.loadLocation(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
 
-	var req itemLinkRequest
+	var req locationLinkRequest
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "url is required")
 		return
@@ -602,7 +603,7 @@ func (s *Server) handleCreateItemLink(w http.ResponseWriter, r *http.Request) {
 
 	link, err := s.Store.CreateLocationLink(r.Context(), db.CreateLocationLinkParams{
 		ID:         uuid.NewString(),
-		LocationID: item.ID,
+		LocationID: location.ID,
 		URL:        req.URL,
 		Label:      req.Label,
 	})
@@ -610,16 +611,16 @@ func (s *Server) handleCreateItemLink(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not create link")
 		return
 	}
-	writeJSON(w, http.StatusCreated, itemLinkResponse{ID: link.ID, URL: link.URL, Label: link.Label, SortOrder: link.SortOrder})
+	writeJSON(w, http.StatusCreated, locationLinkResponse{ID: link.ID, URL: link.URL, Label: link.Label, SortOrder: link.SortOrder})
 }
 
-func (s *Server) handleDeleteItemLink(w http.ResponseWriter, r *http.Request) {
-	item, _, ok := s.loadItem(w, r, db.RoleEditor)
+func (s *Server) handleDeleteLocationLink(w http.ResponseWriter, r *http.Request) {
+	location, _, ok := s.loadLocation(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
 	linkID := chi.URLParam(r, "linkId")
-	deleted, err := s.Store.DeleteLocationLink(r.Context(), linkID, item.ID)
+	deleted, err := s.Store.DeleteLocationLink(r.Context(), linkID, location.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not delete link")
 		return
@@ -631,8 +632,8 @@ func (s *Server) handleDeleteItemLink(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) handleSetItemImage(w http.ResponseWriter, r *http.Request) {
-	item, _, ok := s.loadItem(w, r, db.RoleEditor)
+func (s *Server) handleSetLocationImage(w http.ResponseWriter, r *http.Request) {
+	location, _, ok := s.loadLocation(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
@@ -644,7 +645,7 @@ func (s *Server) handleSetItemImage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Same check as handleSetTripPreviewImage: the asset id arrives in the
-	// body, so the route authorized the *item*, not the asset. A nil id
+	// body, so the route authorized the *location*, not the asset. A nil id
 	// clears the image and names nothing to check.
 	if req.MediaAssetID != nil {
 		asset, err := s.Store.GetMediaAssetByID(r.Context(), *req.MediaAssetID)
@@ -656,15 +657,15 @@ func (s *Server) handleSetItemImage(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-		if !s.requireSameTrip(w, asset.TripID, item.TripID, "media asset belongs to another trip") {
+		if !s.requireSameTrip(w, asset.TripID, location.TripID, "media asset belongs to another trip") {
 			return
 		}
 	}
 
-	updated, err := s.Store.SetLocationImage(r.Context(), item.ID, item.TripID, req.MediaAssetID, time.Now().UTC())
+	updated, err := s.Store.SetLocationImage(r.Context(), location.ID, location.TripID, req.MediaAssetID, time.Now().UTC())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not set image")
 		return
 	}
-	writeJSON(w, http.StatusOK, s.itemToResponse(r.Context(), updated))
+	writeJSON(w, http.StatusOK, s.locationToResponse(r.Context(), updated))
 }

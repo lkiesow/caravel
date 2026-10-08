@@ -272,7 +272,7 @@ type linkSpec struct {
 	label string
 }
 
-type itemSpec struct {
+type locationSpec struct {
 	key      string // stable per-trip identity, for the deterministic ID
 	category string
 	// tags is what itemType was until Stage 26 Milestone 7 folded the type
@@ -288,22 +288,22 @@ type itemSpec struct {
 	links    []linkSpec
 }
 
-func (s seedCtx) addItems(scenarioName, tripID string, specs []itemSpec) ([]db.Location, error) {
+func (s seedCtx) addLocations(scenarioName, tripID string, specs []locationSpec) ([]db.Location, error) {
 	now := time.Now().UTC()
-	items := make([]db.Location, 0, len(specs))
+	locations := make([]db.Location, 0, len(specs))
 	for i, spec := range specs {
-		itemID := seedID(scenarioName, "item", spec.key)
+		locationID := seedID(scenarioName, "location", spec.key)
 		// A second apart, in spec order. The locations list is ordered by
-		// created_at since migration 0012 dropped items.sort_order, and one shared
-		// timestamp for the whole scenario would leave the order to the tie
-		// break on id -- which is a hash, so the seeded trips would read in an
-		// arbitrary order and the UI suite would be asserting against it.
+		// created_at since migration 0012 dropped items.sort_order, and one
+		// shared timestamp for the whole scenario would leave the order to the
+		// tie break on id -- which is a hash, so the seeded trips would read in
+		// an arbitrary order and the UI suite would be asserting against it.
 		// Seconds rather than nanoseconds so the gaps survive any storage
 		// layout, and backwards from now so the newest spec is still the
 		// newest row.
 		created := now.Add(time.Duration(i-len(specs)) * time.Second)
-		item, err := s.store.CreateLocation(s.ctx, db.CreateLocationParams{
-			ID:        itemID,
+		location, err := s.store.CreateLocation(s.ctx, db.CreateLocationParams{
+			ID:        locationID,
 			TripID:    tripID,
 			Category:  spec.category,
 			Title:     spec.title,
@@ -313,17 +313,17 @@ func (s seedCtx) addItems(scenarioName, tripID string, specs []itemSpec) ([]db.L
 			UpdatedAt: created,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("create item %s: %w", spec.key, err)
+			return nil, fmt.Errorf("create location %s: %w", spec.key, err)
 		}
 		for _, tag := range spec.tags {
-			if err := s.store.CreateLocationTag(s.ctx, itemID, tag); err != nil {
-				return nil, fmt.Errorf("tag item %s: %w", spec.key, err)
+			if err := s.store.CreateLocationTag(s.ctx, locationID, tag); err != nil {
+				return nil, fmt.Errorf("tag location %s: %w", spec.key, err)
 			}
 		}
 		if spec.lat != nil && spec.lng != nil {
 			if _, err := s.store.UpsertLocationGeo(s.ctx, db.UpsertLocationGeoParams{
-				ID:         seedID(scenarioName, "location", spec.key),
-				LocationID: itemID,
+				ID:         seedID(scenarioName, "geo", spec.key),
+				LocationID: locationID,
 				Lat:        spec.lat,
 				Lng:        spec.lng,
 			}); err != nil {
@@ -333,7 +333,7 @@ func (s seedCtx) addItems(scenarioName, tripID string, specs []itemSpec) ([]db.L
 		for j, l := range spec.links {
 			if _, err := s.store.CreateLocationLink(s.ctx, db.CreateLocationLinkParams{
 				ID:         seedID(scenarioName, "link", spec.key, l.url),
-				LocationID: itemID,
+				LocationID: locationID,
 				URL:        l.url,
 				Label:      ptr(l.label),
 				SortOrder:  j,
@@ -341,29 +341,29 @@ func (s seedCtx) addItems(scenarioName, tripID string, specs []itemSpec) ([]db.L
 				return nil, fmt.Errorf("add link for %s: %w", spec.key, err)
 			}
 		}
-		items = append(items, item)
+		locations = append(locations, location)
 	}
-	return items, nil
+	return locations, nil
 }
 
 func (s seedCtx) addDay(scenarioName, tripID, date string, notes *string) (db.ItineraryDay, error) {
 	return s.store.UpsertItineraryDayNotes(s.ctx, seedID(scenarioName, "day", date), tripID, date, notes)
 }
 
-func (s seedCtx) addEntry(scenarioName, dayID, itemID string, sortOrder int) error {
+func (s seedCtx) addEntry(scenarioName, dayID, locationID string, sortOrder int) error {
 	_, err := s.store.CreateItineraryEntry(s.ctx, db.CreateItineraryEntryParams{
-		ID:             seedID(scenarioName, "entry", dayID, itemID),
+		ID:             seedID(scenarioName, "entry", dayID, locationID),
 		ItineraryDayID: dayID,
-		LocationID:     itemID,
+		LocationID:     locationID,
 		SortOrder:      sortOrder,
 	})
 	return err
 }
 
-// Visibility is a required parameter rather than a defaulted one: the sweeps can
-// only see a visibility that some scenario actually seeds, so "which one?" is a
-// question every caller should have to answer out loud.
-func (s seedCtx) addChecklist(scenarioName, tripID, title string, vis db.ChecklistVisibility, items []string) error {
+// Visibility is a required parameter rather than a defaulted one: the sweeps
+// can only see a visibility that some scenario actually seeds, so "which one?"
+// is a question every caller should have to answer out loud.
+func (s seedCtx) addChecklist(scenarioName, tripID, title string, vis db.ChecklistVisibility, locations []string) error {
 	// Visibility and owner are explicit, not left to the column default: the
 	// store passes whatever the params carry, so an unset visibility inserts the
 	// empty string and trips the CHECK constraint. Which is how this was found —
@@ -381,7 +381,7 @@ func (s seedCtx) addChecklist(scenarioName, tripID, title string, vis db.Checkli
 	if err != nil {
 		return err
 	}
-	for i, text := range items {
+	for i, text := range locations {
 		if _, err := s.store.CreateChecklistItem(s.ctx, db.CreateChecklistItemParams{
 			ID:          seedID(scenarioName, "checklistItem", title, text),
 			ChecklistID: list.ID,
@@ -397,7 +397,7 @@ func (s seedCtx) addChecklist(scenarioName, tripID, title string, vis db.Checkli
 }
 
 // addImage stores one of the embedded fixture images as a media asset and
-// returns its ID, ready to hand to SetTripPreviewImage or SetItemImage.
+// returns its ID, ready to hand to SetTripPreviewImage or SetLocationImage.
 //
 // It goes through imaging.DecodeAndResize — the same call handleUploadMedia
 // makes — rather than copying the bytes straight to the blob store, so a
@@ -405,9 +405,9 @@ func (s seedCtx) addChecklist(scenarioName, tripID, title string, vis db.Checkli
 // produced, content type and dimensions included. Otherwise the seed would be
 // exercising a path no real upload takes.
 //
-// Why any of this exists: no scenario set a trip cover photo or an item image,
-// so .image-field__preview, .itinerary-entry__thumb and the location card's
-// thumbnail rendered their empty state in every UI sweep and were never
+// Why any of this exists: no scenario set a trip cover photo or a location
+// image, so .image-field__preview, .itinerary-entry__thumb and the location
+// card's thumbnail rendered their empty state in every UI sweep and were never
 // measured (see todo.md). The fixtures are small (~343x200) crops of a test
 // sheet, deliberately: they are test data, so softness when a 640px-wide banner
 // scales one up is expected and is not a layout bug.
@@ -444,7 +444,7 @@ func (s seedCtx) addImage(scenarioName, tripID, filename string) (string, error)
 // addFile writes a real (tiny) file through the blob store as well as the
 // row, so the Files tab has something that actually downloads.
 // Visibility is a required parameter for the same reason as addChecklist above.
-func (s seedCtx) addFile(scenarioName, tripID string, itemID *string, filename, body string, vis db.FileVisibility) error {
+func (s seedCtx) addFile(scenarioName, tripID string, locationID *string, filename, body string, vis db.FileVisibility) error {
 	id := seedID(scenarioName, "file", filename)
 	key := fmt.Sprintf("%s/%s", tripID, id)
 	size, err := s.blob.Put(s.ctx, key, strings.NewReader(body))
@@ -454,7 +454,7 @@ func (s seedCtx) addFile(scenarioName, tripID string, itemID *string, filename, 
 	_, err = s.store.CreateFile(s.ctx, db.CreateFileParams{
 		ID:          id,
 		TripID:      tripID,
-		LocationID:  itemID,
+		LocationID:  locationID,
 		Filename:    filename,
 		StoragePath: key,
 		ContentType: ptr("text/plain; charset=utf-8"),
@@ -476,7 +476,7 @@ func (s seedCtx) addFile(scenarioName, tripID string, itemID *string, filename, 
 // like an upcoming one; every other scenario is fully deterministic.
 //
 // Note the coordinates and ShowOnMap: true. The previous seed set neither, so
-// every seeded item was show_on_map=false (the Go zero value) with no
+// every seeded location was show_on_map=false (the Go zero value) with no
 // coordinates, and the seeded trip's Map tab was empty until you edited each
 // location by hand.
 func seedFull(s seedCtx) error {
@@ -489,7 +489,7 @@ func seedFull(s seedCtx) error {
 		return err
 	}
 
-	items, err := s.addItems("full", trip.ID, []itemSpec{
+	locations, err := s.addLocations("full", trip.ID, []locationSpec{
 		// The link is here so the Links card renders with content on the
 		// location view and editor pages. Without it the card only ever showed
 		// its empty state, so the UI sweeps never measured a link-list row -
@@ -564,11 +564,11 @@ func seedFull(s seedCtx) error {
 		return err
 	}
 
-	itemImageID, err := s.addImage("full", trip.ID, "banff-moraine-lake.jpg")
+	locationImageID, err := s.addImage("full", trip.ID, "banff-moraine-lake.jpg")
 	if err != nil {
 		return err
 	}
-	if _, err := s.store.SetLocationImage(s.ctx, items[0].ID, trip.ID, &itemImageID, time.Now().UTC()); err != nil {
+	if _, err := s.store.SetLocationImage(s.ctx, locations[0].ID, trip.ID, &locationImageID, time.Now().UTC()); err != nil {
 		return fmt.Errorf("set location image: %w", err)
 	}
 
@@ -576,10 +576,10 @@ func seedFull(s seedCtx) error {
 	if err != nil {
 		return err
 	}
-	if err := s.addEntry("full", firstDay.ID, items[2].ID, 0); err != nil {
+	if err := s.addEntry("full", firstDay.ID, locations[2].ID, 0); err != nil {
 		return err
 	}
-	if err := s.addEntry("full", firstDay.ID, items[1].ID, 1); err != nil {
+	if err := s.addEntry("full", firstDay.ID, locations[1].ID, 1); err != nil {
 		return err
 	}
 
@@ -587,7 +587,7 @@ func seedFull(s seedCtx) error {
 	if err != nil {
 		return err
 	}
-	if err := s.addEntry("full", secondDay.ID, items[0].ID, 0); err != nil {
+	if err := s.addEntry("full", secondDay.ID, locations[0].ID, 0); err != nil {
 		return err
 	}
 
@@ -633,7 +633,7 @@ func seedFull(s seedCtx) error {
 	}
 	// Attached to a location, not the trip — the case the trip-level Files
 	// tab currently filters out (see todo.md).
-	return s.addFile("full", trip.ID, &items[1].ID, "hotel-booking.txt", "Seeded item-level file.\n", db.FileVisibilityTrip)
+	return s.addFile("full", trip.ID, &locations[1].ID, "hotel-booking.txt", "Seeded location-level file.\n", db.FileVisibilityTrip)
 }
 
 // seedOnePin has a single mappable location, so the map's bounds are a point
@@ -708,7 +708,7 @@ func seedOnePin(s seedCtx) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.addItems("one-pin", trip.ID, []itemSpec{
+	_, err = s.addLocations("one-pin", trip.ID, []locationSpec{
 		{key: "only", category: "site", tags: []string{"museum"}, title: "The Only Pin",
 			notes: "The single location on this trip's map.",
 			lat:   ptr(52.2799), lng: ptr(8.0472), onMap: true},
@@ -742,7 +742,7 @@ func seedYearBoundary(s seedCtx) error {
 	if err != nil {
 		return err
 	}
-	items, err := s.addItems("year-boundary", trip.ID, []itemSpec{
+	locations, err := s.addLocations("year-boundary", trip.ID, []locationSpec{
 		{key: "party", category: "site", tags: []string{"event"}, title: "Midnight Fireworks",
 			notes: "On the bridge.", lat: ptr(52.3676), lng: ptr(4.9041), onMap: true},
 	})
@@ -755,7 +755,7 @@ func seedYearBoundary(s seedCtx) error {
 		if err != nil {
 			return err
 		}
-		if err := s.addEntry("year-boundary", d.ID, items[0].ID, i); err != nil {
+		if err := s.addEntry("year-boundary", d.ID, locations[0].ID, i); err != nil {
 			return err
 		}
 	}
@@ -770,7 +770,7 @@ func seedNoDates(s seedCtx) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.addItems("no-dates", trip.ID, []itemSpec{
+	_, err = s.addLocations("no-dates", trip.ID, []locationSpec{
 		{key: "idea", category: "site", tags: []string{"idea"}, title: "Somewhere, someday",
 			notes: "An idea with no date attached yet."},
 	})
@@ -786,7 +786,7 @@ func seedOutOfRangeDays(s seedCtx) error {
 	if err != nil {
 		return err
 	}
-	items, err := s.addItems("out-of-range-days", trip.ID, []itemSpec{
+	locations, err := s.addLocations("out-of-range-days", trip.ID, []locationSpec{
 		{key: "early", category: "transport", tags: []string{"train"}, title: "Early Arrival Train",
 			notes: "Scheduled before the trip officially starts."},
 	})
@@ -798,7 +798,7 @@ func seedOutOfRangeDays(s seedCtx) error {
 		if err != nil {
 			return err
 		}
-		if err := s.addEntry("out-of-range-days", d.ID, items[0].ID, i); err != nil {
+		if err := s.addEntry("out-of-range-days", d.ID, locations[0].ID, i); err != nil {
 			return err
 		}
 	}
@@ -814,7 +814,7 @@ func seedCascade(s seedCtx) error {
 	if err != nil {
 		return err
 	}
-	items, err := s.addItems("cascade", trip.ID, []itemSpec{
+	locations, err := s.addLocations("cascade", trip.ID, []locationSpec{
 		{key: "a", category: "site", tags: []string{"landmark"}, title: "Cascade Location A",
 			notes: "Has a location row, a file and an itinerary entry.",
 			lat:   ptr(48.8584), lng: ptr(2.2945), onMap: true},
@@ -828,8 +828,8 @@ func seedCascade(s seedCtx) error {
 	if err != nil {
 		return err
 	}
-	for i, item := range items {
-		if err := s.addEntry("cascade", d.ID, item.ID, i); err != nil {
+	for i, location := range locations {
+		if err := s.addEntry("cascade", d.ID, location.ID, i); err != nil {
 			return err
 		}
 	}
@@ -839,5 +839,5 @@ func seedCascade(s seedCtx) error {
 	if err := s.addFile("cascade", trip.ID, nil, "cascade-trip.txt", "Trip-level, should cascade.\n", db.FileVisibilityTrip); err != nil {
 		return err
 	}
-	return s.addFile("cascade", trip.ID, &items[0].ID, "cascade-item.txt", "Item-level, should cascade.\n", db.FileVisibilityTrip)
+	return s.addFile("cascade", trip.ID, &locations[0].ID, "cascade-location.txt", "Location-level, should cascade.\n", db.FileVisibilityTrip)
 }

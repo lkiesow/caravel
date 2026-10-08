@@ -33,7 +33,7 @@ import { escapeHtml } from "../escape.js";
 //
 // The cover photo and the files cannot ride in a JSON body, so create mode
 // sends a multipart one instead (Stage 23 Milestones 3-4): the item as JSON
-// in an "item" part, the staged cover and the staged files alongside it, and
+// in a "location" part, the staged cover and the staged files alongside it, and
 // the server commits all of it in one transaction or none of it. In edit mode
 // they still write immediately against the existing item - image-field.js and
 // file-list.js each take a path and own their own request - because there is
@@ -73,7 +73,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
 
   if (itemId) {
     try {
-      item = await api.get(`/items/${itemId}`);
+      item = await api.get(`/locations/${itemId}`);
     } catch {
       renderNotFoundPage(container, { href: `/trips/${tripId}`, labelKey: "common.back" });
       return;
@@ -206,8 +206,8 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
             </div>
             <p class="location-form__pick-hint" data-i18n="location.form.pickHint"></p>
             <map-view pick class="location-form__map"${
-              item?.location?.lat != null && item?.location?.lng != null
-                ? ` lat="${escapeHtml(item.location.lat)}" lng="${escapeHtml(item.location.lng)}"`
+              item?.geo?.lat != null && item?.geo?.lng != null
+                ? ` lat="${escapeHtml(item.geo.lat)}" lng="${escapeHtml(item.geo.lng)}"`
                 : ""
             }></map-view>
           </form>
@@ -265,7 +265,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
     imageField = renderImageField(container.querySelector(".image-field-slot"), {
       tripId,
       imageUrl: item?.image_url,
-      attachPath: item ? `/items/${item.id}/image` : undefined,
+      attachPath: item ? `/locations/${item.id}/image` : undefined,
       // The title the user has already typed is usually the whole search, so
       // the picker opens with it filled in. Read at press time rather than
       // captured: on a new location it is typed after this card is rendered.
@@ -287,7 +287,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
     bindLinkForm();
     renderDatesList();
     bindDateForm();
-    renderFileList(container.querySelector(".file-list-slot"), item ? `/items/${item.id}/files` : null, {
+    renderFileList(container.querySelector(".file-list-slot"), item ? `/locations/${item.id}/files` : null, {
       staged: draft.files,
       shared: isShared(trip),
     });
@@ -302,7 +302,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
     if (deleteBtn) {
       guardClick(deleteBtn, async () => {
         if (!(await confirmDialog({ messageKey: "item.deleteConfirm" }))) return;
-        await api.delete(`/items/${item.id}`);
+        await api.delete(`/locations/${item.id}`);
         // Deleted either way; only the redirect waits on the user still being
         // here (see router.js on the signal).
         if (signal.aborted) return;
@@ -408,8 +408,8 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
     // location the item already had. An untouched card on a location that
     // never had one sends nothing rather than creating an empty row.
     const location = readLocationForm();
-    if (location) body.location = location;
-    else if (item?.location) body.location = { lat: null, lng: null, address: null };
+    if (location) body.geo = location;
+    else if (item?.geo) body.geo = { lat: null, lng: null, address: null };
 
     // Create sends the whole location at once, edit sends the item alone.
     //
@@ -420,8 +420,8 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
     let saved;
     try {
       saved = item
-        ? await api.patch(`/items/${item.id}`, body)
-        : await api.postForm(`/trips/${tripId}/items`, buildCreateForm(body));
+        ? await api.patch(`/locations/${item.id}`, body)
+        : await api.postForm(`/trips/${tripId}/locations`, buildCreateForm(body));
     } catch (err) {
       // Nothing was created, so there is nothing to clean up and nothing to
       // adopt: the draft is still on the page and Save can simply be pressed
@@ -439,7 +439,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
   }
 
   // Everything a new location is made of, in one multipart body: the item as
-  // JSON in an "item" part, the staged cover as either a file or a URL with
+  // JSON in a "location" part, the staged cover as either a file or a URL with
   // its provenance, and the staged files.
   //
   // The notes and visibilities are *positional* -- the nth file_note belongs
@@ -448,7 +448,7 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
   // a file has no note, or every later file would take the wrong one.
   function buildCreateForm(body) {
     const form = new FormData();
-    form.append("item", JSON.stringify(body));
+    form.append("location", JSON.stringify(body));
 
     if (draft.image?.kind === "file") {
       form.append("image", draft.image.file);
@@ -506,14 +506,14 @@ export async function renderLocationEditorPage(container, { tripId, itemId }, si
 
   function renderLocationForm() {
     const form = container.querySelector(".location-form");
-    if (item?.location) {
-      form.lat.value = item.location.lat ?? "";
-      form.lng.value = item.location.lng ?? "";
-      form.address.value = item.location.address ?? "";
+    if (item?.geo) {
+      form.lat.value = item.geo.lat ?? "";
+      form.lng.value = item.geo.lng ?? "";
+      form.address.value = item.geo.address ?? "";
       // Carried through an edit that does not touch the coordinates, so
       // renaming a location does not silently drop its OSM identity.
-      if (item.location.osm_type && item.location.osm_id) {
-        osmIdentity = { type: item.location.osm_type, id: item.location.osm_id };
+      if (item.geo.osm_type && item.geo.osm_id) {
+        osmIdentity = { type: item.geo.osm_type, id: item.geo.osm_id };
       }
     }
     // Checked by default for a new location, matching the API's own default.

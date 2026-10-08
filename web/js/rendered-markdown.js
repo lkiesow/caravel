@@ -56,7 +56,7 @@ function isInternalPath(href) {
 // dead-link check off rather than failing every link.
 export function loadTripItemIds(tripId) {
   return api
-    .get(`/trips/${tripId}/items`)
+    .get(`/trips/${tripId}/locations`)
     .then((list) => (Array.isArray(list) ? new Set(list.map((item) => item.id)) : null))
     .catch(() => null);
 }

@@ -228,7 +228,7 @@ test.describe("AI assistant", () => {
   // freely licensed photograph is not an unencumbered one, and an image saved
   // with no record of whose it is cannot be credited afterwards.
   test("shows the credit for an image that came with one", async ({ page }) => {
-    const itemRes = await page.request.post(`/api/trips/${tripId}/items`, {
+    const itemRes = await page.request.post(`/api/trips/${tripId}/locations`, {
       data: { title: "Heger Tor", category: "site", tags: ["landmark"] },
     });
     const itemId = (await itemRes.json()).id;
@@ -257,7 +257,7 @@ test.describe("AI assistant", () => {
     });
     expect(media.status()).toBe(201);
     const assetId = (await media.json()).id;
-    expect((await page.request.put(`/api/items/${itemId}/image`, { data: { media_asset_id: assetId } })).status()).toBe(200);
+    expect((await page.request.put(`/api/locations/${itemId}/image`, { data: { media_asset_id: assetId } })).status()).toBe(200);
 
     await page.goto(`/trips/${tripId}/locations/${itemId}`);
     const credit = page.locator(".image-credit");
@@ -336,7 +336,7 @@ test.describe("AI assistant", () => {
     // A location with notes somebody wrote by hand: the case the whole
     // per-field review exists to protect.
     const handwritten = "My own note, written from memory. Must not vanish.";
-    const res = await page.request.post(`/api/trips/${tripId}/items`, {
+    const res = await page.request.post(`/api/trips/${tripId}/locations`, {
       data: { title: "Kex Hostel", category: "site", tags: ["guesthouse"], notes: handwritten },
     });
     expect(res.status()).toBe(201);
@@ -382,7 +382,7 @@ test.describe("AI assistant", () => {
     await expect(page.locator('textarea[name="notes"]')).toHaveValue(handwritten);
 
     // And the note is still intact in the database, not merely on screen.
-    const after = await (await page.request.get(`/api/items/${itemId}`)).json();
+    const after = await (await page.request.get(`/api/locations/${itemId}`)).json();
     expect(after.notes, "the handwritten note survives a dismissed proposal").toBe(handwritten);
   });
 

@@ -24,9 +24,9 @@ import (
 // on the 7th, which is what a person means by "the 5th to the 7th"; it also
 // makes the collapse and its inverse the same arithmetic in both directions.
 
-// itemDateRangeResponse is one run of consecutive days. There is no id: nothing
-// addresses a range, and the rows underneath it are itinerary entries.
-type itemDateRangeResponse struct {
+// locationDateRangeResponse is one run of consecutive days. There is no id:
+// nothing addresses a range, and the rows underneath it are itinerary entries.
+type locationDateRangeResponse struct {
 	StartDate string `json:"start_date"`
 	EndDate   string `json:"end_date"`
 }
@@ -39,16 +39,16 @@ const isoDate = "2006-01-02"
 // mistyped year would turn one save into tens of thousands of inserts holding
 // a write lock the whole time. A year and a bit is more than any trip and far
 // less than an accident.
-const maxItemDateSpan = 370
+const maxLocationDateSpan = 370
 
 // collapseDateRanges turns the days a location appears on into inclusive
-// ranges. The input may be unordered and may repeat a date — an item can sit on
-// one day twice, since nothing constrains the pair — so it is reduced to a set
-// first.
+// ranges. The input may be unordered and may repeat a date — a location can sit
+// on one day twice, since nothing constrains the pair — so it is reduced to a
+// set first.
 //
 // Always returns a non-nil slice, so the JSON is [] rather than null, matching
 // the links and files lists beside it.
-func collapseDateRanges(dates []string) []itemDateRangeResponse {
+func collapseDateRanges(dates []string) []locationDateRangeResponse {
 	unique := make(map[string]struct{}, len(dates))
 	for _, d := range dates {
 		unique[d] = struct{}{}
@@ -62,7 +62,7 @@ func collapseDateRanges(dates []string) []itemDateRangeResponse {
 	// same property handleGetItinerary relies on when it sorts the day list.
 	sort.Strings(sorted)
 
-	ranges := []itemDateRangeResponse{}
+	ranges := []locationDateRangeResponse{}
 	for _, date := range sorted {
 		// Extend the open range when this date is the previous one plus a day.
 		// Real date arithmetic rather than string arithmetic: "2026-01-31" is
@@ -80,23 +80,23 @@ func collapseDateRanges(dates []string) []itemDateRangeResponse {
 				}
 			}
 		}
-		ranges = append(ranges, itemDateRangeResponse{StartDate: date, EndDate: date})
+		ranges = append(ranges, locationDateRangeResponse{StartDate: date, EndDate: date})
 	}
 	return ranges
 }
 
-// itemDateRangeRequest is one range as the client sends it. EndDate is optional
-// and absent means a single day, which is what an "add date" form with an empty
-// end field produces.
-type itemDateRangeRequest struct {
+// locationDateRangeRequest is one range as the client sends it. EndDate is
+// optional and absent means a single day, which is what an "add date" form with
+// an empty end field produces.
+type locationDateRangeRequest struct {
 	StartDate string  `json:"start_date"`
 	EndDate   *string `json:"end_date"`
 }
 
-// validateItemDateRanges checks the ranges before anything is written, so a bad
-// date is a 400 rather than a rolled-back 500 — the property the links and
+// validateLocationDateRanges checks the ranges before anything is written, so a
+// bad date is a 400 rather than a rolled-back 500 — the property the links and
 // dates blocks beside it already had.
-func validateItemDateRanges(ranges []itemDateRangeRequest) error {
+func validateLocationDateRanges(ranges []locationDateRangeRequest) error {
 	total := 0
 	for _, r := range ranges {
 		start, err := time.Parse(isoDate, r.StartDate)
@@ -114,13 +114,13 @@ func validateItemDateRanges(ranges []itemDateRangeRequest) error {
 			return errors.New("end_date must not be before start_date")
 		}
 		days := int(end.Sub(start).Hours()/24) + 1
-		if days > maxItemDateSpan {
-			return fmt.Errorf("a date range may not be longer than %d days", maxItemDateSpan)
+		if days > maxLocationDateSpan {
+			return fmt.Errorf("a date range may not be longer than %d days", maxLocationDateSpan)
 		}
 		total += days
 	}
-	if total > maxItemDateSpan {
-		return fmt.Errorf("a location may not span more than %d days", maxItemDateSpan)
+	if total > maxLocationDateSpan {
+		return fmt.Errorf("a location may not span more than %d days", maxLocationDateSpan)
 	}
 	return nil
 }
@@ -128,7 +128,7 @@ func validateItemDateRanges(ranges []itemDateRangeRequest) error {
 // expandDateRanges walks each range out into the days it covers, inclusive of
 // both ends. Overlapping or repeated ranges union rather than colliding, so the
 // client does not have to normalise what it sends.
-func expandDateRanges(ranges []itemDateRangeRequest) (map[string]bool, error) {
+func expandDateRanges(ranges []locationDateRangeRequest) (map[string]bool, error) {
 	dates := map[string]bool{}
 	for _, r := range ranges {
 		start, err := time.Parse(isoDate, r.StartDate)
@@ -148,11 +148,11 @@ func expandDateRanges(ranges []itemDateRangeRequest) (map[string]bool, error) {
 	return dates, nil
 }
 
-// reconcileItemDates makes the set of itinerary days a location appears on
+// reconcileLocationDates makes the set of itinerary days a location appears on
 // match the ranges the client submitted.
 //
 // Deliberately a diff, and not the delete-all-then-recreate that links use a
-// few lines above in writeItemNested. An itinerary entry carries a position
+// few lines above in writeLocationNested. An itinerary entry carries a position
 // within its day and a note, neither of which the location editor knows
 // anything about — so rewriting the set on every save would quietly discard
 // somebody else's arrangement of a day the user never touched. Only days that
@@ -160,19 +160,19 @@ func expandDateRanges(ranges []itemDateRangeRequest) (map[string]bool, error) {
 // the dates writes nothing at all.
 //
 // Takes the store it is given rather than reaching for s.Store: it runs inside
-// the transaction that saves the item, and WithTx does not nest.
-func reconcileItemDates(ctx context.Context, store db.Store, item db.Location, ranges []itemDateRangeRequest) error {
+// the transaction that saves the location, and WithTx does not nest.
+func reconcileLocationDates(ctx context.Context, store db.Store, location db.Location, ranges []locationDateRangeRequest) error {
 	desired, err := expandDateRanges(ranges)
 	if err != nil {
 		return err
 	}
 
-	current, err := store.ListItineraryDatesByLocation(ctx, item.ID)
+	current, err := store.ListItineraryDatesByLocation(ctx, location.ID)
 	if err != nil {
 		return err
 	}
 	// A slice per date, not a single row: nothing constrains
-	// (itinerary_day_id, item_id), so a location can already be on one day
+	// (itinerary_day_id, location_id), so a location can already be on one day
 	// twice and "remove that day" has to mean all of them.
 	byDate := map[string][]db.LocationItineraryDate{}
 	for _, row := range current {
@@ -223,7 +223,7 @@ func reconcileItemDates(ctx context.Context, store db.Store, item db.Location, r
 			return err
 		}
 		if day.Notes == nil {
-			if _, err := store.DeleteItineraryDay(ctx, dayID, item.TripID); err != nil {
+			if _, err := store.DeleteItineraryDay(ctx, dayID, location.TripID); err != nil {
 				return err
 			}
 		}
@@ -242,7 +242,7 @@ func reconcileItemDates(ctx context.Context, store db.Store, item db.Location, r
 		// write the notes it is passed, and passing nil would blank the notes
 		// of a day that already exists. handleMoveItineraryEntry makes the same
 		// choice for the same reason.
-		day, err := store.EnsureItineraryDay(ctx, uuid.NewString(), item.TripID, date)
+		day, err := store.EnsureItineraryDay(ctx, uuid.NewString(), location.TripID, date)
 		if err != nil {
 			return err
 		}
@@ -259,7 +259,7 @@ func reconcileItemDates(ctx context.Context, store db.Store, item db.Location, r
 		if _, err := store.CreateItineraryEntry(ctx, db.CreateItineraryEntryParams{
 			ID:             uuid.NewString(),
 			ItineraryDayID: day.ID,
-			LocationID:     item.ID,
+			LocationID:     location.ID,
 			SortOrder:      len(existing),
 		}); err != nil {
 			return err

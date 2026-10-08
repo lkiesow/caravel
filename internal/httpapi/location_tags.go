@@ -14,30 +14,30 @@ import (
 // stays here is the part that is about rows: writing a set, bucketing a listing
 // by location, and reducing one to a trip vocabulary.
 
-// writeItemTags replaces a location's tag set. Delete-then-insert rather than a
-// diff, because a tag row carries nothing worth preserving across the rewrite:
-// no id anything refers to, no order, no note. Contrast reconcileItemDates,
-// which diffs precisely because the rows underneath it are itinerary entries
-// somebody else may have annotated.
+// writeLocationTags replaces a location's tag set. Delete-then-insert rather
+// than a diff, because a tag row carries nothing worth preserving across the
+// rewrite: no id anything refers to, no order, no note. Contrast
+// reconcileLocationDates, which diffs precisely because the rows underneath it
+// are itinerary entries somebody else may have annotated.
 //
-// The caller passes a transaction-bound store, so the tags and the item commit
-// together.
-func writeItemTags(ctx context.Context, store db.Store, itemID string, tags []string) error {
-	if err := store.DeleteLocationTagsByLocation(ctx, itemID); err != nil {
+// The caller passes a transaction-bound store, so the tags and the location
+// commit together.
+func writeLocationTags(ctx context.Context, store db.Store, locationID string, tags []string) error {
+	if err := store.DeleteLocationTagsByLocation(ctx, locationID); err != nil {
 		return err
 	}
 	for _, tag := range tags {
-		if err := store.CreateLocationTag(ctx, itemID, tag); err != nil {
+		if err := store.CreateLocationTag(ctx, locationID, tag); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// tagsByItem buckets a trip-wide tag listing by location, for attaching tags to
-// the rows of the locations list in one query rather than one per row -- the
-// same shape as the coordinate map in handleListItems.
-func tagsByItem(rows []db.LocationTag) map[string][]string {
+// tagsByLocation buckets a trip-wide tag listing by location, for attaching
+// tags to the rows of the locations list in one query rather than one per row
+// -- the same shape as the coordinate map in handleListLocations.
+func tagsByLocation(rows []db.LocationTag) map[string][]string {
 	out := make(map[string][]string)
 	for _, row := range rows {
 		out[row.LocationID] = append(out[row.LocationID], row.Tag)

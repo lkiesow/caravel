@@ -89,7 +89,7 @@ func (s *Server) handleMapConfig(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-type mapItemResponse struct {
+type mapLocationResponse struct {
 	ID            string  `json:"id"`
 	Title         string  `json:"title"`
 	Category      string  `json:"category"`
@@ -231,10 +231,11 @@ func looksLikeCoordinate(s string) bool {
 }
 
 // A method rather than a function since Stage 34: resolving the image needs the
-// store, one lookup per item with a photo. The same shape the itinerary list
-// has -- a map is a page-sized payload, and only located items are in it.
-func (s *Server) mapItemToResponse(ctx context.Context, i db.MapLocation) mapItemResponse {
-	return mapItemResponse{
+// store, one lookup per location with a photo. The same shape the itinerary
+// list has -- a map is a page-sized payload, and only locations with
+// coordinates are in it.
+func (s *Server) mapLocationToResponse(ctx context.Context, i db.MapLocation) mapLocationResponse {
+	return mapLocationResponse{
 		ID:            i.ID,
 		Title:         i.Title,
 		Category:      i.Category,
@@ -251,15 +252,15 @@ func (s *Server) handleGetTripMap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	items, err := s.Store.ListMapLocations(r.Context(), trip.ID)
+	locations, err := s.Store.ListMapLocations(r.Context(), trip.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load map")
 		return
 	}
 
-	resp := make([]mapItemResponse, len(items))
-	for i, it := range items {
-		resp[i] = s.mapItemToResponse(r.Context(), it)
+	resp := make([]mapLocationResponse, len(locations))
+	for i, it := range locations {
+		resp[i] = s.mapLocationToResponse(r.Context(), it)
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

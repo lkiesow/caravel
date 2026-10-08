@@ -70,16 +70,16 @@ type expenseResponse struct {
 	// when they are among them, and absent when they are not. The whole map is not sent: the client shows
 	// "your share", and the balances endpoint is where the full picture lives.
 	ShareMinor *int64 `json:"share_minor"`
-	// ItemID is the location this expense was for, or null -- which most
+	// LocationID is the location this expense was for, or null -- which most
 	// expenses are. It exists to answer "what was this, exactly" a month later:
 	// the location holds the picture, the address and the notes, and the client
 	// renders this as a link to it.
-	ItemID *string `json:"item_id"`
-	// ItemTitle saves the client resolving that id, for the same reason
+	LocationID *string `json:"location_id"`
+	// LocationTitle saves the client resolving that id, for the same reason
 	// PayerDisplayName does: the expenses tab does not load the trip locations
-	// and should not have to. Null whenever ItemID is.
-	ItemTitle *string `json:"item_title"`
-	CreatedAt string  `json:"created_at"`
+	// and should not have to. Null whenever LocationID is.
+	LocationTitle *string `json:"location_title"`
+	CreatedAt     string  `json:"created_at"`
 }
 
 // payerTotalResponse is what one person has paid across the whole trip.
@@ -163,23 +163,24 @@ func (p *expenseNamer) name(ctx context.Context, userID *string) *string {
 	return name
 }
 
-// itemTitle resolves the location an expense names. Same shape as name above,
-// including the failure mode: a location that has been deleted since (the
-// column is ON DELETE SET NULL, so this should not happen) yields a nil title
-// rather than failing the row, because the amount is the point of the row.
-func (p *expenseNamer) itemTitle(ctx context.Context, itemID *string) *string {
-	if itemID == nil {
+// locationTitle resolves the location an expense names. Same shape as name
+// above, including the failure mode: a location that has been deleted since
+// (the column is ON DELETE SET NULL, so this should not happen) yields a nil
+// title rather than failing the row, because the amount is the point of the
+// row.
+func (p *expenseNamer) locationTitle(ctx context.Context, locationID *string) *string {
+	if locationID == nil {
 		return nil
 	}
-	if cached, ok := p.titles[*itemID]; ok {
+	if cached, ok := p.titles[*locationID]; ok {
 		return cached
 	}
 	var title *string
-	if item, err := p.srv.Store.GetLocationByID(ctx, *itemID); err == nil {
-		t := item.Title
+	if location, err := p.srv.Store.GetLocationByID(ctx, *locationID); err == nil {
+		t := location.Title
 		title = &t
 	}
-	p.titles[*itemID] = title
+	p.titles[*locationID] = title
 	return title
 }
 
@@ -201,8 +202,8 @@ func (p *expenseNamer) toResponse(ctx context.Context, e db.Expense, convertedMi
 		PayerUserID:      e.PayerUserID,
 		PayerDisplayName: p.name(ctx, e.PayerUserID),
 		ShareUserIDs:     shareIDs,
-		ItemID:           e.LocationID,
-		ItemTitle:        p.itemTitle(ctx, e.LocationID),
+		LocationID:       e.LocationID,
+		LocationTitle:    p.locationTitle(ctx, e.LocationID),
 		CreatedAt:        e.CreatedAt.UTC().Format(time.RFC3339),
 	}
 	if share, ok := splitAmount(convertedMinor, shareIDs)[readerID]; ok {
@@ -244,12 +245,13 @@ type expenseRequest struct {
 	// role on the trip; duplicates are ignored rather than refused, since a
 	// repeated name is redundant rather than wrong.
 	ShareUserIDs []string `json:"share_user_ids"`
-	// ItemID optionally names the location this expense was for. Absent or null
-	// means none, on both verbs -- an expense is edited as a whole here, the way
-	// the four fields above already are, so a PATCH that omits it clears it.
-	// The id must name a location on this trip, which is checked rather than
-	// trusted: items carry their own trip_id, so the column cannot express it.
-	ItemID *string `json:"item_id"`
+	// LocationID optionally names the location this expense was for. Absent or
+	// null means none, on both verbs -- an expense is edited as a whole here,
+	// the way the four fields above already are, so a PATCH that omits it
+	// clears it. The id must name a location on this trip, which is checked
+	// rather than trusted: locations carry their own trip_id, so the column
+	// cannot express it.
+	LocationID *string `json:"location_id"`
 	// Currency is what this expense was paid in. Absent or null means the
 	// trip's main currency, which is the common case and what every expense
 	// meant before Stage 32. Anything else must be one of the additional
@@ -415,18 +417,18 @@ func effectiveShares(stored, participants []string) []string {
 	return participants
 }
 
-// requireTripItem checks that an item id in a request body names a location on
-// this trip, the way requireTripMember checks the payer. Returns false having
-// already answered, so callers read as a guard.
+// requireTripLocation checks that a location id in a request body names a
+// location on this trip, the way requireTripMember checks the payer. Returns
+// false having already answered, so callers read as a guard.
 //
 // A 400 rather than a 404: the caller sent a field this trip cannot accept,
 // which is a bad request about a resource they can see, not a missing one. Same
 // answer requireSameTrip gives for a media asset from another trip.
-func (s *Server) requireTripItem(w http.ResponseWriter, r *http.Request, trip db.Trip, itemID *string) bool {
-	if itemID == nil {
+func (s *Server) requireTripLocation(w http.ResponseWriter, r *http.Request, trip db.Trip, locationID *string) bool {
+	if locationID == nil {
 		return true
 	}
-	item, err := s.Store.GetLocationByID(r.Context(), *itemID)
+	location, err := s.Store.GetLocationByID(r.Context(), *locationID)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			writeError(w, http.StatusBadRequest, "location not found")
@@ -435,7 +437,7 @@ func (s *Server) requireTripItem(w http.ResponseWriter, r *http.Request, trip db
 		}
 		return false
 	}
-	return s.requireSameTrip(w, item.TripID, trip.ID, "location belongs to another trip")
+	return s.requireSameTrip(w, location.TripID, trip.ID, "location belongs to another trip")
 }
 
 func (s *Server) handleListExpenses(w http.ResponseWriter, r *http.Request) {
@@ -534,7 +536,7 @@ func (s *Server) handleCreateExpense(w http.ResponseWriter, r *http.Request) {
 	if !s.requireTripMember(w, r, trip, req.PayerUserID) {
 		return
 	}
-	if !s.requireTripItem(w, r, trip, req.ItemID) {
+	if !s.requireTripLocation(w, r, trip, req.LocationID) {
 		return
 	}
 	shareIDs, ok := s.resolveShares(w, r, trip, req.ShareUserIDs)
@@ -559,7 +561,7 @@ func (s *Server) handleCreateExpense(w http.ResponseWriter, r *http.Request) {
 			Currency:    currency,
 			SpentOn:     req.SpentOn,
 			PayerUserID: req.PayerUserID,
-			LocationID:  req.ItemID,
+			LocationID:  req.LocationID,
 			CreatedAt:   time.Now().UTC(),
 		})
 		if err != nil {
@@ -598,7 +600,7 @@ func (s *Server) handleUpdateExpense(w http.ResponseWriter, r *http.Request) {
 	if !s.requireTripMember(w, r, trip, req.PayerUserID) {
 		return
 	}
-	if !s.requireTripItem(w, r, trip, req.ItemID) {
+	if !s.requireTripLocation(w, r, trip, req.LocationID) {
 		return
 	}
 	shareIDs, ok := s.resolveShares(w, r, trip, req.ShareUserIDs)
@@ -620,7 +622,7 @@ func (s *Server) handleUpdateExpense(w http.ResponseWriter, r *http.Request) {
 			Currency:    currency,
 			SpentOn:     req.SpentOn,
 			PayerUserID: req.PayerUserID,
-			LocationID:  req.ItemID,
+			LocationID:  req.LocationID,
 		})
 		if err != nil {
 			return err

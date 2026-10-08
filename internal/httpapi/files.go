@@ -58,7 +58,7 @@ func sniffContentType(f io.ReadSeeker) (string, error) {
 type fileResponse struct {
 	ID          string  `json:"id"`
 	TripID      string  `json:"trip_id"`
-	ItemID      *string `json:"item_id"`
+	LocationID  *string `json:"location_id"`
 	Filename    string  `json:"filename"`
 	ContentType *string `json:"content_type"`
 	SizeBytes   int64   `json:"size_bytes"`
@@ -67,10 +67,10 @@ type fileResponse struct {
 	DownloadURL string  `json:"download_url"`
 	// The title of the location this file is attached to, for the trip-level
 	// list where trip files and location files appear together. Null for a
-	// trip-level file, and null on every other endpoint: the item-level list
-	// and the upload responses know their location from context, so only the
-	// trip listing pays for the join.
-	ItemTitle *string `json:"item_title"`
+	// trip-level file, and null on every other endpoint: the location-level
+	// list and the upload responses know their location from context, so only
+	// the trip listing pays for the join.
+	LocationTitle *string `json:"location_title"`
 	// Visibility is "personal" or "trip". Always sent, so the client never has
 	// to infer a default.
 	Visibility string `json:"visibility"`
@@ -85,7 +85,7 @@ func fileToResponse(d db.File, readerID string) fileResponse {
 	return fileResponse{
 		ID:          d.ID,
 		TripID:      d.TripID,
-		ItemID:      d.LocationID,
+		LocationID:  d.LocationID,
 		Filename:    d.Filename,
 		ContentType: d.ContentType,
 		SizeBytes:   d.SizeBytes,
@@ -102,13 +102,13 @@ func fileToResponse(d db.File, readerID string) fileResponse {
 // other.
 func fileDetailToResponse(d db.FileDetail, readerID string) fileResponse {
 	resp := fileToResponse(d.File, readerID)
-	resp.ItemTitle = d.LocationTitle
+	resp.LocationTitle = d.LocationTitle
 	return resp
 }
 
 // uploadFile handles the shared multipart-upload logic for both
-// trip-level and item-level files; itemID is nil for trip-level.
-func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request, tripID string, itemID *string) {
+// trip-level and location-level files; locationID is nil for trip-level.
+func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request, tripID string, locationID *string) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxFileUploadBytes)
 	if err := r.ParseMultipartForm(maxFileUploadBytes); err != nil {
 		writeError(w, http.StatusRequestEntityTooLarge, "file too large or invalid multipart form")
@@ -130,8 +130,12 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request, tripID strin
 	id := uuid.NewString()
 	filename := filepath.Base(header.Filename)
 	var key string
-	if itemID != nil {
-		key = fmt.Sprintf("%s/items/%s/%s-%s", tripID, *itemID, id, filename)
+	if locationID != nil {
+		// "items" is the storage prefix from before locations were called
+		// that, and it stays: every existing blob lives under it, each row
+		// records its own storage_path, and nothing parses the layout, so a
+		// new prefix would only split the tree. Same in stageOneFile.
+		key = fmt.Sprintf("%s/items/%s/%s-%s", tripID, *locationID, id, filename)
 	} else {
 		key = fmt.Sprintf("%s/files/%s-%s", tripID, id, filename)
 	}
@@ -164,7 +168,7 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request, tripID strin
 	row, err := s.Store.CreateFile(r.Context(), db.CreateFileParams{
 		ID:          id,
 		TripID:      tripID,
-		LocationID:  itemID,
+		LocationID:  locationID,
 		Filename:    filename,
 		StoragePath: key,
 		ContentType: contentTypePtr,
@@ -207,13 +211,13 @@ func (s *Server) handleUploadTripFile(w http.ResponseWriter, r *http.Request) {
 	s.uploadFile(w, r, trip.ID, nil)
 }
 
-func (s *Server) handleListItemFiles(w http.ResponseWriter, r *http.Request) {
-	item, _, ok := s.loadItem(w, r, db.RoleViewer)
+func (s *Server) handleListLocationFiles(w http.ResponseWriter, r *http.Request) {
+	location, _, ok := s.loadLocation(w, r, db.RoleViewer)
 	if !ok {
 		return
 	}
 	me, _ := auth.UserFromContext(r.Context())
-	files, err := s.Store.ListLocationFiles(r.Context(), item.ID, me.ID)
+	files, err := s.Store.ListLocationFiles(r.Context(), location.ID, me.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not list files")
 		return
@@ -225,12 +229,12 @@ func (s *Server) handleListItemFiles(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-func (s *Server) handleUploadItemFile(w http.ResponseWriter, r *http.Request) {
-	item, _, ok := s.loadItem(w, r, db.RoleEditor)
+func (s *Server) handleUploadLocationFile(w http.ResponseWriter, r *http.Request) {
+	location, _, ok := s.loadLocation(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
-	s.uploadFile(w, r, item.TripID, &item.ID)
+	s.uploadFile(w, r, location.TripID, &location.ID)
 }
 
 // A note is a pointer so the request can tell "leave it alone" apart from

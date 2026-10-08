@@ -386,7 +386,7 @@ func (s *Server) buildAssistSuggestRequest(r *http.Request, trip db.Trip, req as
 // and the user can untick. Failing the whole run over it would be a much
 // worse trade.
 func (s *Server) tripExistingPlaces(r *http.Request, tripID string) []assist.ExistingPlace {
-	items, err := s.Store.ListLocationsByTrip(r.Context(), tripID, nil)
+	locations, err := s.Store.ListLocationsByTrip(r.Context(), tripID, nil)
 	if err != nil {
 		return nil
 	}
@@ -398,10 +398,10 @@ func (s *Server) tripExistingPlaces(r *http.Request, tripID string) []assist.Exi
 		}
 	}
 
-	out := make([]assist.ExistingPlace, 0, len(items))
-	for _, item := range items {
-		place := assist.ExistingPlace{Title: item.Title}
-		if c, ok := located[item.ID]; ok {
+	out := make([]assist.ExistingPlace, 0, len(locations))
+	for _, location := range locations {
+		place := assist.ExistingPlace{Title: location.Title}
+		if c, ok := located[location.ID]; ok {
 			lat, lng := c.Lat, c.Lng
 			place.Lat, place.Lng = &lat, &lng
 		}
@@ -491,7 +491,7 @@ const assistMaxTagVocabulary = 30
 // folds back and the user can see and reject in the review anyway.
 //
 // One query for the trip, the same one the locations list uses -- and it reads
-// the tag rows rather than the items, so it no longer needs to load every
+// the tag rows rather than the locations, so it no longer needs to load every
 // location to collect one field from each.
 func (s *Server) tripTagVocabulary(r *http.Request, tripID string) []string {
 	rows, err := s.Store.ListLocationTagsByTrip(r.Context(), tripID)
@@ -721,7 +721,7 @@ func toAssistSuggestionsResponse(out *assist.Suggestions) assistSuggestionsRespo
 		res.Sources = append(res.Sources, assistSourceResponse{Title: src.Title, URL: src.URL})
 	}
 	for _, c := range out.Candidates {
-		item := assistCandidateResponse{
+		candidate := assistCandidateResponse{
 			Title:    c.Place.Title,
 			Category: c.Place.Category,
 			Tags:     c.Place.Tags,
@@ -731,10 +731,10 @@ func toAssistSuggestionsResponse(out *assist.Suggestions) assistSuggestionsRespo
 			Position: toAssistPositionResponse(c.Position),
 		}
 		for _, l := range c.Links {
-			item.Links = append(item.Links, assistLinkResponse{URL: l.URL, Label: l.Label})
+			candidate.Links = append(candidate.Links, assistLinkResponse{URL: l.URL, Label: l.Label})
 		}
 		if c.Cover != nil {
-			item.Cover = &assistCoverResponse{
+			candidate.Cover = &assistCoverResponse{
 				URL:       c.Cover.URL,
 				ThumbURL:  c.Cover.ThumbURL,
 				SourceURL: c.Cover.SourceURL,
@@ -743,7 +743,7 @@ func toAssistSuggestionsResponse(out *assist.Suggestions) assistSuggestionsRespo
 				From:      c.Cover.From,
 			}
 		}
-		res.Candidates = append(res.Candidates, item)
+		res.Candidates = append(res.Candidates, candidate)
 	}
 	return res
 }

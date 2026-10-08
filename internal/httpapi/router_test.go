@@ -22,7 +22,7 @@ func TestUnknownAPIPathIsJSONNotFound(t *testing.T) {
 		{http.MethodGet, "/api/does-not-exist"},
 		{http.MethodGet, "/api/auth/nonsense"},
 		{http.MethodGet, "/api/trips/abc/nonsense"},
-		{http.MethodPost, "/api/items/abc/nonsense"},
+		{http.MethodPost, "/api/locations/abc/nonsense"},
 	} {
 		w := ts.do(tc.method, tc.path, cookie, "")
 		if w.Code != http.StatusNotFound {

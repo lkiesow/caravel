@@ -126,7 +126,7 @@ test.describe("the location editor, end to end", () => {
   });
 
   test("edits an existing location, and the form opens on what is already there", async ({ page }) => {
-    const created = await page.request.post(`/api/trips/${tripId}/items`, {
+    const created = await page.request.post(`/api/trips/${tripId}/locations`, {
       data: {
         title: "Skogafoss",
         category: "site",
@@ -169,14 +169,14 @@ test.describe("the location editor, end to end", () => {
     await expect(page.locator(".location-view__notes")).toHaveCount(0);
     await expect(page.locator(".link-list")).toHaveCount(0);
 
-    const detail = await (await page.request.get(`/api/items/${itemId}`)).json();
+    const detail = await (await page.request.get(`/api/locations/${itemId}`)).json();
     expect(detail.title).toBe("Skogafoss waterfall");
     expect(detail.category).toBe("transport");
     expect(detail.links, "clearing the last link should clear it server-side too").toEqual([]);
   });
 
   test("deletes a location, but only once the confirmation is accepted", async ({ page }) => {
-    const created = await page.request.post(`/api/trips/${tripId}/items`, {
+    const created = await page.request.post(`/api/trips/${tripId}/locations`, {
       data: { title: "Delete me", category: "site" },
     });
     expect(created.status(), "create the location to delete").toBe(201);
@@ -189,7 +189,7 @@ test.describe("the location editor, end to end", () => {
     await page.locator('[data-action="delete"]').click();
     await page.locator(".dialog__actions button", { hasText: "Cancel" }).click();
     await expect(page).toHaveURL(`/trips/${tripId}/locations/${itemId}/edit`);
-    expect((await page.request.get(`/api/items/${itemId}`)).status()).toBe(200);
+    expect((await page.request.get(`/api/locations/${itemId}`)).status()).toBe(200);
 
     await page.locator('[data-action="delete"]').click();
     await page.locator(".dialog__actions button", { hasText: "Delete" }).click();
@@ -200,7 +200,7 @@ test.describe("the location editor, end to end", () => {
     await expect(page).toHaveURL(`/trips/${tripId}/locations`);
     await expect(page.locator(".items-empty:not(.items-empty--no-matches)")).toBeVisible();
     expect(
-      (await page.request.get(`/api/items/${itemId}`)).status(),
+      (await page.request.get(`/api/locations/${itemId}`)).status(),
       "the location should be gone, not merely hidden"
     ).toBe(404);
   });
@@ -224,7 +224,7 @@ test.describe("the location editor, end to end", () => {
     // stored and not merely what one screen chose to draw.
     const itinerary = await (await page.request.get(`/api/trips/${tripId}/itinerary`)).json();
     const onIt = itinerary
-      .filter((d) => d.entries.some((e) => e.item_title === "Hotel Ranga"))
+      .filter((d) => d.entries.some((e) => e.location_title === "Hotel Ranga"))
       .map((d) => d.date);
     // Inclusive of both ends: checking out on the 22nd still means being there
     // on the 22nd.
@@ -244,7 +244,7 @@ test.describe("the location editor, end to end", () => {
   // does nothing when the sets match. The damage needs the itinerary to move
   // under an open editor, which is what this test arranges.
   test("renaming a location does not undo an itinerary change made while it was open", async ({ page }) => {
-    const created = await page.request.post(`/api/trips/${tripId}/items`, {
+    const created = await page.request.post(`/api/trips/${tripId}/locations`, {
       data: {
         title: "Hotel Ranga",
         category: "stay",
@@ -265,7 +265,7 @@ test.describe("the location editor, end to end", () => {
     });
     expect(day.status()).toBe(200);
     const added = await page.request.post(`/api/itinerary/days/${(await day.json()).id}/entries`, {
-      data: { item_id: itemId, note: "late checkout" },
+      data: { location_id: itemId, note: "late checkout" },
     });
     expect(added.status()).toBe(201);
 
@@ -277,11 +277,11 @@ test.describe("the location editor, end to end", () => {
     const itinerary = await (await page.request.get(`/api/trips/${tripId}/itinerary`)).json();
     const third = itinerary.find((d) => d.date === "2026-08-22");
     expect(third, "the day added while the editor was open must survive").toBeTruthy();
-    expect(third.entries.map((e) => e.item_id)).toEqual([itemId]);
+    expect(third.entries.map((e) => e.location_id)).toEqual([itemId]);
     expect(third.entries[0].note).toBe("late checkout");
 
     // And the location now reports all three days, as one range.
-    const item = await (await page.request.get(`/api/items/${itemId}`)).json();
+    const item = await (await page.request.get(`/api/locations/${itemId}`)).json();
     expect(item.dates).toEqual([{ start_date: "2026-08-20", end_date: "2026-08-22" }]);
   });
 
@@ -399,7 +399,7 @@ test.describe("the location editor, end to end", () => {
   // prevent. So the two assertions that matter are: nothing is hidden when
   // everything fits, and the row is one line tall when it does not.
   test("card tags are trimmed to one line by measurement, not by a count", async ({ page }) => {
-    const res = await page.request.post(`/api/trips/${tripId}/items`, {
+    const res = await page.request.post(`/api/trips/${tripId}/locations`, {
       // The server stores tags sorted, which is the order the card shows them in.
       // Four short tags actually do fit on one line at 324px -- measured, which
       // is the point -- so the fourth is a long one, to make the narrow case a
@@ -468,7 +468,7 @@ test.describe("the location editor, end to end", () => {
   test("dates reach the locations list and show on the card", async ({ page }) => {
     const mk = async (title, dates) =>
       (
-        await page.request.post(`/api/trips/${tripId}/items`, {
+        await page.request.post(`/api/trips/${tripId}/locations`, {
           data: { title, category: "site", dates },
         })
       ).json();
@@ -507,7 +507,7 @@ test.describe("the location editor, end to end", () => {
     expect(await read("Unscheduled")).toBeNull();
 
     expect(
-      itemRequests.filter((p) => p.endsWith("/items")),
+      itemRequests.filter((p) => p.endsWith("/locations")),
       "the list is one request; dates must not be fetched per card"
     ).toHaveLength(1);
 
@@ -539,10 +539,10 @@ test.describe("the location editor, end to end", () => {
   // this guards is a card leading with a stray dot because it has tags but no
   // dates, which is the common shape for somewhere not yet on the itinerary.
   test("a card with no dates does not lead with a separator", async ({ page }) => {
-    await page.request.post(`/api/trips/${tripId}/items`, {
+    await page.request.post(`/api/trips/${tripId}/locations`, {
       data: { title: "Tags only", category: "site", tags: ["alpha"] },
     });
-    await page.request.post(`/api/trips/${tripId}/items`, {
+    await page.request.post(`/api/trips/${tripId}/locations`, {
       data: { title: "Nothing at all", category: "site", tags: [] },
     });
 
@@ -574,7 +574,7 @@ test.describe("the location editor, end to end", () => {
   // only way an assertion here proves the sort is doing anything.
   test("sorts by name and by date, and keeps undated locations last", async ({ page }) => {
     const mk = (title, dates) =>
-      page.request.post(`/api/trips/${tripId}/items`, {
+      page.request.post(`/api/trips/${tripId}/locations`, {
         data: { title, category: "site", dates },
       });
 
@@ -642,7 +642,7 @@ test.describe("the location editor, end to end", () => {
   // test above, so every order and its reverse are distinguishable.
   test("tapping the current order again reverses it, and undated stay last", async ({ page }) => {
     const mk = (title, dates) =>
-      page.request.post(`/api/trips/${tripId}/items`, {
+      page.request.post(`/api/trips/${tripId}/locations`, {
         data: { title, category: "site", dates },
       });
     await mk("Zebra crossing", [{ start_date: "2026-09-05", end_date: "2026-09-05" }]);
@@ -727,18 +727,18 @@ test.describe("the location editor, end to end", () => {
   // the location. The held-back files request makes the loser of that race
   // certain instead of a matter of a loaded runner.
   test("pressing Back while a location is still loading keeps the list", async ({ page }) => {
-    await page.request.post(`/api/trips/${tripId}/items`, {
+    await page.request.post(`/api/trips/${tripId}/locations`, {
       data: { title: "Slow to open", category: "site", dates: [] },
     });
     await gotoRoute(page, `/trips/${tripId}/locations`);
     const card = page.locator("item-card").first();
     await expect(card).toBeVisible();
 
-    await page.route("**/api/items/*/files", async (route) => {
+    await page.route("**/api/locations/*/files", async (route) => {
       await new Promise((resolve) => setTimeout(resolve, 1500));
       await route.continue();
     });
-    const filesAnswered = page.waitForResponse("**/api/items/*/files");
+    const filesAnswered = page.waitForResponse("**/api/locations/*/files");
     await card.click();
     await expect(page).not.toHaveURL(/\/locations$/);
     await page.goBack();
@@ -754,7 +754,7 @@ test.describe("the location editor, end to end", () => {
   // Sorting orders what the filters left, rather than replacing them.
   test("sorting composes with a filter and with the search box", async ({ page }) => {
     const mk = (title, category) =>
-      page.request.post(`/api/trips/${tripId}/items`, {
+      page.request.post(`/api/trips/${tripId}/locations`, {
         data: { title, category, dates: [] },
       });
     await mk("Zulu inn", "stay");
@@ -798,7 +798,7 @@ test.describe("the location editor, end to end", () => {
     await expect(menu.locator('[data-group="tags"]')).toHaveCount(0);
 
     const mk = (title, tags) =>
-      page.request.post(`/api/trips/${tripId}/items`, {
+      page.request.post(`/api/trips/${tripId}/locations`, {
         data: { title, category: "site", tags },
       });
     await mk("Blue lagoon", ["south", "spa"]);
@@ -829,7 +829,7 @@ test.describe("the location editor, end to end", () => {
 
   test("filters by date: not scheduled, scheduled, and a range that overlaps", async ({ page }) => {
     const mk = (title, dates) =>
-      page.request.post(`/api/trips/${tripId}/items`, {
+      page.request.post(`/api/trips/${tripId}/locations`, {
         data: { title, category: "site", dates },
       });
     // A stay spanning three days, a single day before it, and two with no
@@ -897,10 +897,10 @@ test.describe("the location editor, end to end", () => {
   // so Clear has to reach it through onClear. Worth its own case: this is the
   // group the hook was added for.
   test("clearing resets a date range as well as the other filters", async ({ page }) => {
-    await page.request.post(`/api/trips/${tripId}/items`, {
+    await page.request.post(`/api/trips/${tripId}/locations`, {
       data: { title: "Dated", category: "site", tags: ["x"], dates: [{ start_date: "2026-09-05", end_date: "2026-09-05" }] },
     });
-    await page.request.post(`/api/trips/${tripId}/items`, {
+    await page.request.post(`/api/trips/${tripId}/locations`, {
       data: { title: "Undated", category: "site", tags: [], dates: [] },
     });
 
@@ -926,7 +926,7 @@ test.describe("the location editor, end to end", () => {
   // the API keeps for links and dates, checked from the browser because the
   // editor is what decides whether to send the key at all.
   test("tags: a location with none stays clean, and editing another field keeps them", async ({ page }) => {
-    const created = await page.request.post(`/api/trips/${tripId}/items`, {
+    const created = await page.request.post(`/api/trips/${tripId}/locations`, {
       data: { title: "Bare", category: "site", tags: ["kept"] },
     });
     const item = await created.json();
@@ -941,7 +941,7 @@ test.describe("the location editor, end to end", () => {
 
     // And a location with no tags shows no empty chip row at all.
     const plain = await (
-      await page.request.post(`/api/trips/${tripId}/items`, {
+      await page.request.post(`/api/trips/${tripId}/locations`, {
         data: { title: "Untagged", category: "site", tags: [] },
       })
     ).json();
@@ -1041,10 +1041,10 @@ test.describe("looking up an address for a point", () => {
     await expect(page).toHaveURL(new RegExp(`/trips/${tripId}/locations/[0-9a-f-]+$`));
     // Read from the item's own endpoint: the trip listing does not carry the
     // address, it lives on the location detail (see itemLocationResponse).
-    const items = await (await page.request.get(`/api/trips/${tripId}/items`)).json();
+    const items = await (await page.request.get(`/api/trips/${tripId}/locations`)).json();
     expect(items).toHaveLength(1);
-    const stored = await (await page.request.get(`/api/items/${items[0].id}`)).json();
-    expect(stored.location?.address).toBe(ADDRESS);
+    const stored = await (await page.request.get(`/api/locations/${items[0].id}`)).json();
+    expect(stored.geo?.address).toBe(ADDRESS);
   });
 
   test("drops a stale offer when the point moves", async ({ page }) => {
@@ -1375,7 +1375,7 @@ test.describe("creating a location is atomic", () => {
     page,
   }) => {
     const count = async () => {
-      const res = await page.request.get(`/api/trips/${tripId}/items`);
+      const res = await page.request.get(`/api/trips/${tripId}/locations`);
       expect(res.status()).toBe(200);
       return (await res.json()).length;
     };
@@ -1419,7 +1419,7 @@ test.describe("creating a location is atomic", () => {
     expect(await count(), "the retry must create one location, not a second one").toBe(1);
 
     // And the cover landed with it, in the same request.
-    const items = await (await page.request.get(`/api/trips/${tripId}/items`)).json();
+    const items = await (await page.request.get(`/api/trips/${tripId}/locations`)).json();
     expect(items[0].image_url, "the cover must have ridden along with the create").toBeTruthy();
   });
 
@@ -1451,13 +1451,13 @@ test.describe("creating a location is atomic", () => {
     await page.locator('[data-action="save"]').click();
     await expect(page).toHaveURL(new RegExp(`/trips/${tripId}/locations/[^/]+$`));
 
-    expect(posts, "the create must be a single POST carrying everything").toEqual([`/api/trips/${tripId}/items`]);
+    expect(posts, "the create must be a single POST carrying everything").toEqual([`/api/trips/${tripId}/locations`]);
 
-    const items = await (await page.request.get(`/api/trips/${tripId}/items`)).json();
+    const items = await (await page.request.get(`/api/trips/${tripId}/locations`)).json();
     expect(items).toHaveLength(1);
     expect(items[0].image_url, "the cover landed").toBeTruthy();
 
-    const files = await (await page.request.get(`/api/items/${items[0].id}/files`)).json();
+    const files = await (await page.request.get(`/api/locations/${items[0].id}/files`)).json();
     expect(files.map((f) => f.filename), "the file landed").toEqual(["booking.txt"]);
   });
 });
@@ -1497,21 +1497,21 @@ test.describe("the OpenStreetMap link on a location", () => {
     tripId = null;
   });
 
-  // Creates a location with whatever location block is given, and returns its
-  // id, so each case owns its own row rather than depending on the seed
-  // carrying an OSM identity.
-  async function createLocation(page, tripId, title, location) {
+  // Creates a location with whatever geo block is given, and returns its id,
+  // so each case owns its own row rather than depending on the seed carrying an
+  // OSM identity.
+  async function createLocation(page, tripId, title, geo) {
     return page.evaluate(
-      async ({ tripId, title, location }) => {
-        const res = await fetch(`/api/trips/${tripId}/items`, {
+      async ({ tripId, title, geo }) => {
+        const res = await fetch(`/api/trips/${tripId}/locations`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title, category: "site", location }),
+          body: JSON.stringify({ title, category: "site", geo }),
         });
         if (!res.ok) throw new Error(`create returned ${res.status}: ${await res.text()}`);
         return (await res.json()).id;
       },
-      { tripId, title, location }
+      { tripId, title, geo }
     );
   }
 
@@ -1585,7 +1585,7 @@ test.describe("the location editor stays out of the history", () => {
   // overview, location, edit, fix a small thing, save, Back.
   test("editing: one Back from the saved location reaches the overview", async ({ page }) => {
     const item = await (
-      await page.request.post(`/api/trips/${tripId}/items`, { data: { title: "Kirkjufel", category: "site" } })
+      await page.request.post(`/api/trips/${tripId}/locations`, { data: { title: "Kirkjufel", category: "site" } })
     ).json();
 
     await gotoRoute(page, `/trips/${tripId}/locations`);
@@ -1624,7 +1624,7 @@ test.describe("the location editor stays out of the history", () => {
   // reads data-leave-editor to decide between popping and pushing.
   test("cancelling and the back-link both pop the editor entry", async ({ page }) => {
     const item = await (
-      await page.request.post(`/api/trips/${tripId}/items`, { data: { title: "Unchanged", category: "site" } })
+      await page.request.post(`/api/trips/${tripId}/locations`, { data: { title: "Unchanged", category: "site" } })
     ).json();
     const view = `/trips/${tripId}/locations/${item.id}`;
 
@@ -1658,7 +1658,7 @@ test.describe("the location editor stays out of the history", () => {
   // dropped later, not as evidence of the change that introduced it.
   test("a directly-loaded editor saves without leaving the app", async ({ page }) => {
     const item = await (
-      await page.request.post(`/api/trips/${tripId}/items`, { data: { title: "Direct", category: "site" } })
+      await page.request.post(`/api/trips/${tripId}/locations`, { data: { title: "Direct", category: "site" } })
     ).json();
 
     await gotoRoute(page, `/trips/${tripId}/locations/${item.id}/edit`);

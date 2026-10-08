@@ -11,7 +11,7 @@ import { escapeHtml } from "../escape.js";
 // Renders a file list as cards (type tile, name, meta line, size, and a
 // per-row overflow menu holding Edit note / Delete) plus a drop zone that
 // accepts several files at once, dropped or browsed. `path` is either
-// `/trips/{id}/files` or `/items/{id}/files` - both share the same
+// `/trips/{id}/files` or `/locations/{id}/files` - both share the same
 // list/upload/delete shape.
 //
 // Picking does *not* upload. A pick lands in a "Ready to upload" list under the
@@ -24,9 +24,9 @@ import { escapeHtml } from "../escape.js";
 // file is refused before anything is sent, and a pick can be taken back.
 //
 // The trip-level list mixes trip files with files attached to a location, so a
-// row carrying `item_title` shows it (".file-card__source"): one flat list
+// row carrying `location_title` shows it (".file-card__source"): one flat list
 // sorted by upload date, where only the location-attached rows are labelled. The API
-// leaves item_title null on the item-level list, so the same template renders
+// leaves location_title null on the location-level list, so the same template renders
 // there unlabelled without needing a mode - on a location's own page every file
 // belongs to that location and saying so on each row would be noise.
 //
@@ -266,7 +266,7 @@ export async function renderFileList(container, path, { staged, rows: given, rea
       // of the card template.
       const view = isPick
         ? { filename: row.file.name, size: row.file.size, contentType: row.file.type, note: row.note, itemTitle: null, href: null, visibility: row.visibility || "trip", isMine: true }
-        : { filename: row.filename, size: row.size_bytes, contentType: row.content_type, note: row.note, itemTitle: row.item_title, href: row.download_url, visibility: row.visibility, isMine: row.is_mine };
+        : { filename: row.filename, size: row.size_bytes, contentType: row.content_type, note: row.note, itemTitle: row.location_title, href: row.download_url, visibility: row.visibility, isMine: row.is_mine };
 
       // The note wins the title when there is one, and the filename drops to
       // the meta line. A note is the only readable name a file uploaded as

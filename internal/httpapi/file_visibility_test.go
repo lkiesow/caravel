@@ -97,12 +97,12 @@ func TestPersonalFileIsInvisibleToOthers(t *testing.T) {
 	}
 }
 
-// Item-attached files go through a different list query, so the predicate has
-// to be on both. A personal file on a location is the likelier case, if
+// Location-attached files go through a different list query, so the predicate
+// has to be on both. A personal file on a location is the likelier case, if
 // anything — that is where a booking lives.
-func TestPersonalItemFileIsInvisibleToOthers(t *testing.T) {
+func TestPersonalLocationFileIsInvisibleToOthers(t *testing.T) {
 	f := setupRole(t, db.RoleEditor)
-	path := "/api/items/" + f.itemID + "/files"
+	path := "/api/locations/" + f.locationID + "/files"
 
 	w := f.ts.uploadWithFields(path, f.actor, "actor-ticket.txt", "text/plain",
 		[]byte("x"), map[string]string{"visibility": "personal"})
@@ -123,10 +123,10 @@ func TestPersonalItemFileIsInvisibleToOthers(t *testing.T) {
 		return out
 	}
 	if got := names(f.owner); contains(got, "actor-ticket.txt") || !contains(got, "shared-map.txt") {
-		t.Errorf("owner sees %v on the item — wants the shared file only", got)
+		t.Errorf("owner sees %v on the location — wants the shared file only", got)
 	}
 	if got := names(f.actor); !contains(got, "actor-ticket.txt") {
-		t.Errorf("actor cannot see their own personal item file: %v", got)
+		t.Errorf("actor cannot see their own personal location file: %v", got)
 	}
 }
 

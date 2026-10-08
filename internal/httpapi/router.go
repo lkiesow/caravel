@@ -366,10 +366,11 @@ func (s *Server) buildRouter() chi.Router {
 				r.Patch("/", s.handleUpdateTrip)
 				r.Delete("/", s.handleDeleteTrip)
 
-				r.Get("/items", s.handleListItems)
-				r.Post("/items", s.handleCreateItem)
-				// Several locations in one transaction -- see items_batch.go.
-				r.Post("/items/batch", s.handleCreateItemsBatch)
+				r.Get("/locations", s.handleListLocations)
+				r.Post("/locations", s.handleCreateLocation)
+				// Several locations in one transaction -- see
+				// locations_batch.go.
+				r.Post("/locations/batch", s.handleCreateLocationsBatch)
 
 				r.Get("/tags", s.handleListTripTags)
 
@@ -485,20 +486,20 @@ func (s *Server) buildRouter() chi.Router {
 			r.Delete("/entries/{entryId}", s.handleDeleteItineraryEntry)
 		})
 
-		r.Route("/items/{itemId}", func(r chi.Router) {
+		r.Route("/locations/{locationId}", func(r chi.Router) {
 			r.Use(auth.RequireAuth)
-			r.Get("/", s.handleGetItem)
-			r.Patch("/", s.handleUpdateItem)
-			r.Delete("/", s.handleDeleteItem)
+			r.Get("/", s.handleGetLocation)
+			r.Patch("/", s.handleUpdateLocation)
+			r.Delete("/", s.handleDeleteLocation)
 
-			r.Put("/location", s.handlePutItemLocation)
-			r.Put("/image", s.handleSetItemImage)
+			r.Put("/geo", s.handlePutLocationGeo)
+			r.Put("/image", s.handleSetLocationImage)
 
-			r.Post("/links", s.handleCreateItemLink)
-			r.Delete("/links/{linkId}", s.handleDeleteItemLink)
+			r.Post("/links", s.handleCreateLocationLink)
+			r.Delete("/links/{linkId}", s.handleDeleteLocationLink)
 
-			r.Get("/files", s.handleListItemFiles)
-			r.Post("/files", s.handleUploadItemFile)
+			r.Get("/files", s.handleListLocationFiles)
+			r.Post("/files", s.handleUploadLocationFile)
 		})
 	})
 

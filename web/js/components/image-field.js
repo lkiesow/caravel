@@ -10,7 +10,7 @@ import { escapeHtml } from "../escape.js";
 // and remove button. `tripId` scopes the upload/url endpoints (media is
 // always created under a trip — see plan Section 3.4). `attachPath` is the
 // resource-specific endpoint that attaches/clears the resulting media asset
-// (e.g. `/trips/{id}/preview-image` or `/items/{id}/image`).
+// (e.g. `/trips/{id}/preview-image` or `/locations/{id}/image`).
 //
 // If `tripId`/`attachPath` aren't set yet (the entity doesn't exist yet,
 // e.g. a trip being created), this runs in staging mode instead: picks are

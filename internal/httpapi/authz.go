@@ -78,7 +78,7 @@ func (s *Server) tripRole(ctx context.Context, tripID string) (db.Trip, db.TripR
 // authorizeTrip resolves the caller's role on tripID, checks it against min,
 // and writes the error response itself if the check fails. notFound is the
 // message used for the 404 case, so each resource keeps its own wording
-// ("item not found" rather than "trip not found") and the URL a client hit
+// ("location not found" rather than "trip not found") and the URL a client hit
 // still describes what it could not have.
 func (s *Server) authorizeTrip(w http.ResponseWriter, r *http.Request, tripID string, min db.TripRole, notFound string) (db.Trip, db.TripRole, bool) {
 	trip, role, err := s.tripRole(r.Context(), tripID)
@@ -103,22 +103,23 @@ func (s *Server) loadTrip(w http.ResponseWriter, r *http.Request, min db.TripRol
 	return s.authorizeTrip(w, r, chi.URLParam(r, "tripId"), min, "trip not found")
 }
 
-// loadItem fetches the item named by {itemId} and authorizes against its trip.
-func (s *Server) loadItem(w http.ResponseWriter, r *http.Request, min db.TripRole) (db.Location, db.TripRole, bool) {
-	item, err := s.Store.GetLocationByID(r.Context(), chi.URLParam(r, "itemId"))
+// loadLocation fetches the location named by {locationId} and authorizes
+// against its trip.
+func (s *Server) loadLocation(w http.ResponseWriter, r *http.Request, min db.TripRole) (db.Location, db.TripRole, bool) {
+	location, err := s.Store.GetLocationByID(r.Context(), chi.URLParam(r, "locationId"))
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "item not found")
+			writeError(w, http.StatusNotFound, "location not found")
 		} else {
-			writeError(w, http.StatusInternalServerError, "could not load item")
+			writeError(w, http.StatusInternalServerError, "could not load location")
 		}
 		return db.Location{}, "", false
 	}
-	_, role, ok := s.authorizeTrip(w, r, item.TripID, min, "item not found")
+	_, role, ok := s.authorizeTrip(w, r, location.TripID, min, "location not found")
 	if !ok {
 		return db.Location{}, "", false
 	}
-	return item, role, true
+	return location, role, true
 }
 
 // loadChecklist fetches the checklist named by {checklistId} and authorizes
@@ -249,7 +250,7 @@ func (s *Server) loadFile(w http.ResponseWriter, r *http.Request, min db.TripRol
 	// trip nobody shared with you: the point of a personal file is that other
 	// people on the trip do not know it exists.
 	//
-	// This duplicates the predicate in ListTripFiles and ListItemFiles on
+	// This duplicates the predicate in ListTripFiles and ListLocationFiles on
 	// purpose. Those hide the file from a listing; this is what stops a
 	// remembered or guessed id from reaching it.
 	if file.Visibility == db.FileVisibilityPersonal {
@@ -284,9 +285,10 @@ func (s *Server) loadItineraryDay(w http.ResponseWriter, r *http.Request, min db
 // requireSameTrip guards a client-supplied id that names a row in another
 // table: a media asset id arriving in a request body has no route param to
 // authorize, so the only thing standing between it and a cross-trip reference
-// is a check that it belongs to the trip being edited. handleCreateItineraryEntry
-// has always done this for item ids; the media handlers did not, which was
-// harmless only while every trip had exactly one owner.
+// is a check that it belongs to the trip being edited.
+// handleCreateItineraryEntry has always done this for location ids; the media
+// handlers did not, which was harmless only while every trip had exactly one
+// owner.
 func (s *Server) requireSameTrip(w http.ResponseWriter, assetTripID, tripID, message string) bool {
 	if assetTripID != tripID {
 		writeError(w, http.StatusBadRequest, message)

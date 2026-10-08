@@ -47,7 +47,7 @@ export function bindMentionPicker(textarea, listEl, { tripId }) {
   function loadItems() {
     if (!itemsPromise) {
       itemsPromise = api
-        .get(`/trips/${tripId}/items`)
+        .get(`/trips/${tripId}/locations`)
         .then((list) => (Array.isArray(list) ? list : []))
         .catch(() => []);
     }

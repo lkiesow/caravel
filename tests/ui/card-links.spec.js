@@ -33,7 +33,7 @@ test.describe("cards are links", () => {
   }
 
   async function createItem(page, tripId, title) {
-    const res = await page.request.post(`/api/trips/${tripId}/items`, {
+    const res = await page.request.post(`/api/trips/${tripId}/locations`, {
       data: { title, category: "stay", tags: ["hotel"], dates: [] },
     });
     expect(res.status(), "create a location").toBe(201);

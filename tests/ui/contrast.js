@@ -263,7 +263,7 @@ async function resolveRoute(page, route) {
     if (!Array.isArray(trips)) return { error: "could not list trips" };
     const trip = trips.find((t) => t.title === title);
     if (!trip) return { error: `no seeded trip titled ${title}` };
-    const items = await (await fetch(`/api/trips/${trip.id}/items`)).json();
+    const items = await (await fetch(`/api/trips/${trip.id}/locations`)).json();
     if (!Array.isArray(items) || !items.length) return { error: `trip ${title} has no locations` };
     return { trip: trip.id, item: items[0].id };
   }, SCENARIO_TRIP_TITLE);

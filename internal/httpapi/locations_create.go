@@ -19,19 +19,19 @@ import (
 	"caravel/internal/imaging"
 )
 
-// Creating a location used to take three requests: the item, then the cover
+// Creating a location used to take three requests: the location, then the cover
 // photo, then each file. The first was transactional and the rest were not,
 // so a cover that failed to fetch left a location behind with no picture --
-// and, because the editor did not adopt the item it had just created,
+// and, because the editor did not adopt the location it had just created,
 // pressing Save again created a *second* one (Stage 23 Milestone 0 records
 // the whole shape of it).
 //
 // The multipart variant below makes the whole location one request that
 // either happens or does not. The JSON path is untouched: readJSON refuses
-// unknown fields, and the item tests, the assistant and every other caller
+// unknown fields, and the location tests, the assistant and every other caller
 // depend on it.
 
-// maxItemCreateBytes caps a create request carrying a cover photo and
+// maxLocationCreateBytes caps a create request carrying a cover photo and
 // attachments.
 //
 // It is deliberately not the sum of the per-part limits: an image of 50MB and
@@ -39,8 +39,8 @@ import (
 // which is not a location being created, it is something else. 100MB is a
 // generous cover plus a generous document, and a location wanting more than
 // that can be created first and have the rest added from its own page, where
-// POST /items/{id}/files still takes them one at a time.
-const maxItemCreateBytes = 100 << 20
+// POST /locations/{id}/files still takes them one at a time.
+const maxLocationCreateBytes = 100 << 20
 
 // pendingImage is a cover photo that has been fetched or decoded and stored
 // in the blob store, waiting only for its database rows.
@@ -70,13 +70,14 @@ type pendingFile struct {
 	visibility  db.FileVisibility
 }
 
-// createItemMultipart handles POST /api/trips/{tripId}/items when the body is
-// multipart: the item JSON in an "item" part, an optional cover as either an
-// "image" file part or an "image_url" value, and zero or more "file" parts.
+// createLocationMultipart handles POST /api/trips/{tripId}/locations when the
+// body is multipart: the location JSON in a "location" part, an optional cover
+// as either an "image" file part or an "image_url" value, and zero or more
+// "file" parts.
 //
 // The ordering is what makes it atomic. Everything is parsed, validated,
 // decoded and fetched first, so every rejection happens before a single write.
-// Then the blobs go down. Then one transaction writes the item, its nested
+// Then the blobs go down. Then one transaction writes the location, its nested
 // location/links/dates, the media asset, the image attachment and every file
 // row together.
 //
@@ -86,8 +87,8 @@ type pendingFile struct {
 // invisible to the user: nothing references it and no location exists. Doing
 // better would mean writing blobs inside the transaction, which cannot be
 // rolled back either because the blob store is a filesystem.
-func (s *Server) createItemMultipart(w http.ResponseWriter, r *http.Request, trip db.Trip) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxItemCreateBytes)
+func (s *Server) createLocationMultipart(w http.ResponseWriter, r *http.Request, trip db.Trip) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxLocationCreateBytes)
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		writeError(w, http.StatusRequestEntityTooLarge, "request too large or invalid multipart form")
 		return
@@ -98,18 +99,19 @@ func (s *Server) createItemMultipart(w http.ResponseWriter, r *http.Request, tri
 		}
 	}()
 
-	// The item itself, as the same JSON the non-multipart path takes. Decoded
-	// with the same strictness, so a typo in a field name is caught here too.
-	raw := r.FormValue("item")
+	// The location itself, as the same JSON the non-multipart path takes.
+	// Decoded with the same strictness, so a typo in a field name is caught
+	// here too.
+	raw := r.FormValue("location")
 	if strings.TrimSpace(raw) == "" {
-		writeError(w, http.StatusBadRequest, "missing item field")
+		writeError(w, http.StatusBadRequest, "missing location field")
 		return
 	}
-	var req itemRequest
+	var req locationRequest
 	dec := json.NewDecoder(strings.NewReader(raw))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid item field: "+err.Error())
+		writeError(w, http.StatusBadRequest, "invalid location field: "+err.Error())
 		return
 	}
 	if err := req.validate(); err != nil {
@@ -117,28 +119,28 @@ func (s *Server) createItemMultipart(w http.ResponseWriter, r *http.Request, tri
 		return
 	}
 
-	// The item ID is minted here rather than inside the transaction because a
-	// file's storage key contains it (see uploadFile), and the blobs are
+	// The location ID is minted here rather than inside the transaction because
+	// a file's storage key contains it (see uploadFile), and the blobs are
 	// written before the transaction opens.
-	itemID := uuid.NewString()
+	locationID := uuid.NewString()
 
 	image, status, err := s.stageImage(r, trip.ID)
 	if err != nil {
 		writeError(w, status, err.Error())
 		return
 	}
-	files, status, err := s.stageFiles(r, trip.ID, itemID)
+	files, status, err := s.stageFiles(r, trip.ID, locationID)
 	if err != nil {
 		writeError(w, status, err.Error())
 		return
 	}
 
-	item, err := s.createItemTx(r.Context(), trip, itemID, req, image, files)
+	location, err := s.createLocationTx(r.Context(), trip, locationID, req, image, files)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not create item")
+		writeError(w, http.StatusInternalServerError, "could not create location")
 		return
 	}
-	writeJSON(w, http.StatusCreated, s.buildItemDetail(r, item))
+	writeJSON(w, http.StatusCreated, s.buildLocationDetail(r, location))
 }
 
 // stageImage validates and stores the cover, if there is one. It returns a
@@ -221,7 +223,7 @@ func (s *Server) storeImage(ctx context.Context, tripID string, result imaging.R
 // "file_visibility" are positional: the nth value belongs to the nth file
 // part, which is how the browser sends them and the only ordering multipart
 // gives us.
-func (s *Server) stageFiles(r *http.Request, tripID, itemID string) ([]pendingFile, int, error) {
+func (s *Server) stageFiles(r *http.Request, tripID, locationID string) ([]pendingFile, int, error) {
 	if r.MultipartForm == nil {
 		return nil, 0, nil
 	}
@@ -238,7 +240,7 @@ func (s *Server) stageFiles(r *http.Request, tripID, itemID string) ([]pendingFi
 			return nil, http.StatusRequestEntityTooLarge,
 				fmt.Errorf("file %q exceeds maximum size of %d bytes", header.Filename, maxFileUploadBytes)
 		}
-		pf, err := s.stageOneFile(r.Context(), tripID, itemID, header, at(notes, i), at(visibilities, i))
+		pf, err := s.stageOneFile(r.Context(), tripID, locationID, header, at(notes, i), at(visibilities, i))
 		if err != nil {
 			return nil, http.StatusInternalServerError, err
 		}
@@ -247,7 +249,7 @@ func (s *Server) stageFiles(r *http.Request, tripID, itemID string) ([]pendingFi
 	return staged, 0, nil
 }
 
-func (s *Server) stageOneFile(ctx context.Context, tripID, itemID string,
+func (s *Server) stageOneFile(ctx context.Context, tripID, locationID string,
 	header *multipart.FileHeader, note, visibility string) (pendingFile, error) {
 
 	f, err := header.Open()
@@ -265,7 +267,8 @@ func (s *Server) stageOneFile(ctx context.Context, tripID, itemID string,
 
 	id := uuid.NewString()
 	filename := filepath.Base(header.Filename)
-	key := fmt.Sprintf("%s/items/%s/%s-%s", tripID, itemID, id, filename)
+	// The "items" prefix outlived the rename on purpose; see uploadFile.
+	key := fmt.Sprintf("%s/items/%s/%s-%s", tripID, locationID, id, filename)
 	size, err := s.Blob.Put(ctx, key, f)
 	if err != nil {
 		return pendingFile{}, fmt.Errorf("could not store file")
@@ -294,29 +297,29 @@ func (s *Server) stageOneFile(ctx context.Context, tripID, itemID string,
 	}, nil
 }
 
-// createItemTx is the single write: the item, its nested rows, the cover and
-// the attachments, all inside one transaction.
-func (s *Server) createItemTx(ctx context.Context, trip db.Trip, itemID string, req itemRequest,
+// createLocationTx is the single write: the location, its nested rows, the
+// cover and the attachments, all inside one transaction.
+func (s *Server) createLocationTx(ctx context.Context, trip db.Trip, locationID string, req locationRequest,
 	image *pendingImage, files []pendingFile) (db.Location, error) {
 
-	var item db.Location
+	var location db.Location
 	err := s.Store.WithTx(ctx, func(store db.Store) error {
-		created, err := createItemInStore(ctx, store, trip, itemID, req, image, files)
-		item = created
+		created, err := createLocationInStore(ctx, store, trip, locationID, req, image, files)
+		location = created
 		return err
 	})
-	return item, err
+	return location, err
 }
 
-// createItemInStore is the body of that write, taking the store to use rather
-// than opening a transaction of its own.
+// createLocationInStore is the body of that write, taking the store to use
+// rather than opening a transaction of its own.
 //
-// Split out because db.Store.WithTx does not nest (see item_dates.go) and the
-// batch endpoint writes several locations inside one transaction. A function
-// rather than a method: it reaches for nothing on the server that the store
-// and the arguments do not already carry, and saying so keeps it obvious that
-// the only writes it makes are through the store it was handed.
-func createItemInStore(ctx context.Context, store db.Store, trip db.Trip, itemID string, req itemRequest,
+// Split out because db.Store.WithTx does not nest (see location_dates.go) and
+// the batch endpoint writes several locations inside one transaction. A
+// function rather than a method: it reaches for nothing on the server that the
+// store and the arguments do not already carry, and saying so keeps it obvious
+// that the only writes it makes are through the store it was handed.
+func createLocationInStore(ctx context.Context, store db.Store, trip db.Trip, locationID string, req locationRequest,
 	image *pendingImage, files []pendingFile) (db.Location, error) {
 
 	showOnMap := true
@@ -327,7 +330,7 @@ func createItemInStore(ctx context.Context, store db.Store, trip db.Trip, itemID
 	now := time.Now().UTC()
 
 	created, err := store.CreateLocation(ctx, db.CreateLocationParams{
-		ID:        itemID,
+		ID:        locationID,
 		TripID:    trip.ID,
 		Category:  req.Category,
 		Title:     req.Title,
@@ -339,7 +342,7 @@ func createItemInStore(ctx context.Context, store db.Store, trip db.Trip, itemID
 	if err != nil {
 		return db.Location{}, err
 	}
-	if err := writeItemNested(ctx, store, created, req); err != nil {
+	if err := writeLocationNested(ctx, store, created, req); err != nil {
 		return db.Location{}, err
 	}
 

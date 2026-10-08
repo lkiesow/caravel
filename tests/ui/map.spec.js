@@ -219,12 +219,12 @@ test.describe("the trip map at phone width", () => {
     const res = await page.request.post("/api/trips", { data: { title: "UI suite: map heights" } });
     const tripId = (await res.json()).id;
     try {
-      const created = await page.request.post(`/api/trips/${tripId}/items`, {
+      const created = await page.request.post(`/api/trips/${tripId}/locations`, {
         data: {
           category: "site",
           tags: ["viewpoint"],
           title: "Somewhere",
-          location: { lat: 64.9631, lng: -19.0208, address: null },
+          geo: { lat: 64.9631, lng: -19.0208, address: null },
         },
       });
       const itemId = (await created.json()).id;
@@ -1215,12 +1215,12 @@ test.describe("the location editor's coordinate picker", () => {
     // match what they showed - not merely "something was saved". The list
     // endpoint returns a summary with no nested location, so this reads the
     // item's own route.
-    const items = await (await page.request.get(`/api/trips/${tripId}/items`)).json();
+    const items = await (await page.request.get(`/api/trips/${tripId}/locations`)).json();
     expect(items.length, "the location should have been created").toBe(1);
-    const detail = await (await page.request.get(`/api/items/${items[0].id}`)).json();
-    expect(detail.location, "the picked coordinates should have been saved with it").toBeTruthy();
-    expect(detail.location.lat).toBeCloseTo(Number(typed.lat), 6);
-    expect(detail.location.lng).toBeCloseTo(Number(typed.lng), 6);
+    const detail = await (await page.request.get(`/api/locations/${items[0].id}`)).json();
+    expect(detail.geo, "the picked coordinates should have been saved with it").toBeTruthy();
+    expect(detail.geo.lat).toBeCloseTo(Number(typed.lat), 6);
+    expect(detail.geo.lng).toBeCloseTo(Number(typed.lng), 6);
   });
 
   test("typing a coordinate moves the marker, and clearing it removes it", async ({ page }) => {
@@ -1351,11 +1351,11 @@ test.describe("the location editor's coordinate picker", () => {
   });
 
   test("an existing location opens on its own point, not the world view", async ({ page }) => {
-    const created = await page.request.post(`/api/trips/${tripId}/items`, {
+    const created = await page.request.post(`/api/trips/${tripId}/locations`, {
       data: {
         title: "Already placed",
         category: "site",
-        location: { lat: 64.9631, lng: -19.0208, address: null },
+        geo: { lat: 64.9631, lng: -19.0208, address: null },
       },
     });
     expect(created.status(), "create a located item to edit").toBe(201);
@@ -2893,11 +2893,11 @@ test.describe("distance filter on the locations list", () => {
     try {
       // Near, far, and unmeasurable.
       for (const body of [
-        { title: "Right here", category: "site", location: { lat: 64.1466, lng: -21.9426 } },
-        { title: "Far away", category: "site", location: { lat: 64.9275, lng: -23.3106 } },
-        { title: "No coordinates", category: "site", location: { address: "past the bridge" } },
+        { title: "Right here", category: "site", geo: { lat: 64.1466, lng: -21.9426 } },
+        { title: "Far away", category: "site", geo: { lat: 64.9275, lng: -23.3106 } },
+        { title: "No coordinates", category: "site", geo: { address: "past the bridge" } },
       ]) {
-        expect((await page.request.post(`/api/trips/${tripId}/items`, { data: body })).status()).toBe(201);
+        expect((await page.request.post(`/api/trips/${tripId}/locations`, { data: body })).status()).toBe(201);
       }
 
       await gotoRoute(page, `/trips/${tripId}/locations`);
@@ -2934,11 +2934,11 @@ test.describe("distance filter on the locations list", () => {
       // The reported bug: nothing within the radius, but unplaced locations
       // kept the list populated, so it looked unfiltered.
       for (const body of [
-        { title: "Far away", category: "site", location: { lat: 64.9275, lng: -23.3106 } },
-        { title: "No coordinates", category: "site", location: { address: "past the bridge" } },
-        { title: "No coordinates either", category: "stay", location: { address: "by the lake" } },
+        { title: "Far away", category: "site", geo: { lat: 64.9275, lng: -23.3106 } },
+        { title: "No coordinates", category: "site", geo: { address: "past the bridge" } },
+        { title: "No coordinates either", category: "stay", geo: { address: "by the lake" } },
       ]) {
-        expect((await page.request.post(`/api/trips/${tripId}/items`, { data: body })).status()).toBe(201);
+        expect((await page.request.post(`/api/trips/${tripId}/locations`, { data: body })).status()).toBe(201);
       }
 
       await gotoRoute(page, `/trips/${tripId}/locations`);
@@ -3476,8 +3476,8 @@ test.describe("the fullscreen trip map", () => {
     const res = await page.request.post("/api/trips", { data: { title: "UI suite: fullscreen mounts" } });
     const tripId = (await res.json()).id;
     try {
-      const created = await page.request.post(`/api/trips/${tripId}/items`, {
-        data: { category: "site", tags: [], title: "Somewhere", location: { lat: 64.9631, lng: -19.0208, address: null } },
+      const created = await page.request.post(`/api/trips/${tripId}/locations`, {
+        data: { category: "site", tags: [], title: "Somewhere", geo: { lat: 64.9631, lng: -19.0208, address: null } },
       });
       const itemId = (await created.json()).id;
       for (const [route, selector] of [

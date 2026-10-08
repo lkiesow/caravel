@@ -119,7 +119,7 @@ test.describe("suggesting several locations", () => {
     // test failed intermittently for two stages with nothing but the
     // translated "could not be added" sentence to go on, because the page
     // logs the cause to a console nobody collects (todo.md).
-    const batch = page.waitForResponse((r) => r.url().includes("/items/batch"));
+    const batch = page.waitForResponse((r) => r.url().includes("/locations/batch"));
     await page.locator('[data-action="suggest-add"]').click();
     const batchRes = await batch;
     expect(batchRes.status(), `the batch add said: ${await batchRes.text()}`).toBe(201);
@@ -130,7 +130,7 @@ test.describe("suggesting several locations", () => {
 
     // Read back through the API rather than off the cards: what matters is
     // that the whole candidate was written, not that a title was rendered.
-    const items = await (await page.request.get(`/api/trips/${tripId}/items`)).json();
+    const items = await (await page.request.get(`/api/trips/${tripId}/locations`)).json();
     expect(items.map((i) => i.title).sort()).toEqual(["Hallgrimskirkja", "Harpa", "Kex Hostel"]);
 
     // The ambiguous one landed with its address and *no pin*. There is no
@@ -139,16 +139,16 @@ test.describe("suggesting several locations", () => {
     // address search and the map-link resolver.
     const harpa = items.find((i) => i.title === "Harpa");
     expect(harpa.lat, "an unsettled position must not be written as a pin").toBeFalsy();
-    const harpaDetail = await (await page.request.get(`/api/items/${harpa.id}`)).json();
-    expect(harpaDetail.location.lat, "no coordinates").toBeNull();
-    expect(harpaDetail.location.address, "but the address it did have").toContain("Austurbakki 2");
+    const harpaDetail = await (await page.request.get(`/api/locations/${harpa.id}`)).json();
+    expect(harpaDetail.geo.lat, "no coordinates").toBeNull();
+    expect(harpaDetail.geo.address, "but the address it did have").toContain("Austurbakki 2");
 
     const church = items.find((i) => i.title === "Hallgrimskirkja");
     expect(church.category, "the proposed category was written").toBe("site");
     expect(church.tags, "the proposed tags were split into a list").toContain("church");
     expect(typeof church.lat, "the geocoded position was written").toBe("number");
 
-    const detail = await (await page.request.get(`/api/items/${church.id}`)).json();
+    const detail = await (await page.request.get(`/api/locations/${church.id}`)).json();
     expect(detail.links.length, "the proposed link was written").toBe(1);
     expect(detail.notes, "the proposed notes were written").toContain("church");
     // The OpenStreetMap identity of the matched element, so a place added in a
@@ -156,8 +156,8 @@ test.describe("suggesting several locations", () => {
     // had none before Stage 33 Milestone 4: the position crossed the wire as a
     // bare coordinate pair, and an identity nobody forwarded is an identity
     // nobody has.
-    expect(detail.location.osm_type, "the matched element type was written").toBe("way");
-    expect(detail.location.osm_id, "the matched element id was written").toMatch(/^\d+$/);
+    expect(detail.geo.osm_type, "the matched element type was written").toBe("way");
+    expect(detail.geo.osm_id, "the matched element id was written").toMatch(/^\d+$/);
   });
 
   // Nothing is written until the button is pressed. The whole feature rests on
@@ -169,14 +169,14 @@ test.describe("suggesting several locations", () => {
     await page.locator('[data-action="suggest-run"]').click();
     await expect(page.locator(".suggest-card")).toHaveCount(5, { timeout: 30_000 });
 
-    const items = await (await page.request.get(`/api/trips/${tripId}/items`)).json();
+    const items = await (await page.request.get(`/api/trips/${tripId}/locations`)).json();
     expect(items, "the trip is still empty while the candidates are on screen").toHaveLength(0);
   });
 
   // A place already on the trip is dropped by the server, and the page says so
   // rather than silently offering two where it offered three.
   test("says when a suggestion was skipped for being on the trip already", async ({ page }) => {
-    const existing = await page.request.post(`/api/trips/${tripId}/items`, {
+    const existing = await page.request.post(`/api/trips/${tripId}/locations`, {
       data: { title: "Kex Hostel", category: "stay" },
     });
     expect(existing.status()).toBe(201);

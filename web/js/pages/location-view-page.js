@@ -57,7 +57,7 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
   let item, trip, itemIds;
   try {
     [item, trip, itemIds] = await Promise.all([
-      api.get(`/items/${itemId}`),
+      api.get(`/locations/${itemId}`),
       api.get(`/trips/${tripId}`),
       loadTripItemIds(tripId),
     ]);
@@ -67,13 +67,13 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
   }
 
   const color = categoryColor(item.category);
-  const files = await api.get(`/items/${itemId}/files`);
+  const files = await api.get(`/locations/${itemId}/files`);
   const editable = canEdit(trip);
-  const hasCoords = item.location?.lat != null && item.location?.lng != null;
-  const hasAddress = Boolean(item.location?.address);
+  const hasCoords = item.geo?.lat != null && item.geo?.lng != null;
+  const hasAddress = Boolean(item.geo?.address);
   // null unless this place was saved through the address search, which is the
   // only route that knows an OSM element. Absent, not broken, for a dropped pin.
-  const osmUrl = openStreetMapUrl(item.location?.osm_type, item.location?.osm_id);
+  const osmUrl = openStreetMapUrl(item.geo?.osm_type, item.geo?.osm_id);
 
   container.innerHTML = `
     <div class="page location-view">
@@ -107,9 +107,9 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
           ${
             hasCoords
               ? `
-            <map-view lat="${item.location.lat}" lng="${item.location.lng}" marker-title="${escapeHtml(item.title)}" marker-address="${escapeHtml(item.location.address ?? "")}" marker-category="${escapeHtml(item.category)}"></map-view>
+            <map-view lat="${item.geo.lat}" lng="${item.geo.lng}" marker-title="${escapeHtml(item.title)}" marker-address="${escapeHtml(item.geo.address ?? "")}" marker-category="${escapeHtml(item.category)}"></map-view>
             <div class="location-view__maps-links">
-              <a class="location-view__maps-link" href="${escapeHtml(googleMapsUrl(item.location.lat, item.location.lng, item.title, item.location.address))}" target="_blank" rel="noopener" data-i18n="map.viewOnGoogleMaps"></a>
+              <a class="location-view__maps-link" href="${escapeHtml(googleMapsUrl(item.geo.lat, item.geo.lng, item.title, item.geo.address))}" target="_blank" rel="noopener" data-i18n="map.viewOnGoogleMaps"></a>
               ${
                 osmUrl
                   ? `<span class="location-view__maps-sep" aria-hidden="true">\u00b7</span>
@@ -178,7 +178,7 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
     // readOnly, so no controls either way — but `shared` is still passed so a
     // personal file is *marked* as one here too. Seeing a lock on a file you
     // uploaded is the confirmation that it is not on show to the trip.
-    renderFileList(container.querySelector(".file-list-slot"), `/items/${itemId}/files`, {
+    renderFileList(container.querySelector(".file-list-slot"), `/locations/${itemId}/files`, {
       rows: files,
       readOnly: true,
       shared: isShared(trip),
@@ -234,7 +234,7 @@ export async function renderLocationViewPage(container, { tripId, itemId }) {
     notes.innerHTML = item.notes_html;
     markInternalLinks(notes, { tripId, itemIds });
   }
-  if (hasAddress) container.querySelector(".location-view__address").textContent = item.location.address;
+  if (hasAddress) container.querySelector(".location-view__address").textContent = item.geo.address;
 
   container.querySelector('[data-action="edit"]')?.addEventListener("click", () => {
     navigate(`/trips/${tripId}/locations/${itemId}/edit`);

@@ -23,7 +23,7 @@ export async function renderItineraryTab(container, trip) {
   // Sorted by title for the "add an entry" select below: the API returns the
   // trip's own location order, which reads as random when you are scanning the
   // list for one place you already have in mind.
-  const items = (await api.get(`/trips/${trip.id}/items`)).sort(byTitle());
+  const items = (await api.get(`/trips/${trip.id}/locations`)).sort(byTitle());
 
   // Which days are expanded. Seeded from the rule below and then owned by the
   // user: toggling a day updates this set, so a re-render (adding or removing
@@ -188,7 +188,7 @@ export async function renderItineraryTab(container, trip) {
         const select = e.target.itemId;
         if (!select.value) return;
         const dayRecord = await ensureDay(day);
-        const entry = await api.post(`/itinerary/days/${dayRecord.id}/entries`, { item_id: select.value });
+        const entry = await api.post(`/itinerary/days/${dayRecord.id}/entries`, { location_id: select.value });
         day.id = dayRecord.id;
         day.entries.push(entry);
         select.value = "";
@@ -253,20 +253,20 @@ export async function renderItineraryTab(container, trip) {
       // tall, being styled purely as text; it now carries the tap-target
       // min-height at phone width like every other control.
       li.innerHTML = `
-        <a href="/trips/${trip.id}/locations/${entry.item_id}" data-link class="itinerary-entry__link">
+        <a href="/trips/${trip.id}/locations/${entry.location_id}" data-link class="itinerary-entry__link">
           ${
-            entry.item_image_url
-              ? `<img class="itinerary-entry__thumb" src="${escapeHtml(entry.item_image_url)}" alt="" />`
-              : `<span class="dot" style="background:${categoryColor(entry.item_category)}"></span>`
+            entry.location_image_url
+              ? `<img class="itinerary-entry__thumb" src="${escapeHtml(entry.location_image_url)}" alt="" />`
+              : `<span class="dot" style="background:${categoryColor(entry.location_category)}"></span>`
           }
-          <span>${escapeHtml(entry.item_title)}</span>
+          <span>${escapeHtml(entry.location_title)}</span>
         </a>
         ${entry.note ? `<span class="itinerary-entry__note">${escapeHtml(entry.note)}</span>` : ""}
         ${
           editable
             ? `<span class="itinerary-entry__actions">
-          <button class="icon-btn" data-action="move-up" ${index === 0 ? "disabled" : ""} aria-label="${escapeHtml(t("itinerary.moveUp", { title: entry.item_title }))}">${icon("chevron-up")}</button>
-          <button class="icon-btn" data-action="move-down" ${index === day.entries.length - 1 ? "disabled" : ""} aria-label="${escapeHtml(t("itinerary.moveDown", { title: entry.item_title }))}">${icon("chevron-down")}</button>
+          <button class="icon-btn" data-action="move-up" ${index === 0 ? "disabled" : ""} aria-label="${escapeHtml(t("itinerary.moveUp", { title: entry.location_title }))}">${icon("chevron-up")}</button>
+          <button class="icon-btn" data-action="move-down" ${index === day.entries.length - 1 ? "disabled" : ""} aria-label="${escapeHtml(t("itinerary.moveDown", { title: entry.location_title }))}">${icon("chevron-down")}</button>
           <span class="itinerary-entry__menu"></span>
         </span>`
             : ""
@@ -352,7 +352,7 @@ export async function renderItineraryTab(container, trip) {
     if (!choices.length) return;
 
     const toDate = await selectDialog({
-      message: t("itinerary.moveDialog", { title: entry.item_title }),
+      message: t("itinerary.moveDialog", { title: entry.location_title }),
       labelKey: "itinerary.moveDayLabel",
       confirmKey: "itinerary.moveConfirm",
       options: choices.map((d) => ({ value: d.date, label: formatDate(d.date) })),

@@ -32,6 +32,15 @@ older stage plan or an earlier version of this file without asking.
   offline mode, where slow requests become common. Never for mutating
   requests: aborting one does not undo it on the server.
 
+- **`internal/httpapi` is close to go test's timeout on Postgres.** (Stage 49.)
+  Alone, `make test-postgres` spends 330 s in that one package, over half of
+  the 10-minute default; with `make test-ui` running beside it, it timed out
+  mid-`TestRoleMatrix` with every request still answering in 20-60 ms. Slow,
+  not stuck: the role matrix builds a full fixture per role and route. Either
+  share fixtures across the matrix, run its subtests in parallel on their own
+  schemas, or pass `-timeout` in `scripts/test_postgres.sh`. Until then, do
+  not run it alongside the UI suite.
+
 - **Small leftovers that outlive a page.** (Stage 48.) `popup.js` keeps its
   document click and keydown listeners if a popup is open during a
   navigation (they go on the next click), and `<map-view>`'s gesture-hint
@@ -141,12 +150,13 @@ older stage plan or an earlier version of this file without asking.
   API fields and code are written with the new names rather than renamed
   afterwards. **The schema and `internal/db` are done** (Stage 49 Milestone 1:
   migration 0013, `locations`/`location_geo`/`location_links`/`location_tags`,
-  `location_id` everywhere). What is left: the API still says `items`
-  (`/api/items/{id}`, `item_id`/`item_title` JSON fields, the nested
-  `"location"` object), and the frontend still has the `item.*` i18n namespace
-  (27 keys in `en.json`), `renderItemForm` in `location-form.js`,
-  `renderItemsTab` and `data-action="new-item"` in `locations-tab.js`, and the
-  `<item-card>` element.
+  `location_id` everywhere). **So is the API** (Milestone 2:
+  `/api/locations/{id}`, `location_*` JSON fields, the nested object is
+  `"geo"`; the old routes are gone). What is left is the frontend's own names:
+  the `item.*` i18n namespace (27 keys in `en.json`), `renderItemForm` in
+  `location-form.js`, `renderItemsTab` and `data-action="new-item"` in
+  `locations-tab.js`, the `<item-card>` element, the `:itemId` route parameter
+  (`app.js`, mirrored in `clientroutes.go`), and the `item`/`itemId` locals.
   Decided: go all the way, API routes and a table-rename migration included --
   precedent is Stage 11 Milestone 1's "documents" → "files" rename, which
   renamed the table in `0006` and dropped the old URL outright. Do it as its own

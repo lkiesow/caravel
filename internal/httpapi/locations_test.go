@@ -5,33 +5,34 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	"caravel/internal/db"
 )
 
 // Coverage for the nested create/update contract added in Stage 09 Milestone 1:
-// one request commits an item plus its location, links and dates, in a single
+// one request commits a location plus its geo, links and dates, in a single
 // transaction. The standalone location and links endpoints are unchanged and
 // keep their own coverage via ownership_test.go.
 //
-// Since Stage 25 the dates block is not a set of rows on the item but the
+// Since Stage 25 the dates block is not a set of rows on the location but the
 // itinerary days it appears on, so a "date" here is a range with no id, and
-// writing one writes itinerary entries. TestReconcileItemDates below covers
+// writing one writes itinerary entries. TestReconcileLocationDates below covers
 // what that costs; these tests only need the contract to still hold.
 
-// nestedItem is the part of itemDetailResponse these tests assert on, decoded
-// the way a client sees it (JSON) rather than by reaching into the handler's
-// own structs.
-type nestedItem struct {
+// nestedLocation is the part of locationDetailResponse these tests assert on,
+// decoded the way a client sees it (JSON) rather than by reaching into the
+// handler's own structs.
+type nestedLocation struct {
 	ID       string `json:"id"`
 	Title    string `json:"title"`
 	Category string `json:"category"`
-	Location *struct {
+	Geo      *struct {
 		Lat     *float64 `json:"lat"`
 		Lng     *float64 `json:"lng"`
 		Address *string  `json:"address"`
-	} `json:"location"`
+	} `json:"geo"`
 	Links []struct {
 		ID        string  `json:"id"`
 		URL       string  `json:"url"`
@@ -48,7 +49,7 @@ const nestedCreateBody = `{
 	"title": "Foss Hotel",
 	"category": "stay",
 	"tags": ["hotel"],
-	"location": {"lat": 64.146, "lng": -21.94, "address": "Reykjavik"},
+	"geo": {"lat": 64.146, "lng": -21.94, "address": "Reykjavik"},
 	"links": [
 		{"url": "https://example.com/booking", "label": "Booking"},
 		{"url": "https://example.com/map"}
@@ -57,16 +58,16 @@ const nestedCreateBody = `{
 }`
 
 // createNested posts nestedCreateBody and returns the decoded response.
-func createNested(ts *testServer, cookie *http.Cookie, tripID string) nestedItem {
+func createNested(ts *testServer, cookie *http.Cookie, tripID string) nestedLocation {
 	ts.t.Helper()
-	w := ts.do(http.MethodPost, "/api/trips/"+tripID+"/items", cookie, nestedCreateBody)
+	w := ts.do(http.MethodPost, "/api/trips/"+tripID+"/locations", cookie, nestedCreateBody)
 	if w.Code != http.StatusCreated {
-		ts.t.Fatalf("create nested item: got %d, want 201, body %s", w.Code, w.Body.String())
+		ts.t.Fatalf("create nested location: got %d, want 201, body %s", w.Code, w.Body.String())
 	}
-	return decode[nestedItem](ts.t, w)
+	return decode[nestedLocation](ts.t, w)
 }
 
-func TestCreateItemWithNestedSubResources(t *testing.T) {
+func TestCreateLocationWithNestedSubResources(t *testing.T) {
 	ts := newTestServer(t)
 	cookie := ts.login("demo")
 	tripID := ts.createTrip(cookie, "Iceland")
@@ -78,18 +79,18 @@ func TestCreateItemWithNestedSubResources(t *testing.T) {
 	assertNested(t, "create response", created)
 
 	// ...and it is actually persisted, not just echoed.
-	w := ts.do(http.MethodGet, "/api/items/"+created.ID, cookie, "")
+	w := ts.do(http.MethodGet, "/api/locations/"+created.ID, cookie, "")
 	if w.Code != http.StatusOK {
-		t.Fatalf("get item: got %d, want 200", w.Code)
+		t.Fatalf("get location: got %d, want 200", w.Code)
 	}
-	assertNested(t, "subsequent GET", decode[nestedItem](t, w))
+	assertNested(t, "subsequent GET", decode[nestedLocation](t, w))
 }
 
-func assertNested(t *testing.T, where string, got nestedItem) {
+func assertNested(t *testing.T, where string, got nestedLocation) {
 	t.Helper()
 
-	if got.Location == nil || got.Location.Lat == nil || *got.Location.Lat != 64.146 {
-		t.Errorf("%s: location not saved: %+v", where, got.Location)
+	if got.Geo == nil || got.Geo.Lat == nil || *got.Geo.Lat != 64.146 {
+		t.Errorf("%s: geo not saved: %+v", where, got.Geo)
 	}
 	if len(got.Links) != 2 {
 		t.Fatalf("%s: got %d links, want 2", where, len(got.Links))
@@ -112,50 +113,50 @@ func assertNested(t *testing.T, where string, got nestedItem) {
 	}
 }
 
-func TestUpdateItemLeavesOmittedSubResourcesIntact(t *testing.T) {
+func TestUpdateLocationLeavesOmittedSubResourcesIntact(t *testing.T) {
 	ts := newTestServer(t)
 	cookie := ts.login("demo")
 	tripID := ts.createTrip(cookie, "Iceland")
 	created := createNested(ts, cookie, tripID)
 
 	// A PATCH with no nested keys at all — what a caller editing only the
-	// basic fields sends. Nothing hanging off the item may be touched.
-	w := ts.do(http.MethodPatch, "/api/items/"+created.ID, cookie,
+	// basic fields sends. Nothing hanging off the location may be touched.
+	w := ts.do(http.MethodPatch, "/api/locations/"+created.ID, cookie,
 		`{"title":"Foss Hotel Reykjavik","category":"stay","tags":["hotel"]}`)
 	if w.Code != http.StatusOK {
-		t.Fatalf("patch item: got %d, want 200, body %s", w.Code, w.Body.String())
+		t.Fatalf("patch location: got %d, want 200, body %s", w.Code, w.Body.String())
 	}
-	got := decode[nestedItem](t, w)
+	got := decode[nestedLocation](t, w)
 	if got.Title != "Foss Hotel Reykjavik" {
 		t.Errorf("title = %q, want the patched one", got.Title)
 	}
 	assertNested(t, "patch without nested keys", got)
 }
 
-func TestUpdateItemReplacesSubResourceSets(t *testing.T) {
+func TestUpdateLocationReplacesSubResourceSets(t *testing.T) {
 	ts := newTestServer(t)
 	cookie := ts.login("demo")
 	tripID := ts.createTrip(cookie, "Iceland")
 	created := createNested(ts, cookie, tripID)
 
-	w := ts.do(http.MethodPatch, "/api/items/"+created.ID, cookie, `{
+	w := ts.do(http.MethodPatch, "/api/locations/"+created.ID, cookie, `{
 		"title": "Foss Hotel",
 		"category": "stay",
 		"tags": ["hotel"],
-		"location": {"lat": 65.0, "lng": -22.0, "address": null},
+		"geo": {"lat": 65.0, "lng": -22.0, "address": null},
 		"links": [{"url": "https://example.com/only"}],
 		"dates": []
 	}`)
 	if w.Code != http.StatusOK {
-		t.Fatalf("patch item: got %d, want 200, body %s", w.Code, w.Body.String())
+		t.Fatalf("patch location: got %d, want 200, body %s", w.Code, w.Body.String())
 	}
-	got := decode[nestedItem](t, w)
+	got := decode[nestedLocation](t, w)
 
-	if got.Location == nil || got.Location.Lat == nil || *got.Location.Lat != 65.0 {
-		t.Errorf("location not upserted: %+v", got.Location)
+	if got.Geo == nil || got.Geo.Lat == nil || *got.Geo.Lat != 65.0 {
+		t.Errorf("geo not upserted: %+v", got.Geo)
 	}
-	if got.Location != nil && got.Location.Address != nil {
-		t.Errorf("address = %q, want cleared by the explicit null", *got.Location.Address)
+	if got.Geo != nil && got.Geo.Address != nil {
+		t.Errorf("address = %q, want cleared by the explicit null", *got.Geo.Address)
 	}
 	// Replace, not merge: the two original links are gone.
 	if len(got.Links) != 1 || got.Links[0].URL != "https://example.com/only" {
@@ -168,7 +169,7 @@ func TestUpdateItemReplacesSubResourceSets(t *testing.T) {
 	}
 }
 
-func TestCreateItemRejectsInvalidNestedValues(t *testing.T) {
+func TestCreateLocationRejectsInvalidNestedValues(t *testing.T) {
 	ts := newTestServer(t)
 	cookie := ts.login("demo")
 	tripID := ts.createTrip(cookie, "Iceland")
@@ -183,17 +184,18 @@ func TestCreateItemRejectsInvalidNestedValues(t *testing.T) {
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
-			w := ts.do(http.MethodPost, "/api/trips/"+tripID+"/items", cookie, body)
+			w := ts.do(http.MethodPost, "/api/trips/"+tripID+"/locations", cookie, body)
 			if w.Code != http.StatusBadRequest {
 				t.Errorf("got %d, want 400, body %s", w.Code, w.Body.String())
 			}
 		})
 	}
 
-	// Rejected up front means nothing was written at all — not even the item.
-	w := ts.do(http.MethodGet, "/api/trips/"+tripID+"/items", cookie, "")
-	if items := decode[[]map[string]any](t, w); len(items) != 0 {
-		t.Errorf("got %d items after rejected creates, want 0", len(items))
+	// Rejected up front means nothing was written at all — not even the
+	// location.
+	w := ts.do(http.MethodGet, "/api/trips/"+tripID+"/locations", cookie, "")
+	if locations := decode[[]map[string]any](t, w); len(locations) != 0 {
+		t.Errorf("got %d locations after rejected creates, want 0", len(locations))
 	}
 }
 
@@ -204,21 +206,21 @@ func TestCreateItemRejectsInvalidNestedValues(t *testing.T) {
 // not be visible inside the transaction under test.
 type failingStore struct {
 	db.Store
-	failCreateItemLink bool
+	failCreateLocationLink bool
 	// failCreateFile proves the multipart create is atomic across *all* of
-	// its writes: it fires after the item, its nested rows, the media asset
+	// its writes: it fires after the location, its nested rows, the media asset
 	// and the image attachment have all been written inside the transaction.
 	failCreateFile bool
 }
 
 func (f failingStore) WithTx(ctx context.Context, fn func(db.Store) error) error {
 	return f.Store.WithTx(ctx, func(tx db.Store) error {
-		return fn(failingStore{Store: tx, failCreateItemLink: f.failCreateItemLink, failCreateFile: f.failCreateFile})
+		return fn(failingStore{Store: tx, failCreateLocationLink: f.failCreateLocationLink, failCreateFile: f.failCreateFile})
 	})
 }
 
 func (f failingStore) CreateLocationLink(ctx context.Context, p db.CreateLocationLinkParams) (db.LocationLink, error) {
-	if f.failCreateItemLink {
+	if f.failCreateLocationLink {
 		return db.LocationLink{}, errors.New("injected CreateItemLink failure")
 	}
 	return f.Store.CreateLocationLink(ctx, p)
@@ -231,28 +233,28 @@ func (f failingStore) CreateFile(ctx context.Context, p db.CreateFileParams) (db
 	return f.Store.CreateFile(ctx, p)
 }
 
-func TestCreateItemRollsBackWhenANestedWriteFails(t *testing.T) {
+func TestCreateLocationRollsBackWhenANestedWriteFails(t *testing.T) {
 	ts := newTestServerWithStore(t, func(s db.Store) db.Store {
-		return failingStore{Store: s, failCreateItemLink: true}
+		return failingStore{Store: s, failCreateLocationLink: true}
 	})
 	cookie := ts.login("demo")
 	tripID := ts.createTrip(cookie, "Iceland")
 
-	w := ts.do(http.MethodPost, "/api/trips/"+tripID+"/items", cookie, nestedCreateBody)
+	w := ts.do(http.MethodPost, "/api/trips/"+tripID+"/locations", cookie, nestedCreateBody)
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("got %d, want 500, body %s", w.Code, w.Body.String())
 	}
 
-	// The whole point of the transaction: the item row that was inserted
+	// The whole point of the transaction: the location row that was inserted
 	// before the link failed must be gone. Before Milestone 1 this left a
 	// half-populated location behind (with its coordinates, without its
 	// links) and the client had to clean up.
-	w = ts.do(http.MethodGet, "/api/trips/"+tripID+"/items", cookie, "")
+	w = ts.do(http.MethodGet, "/api/trips/"+tripID+"/locations", cookie, "")
 	if w.Code != http.StatusOK {
 		t.Fatalf("list items: got %d, want 200", w.Code)
 	}
-	if items := decode[[]map[string]any](t, w); len(items) != 0 {
-		t.Errorf("got %d items after the failed create, want 0 — the transaction did not roll back", len(items))
+	if locations := decode[[]map[string]any](t, w); len(locations) != 0 {
+		t.Errorf("got %d locations after the failed create, want 0 — the transaction did not roll back", len(locations))
 	}
 }
 
@@ -260,43 +262,43 @@ func TestCreateItemRollsBackWhenANestedWriteFails(t *testing.T) {
 // filter by distance client-side. It deliberately ignores show_on_map, which
 // governs whether a place is drawn on the map and says nothing about whether
 // it has a position.
-func TestListItemsCarriesCoordinatesIgnoringShowOnMap(t *testing.T) {
+func TestListLocationsCarriesCoordinatesIgnoringShowOnMap(t *testing.T) {
 	ts := newTestServer(t)
 	cookie := ts.login("alice")
 	tripID := ts.createTrip(cookie, "Iceland")
 
-	located := ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/items", cookie,
-		`{"title":"Kirkjufell","category":"site","location":{"lat":64.9269,"lng":-23.3086}}`, http.StatusCreated)
+	located := ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/locations", cookie,
+		`{"title":"Kirkjufell","category":"site","geo":{"lat":64.9269,"lng":-23.3086}}`, http.StatusCreated)
 	// Same, but explicitly hidden from the map. It still has a position.
-	hidden := ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/items", cookie,
-		`{"title":"Hidden but placed","category":"stay","show_on_map":false,"location":{"lat":64.1466,"lng":-21.9426}}`, http.StatusCreated)
+	hidden := ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/locations", cookie,
+		`{"title":"Hidden but placed","category":"stay","show_on_map":false,"geo":{"lat":64.1466,"lng":-21.9426}}`, http.StatusCreated)
 	// Address only, no coordinates: not far away, unmeasurable.
-	addressOnly := ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/items", cookie,
-		`{"title":"Somewhere vague","category":"site","location":{"address":"past the bridge"}}`, http.StatusCreated)
-	none := ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/items", cookie,
+	addressOnly := ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/locations", cookie,
+		`{"title":"Somewhere vague","category":"site","geo":{"address":"past the bridge"}}`, http.StatusCreated)
+	none := ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/locations", cookie,
 		`{"title":"No location at all","category":"site"}`, http.StatusCreated)
 
-	rec := ts.do(http.MethodGet, "/api/trips/"+tripID+"/items", cookie, "")
+	rec := ts.do(http.MethodGet, "/api/trips/"+tripID+"/locations", cookie, "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
-	var items []itemResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &items); err != nil {
+	var locations []locationResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &locations); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	byID := map[string]itemResponse{}
-	for _, it := range items {
+	byID := map[string]locationResponse{}
+	for _, it := range locations {
 		byID[it.ID] = it
 	}
 
 	if got := byID[located]; got.Lat == nil || got.Lng == nil {
-		t.Errorf("a located item should carry coordinates, got %+v", got)
+		t.Errorf("a located location should carry coordinates, got %+v", got)
 	} else if *got.Lat != 64.9269 || *got.Lng != -23.3086 {
 		t.Errorf("coordinates = %v,%v", *got.Lat, *got.Lng)
 	}
-	// The whole point of not reusing ListMapItems.
+	// The whole point of not reusing ListMapLocations.
 	if got := byID[hidden]; got.Lat == nil {
-		t.Error("show_on_map=false must not hide an item's coordinates from the list")
+		t.Error("show_on_map=false must not hide a location's coordinates from the list")
 	}
 	for name, id := range map[string]string{"address-only": addressOnly, "no location": none} {
 		if got := byID[id]; got.Lat != nil || got.Lng != nil {
@@ -313,22 +315,55 @@ func TestAreaCategoryRoundTrips(t *testing.T) {
 	cookie := ts.login("demo")
 	tripID := ts.createTrip(cookie, "Iceland")
 
-	w := ts.do(http.MethodPost, "/api/trips/"+tripID+"/items", cookie,
-		`{"title":"Snaefellsnes","category":"area","location":{"lat":64.87,"lng":-23.35}}`)
+	w := ts.do(http.MethodPost, "/api/trips/"+tripID+"/locations", cookie,
+		`{"title":"Snaefellsnes","category":"area","geo":{"lat":64.87,"lng":-23.35}}`)
 	if w.Code != http.StatusCreated {
-		t.Fatalf("create area item: got %d, want 201, body %s", w.Code, w.Body.String())
+		t.Fatalf("create area location: got %d, want 201, body %s", w.Code, w.Body.String())
 	}
-	if got := decode[nestedItem](t, w); got.Category != "area" {
+	if got := decode[nestedLocation](t, w); got.Category != "area" {
 		t.Errorf("category = %q, want area", got.Category)
 	}
 
 	// And the list filter, which validates the query parameter against the
 	// same map.
-	w = ts.do(http.MethodGet, "/api/trips/"+tripID+"/items?category=area", cookie, "")
+	w = ts.do(http.MethodGet, "/api/trips/"+tripID+"/locations?category=area", cookie, "")
 	if w.Code != http.StatusOK {
 		t.Fatalf("filter by area: got %d, want 200, body %s", w.Code, w.Body.String())
 	}
-	if items := decode[[]map[string]any](t, w); len(items) != 1 {
-		t.Errorf("got %d items filtered by area, want 1", len(items))
+	if locations := decode[[]map[string]any](t, w); len(locations) != 1 {
+		t.Errorf("got %d locations filtered by area, want 1", len(locations))
+	}
+}
+
+// The item routes were dropped in Stage 49, not aliased -- the frontend is the
+// only client, and it moved in the same commit (the precedent is Stage 11
+// dropping /documents for /files). Asked with a real trip and a real location,
+// so a 404 here means the route is gone rather than the record.
+func TestItemRoutesAreGone(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login("alice")
+	tripID := ts.createTrip(cookie, "Iceland")
+	locationID := ts.createLocation(cookie, tripID, "Kirkjufell")
+
+	if w := ts.do(http.MethodGet, "/api/locations/"+locationID, cookie, ""); w.Code != http.StatusOK {
+		t.Fatalf("GET the location under its new route: got %d, want 200", w.Code)
+	}
+	for _, tc := range []struct{ method, path, body string }{
+		{http.MethodGet, "/api/items/" + locationID, ""},
+		{http.MethodPatch, "/api/items/" + locationID, `{"title":"x","category":"site"}`},
+		{http.MethodDelete, "/api/items/" + locationID, ""},
+		{http.MethodPut, "/api/items/" + locationID + "/location", `{"lat":1,"lng":2}`},
+		{http.MethodPut, "/api/locations/" + locationID + "/location", `{"lat":1,"lng":2}`},
+		{http.MethodGet, "/api/trips/" + tripID + "/items", ""},
+		{http.MethodPost, "/api/trips/" + tripID + "/items", `{"title":"x","category":"site"}`},
+		{http.MethodPost, "/api/trips/" + tripID + "/items/batch", `{"items":[]}`},
+	} {
+		if w := ts.do(tc.method, tc.path, cookie, tc.body); w.Code != http.StatusNotFound {
+			t.Errorf("%s %s = %d, want 404", tc.method, tc.path, w.Code)
+		}
+	}
+	// And nothing was written through them.
+	if w := ts.do(http.MethodGet, "/api/locations/"+locationID, cookie, ""); !strings.Contains(w.Body.String(), `"title":"Kirkjufell"`) {
+		t.Errorf("the location changed through a dropped route: %s", w.Body.String())
 	}
 }

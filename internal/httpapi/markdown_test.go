@@ -81,10 +81,10 @@ func TestMarkdownPreviewSanitizes(t *testing.T) {
 	}
 }
 
-// The point of the whole milestone: what the preview shows is what the view page
-// will show. Two independent responses compared against each other, so neither
-// side is the other's expectation.
-func TestMarkdownPreviewMatchesTheItemPayload(t *testing.T) {
+// The point of the whole milestone: what the preview shows is what the view
+// page will show. Two independent responses compared against each other, so
+// neither side is the other's expectation.
+func TestMarkdownPreviewMatchesTheLocationPayload(t *testing.T) {
 	ts := newTestServer(t)
 	as := ts.login("writer")
 	tripID := ts.createTrip(as, "Iceland")
@@ -93,23 +93,23 @@ func TestMarkdownPreviewMatchesTheItemPayload(t *testing.T) {
 
 	body, err := jsonBody(map[string]any{"title": "Hotel", "category": "stay", "notes": notes})
 	if err != nil {
-		t.Fatalf("encode item: %v", err)
+		t.Fatalf("encode location: %v", err)
 	}
-	itemID := ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/items", as, body, http.StatusCreated)
+	locationID := ts.mustCreate(http.MethodPost, "/api/trips/"+tripID+"/locations", as, body, http.StatusCreated)
 
-	w := ts.do(http.MethodGet, "/api/items/"+itemID, as, "")
+	w := ts.do(http.MethodGet, "/api/locations/"+locationID, as, "")
 	if w.Code != http.StatusOK {
-		t.Fatalf("get item: got %d, body %s", w.Code, w.Body.String())
+		t.Fatalf("get location: got %d, body %s", w.Code, w.Body.String())
 	}
 	saved := decode[struct {
 		NotesHTML *string `json:"notes_html"`
 	}](t, w)
 	if saved.NotesHTML == nil {
-		t.Fatal("the item payload carries no notes_html, so there is nothing to agree with")
+		t.Fatal("the location payload carries no notes_html, so there is nothing to agree with")
 	}
 
 	if got := previewHTML(t, ts, as, notes); got != *saved.NotesHTML {
-		t.Errorf("preview and the saved item disagree:\n preview: %q\n   saved: %q", got, *saved.NotesHTML)
+		t.Errorf("preview and the saved location disagree:\n preview: %q\n   saved: %q", got, *saved.NotesHTML)
 	}
 }
 

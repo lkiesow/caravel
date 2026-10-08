@@ -16,7 +16,7 @@ import (
 // maxTripCreateBytes bounds a multipart trip create. A trip carries a cover
 // and nothing else -- no file parts, unlike a location -- so this is the image
 // limit with room for the JSON part and the multipart framing, rather than the
-// much larger ceiling maxItemCreateBytes needs.
+// much larger ceiling maxLocationCreateBytes needs.
 const maxTripCreateBytes = 60 << 20
 
 // createTripMultipart handles POST /api/trips when the body is multipart: the
@@ -30,7 +30,7 @@ const maxTripCreateBytes = 60 << 20
 // a failure part-way left a trip with no cover, sometimes an orphan media
 // asset, and a dialog after the fact.
 //
-// The one impurity is the same one createItemMultipart documents: a blob
+// The one impurity is the same one createLocationMultipart documents: a blob
 // written in step two is orphaned if the transaction in step three rolls back.
 // Nothing references it and no trip exists, so it is invisible to the user.
 func (s *Server) createTripMultipart(w http.ResponseWriter, r *http.Request) {

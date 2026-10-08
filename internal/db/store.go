@@ -10,8 +10,7 @@ import (
 )
 
 // ErrNotFound is returned by Store lookups that find no matching row,
-// regardless of dialect (wraps sql.ErrNoRows so errors.Is(err, ErrNotFound)
-// works).
+// regardless of dialect (wraps sql.ErrNoRows so errors.Is(err, ErrNotFound) works).
 var ErrNotFound = errors.New("not found")
 
 type CreateUserParams struct {
@@ -388,8 +387,7 @@ type Store interface {
 	// actually has.
 	ListItineraryEntriesByDay(ctx context.Context, itineraryDayID string) ([]ItineraryEntry, error)
 	// SetItineraryEntrySortOrder reports whether it matched a row, so a reorder
-	// naming an entry from another day fails rather than silently doing
-	// nothing.
+	// naming an entry from another day fails rather than silently doing nothing.
 	SetItineraryEntrySortOrder(ctx context.Context, id, itineraryDayID string, sortOrder int) (bool, error)
 	// SetItineraryEntryDay moves an entry to another day, giving it a position
 	// there at the same time. fromDayID is the day the entry is expected to be
@@ -488,8 +486,7 @@ type Store interface {
 	GetExpenseByID(ctx context.Context, id string) (Expense, error)
 	ListExpensesByTrip(ctx context.Context, tripID string) ([]Expense, error)
 	UpdateExpense(ctx context.Context, p UpdateExpenseParams) (Expense, error)
-	// DeleteExpense reports whether a matching (id, tripID) expense was
-	// deleted.
+	// DeleteExpense reports whether a matching (id, tripID) expense was deleted.
 	DeleteExpense(ctx context.Context, id, tripID string) (bool, error)
 
 	// Expense shares: who an expense was for. An expense with no shares is

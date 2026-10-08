@@ -625,7 +625,7 @@ export async function renderItemsTab(container, trip, { signal } = {}) {
   }
 
   renderLoading(list);
-  allItems = await api.get(`/trips/${tripId}/items`);
+  allItems = await api.get(`/trips/${tripId}/locations`);
 
   // The tag options only exist once the locations do.
   const tags = tripTags();

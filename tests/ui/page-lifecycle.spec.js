@@ -97,15 +97,15 @@ test.describe("late saves", () => {
 
   test("a location saved after the user left does not pull them back", async ({ page }) => {
     const trip = await createTrip(page, "UI suite: late location save");
-    const res = await page.request.post(`/api/trips/${trip.id}/items`, {
+    const res = await page.request.post(`/api/trips/${trip.id}/locations`, {
       data: { title: "Late Save", category: "site", tags: [], dates: [] },
     });
     expect(res.status()).toBe(201);
     const item = await res.json();
     await gotoRoute(page, `/trips/${trip.id}/locations/${item.id}/edit`);
 
-    const gate = await holdRoute(page, "**/api/items/*", { method: "PATCH" });
-    const saved = page.waitForResponse((r) => r.request().method() === "PATCH" && r.url().includes(`/api/items/${item.id}`));
+    const gate = await holdRoute(page, "**/api/locations/*", { method: "PATCH" });
+    const saved = page.waitForResponse((r) => r.request().method() === "PATCH" && r.url().includes(`/api/locations/${item.id}`));
     await page.locator('[data-action="save"]').click();
     await gate.arrived();
 

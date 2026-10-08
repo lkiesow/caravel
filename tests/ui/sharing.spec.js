@@ -57,7 +57,7 @@ for (const locale of ["en", "de"]) {
       // One location and one checklist, so the read-only assertions below have
       // something to *not* offer controls for. A tab with no content renders no
       // controls either way, which is the trap Milestone 4 walked into.
-      const item = await page.request.post(`/api/trips/${tripId}/items`, {
+      const item = await page.request.post(`/api/trips/${tripId}/locations`, {
         data: { title: "Somewhere", category: "site", tags: ["landmark"] },
       });
       expect(item.status()).toBe(201);

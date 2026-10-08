@@ -16,7 +16,8 @@ import (
 // decided nothing. Entries came back in whatever order the database chose, which
 // happened to look like insertion order often enough that nobody noticed.
 
-// itineraryFixture is a trip with one real day and several items to put on it.
+// itineraryFixture is a trip with one real day and several locations to put on
+// it.
 type itineraryFixture struct {
 	ts     *testServer
 	owner  *http.Cookie
@@ -43,12 +44,12 @@ func setupItinerary(t *testing.T) *itineraryFixture {
 	return &itineraryFixture{ts: ts, owner: owner, tripID: tripID, dayID: dayID}
 }
 
-// addEntry puts an item on the fixture's day and returns the entry id.
+// addEntry puts a location on the fixture's day and returns the entry id.
 func (f *itineraryFixture) addEntry(t *testing.T, title string) string {
 	t.Helper()
-	itemID := f.ts.createItem(f.owner, f.tripID, title)
+	locationID := f.ts.createLocation(f.owner, f.tripID, title)
 	return f.ts.mustCreate(http.MethodPost, "/api/itinerary/days/"+f.dayID+"/entries", f.owner,
-		fmt.Sprintf(`{"item_id":%q}`, itemID), http.StatusCreated)
+		fmt.Sprintf(`{"location_id":%q}`, locationID), http.StatusCreated)
 }
 
 // entryTitles reads the day's entries back through the itinerary payload, which
@@ -62,15 +63,15 @@ func (f *itineraryFixture) entryTitles(t *testing.T, as *http.Cookie) []string {
 	days := decode[[]struct {
 		ID      *string `json:"id"`
 		Entries []struct {
-			ItemTitle string `json:"item_title"`
-			SortOrder int    `json:"sort_order"`
+			LocationTitle string `json:"location_title"`
+			SortOrder     int    `json:"sort_order"`
 		} `json:"entries"`
 	}](t, w)
 	for _, d := range days {
 		if d.ID != nil && *d.ID == f.dayID {
 			titles := make([]string, len(d.Entries))
 			for i, e := range d.Entries {
-				titles[i] = e.ItemTitle
+				titles[i] = e.LocationTitle
 			}
 			return titles
 		}
@@ -194,9 +195,9 @@ func TestReorderItineraryEntriesRejectsABadIDSet(t *testing.T) {
 	otherDayID := *decode[struct {
 		ID *string `json:"id"`
 	}](t, w).ID
-	otherItem := f.ts.createItem(f.owner, f.tripID, "Elsewhere")
+	otherLocation := f.ts.createLocation(f.owner, f.tripID, "Elsewhere")
 	elsewhere := f.ts.mustCreate(http.MethodPost, "/api/itinerary/days/"+otherDayID+"/entries", f.owner,
-		fmt.Sprintf(`{"item_id":%q}`, otherItem), http.StatusCreated)
+		fmt.Sprintf(`{"location_id":%q}`, otherLocation), http.StatusCreated)
 
 	for _, tc := range []struct{ name, body string }{
 		{"too few", fmt.Sprintf(`{"entry_ids":[%q]}`, first)},

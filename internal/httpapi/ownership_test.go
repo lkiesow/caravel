@@ -33,7 +33,7 @@ type owned struct {
 	owner       *http.Cookie
 	intruder    *http.Cookie
 	tripID      string
-	itemID      string
+	locationID  string
 	checklistID string
 	fileID      string
 	mediaID     string
@@ -47,7 +47,7 @@ func setupOwned(t *testing.T) *owned {
 	intruder := ts.login("intruder")
 
 	tripID := ts.createTrip(owner, "Owner's trip")
-	itemID := ts.createItem(owner, tripID, "Owner's location")
+	locationID := ts.createLocation(owner, tripID, "Owner's location")
 	checklistID := ts.mustCreate(
 		http.MethodPost, "/api/trips/"+tripID+"/checklists", owner,
 		`{"title":"Packing"}`, http.StatusCreated,
@@ -78,7 +78,7 @@ func setupOwned(t *testing.T) *owned {
 
 	return &owned{
 		ts: ts, owner: owner, intruder: intruder,
-		tripID: tripID, itemID: itemID, checklistID: checklistID, fileID: fileID, mediaID: mediaID,
+		tripID: tripID, locationID: locationID, checklistID: checklistID, fileID: fileID, mediaID: mediaID,
 	}
 }
 
@@ -133,29 +133,30 @@ func TestTripListIsScopedToOwner(t *testing.T) {
 	}
 }
 
-func TestItemRoutesRejectAnotherUser(t *testing.T) {
+func TestLocationRoutesRejectAnotherUser(t *testing.T) {
 	o := setupOwned(t)
-	item := "/api/items/" + o.itemID
+	location := "/api/locations/" + o.locationID
 
-	o.assertDenied(t, http.MethodGet, item, "")
+	o.assertDenied(t, http.MethodGet, location, "")
 	// Dates have no endpoint of their own since Stage 25 — writing them means
-	// PATCHing the item, so this line covers them too.
-	o.assertDenied(t, http.MethodPatch, item, `{"title":"stolen","category":"site","dates":[{"start_date":"2026-08-20"}]}`)
-	o.assertDenied(t, http.MethodDelete, item, "")
-	o.assertDenied(t, http.MethodPut, item+"/location", `{"lat":1,"lng":2}`)
-	o.assertDenied(t, http.MethodPost, item+"/links", `{"url":"https://example.com","label":"x"}`)
-	o.assertDenied(t, http.MethodGet, item+"/files", "")
-	// Creating an item on someone else's trip goes through the trip, not the item.
-	o.assertDenied(t, http.MethodPost, "/api/trips/"+o.tripID+"/items", `{"title":"x","category":"site","tags":["y"]}`)
-	o.assertDenied(t, http.MethodGet, "/api/trips/"+o.tripID+"/items", "")
+	// PATCHing the location, so this line covers them too.
+	o.assertDenied(t, http.MethodPatch, location, `{"title":"stolen","category":"site","dates":[{"start_date":"2026-08-20"}]}`)
+	o.assertDenied(t, http.MethodDelete, location, "")
+	o.assertDenied(t, http.MethodPut, location+"/geo", `{"lat":1,"lng":2}`)
+	o.assertDenied(t, http.MethodPost, location+"/links", `{"url":"https://example.com","label":"x"}`)
+	o.assertDenied(t, http.MethodGet, location+"/files", "")
+	// Creating a location on someone else's trip goes through the trip, not the
+	// location.
+	o.assertDenied(t, http.MethodPost, "/api/trips/"+o.tripID+"/locations", `{"title":"x","category":"site","tags":["y"]}`)
+	o.assertDenied(t, http.MethodGet, "/api/trips/"+o.tripID+"/locations", "")
 	o.assertDenied(t, http.MethodGet, "/api/trips/"+o.tripID+"/tags", "")
 
-	w := o.ts.do(http.MethodGet, item, o.owner, "")
+	w := o.ts.do(http.MethodGet, location, o.owner, "")
 	if w.Code != http.StatusOK {
-		t.Fatalf("owner can still read own item: got %d", w.Code)
+		t.Fatalf("owner can still read own location: got %d", w.Code)
 	}
 	if got := decode[map[string]any](t, w)["title"]; got != "Owner's location" {
-		t.Errorf("item title changed to %v — an intruder write got through", got)
+		t.Errorf("location title changed to %v — an intruder write got through", got)
 	}
 }
 
@@ -178,9 +179,9 @@ func TestChecklistRoutesRejectAnotherUser(t *testing.T) {
 		`{"currencies":[{"code":"JPY","rate_ppb":580000000}]}`)
 
 	// An item on the owner's checklist, to test the per-item routes.
-	itemID := o.ts.mustCreate(http.MethodPost, list+"/items", o.owner, `{"text":"Passport"}`, http.StatusCreated)
-	o.assertDenied(t, http.MethodPatch, list+"/items/"+itemID, `{"checked":true}`)
-	o.assertDenied(t, http.MethodDelete, list+"/items/"+itemID, "")
+	checklistItemID := o.ts.mustCreate(http.MethodPost, list+"/items", o.owner, `{"text":"Passport"}`, http.StatusCreated)
+	o.assertDenied(t, http.MethodPatch, list+"/items/"+checklistItemID, `{"checked":true}`)
+	o.assertDenied(t, http.MethodDelete, list+"/items/"+checklistItemID, "")
 
 	lists := decode[[]map[string]any](t, o.ts.do(http.MethodGet, "/api/trips/"+o.tripID+"/checklists", o.owner, ""))
 	if len(lists) != 1 {
@@ -201,9 +202,9 @@ func TestFileRoutesRejectAnotherUser(t *testing.T) {
 	if w.Code != http.StatusNotFound {
 		t.Errorf("upload to another user's trip: got %d, want 404 — body %s", w.Code, w.Body.String())
 	}
-	w = o.ts.upload("/api/items/"+o.itemID+"/files", o.intruder, "evil.txt", "text/plain", []byte("x"))
+	w = o.ts.upload("/api/locations/"+o.locationID+"/files", o.intruder, "evil.txt", "text/plain", []byte("x"))
 	if w.Code != http.StatusNotFound {
-		t.Errorf("upload to another user's item: got %d, want 404 — body %s", w.Code, w.Body.String())
+		t.Errorf("upload to another user's location: got %d, want 404 — body %s", w.Code, w.Body.String())
 	}
 
 	// The owner's file must still be there and still downloadable.
@@ -233,7 +234,7 @@ func TestMediaRoutesRejectAnotherUser(t *testing.T) {
 	o.assertDenied(t, http.MethodGet, "/api/media/"+o.mediaID+"/file", "")
 	o.assertDenied(t, http.MethodPost, "/api/trips/"+o.tripID+"/media/url", `{"url":"https://example.com/x.png"}`)
 	o.assertDenied(t, http.MethodPut, "/api/trips/"+o.tripID+"/preview-image", `{"media_asset_id":"`+o.mediaID+`"}`)
-	o.assertDenied(t, http.MethodPut, "/api/items/"+o.itemID+"/image", `{"media_asset_id":"`+o.mediaID+`"}`)
+	o.assertDenied(t, http.MethodPut, "/api/locations/"+o.locationID+"/image", `{"media_asset_id":"`+o.mediaID+`"}`)
 
 	w := o.ts.do(http.MethodGet, "/api/media/"+o.mediaID+"/file", o.owner, "")
 	if w.Code != http.StatusOK {
@@ -249,7 +250,7 @@ func TestOwnedRoutesRequireAuth(t *testing.T) {
 	for _, tc := range []struct{ method, path string }{
 		{http.MethodGet, "/api/trips"},
 		{http.MethodGet, "/api/trips/" + o.tripID},
-		{http.MethodGet, "/api/items/" + o.itemID},
+		{http.MethodGet, "/api/locations/" + o.locationID},
 		{http.MethodGet, "/api/trips/" + o.tripID + "/checklists"},
 		{http.MethodGet, "/api/trips/" + o.tripID + "/notes"},
 		{http.MethodGet, "/api/trips/" + o.tripID + "/currencies"},

@@ -1,7 +1,7 @@
 // Deciding whether a stored URL may become an href.
 //
 // The server refuses anything but http and https on the way in (see
-// validateLinkURL in internal/httpapi/items.go), so on a database written
+// validateLinkURL in internal/httpapi/locations.go), so on a database written
 // entirely by the current code this module never rejects anything. It exists
 // for the database that is not: link rows written before that check existed
 // are still there, and "javascript:alert(1)" in an href is a working link,
@@ -120,7 +120,7 @@ function looksLikeCoordinate(s) {
 // third party and no request leaving the instance.
 //
 // The type and id are validated server-side on the way in (validate on
-// itemLocationRequest in internal/httpapi/items.go, and geocode.toResult before
+// geoRequest in internal/httpapi/locations.go, and geocode.toResult before
 // that), and re-checked here rather than trusted. This is the same reasoning as
 // safeHref above: the check that matters is the one at the render site, because
 // a database written before the check existed is still a database this code has

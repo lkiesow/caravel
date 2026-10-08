@@ -9,7 +9,7 @@
 # would have caught this".
 #
 #   scripts/without.sh internal/httpapi/itinerary.go -- go test ./internal/httpapi/
-#   scripts/without.sh --restart internal/httpapi/items.go -- make test-ui
+#   scripts/without.sh --restart internal/httpapi/locations.go -- make test-ui
 #
 # Why it exists: this dance was hand-rolled five times in Stage 07 (date
 # validation, delete-day tests, day ordering, the accessible-name sweep, the

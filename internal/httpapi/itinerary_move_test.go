@@ -53,10 +53,10 @@ func createDay(t *testing.T, ts *testServer, as *http.Cookie, tripID, date, note
 // returns the entry id.
 func (f *moveFixture) addTo(t *testing.T, dayID, title, note string) string {
 	t.Helper()
-	itemID := f.ts.createItem(f.owner, f.tripID, title)
-	body := fmt.Sprintf(`{"item_id":%q}`, itemID)
+	locationID := f.ts.createLocation(f.owner, f.tripID, title)
+	body := fmt.Sprintf(`{"location_id":%q}`, locationID)
 	if note != "" {
-		body = fmt.Sprintf(`{"item_id":%q,"note":%q}`, itemID, note)
+		body = fmt.Sprintf(`{"location_id":%q,"note":%q}`, locationID, note)
 	}
 	return f.ts.mustCreate(http.MethodPost, "/api/itinerary/days/"+dayID+"/entries", f.owner, body, http.StatusCreated)
 }
@@ -74,10 +74,10 @@ type itineraryDay struct {
 	Date    string  `json:"date"`
 	Notes   *string `json:"notes"`
 	Entries []struct {
-		ID        string  `json:"id"`
-		ItemTitle string  `json:"item_title"`
-		SortOrder int     `json:"sort_order"`
-		Note      *string `json:"note"`
+		ID            string  `json:"id"`
+		LocationTitle string  `json:"location_title"`
+		SortOrder     int     `json:"sort_order"`
+		Note          *string `json:"note"`
 	} `json:"entries"`
 }
 
@@ -99,7 +99,7 @@ func (f *moveFixture) day(t *testing.T, date string) itineraryDay {
 func (d itineraryDay) titles() []string {
 	out := make([]string, len(d.Entries))
 	for i, e := range d.Entries {
-		out[i] = e.ItemTitle
+		out[i] = e.LocationTitle
 	}
 	return out
 }

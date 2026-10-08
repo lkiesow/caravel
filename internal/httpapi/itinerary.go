@@ -14,13 +14,13 @@ import (
 )
 
 type itineraryEntryResponse struct {
-	ID           string  `json:"id"`
-	ItemID       string  `json:"item_id"`
-	ItemTitle    string  `json:"item_title"`
-	ItemCategory string  `json:"item_category"`
-	ItemImageURL *string `json:"item_image_url"`
-	SortOrder    int     `json:"sort_order"`
-	Note         *string `json:"note"`
+	ID               string  `json:"id"`
+	LocationID       string  `json:"location_id"`
+	LocationTitle    string  `json:"location_title"`
+	LocationCategory string  `json:"location_category"`
+	LocationImageURL *string `json:"location_image_url"`
+	SortOrder        int     `json:"sort_order"`
+	Note             *string `json:"note"`
 }
 
 type itineraryDayResponse struct {
@@ -54,13 +54,13 @@ func (s *Server) handleGetItinerary(w http.ResponseWriter, r *http.Request) {
 	entriesByDay := make(map[string][]itineraryEntryResponse)
 	for _, e := range entries {
 		entriesByDay[e.ItineraryDayID] = append(entriesByDay[e.ItineraryDayID], itineraryEntryResponse{
-			ID:           e.ID,
-			ItemID:       e.LocationID,
-			ItemTitle:    e.LocationTitle,
-			ItemCategory: e.LocationCategory,
-			ItemImageURL: s.resolveImageURL(r.Context(), e.LocationImageID),
-			SortOrder:    e.SortOrder,
-			Note:         e.Note,
+			ID:               e.ID,
+			LocationID:       e.LocationID,
+			LocationTitle:    e.LocationTitle,
+			LocationCategory: e.LocationCategory,
+			LocationImageURL: s.resolveImageURL(r.Context(), e.LocationImageID),
+			SortOrder:        e.SortOrder,
+			Note:             e.Note,
 		})
 	}
 
@@ -184,8 +184,8 @@ func (s *Server) handleDeleteItineraryDay(w http.ResponseWriter, r *http.Request
 }
 
 type createItineraryEntryRequest struct {
-	ItemID string  `json:"item_id"`
-	Note   *string `json:"note"`
+	LocationID string  `json:"location_id"`
+	Note       *string `json:"note"`
 }
 
 func (s *Server) handleCreateItineraryEntry(w http.ResponseWriter, r *http.Request) {
@@ -195,44 +195,44 @@ func (s *Server) handleCreateItineraryEntry(w http.ResponseWriter, r *http.Reque
 	}
 
 	var req createItineraryEntryRequest
-	if err := readJSON(r, &req); err != nil || req.ItemID == "" {
-		writeError(w, http.StatusBadRequest, "item_id is required")
+	if err := readJSON(r, &req); err != nil || req.LocationID == "" {
+		writeError(w, http.StatusBadRequest, "location_id is required")
 		return
 	}
 
-	item, err := s.Store.GetLocationByID(r.Context(), req.ItemID)
-	if err != nil || item.TripID != day.TripID {
-		writeError(w, http.StatusBadRequest, "item does not belong to this trip")
+	location, err := s.Store.GetLocationByID(r.Context(), req.LocationID)
+	if err != nil || location.TripID != day.TripID {
+		writeError(w, http.StatusBadRequest, "location does not belong to this trip")
 		return
 	}
 
-	// SortOrder was omitted here until Stage 15 Milestone 4, so every row in the
-	// table was 0 and ListItineraryEntriesByTrip's ORDER BY sort_order was an
-	// undefined tie - entries within a day came back in whatever order the
-	// database felt like. Numbering from the count appends, which is what adding
-	// an item to a day obviously means.
+	// SortOrder was omitted here until Stage 15 Milestone 4, so every row in
+	// the table was 0 and ListItineraryEntriesByTrip's ORDER BY sort_order was
+	// an undefined tie - entries within a day came back in whatever order the
+	// database felt like. Numbering from the count appends, which is what
+	// adding a location to a day obviously means.
 	existing, err := s.Store.ListItineraryEntriesByDay(r.Context(), day.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not add item to day")
+		writeError(w, http.StatusInternalServerError, "could not add location to day")
 		return
 	}
 
 	entry, err := s.Store.CreateItineraryEntry(r.Context(), db.CreateItineraryEntryParams{
 		ID:             uuid.NewString(),
 		ItineraryDayID: day.ID,
-		LocationID:     item.ID,
+		LocationID:     location.ID,
 		SortOrder:      len(existing),
 		Note:           req.Note,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not add item to day")
+		writeError(w, http.StatusInternalServerError, "could not add location to day")
 		return
 	}
 
 	writeJSON(w, http.StatusCreated, itineraryEntryResponse{
-		ID: entry.ID, ItemID: item.ID, ItemTitle: item.Title, ItemCategory: item.Category,
-		ItemImageURL: s.resolveImageURL(r.Context(), item.ImageID),
-		SortOrder:    entry.SortOrder, Note: entry.Note,
+		ID: entry.ID, LocationID: location.ID, LocationTitle: location.Title, LocationCategory: location.Category,
+		LocationImageURL: s.resolveImageURL(r.Context(), location.ImageID),
+		SortOrder:        entry.SortOrder, Note: entry.Note,
 	})
 }
 
@@ -487,7 +487,7 @@ func (s *Server) handleDeleteItineraryEntry(w http.ResponseWriter, r *http.Reque
 	entryID := chi.URLParam(r, "entryId")
 	deleted, err := s.Store.DeleteItineraryEntry(r.Context(), entryID, day.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not remove item from day")
+		writeError(w, http.StatusInternalServerError, "could not remove location from day")
 		return
 	}
 	if !deleted {

@@ -12,9 +12,9 @@ import (
 //
 // It exists for the assistant's trip-level suggestions, where a person reviews
 // six candidates, unticks two and adds the rest -- but nothing here knows that.
-// It is the ordinary create, N times, in one transaction: the same itemRequest,
-// the same validation, the same nested location/links/dates/tags, and the same
-// detail response.
+// It is the ordinary create, N times, in one transaction: the same
+// locationRequest, the same validation, the same nested geo/links/dates/tags,
+// and the same detail response.
 //
 // Why one transaction rather than N requests from the client. Six separate
 // POSTs are six chances to half-finish: a network drop after the third leaves
@@ -27,7 +27,7 @@ import (
 // proposed cover is a URL, which the client applies afterwards through the
 // endpoint that already fetches one.
 
-// maxItemsPerBatch caps one request.
+// maxLocationsPerBatch caps one request.
 //
 // Deliberately not assist.maxSuggestions, which is what the plan for this
 // milestone said. That constant is a property of how many places are worth
@@ -36,28 +36,28 @@ import (
 // would mean a change to the assistant's answer size silently changing the
 // limits of a general-purpose endpoint. Twenty is comfortably above any
 // suggest run and well below anything that should be a single write.
-const maxItemsPerBatch = 20
+const maxLocationsPerBatch = 20
 
-type itemBatchRequest struct {
-	Items []itemRequest `json:"items"`
+type locationBatchRequest struct {
+	Locations []locationRequest `json:"locations"`
 }
 
-func (s *Server) handleCreateItemsBatch(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleCreateLocationsBatch(w http.ResponseWriter, r *http.Request) {
 	trip, _, ok := s.loadTrip(w, r, db.RoleEditor)
 	if !ok {
 		return
 	}
 
-	var req itemBatchRequest
+	var req locationBatchRequest
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if len(req.Items) == 0 {
+	if len(req.Locations) == 0 {
 		writeError(w, http.StatusBadRequest, "no locations to create")
 		return
 	}
-	if len(req.Items) > maxItemsPerBatch {
+	if len(req.Locations) > maxLocationsPerBatch {
 		writeError(w, http.StatusBadRequest, "too many locations in one request")
 		return
 	}
@@ -66,14 +66,14 @@ func (s *Server) handleCreateItemsBatch(w http.ResponseWriter, r *http.Request) 
 	// a 400 with nothing written -- rather than three locations created and a
 	// 400 about the fourth, which is the shape that makes a partial failure
 	// impossible to explain.
-	for _, item := range req.Items {
-		if err := item.validate(); err != nil {
+	for _, location := range req.Locations {
+		if err := location.validate(); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 	}
 
-	created, err := s.createItemsTx(r, trip, req.Items)
+	created, err := s.createLocationsTx(r, trip, req.Locations)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not create locations")
 		return
@@ -82,15 +82,15 @@ func (s *Server) handleCreateItemsBatch(w http.ResponseWriter, r *http.Request) 
 	// The detail shape for each, in request order, so the client gets the
 	// generated ids and nested rows back without a second GET -- exactly what
 	// the single create returns, in a list.
-	out := make([]itemDetailResponse, 0, len(created))
-	for _, item := range created {
-		out = append(out, s.buildItemDetail(r, item))
+	out := make([]locationDetailResponse, 0, len(created))
+	for _, location := range created {
+		out = append(out, s.buildLocationDetail(r, location))
 	}
 	writeJSON(w, http.StatusCreated, out)
 }
 
-// createItemsTx writes every location in one transaction.
-func (s *Server) createItemsTx(r *http.Request, trip db.Trip, reqs []itemRequest) ([]db.Location, error) {
+// createLocationsTx writes every location in one transaction.
+func (s *Server) createLocationsTx(r *http.Request, trip db.Trip, reqs []locationRequest) ([]db.Location, error) {
 	ctx := r.Context()
 	out := make([]db.Location, 0, len(reqs))
 
@@ -110,11 +110,11 @@ func (s *Server) createItemsTx(r *http.Request, trip db.Trip, reqs []itemRequest
 		// read and the read-before-write that made this transaction prone to
 		// SQLITE_BUSY_SNAPSHOT are all gone.
 		for _, req := range reqs {
-			item, err := createItemInStore(ctx, store, trip, uuid.NewString(), req, nil, nil)
+			location, err := createLocationInStore(ctx, store, trip, uuid.NewString(), req, nil, nil)
 			if err != nil {
 				return err
 			}
-			out = append(out, item)
+			out = append(out, location)
 		}
 		return nil
 	})

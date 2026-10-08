@@ -47,9 +47,9 @@ func Clean(tag string) string {
 // Case-insensitive here and exact in SQL is deliberate and worth stating,
 // because it is the one place the two disagree. Within one location Museum and
 // museum are the same tag and only the first survives. Across two locations
-// both can exist, and the primary key on (item_id, tag) does not care. Making
-// them agree would mean either a case-folded column -- storing something the
-// user did not type -- or a trip-wide uniqueness rule that would have to
+// both can exist, and the primary key on (location_id, tag) does not care.
+// Making them agree would mean either a case-folded column -- storing something
+// the user did not type -- or a trip-wide uniqueness rule that would have to
 // rewrite one location to save another.
 func Normalize(list []string) []string {
 	out := make([]string, 0, len(list))

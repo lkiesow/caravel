@@ -100,7 +100,7 @@ func (s *Server) tripToResponse(ctx context.Context, t db.Trip, role db.TripRole
 	return resp
 }
 
-// renderNotesHTML renders an item's notes markdown to sanitized HTML,
+// renderNotesHTML renders a location's notes markdown to sanitized HTML,
 // rendered fresh on every response rather than cached in the database —
 // notes are short-form text, so a goldmark+bluemonday pass costs
 // microseconds, and rendering on read avoids a second column that could
@@ -130,7 +130,7 @@ func (s *Server) handleListTrips(w http.ResponseWriter, r *http.Request) {
 		// Built directly rather than through tripToResponse: the query already
 		// returned the role and the owner's name, and going through the helper
 		// would spend a GetUserByID per shared trip re-fetching what we have.
-		item := tripResponse{
+		location := tripResponse{
 			ID:             t.ID,
 			Title:          t.Title,
 			StartDate:      t.StartDate,
@@ -143,11 +143,11 @@ func (s *Server) handleListTrips(w http.ResponseWriter, r *http.Request) {
 			MemberCount:    t.MemberCount,
 			Currency:       t.Currency,
 		}
-		item.PreviewImageURL = s.resolveImageURL(r.Context(), t.PreviewImageID)
+		location.PreviewImageURL = s.resolveImageURL(r.Context(), t.PreviewImageID)
 		if t.Role != db.RoleOwner {
-			item.Owner = &tripOwnerResponse{Username: t.OwnerUsername, DisplayName: t.OwnerDisplayName}
+			location.Owner = &tripOwnerResponse{Username: t.OwnerUsername, DisplayName: t.OwnerDisplayName}
 		}
-		resp[i] = item
+		resp[i] = location
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

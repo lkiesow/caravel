@@ -32,7 +32,7 @@ func TestNestedLinkRejectsAnUnsafeScheme(t *testing.T) {
 	for _, c := range badLinkURLs {
 		t.Run(c.name, func(t *testing.T) {
 			body := fmt.Sprintf(`{"title":"X","category":"site","links":[{"url":%q}]}`, c.url)
-			if w := ts.do(http.MethodPost, "/api/trips/"+tripID+"/items", cookie, body); w.Code != http.StatusBadRequest {
+			if w := ts.do(http.MethodPost, "/api/trips/"+tripID+"/locations", cookie, body); w.Code != http.StatusBadRequest {
 				t.Fatalf("status = %d, want 400, body %s", w.Code, w.Body.String())
 			}
 		})
@@ -46,7 +46,7 @@ func TestNestedLinkAcceptsHTTPAndHTTPS(t *testing.T) {
 
 	for _, u := range []string{"https://example.com/a", "http://example.com", "HTTPS://EXAMPLE.COM/x"} {
 		body := fmt.Sprintf(`{"title":"X","category":"site","links":[{"url":%q}]}`, u)
-		if w := ts.do(http.MethodPost, "/api/trips/"+tripID+"/items", cookie, body); w.Code != http.StatusCreated {
+		if w := ts.do(http.MethodPost, "/api/trips/"+tripID+"/locations", cookie, body); w.Code != http.StatusCreated {
 			t.Errorf("%q: status = %d, want 201, body %s", u, w.Code, w.Body.String())
 		}
 	}
@@ -58,15 +58,15 @@ func TestPatchLinkRejectsAnUnsafeScheme(t *testing.T) {
 	ts := newTestServer(t)
 	cookie := ts.login("alice")
 	tripID := ts.createTrip(cookie, "Iceland")
-	itemID := ts.createItem(cookie, tripID, "Kex Hostel")
+	locationID := ts.createLocation(cookie, tripID, "Kex Hostel")
 
 	body := `{"title":"Kex Hostel","category":"site","links":[{"url":"javascript:alert(1)"}]}`
-	if w := ts.do(http.MethodPatch, "/api/items/"+itemID, cookie, body); w.Code != http.StatusBadRequest {
+	if w := ts.do(http.MethodPatch, "/api/locations/"+locationID, cookie, body); w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400, body %s", w.Code, w.Body.String())
 	}
 }
 
-// The batch endpoint inherits the rule through itemRequest.validate, and
+// The batch endpoint inherits the rule through locationRequest.validate, and
 // rejects the whole request rather than writing the other locations.
 func TestBatchLinkRejectsAnUnsafeScheme(t *testing.T) {
 	ts := newTestServer(t)
@@ -77,7 +77,7 @@ func TestBatchLinkRejectsAnUnsafeScheme(t *testing.T) {
 	if w := ts.postBatch(cookie, tripID, body); w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400, body %s", w.Code, w.Body.String())
 	}
-	listed := decode[[]map[string]any](t, ts.do(http.MethodGet, "/api/trips/"+tripID+"/items", cookie, ""))
+	listed := decode[[]map[string]any](t, ts.do(http.MethodGet, "/api/trips/"+tripID+"/locations", cookie, ""))
 	if len(listed) != 0 {
 		t.Fatalf("the trip has %d locations, want none", len(listed))
 	}
@@ -89,18 +89,18 @@ func TestStandaloneLinkEndpointRejectsAnUnsafeScheme(t *testing.T) {
 	ts := newTestServer(t)
 	cookie := ts.login("alice")
 	tripID := ts.createTrip(cookie, "Iceland")
-	itemID := ts.createItem(cookie, tripID, "Kex Hostel")
+	locationID := ts.createLocation(cookie, tripID, "Kex Hostel")
 
 	for _, c := range badLinkURLs {
 		t.Run(c.name, func(t *testing.T) {
 			body := fmt.Sprintf(`{"url":%q}`, c.url)
-			if w := ts.do(http.MethodPost, "/api/items/"+itemID+"/links", cookie, body); w.Code != http.StatusBadRequest {
+			if w := ts.do(http.MethodPost, "/api/locations/"+locationID+"/links", cookie, body); w.Code != http.StatusBadRequest {
 				t.Fatalf("status = %d, want 400, body %s", w.Code, w.Body.String())
 			}
 		})
 	}
 
-	if w := ts.do(http.MethodPost, "/api/items/"+itemID+"/links", cookie, `{"url":"https://example.com"}`); w.Code != http.StatusCreated {
+	if w := ts.do(http.MethodPost, "/api/locations/"+locationID+"/links", cookie, `{"url":"https://example.com"}`); w.Code != http.StatusCreated {
 		t.Errorf("a good link: status = %d, want 201, body %s", w.Code, w.Body.String())
 	}
 }

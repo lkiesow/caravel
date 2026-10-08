@@ -47,7 +47,7 @@ func TestMediaByURLStoresProvenance(t *testing.T) {
 	img := pngServer(t)
 	cookie := ts.login("alice")
 	tripID := ts.createTrip(cookie, "Iceland")
-	itemID := ts.createItem(cookie, tripID, "Heger Tor")
+	locationID := ts.createLocation(cookie, tripID, "Heger Tor")
 
 	body := fmt.Sprintf(`{"url":%q,"source_url":"https://de.wikipedia.org/wiki/Waterloo-Tor",
 	  "credit":"MrsMyer","license":"CC BY-SA 3.0"}`, img.URL+"/a.png")
@@ -62,15 +62,15 @@ func TestMediaByURLStoresProvenance(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 
-	// Attach it, because the item is where the credit is rendered and
+	// Attach it, because the location is where the credit is rendered and
 	// therefore where it has to arrive.
-	rec = ts.do(http.MethodPut, "/api/items/"+itemID+"/image", cookie, `{"media_asset_id":"`+asset.ID+`"}`)
+	rec = ts.do(http.MethodPut, "/api/locations/"+locationID+"/image", cookie, `{"media_asset_id":"`+asset.ID+`"}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("attach status = %d: %s", rec.Code, rec.Body.String())
 	}
 
-	rec = ts.do(http.MethodGet, "/api/items/"+itemID, cookie, "")
-	var item struct {
+	rec = ts.do(http.MethodGet, "/api/locations/"+locationID, cookie, "")
+	var location struct {
 		ImageURL    *string `json:"image_url"`
 		ImageCredit *struct {
 			Text      string `json:"text"`
@@ -78,20 +78,20 @@ func TestMediaByURLStoresProvenance(t *testing.T) {
 			SourceURL string `json:"source_url"`
 		} `json:"image_credit"`
 	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &item); err != nil {
-		t.Fatalf("decode item: %v", err)
+	if err := json.Unmarshal(rec.Body.Bytes(), &location); err != nil {
+		t.Fatalf("decode location: %v", err)
 	}
-	if item.ImageURL == nil {
-		t.Fatal("the item has no image")
+	if location.ImageURL == nil {
+		t.Fatal("the location has no image")
 	}
-	if item.ImageCredit == nil {
-		t.Fatal("the item carries no credit; storing one was pointless")
+	if location.ImageCredit == nil {
+		t.Fatal("the location carries no credit; storing one was pointless")
 	}
-	if item.ImageCredit.Text != "MrsMyer" || item.ImageCredit.License != "CC BY-SA 3.0" {
-		t.Errorf("credit = %+v", item.ImageCredit)
+	if location.ImageCredit.Text != "MrsMyer" || location.ImageCredit.License != "CC BY-SA 3.0" {
+		t.Errorf("credit = %+v", location.ImageCredit)
 	}
-	if item.ImageCredit.SourceURL != "https://de.wikipedia.org/wiki/Waterloo-Tor" {
-		t.Errorf("source = %q, want the page it came from", item.ImageCredit.SourceURL)
+	if location.ImageCredit.SourceURL != "https://de.wikipedia.org/wiki/Waterloo-Tor" {
+		t.Errorf("source = %q, want the page it came from", location.ImageCredit.SourceURL)
 	}
 }
 
@@ -103,7 +103,7 @@ func TestAnImageWithNoProvenanceHasNoCredit(t *testing.T) {
 	img := pngServer(t)
 	cookie := ts.login("alice")
 	tripID := ts.createTrip(cookie, "Iceland")
-	itemID := ts.createItem(cookie, tripID, "A hotel")
+	locationID := ts.createLocation(cookie, tripID, "A hotel")
 
 	rec := ts.do(http.MethodPost, "/api/trips/"+tripID+"/media/url", cookie,
 		fmt.Sprintf(`{"url":%q}`, img.URL+"/a.png"))
@@ -114,9 +114,9 @@ func TestAnImageWithNoProvenanceHasNoCredit(t *testing.T) {
 		ID string `json:"id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &asset)
-	ts.do(http.MethodPut, "/api/items/"+itemID+"/image", cookie, `{"media_asset_id":"`+asset.ID+`"}`)
+	ts.do(http.MethodPut, "/api/locations/"+locationID+"/image", cookie, `{"media_asset_id":"`+asset.ID+`"}`)
 
-	rec = ts.do(http.MethodGet, "/api/items/"+itemID, cookie, "")
+	rec = ts.do(http.MethodGet, "/api/locations/"+locationID, cookie, "")
 	if !strings.Contains(rec.Body.String(), `"image_credit":null`) {
 		t.Errorf("body = %s, want a null credit", rec.Body.String())
 	}
@@ -130,7 +130,7 @@ func TestBadProvenanceIsDroppedRatherThanRefused(t *testing.T) {
 	img := pngServer(t)
 	cookie := ts.login("alice")
 	tripID := ts.createTrip(cookie, "Iceland")
-	itemID := ts.createItem(cookie, tripID, "A hotel")
+	locationID := ts.createLocation(cookie, tripID, "A hotel")
 
 	body := fmt.Sprintf(`{"url":%q,"source_url":"javascript:alert(1)","credit":%q}`,
 		img.URL+"/a.png", strings.Repeat("A", maxCreditBytes*2))
@@ -142,9 +142,9 @@ func TestBadProvenanceIsDroppedRatherThanRefused(t *testing.T) {
 		ID string `json:"id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &asset)
-	ts.do(http.MethodPut, "/api/items/"+itemID+"/image", cookie, `{"media_asset_id":"`+asset.ID+`"}`)
+	ts.do(http.MethodPut, "/api/locations/"+locationID+"/image", cookie, `{"media_asset_id":"`+asset.ID+`"}`)
 
-	rec = ts.do(http.MethodGet, "/api/items/"+itemID, cookie, "")
+	rec = ts.do(http.MethodGet, "/api/locations/"+locationID, cookie, "")
 	// A credit with nowhere to point is not a credit, so the whole object is
 	// absent rather than half-filled.
 	if !strings.Contains(rec.Body.String(), `"image_credit":null`) {

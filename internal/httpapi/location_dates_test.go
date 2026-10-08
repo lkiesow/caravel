@@ -12,80 +12,80 @@ import (
 )
 
 func TestCollapseDateRanges(t *testing.T) {
-	r := func(start, end string) itemDateRangeResponse {
-		return itemDateRangeResponse{StartDate: start, EndDate: end}
+	r := func(start, end string) locationDateRangeResponse {
+		return locationDateRangeResponse{StartDate: start, EndDate: end}
 	}
 
 	tests := []struct {
 		name  string
 		dates []string
-		want  []itemDateRangeResponse
+		want  []locationDateRangeResponse
 	}{
 		{
 			name:  "no dates is an empty list, not null",
 			dates: nil,
-			want:  []itemDateRangeResponse{},
+			want:  []locationDateRangeResponse{},
 		},
 		{
 			name:  "one day is a range that starts and ends on itself",
 			dates: []string{"2026-09-05"},
-			want:  []itemDateRangeResponse{r("2026-09-05", "2026-09-05")},
+			want:  []locationDateRangeResponse{r("2026-09-05", "2026-09-05")},
 		},
 		{
 			name:  "consecutive days collapse, both ends inclusive",
 			dates: []string{"2026-09-05", "2026-09-06", "2026-09-07"},
-			want:  []itemDateRangeResponse{r("2026-09-05", "2026-09-07")},
+			want:  []locationDateRangeResponse{r("2026-09-05", "2026-09-07")},
 		},
 		{
 			name:  "a gap splits the run",
 			dates: []string{"2026-09-05", "2026-09-07"},
-			want:  []itemDateRangeResponse{r("2026-09-05", "2026-09-05"), r("2026-09-07", "2026-09-07")},
+			want:  []locationDateRangeResponse{r("2026-09-05", "2026-09-05"), r("2026-09-07", "2026-09-07")},
 		},
 		{
 			name:  "a day removed from the middle leaves two ranges",
 			dates: []string{"2026-09-05", "2026-09-07", "2026-09-08"},
-			want:  []itemDateRangeResponse{r("2026-09-05", "2026-09-05"), r("2026-09-07", "2026-09-08")},
+			want:  []locationDateRangeResponse{r("2026-09-05", "2026-09-05"), r("2026-09-07", "2026-09-08")},
 		},
 		{
 			// String arithmetic on the last two characters would emit two
 			// ranges here. This is the case that says the walk parses.
 			name:  "a month boundary is one run",
 			dates: []string{"2026-01-30", "2026-01-31", "2026-02-01"},
-			want:  []itemDateRangeResponse{r("2026-01-30", "2026-02-01")},
+			want:  []locationDateRangeResponse{r("2026-01-30", "2026-02-01")},
 		},
 		{
 			name:  "a year boundary is one run",
 			dates: []string{"2026-12-31", "2027-01-01"},
-			want:  []itemDateRangeResponse{r("2026-12-31", "2027-01-01")},
+			want:  []locationDateRangeResponse{r("2026-12-31", "2027-01-01")},
 		},
 		{
 			// 2028 is a leap year, so the 29th exists and the run is unbroken.
 			name:  "a leap day is one run",
 			dates: []string{"2028-02-28", "2028-02-29", "2028-03-01"},
-			want:  []itemDateRangeResponse{r("2028-02-28", "2028-03-01")},
+			want:  []locationDateRangeResponse{r("2028-02-28", "2028-03-01")},
 		},
 		{
 			// 2027 has no 29th, so the 28th is followed directly by March.
 			name:  "a non-leap year runs February straight into March",
 			dates: []string{"2027-02-28", "2027-03-01"},
-			want:  []itemDateRangeResponse{r("2027-02-28", "2027-03-01")},
+			want:  []locationDateRangeResponse{r("2027-02-28", "2027-03-01")},
 		},
 		{
-			// An item on one day twice is legal - nothing constrains the pair -
-			// and must read as one day, not as two ranges.
+			// A location on one day twice is legal - nothing constrains the
+			// pair - and must read as one day, not as two ranges.
 			name:  "duplicates reduce to one date",
 			dates: []string{"2026-09-05", "2026-09-05", "2026-09-06"},
-			want:  []itemDateRangeResponse{r("2026-09-05", "2026-09-06")},
+			want:  []locationDateRangeResponse{r("2026-09-05", "2026-09-06")},
 		},
 		{
 			name:  "input order does not matter",
 			dates: []string{"2026-09-07", "2026-09-05", "2026-09-06"},
-			want:  []itemDateRangeResponse{r("2026-09-05", "2026-09-07")},
+			want:  []locationDateRangeResponse{r("2026-09-05", "2026-09-07")},
 		},
 		{
 			name:  "ranges come back in date order",
 			dates: []string{"2026-10-02", "2026-09-05", "2026-09-06", "2026-10-01"},
-			want:  []itemDateRangeResponse{r("2026-09-05", "2026-09-06"), r("2026-10-01", "2026-10-02")},
+			want:  []locationDateRangeResponse{r("2026-09-05", "2026-09-06"), r("2026-10-01", "2026-10-02")},
 		},
 	}
 
@@ -106,12 +106,12 @@ func TestCollapseDateRanges(t *testing.T) {
 // suite is pointed at. This is the milestone's real proof: itinerary_days.date
 // is TEXT on SQLite and DATE on Postgres, so the generated row type differs by
 // dialect and only `make test-postgres` can say the conversion is right.
-func TestListItineraryDatesByItem(t *testing.T) {
+func TestListItineraryDatesByLocation(t *testing.T) {
 	ts := newTestServer(t)
 	cookie := ts.login("owner")
 	tripID := ts.createTrip(cookie, "Iceland")
-	hotel := ts.createItem(cookie, tripID, "Hotel Ranga")
-	other := ts.createItem(cookie, tripID, "Skogafoss")
+	hotel := ts.createLocation(cookie, tripID, "Hotel Ranga")
+	other := ts.createLocation(cookie, tripID, "Skogafoss")
 
 	// Out of order on purpose, and 09-07 twice: the store returns what is
 	// there, and collapsing is the caller's job.
@@ -122,7 +122,7 @@ func TestListItineraryDatesByItem(t *testing.T) {
 		)
 		ts.mustCreate(
 			http.MethodPost, "/api/itinerary/days/"+dayID+"/entries", cookie,
-			`{"item_id":"`+hotel+`"}`, http.StatusCreated,
+			`{"location_id":"`+hotel+`"}`, http.StatusCreated,
 		)
 	}
 	// A second location on one of the same days, to prove the filter bites.
@@ -132,7 +132,7 @@ func TestListItineraryDatesByItem(t *testing.T) {
 	)
 	ts.mustCreate(
 		http.MethodPost, "/api/itinerary/days/"+dayID+"/entries", cookie,
-		`{"item_id":"`+other+`"}`, http.StatusCreated,
+		`{"location_id":"`+other+`"}`, http.StatusCreated,
 	)
 
 	rows, err := ts.Store.ListItineraryDatesByLocation(context.Background(), hotel)
@@ -158,7 +158,7 @@ func TestListItineraryDatesByItem(t *testing.T) {
 			t.Errorf("date %q is not a plain ISO date: %v", row.Date, err)
 		}
 		if row.LocationID != hotel {
-			t.Errorf("got a row for item %s, want only %s", row.LocationID, hotel)
+			t.Errorf("got a row for location %s, want only %s", row.LocationID, hotel)
 		}
 		if row.EntryID == "" || row.DayID == "" {
 			t.Errorf("row is missing the ids the reconcile deletes by: %+v", row)
@@ -167,7 +167,7 @@ func TestListItineraryDatesByItem(t *testing.T) {
 
 	// And the ranges the location page would show.
 	got := collapseDateRanges(dates)
-	wantRanges := []itemDateRangeResponse{{StartDate: "2026-09-05", EndDate: "2026-09-07"}}
+	wantRanges := []locationDateRangeResponse{{StartDate: "2026-09-05", EndDate: "2026-09-07"}}
 	if !reflect.DeepEqual(got, wantRanges) {
 		t.Errorf("collapsed: got %+v, want %+v", got, wantRanges)
 	}
@@ -187,14 +187,14 @@ func TestListItineraryDatesByItem(t *testing.T) {
 
 // setDates PATCHes a location's date ranges and returns the ranges it reports
 // back. rangesJSON is the "dates" array on its own.
-func (ts *testServer) setDates(cookie *http.Cookie, itemID, rangesJSON string) []itemDateRangeResponse {
+func (ts *testServer) setDates(cookie *http.Cookie, locationID, rangesJSON string) []locationDateRangeResponse {
 	ts.t.Helper()
 	body := `{"title":"Hotel Ranga","category":"stay","tags":["hotel"],"dates":` + rangesJSON + `}`
-	w := ts.do(http.MethodPatch, "/api/items/"+itemID, cookie, body)
+	w := ts.do(http.MethodPatch, "/api/locations/"+locationID, cookie, body)
 	if w.Code != http.StatusOK {
 		ts.t.Fatalf("patch dates: got %d, body %s", w.Code, w.Body.String())
 	}
-	return decode[itemDetailResponse](ts.t, w).Dates
+	return decode[locationDetailResponse](ts.t, w).Dates
 }
 
 // dayByDate finds one day in the itinerary response.
@@ -219,10 +219,10 @@ func TestSettingDatesPutsTheLocationOnThoseDays(t *testing.T) {
 	ts := newTestServer(t)
 	cookie := ts.login("owner")
 	tripID := ts.createTrip(cookie, "Iceland")
-	hotel := ts.createItem(cookie, tripID, "Hotel Ranga")
+	hotel := ts.createLocation(cookie, tripID, "Hotel Ranga")
 
 	got := ts.setDates(cookie, hotel, `[{"start_date":"2026-09-05","end_date":"2026-09-07"}]`)
-	want := []itemDateRangeResponse{{StartDate: "2026-09-05", EndDate: "2026-09-07"}}
+	want := []locationDateRangeResponse{{StartDate: "2026-09-05", EndDate: "2026-09-07"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("dates: got %+v, want %+v", got, want)
 	}
@@ -231,7 +231,7 @@ func TestSettingDatesPutsTheLocationOnThoseDays(t *testing.T) {
 	// day after the last one.
 	for _, date := range []string{"2026-09-05", "2026-09-06", "2026-09-07"} {
 		day := ts.dayByDate(cookie, tripID, date)
-		if len(day.Entries) != 1 || day.Entries[0].ItemID != hotel {
+		if len(day.Entries) != 1 || day.Entries[0].LocationID != hotel {
 			t.Errorf("%s: got %d entries %+v, want the hotel", date, len(day.Entries), day.Entries)
 		}
 	}
@@ -242,12 +242,12 @@ func TestSettingDatesPutsTheLocationOnThoseDays(t *testing.T) {
 	ts.mustCreateNoID(http.MethodDelete,
 		"/api/itinerary/days/"+*sixth.ID+"/entries/"+sixth.Entries[0].ID, cookie, "", http.StatusNoContent)
 
-	w := ts.do(http.MethodGet, "/api/items/"+hotel, cookie, "")
+	w := ts.do(http.MethodGet, "/api/locations/"+hotel, cookie, "")
 	if w.Code != http.StatusOK {
-		t.Fatalf("get item: got %d", w.Code)
+		t.Fatalf("get location: got %d", w.Code)
 	}
-	got = decode[itemDetailResponse](t, w).Dates
-	want = []itemDateRangeResponse{
+	got = decode[locationDetailResponse](t, w).Dates
+	want = []locationDateRangeResponse{
 		{StartDate: "2026-09-05", EndDate: "2026-09-05"},
 		{StartDate: "2026-09-07", EndDate: "2026-09-07"},
 	}
@@ -259,12 +259,12 @@ func TestSettingDatesPutsTheLocationOnThoseDays(t *testing.T) {
 // The invariant the reconcile exists for: a day that stays keeps its position
 // and its note. A delete-all-then-recreate would pass every other test in this
 // file and fail this one.
-func TestReconcileItemDatesKeepsUntouchedDays(t *testing.T) {
+func TestReconcileLocationDatesKeepsUntouchedDays(t *testing.T) {
 	ts := newTestServer(t)
 	cookie := ts.login("owner")
 	tripID := ts.createTrip(cookie, "Iceland")
-	hotel := ts.createItem(cookie, tripID, "Hotel Ranga")
-	museum := ts.createItem(cookie, tripID, "Museum")
+	hotel := ts.createLocation(cookie, tripID, "Hotel Ranga")
+	museum := ts.createLocation(cookie, tripID, "Museum")
 
 	ts.setDates(cookie, hotel, `[{"start_date":"2026-09-05","end_date":"2026-09-07"}]`)
 
@@ -274,7 +274,7 @@ func TestReconcileItemDatesKeepsUntouchedDays(t *testing.T) {
 	sixth := ts.dayByDate(cookie, tripID, "2026-09-06")
 	hotelEntry := sixth.Entries[0].ID
 	museumEntry := ts.mustCreate(http.MethodPost, "/api/itinerary/days/"+*sixth.ID+"/entries", cookie,
-		`{"item_id":"`+museum+`","note":"opens at ten"}`, http.StatusCreated)
+		`{"location_id":"`+museum+`","note":"opens at ten"}`, http.StatusCreated)
 	ts.mustCreateNoID(http.MethodPut, "/api/itinerary/days/"+*sixth.ID+"/entries/order", cookie,
 		`{"entry_ids":["`+museumEntry+`","`+hotelEntry+`"]}`, http.StatusOK)
 	ts.mustCreateNoID(http.MethodPut, "/api/trips/"+tripID+"/itinerary/days/2026-09-06", cookie,
@@ -283,7 +283,7 @@ func TestReconcileItemDatesKeepsUntouchedDays(t *testing.T) {
 	// Now extend the stay by a day from the location editor. The 6th is in
 	// both the old and the new set, so nothing about it may change.
 	got := ts.setDates(cookie, hotel, `[{"start_date":"2026-09-05","end_date":"2026-09-08"}]`)
-	want := []itemDateRangeResponse{{StartDate: "2026-09-05", EndDate: "2026-09-08"}}
+	want := []locationDateRangeResponse{{StartDate: "2026-09-05", EndDate: "2026-09-08"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("dates: got %+v, want %+v", got, want)
 	}
@@ -309,18 +309,18 @@ func TestReconcileItemDatesKeepsUntouchedDays(t *testing.T) {
 
 	// The new day landed, appended at the end of its own day.
 	eighth := ts.dayByDate(cookie, tripID, "2026-09-08")
-	if len(eighth.Entries) != 1 || eighth.Entries[0].ItemID != hotel {
+	if len(eighth.Entries) != 1 || eighth.Entries[0].LocationID != hotel {
 		t.Errorf("the 8th: got %+v, want the hotel", eighth.Entries)
 	}
 }
 
 // Removing a date takes the location off that day, but must not take the day
 // itself when somebody has written on it.
-func TestReconcileItemDatesRemovesDaysCarefully(t *testing.T) {
+func TestReconcileLocationDatesRemovesDaysCarefully(t *testing.T) {
 	ts := newTestServer(t)
 	cookie := ts.login("owner")
 	tripID := ts.createTrip(cookie, "Iceland")
-	hotel := ts.createItem(cookie, tripID, "Hotel Ranga")
+	hotel := ts.createLocation(cookie, tripID, "Hotel Ranga")
 
 	ts.setDates(cookie, hotel, `[{"start_date":"2026-09-05","end_date":"2026-09-07"}]`)
 	ts.mustCreateNoID(http.MethodPut, "/api/trips/"+tripID+"/itinerary/days/2026-09-07", cookie,
@@ -356,20 +356,20 @@ func TestReconcileItemDatesRemovesDaysCarefully(t *testing.T) {
 // it. The same absent-versus-empty contract the other nested blocks have — but
 // here "present" reaches into a shared structure, which is why the editor must
 // only send it when the user touched the dates.
-func TestItemDatesAbsentVersusEmpty(t *testing.T) {
+func TestLocationDatesAbsentVersusEmpty(t *testing.T) {
 	ts := newTestServer(t)
 	cookie := ts.login("owner")
 	tripID := ts.createTrip(cookie, "Iceland")
-	hotel := ts.createItem(cookie, tripID, "Hotel Ranga")
+	hotel := ts.createLocation(cookie, tripID, "Hotel Ranga")
 
 	ts.setDates(cookie, hotel, `[{"start_date":"2026-09-05","end_date":"2026-09-06"}]`)
 
-	w := ts.do(http.MethodPatch, "/api/items/"+hotel, cookie,
+	w := ts.do(http.MethodPatch, "/api/locations/"+hotel, cookie,
 		`{"title":"Hotel Ranga","category":"stay","tags":["hotel"]}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("patch without dates: got %d, body %s", w.Code, w.Body.String())
 	}
-	if got := decode[itemDetailResponse](t, w).Dates; len(got) != 1 {
+	if got := decode[locationDetailResponse](t, w).Dates; len(got) != 1 {
 		t.Errorf("omitting dates changed them: %+v", got)
 	}
 
@@ -388,13 +388,13 @@ func TestItemDatesAbsentVersusEmpty(t *testing.T) {
 // trip-wide query, bucketed in Go.
 type countingDateStore struct {
 	db.Store
-	byItem atomic.Int64
-	byTrip atomic.Int64
+	byLocation atomic.Int64
+	byTrip     atomic.Int64
 }
 
-func (s *countingDateStore) ListItineraryDatesByLocation(ctx context.Context, itemID string) ([]db.LocationItineraryDate, error) {
-	s.byItem.Add(1)
-	return s.Store.ListItineraryDatesByLocation(ctx, itemID)
+func (s *countingDateStore) ListItineraryDatesByLocation(ctx context.Context, locationID string) ([]db.LocationItineraryDate, error) {
+	s.byLocation.Add(1)
+	return s.Store.ListItineraryDatesByLocation(ctx, locationID)
 }
 
 func (s *countingDateStore) ListLocationDatesByTrip(ctx context.Context, tripID string) ([]db.LocationItineraryDate, error) {
@@ -402,7 +402,7 @@ func (s *countingDateStore) ListLocationDatesByTrip(ctx context.Context, tripID 
 	return s.Store.ListLocationDatesByTrip(ctx, tripID)
 }
 
-func TestListItemsCarriesCollapsedDatesInOneQuery(t *testing.T) {
+func TestListLocationsCarriesCollapsedDatesInOneQuery(t *testing.T) {
 	var counter *countingDateStore
 	ts := newTestServerWith(t, func(s db.Store) db.Store {
 		counter = &countingDateStore{Store: s}
@@ -411,27 +411,27 @@ func TestListItemsCarriesCollapsedDatesInOneQuery(t *testing.T) {
 	cookie := ts.login("owner")
 	tripID := ts.createTrip(cookie, "Iceland")
 
-	hotel := ts.createItem(cookie, tripID, "Hotel Ranga")
+	hotel := ts.createLocation(cookie, tripID, "Hotel Ranga")
 	ts.setDates(cookie, hotel, `[{"start_date":"2026-09-05","end_date":"2026-09-07"}]`)
 
 	// Two separate stretches, so the collapse has something to do that a
 	// single range would not prove: these must come back as two ranges, not
 	// one spanning the gap and not five days.
-	split := ts.createItem(cookie, tripID, "Geysir")
+	split := ts.createLocation(cookie, tripID, "Geysir")
 	ts.setDates(cookie, split, `[{"start_date":"2026-09-05","end_date":"2026-09-06"},{"start_date":"2026-09-09","end_date":"2026-09-09"}]`)
 
-	undated := ts.createItem(cookie, tripID, "Someday")
+	undated := ts.createLocation(cookie, tripID, "Someday")
 
-	counter.byItem.Store(0)
+	counter.byLocation.Store(0)
 	counter.byTrip.Store(0)
 
-	w := ts.do(http.MethodGet, "/api/trips/"+tripID+"/items", cookie, "")
+	w := ts.do(http.MethodGet, "/api/trips/"+tripID+"/locations", cookie, "")
 	if w.Code != http.StatusOK {
 		t.Fatalf("list: got %d, body %s", w.Code, w.Body.String())
 	}
-	got := decode[[]itemResponse](t, w)
+	got := decode[[]locationResponse](t, w)
 
-	byID := map[string][]itemDateRangeResponse{}
+	byID := map[string][]locationDateRangeResponse{}
 	for _, it := range got {
 		if it.Dates == nil {
 			t.Errorf("%s has null dates; the field must always be an array", it.Title)
@@ -439,10 +439,10 @@ func TestListItemsCarriesCollapsedDatesInOneQuery(t *testing.T) {
 		byID[it.ID] = it.Dates
 	}
 
-	if want := []itemDateRangeResponse{{StartDate: "2026-09-05", EndDate: "2026-09-07"}}; !reflect.DeepEqual(byID[hotel], want) {
+	if want := []locationDateRangeResponse{{StartDate: "2026-09-05", EndDate: "2026-09-07"}}; !reflect.DeepEqual(byID[hotel], want) {
 		t.Errorf("hotel dates: got %+v, want %+v", byID[hotel], want)
 	}
-	want := []itemDateRangeResponse{
+	want := []locationDateRangeResponse{
 		{StartDate: "2026-09-05", EndDate: "2026-09-06"},
 		{StartDate: "2026-09-09", EndDate: "2026-09-09"},
 	}
@@ -456,27 +456,27 @@ func TestListItemsCarriesCollapsedDatesInOneQuery(t *testing.T) {
 	if n := counter.byTrip.Load(); n != 1 {
 		t.Errorf("trip-wide date query ran %d times, want exactly 1", n)
 	}
-	if n := counter.byItem.Load(); n != 0 {
+	if n := counter.byLocation.Load(); n != 0 {
 		t.Errorf("per-location date query ran %d times for a 3-location list; the list must not use it", n)
 	}
 }
 
-// The detail endpoint keeps its own per-item read: Dates moved up to
-// itemResponse, and a field that is populated for the list but empty on the
+// The detail endpoint keeps its own per-location read: Dates moved up to
+// locationResponse, and a field that is populated for the list but empty on the
 // page it was built for would be a quiet regression.
-func TestItemDetailStillCarriesDates(t *testing.T) {
+func TestLocationDetailStillCarriesDates(t *testing.T) {
 	ts := newTestServer(t)
 	cookie := ts.login("owner")
 	tripID := ts.createTrip(cookie, "Iceland")
-	hotel := ts.createItem(cookie, tripID, "Hotel Ranga")
+	hotel := ts.createLocation(cookie, tripID, "Hotel Ranga")
 	ts.setDates(cookie, hotel, `[{"start_date":"2026-09-05","end_date":"2026-09-07"}]`)
 
-	w := ts.do(http.MethodGet, "/api/items/"+hotel, cookie, "")
+	w := ts.do(http.MethodGet, "/api/locations/"+hotel, cookie, "")
 	if w.Code != http.StatusOK {
 		t.Fatalf("get: got %d", w.Code)
 	}
-	want := []itemDateRangeResponse{{StartDate: "2026-09-05", EndDate: "2026-09-07"}}
-	if got := decode[itemDetailResponse](t, w).Dates; !reflect.DeepEqual(got, want) {
+	want := []locationDateRangeResponse{{StartDate: "2026-09-05", EndDate: "2026-09-07"}}
+	if got := decode[locationDetailResponse](t, w).Dates; !reflect.DeepEqual(got, want) {
 		t.Errorf("detail dates: got %+v, want %+v", got, want)
 	}
 }

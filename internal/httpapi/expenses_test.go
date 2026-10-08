@@ -35,8 +35,8 @@ type expenseList struct {
 		PayerDisplayName *string  `json:"payer_display_name"`
 		ShareUserIDs     []string `json:"share_user_ids"`
 		ShareMinor       *int64   `json:"share_minor"`
-		ItemID           *string  `json:"item_id"`
-		ItemTitle        *string  `json:"item_title"`
+		LocationID       *string  `json:"location_id"`
+		LocationTitle    *string  `json:"location_title"`
 	} `json:"expenses"`
 	Balances struct {
 		People []struct {

@@ -69,7 +69,7 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
   let items = [];
   if (!readOnly) {
     try {
-      items = await api.get(`/trips/${trip.id}/items`);
+      items = await api.get(`/trips/${trip.id}/locations`);
       // Alphabetically, not in the trip's own location order: this select is
       // for finding one known place by name, and the manual/creation order the
       // API returns reads as random when you are scanning for a title. Same
@@ -435,12 +435,12 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
     // and wanting to know which ferry, the answer is one tap away, where the
     // picture and the notes are.
     const itemEl = li.querySelector(".expenses__row-item");
-    if (expense.item_id && expense.item_title) {
+    if (expense.location_id && expense.location_title) {
       const link = document.createElement("a");
-      link.href = `/trips/${trip.id}/locations/${expense.item_id}`;
+      link.href = `/trips/${trip.id}/locations/${expense.location_id}`;
       link.dataset.link = "";
       link.className = "expenses__row-item-link";
-      link.textContent = expense.item_title;
+      link.textContent = expense.location_title;
       itemEl.appendChild(link);
       itemEl.hidden = false;
     }
@@ -699,7 +699,7 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
       // A location deleted since is no longer in the select, and the value
       // falls through to "none" -- which is what the server holds for it too,
       // the column being ON DELETE SET NULL.
-      if (form.elements.itemId) form.elements.itemId.value = editing.item_id || "";
+      if (form.elements.itemId) form.elements.itemId.value = editing.location_id || "";
     } else {
       // A new expense defaults to today, clamped into the trip's own dates when
       // it has them: entering yesterday's dinner is a correction, entering one
@@ -763,9 +763,9 @@ export async function renderExpensesTab(container, trip, { readOnly = false, sha
         payer_user_id: payerFromForm(form),
         share_user_ids: sharesFromForm(),
         // Empty means "no location", and is sent rather than omitted: the
-        // server reads an absent item_id as none, so on a PATCH that clears an
+        // server reads an absent location_id as none, so on a PATCH that clears an
         // existing link either way -- sending it explicitly says so out loud.
-        item_id: form.elements.itemId?.value || null,
+        location_id: form.elements.itemId?.value || null,
       };
 
       try {

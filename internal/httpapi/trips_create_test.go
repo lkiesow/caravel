@@ -11,7 +11,7 @@ import (
 
 // createTripMultipartReq builds a multipart POST /api/trips, reusing the part
 // description the location create tests already use.
-func (ts *testServer) createTripMultipartReq(cookie *http.Cookie, parts []itemCreatePart) *httptest.ResponseRecorder {
+func (ts *testServer) createTripMultipartReq(cookie *http.Cookie, parts []locationCreatePart) *httptest.ResponseRecorder {
 	ts.t.Helper()
 
 	var buf bytes.Buffer
@@ -70,7 +70,7 @@ func TestCreateTripMultipartCommitsEverythingAtOnce(t *testing.T) {
 	ts := newTestServer(t)
 	cookie := ts.login("demo")
 
-	res := ts.createTripMultipartReq(cookie, []itemCreatePart{
+	res := ts.createTripMultipartReq(cookie, []locationCreatePart{
 		{field: "trip", value: tripJSON("Iceland")},
 		{field: "image", filename: "cover.png", content: testPNG(t)},
 	})
@@ -100,7 +100,7 @@ func TestCreateTripMultipartRollsBackOnUnfetchableImageURL(t *testing.T) {
 	cookie := ts.login("demo")
 	before := ts.tripCount(cookie)
 
-	res := ts.createTripMultipartReq(cookie, []itemCreatePart{
+	res := ts.createTripMultipartReq(cookie, []locationCreatePart{
 		{field: "trip", value: tripJSON("Nowhere")},
 		// A port nothing is listening on: the fetch fails, before any write.
 		{field: "image_url", value: "http://127.0.0.1:1/cover.png"},
@@ -118,7 +118,7 @@ func TestCreateTripMultipartRollsBackOnBadImage(t *testing.T) {
 	cookie := ts.login("demo")
 	before := ts.tripCount(cookie)
 
-	res := ts.createTripMultipartReq(cookie, []itemCreatePart{
+	res := ts.createTripMultipartReq(cookie, []locationCreatePart{
 		{field: "trip", value: tripJSON("Nowhere")},
 		{field: "image", filename: "cover.png", content: []byte("not an image")},
 	})
@@ -135,7 +135,7 @@ func TestCreateTripMultipartRejectsBothImageAndURL(t *testing.T) {
 	cookie := ts.login("demo")
 	before := ts.tripCount(cookie)
 
-	res := ts.createTripMultipartReq(cookie, []itemCreatePart{
+	res := ts.createTripMultipartReq(cookie, []locationCreatePart{
 		{field: "trip", value: tripJSON("Ambiguous")},
 		{field: "image", filename: "cover.png", content: testPNG(t)},
 		{field: "image_url", value: "https://example.com/cover.png"},
@@ -161,7 +161,7 @@ func TestCreateTripMultipartRejectsBadTripPart(t *testing.T) {
 		{"malformed json", `{"title":`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			res := ts.createTripMultipartReq(cookie, []itemCreatePart{
+			res := ts.createTripMultipartReq(cookie, []locationCreatePart{
 				{field: "trip", value: tc.value},
 			})
 			if res.Code != http.StatusBadRequest {
@@ -171,7 +171,7 @@ func TestCreateTripMultipartRejectsBadTripPart(t *testing.T) {
 	}
 
 	t.Run("missing trip part", func(t *testing.T) {
-		res := ts.createTripMultipartReq(cookie, []itemCreatePart{
+		res := ts.createTripMultipartReq(cookie, []locationCreatePart{
 			{field: "image", filename: "cover.png", content: testPNG(t)},
 		})
 		if res.Code != http.StatusBadRequest {
@@ -189,7 +189,7 @@ func TestCreateTripMultipartWithoutImage(t *testing.T) {
 	ts := newTestServer(t)
 	cookie := ts.login("demo")
 
-	res := ts.createTripMultipartReq(cookie, []itemCreatePart{
+	res := ts.createTripMultipartReq(cookie, []locationCreatePart{
 		{field: "trip", value: tripJSON("Bare")},
 	})
 	if res.Code != http.StatusCreated {

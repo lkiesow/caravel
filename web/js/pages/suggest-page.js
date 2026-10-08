@@ -384,8 +384,8 @@ export async function renderSuggestPage(container, { tripId }, signal) {
     try {
       // One request, one transaction. Separate posts would be several chances
       // to half-finish, with no honest way to say which places landed.
-      const created = await api.post(`/trips/${tripId}/items/batch`, {
-        items: chosen.map((candidate) => ({
+      const created = await api.post(`/trips/${tripId}/locations/batch`, {
+        locations: chosen.map((candidate) => ({
           title: candidate.title,
           category: candidate.category || "site",
           notes: candidate.notes || null,
@@ -400,7 +400,7 @@ export async function renderSuggestPage(container, { tripId }, signal) {
           // search and the map-link resolver.
           ...(candidate.position && !candidate.position.alternatives?.length
             ? {
-                location: {
+                geo: {
                   lat: candidate.position.lat,
                   lng: candidate.position.lng,
                   address: candidate.address || null,
@@ -412,7 +412,7 @@ export async function renderSuggestPage(container, { tripId }, signal) {
                 },
               }
             : candidate.address
-              ? { location: { lat: null, lng: null, address: candidate.address } }
+              ? { geo: { lat: null, lng: null, address: candidate.address } }
               : {}),
         })),
       });
@@ -452,7 +452,7 @@ export async function renderSuggestPage(container, { tripId }, signal) {
           credit: cover.credit || "",
           license: cover.license || "",
         });
-        await api.put(`/items/${created[i].id}/image`, { media_asset_id: asset.id });
+        await api.put(`/locations/${created[i].id}/image`, { media_asset_id: asset.id });
       } catch (err) {
         console.error("attaching a suggested cover failed:", err?.body?.error || err?.message || err);
       }

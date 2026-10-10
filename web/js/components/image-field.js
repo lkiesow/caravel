@@ -305,6 +305,11 @@ export function renderImageField(container, { tripId, imageUrl, attachPath, onCh
     cell.addEventListener("click", async () => {
       panel.hidden = true;
       panel.innerHTML = "";
+      // On a phone the results run several screens, so a pick from the bottom
+      // collapses the page under the scroll position and leaves the user
+      // somewhere else entirely. Back to the field, before the fetch rather
+      // than after, so the image is seen arriving.
+      container.scrollIntoView({ block: "nearest" });
       await setFromURL(result.url, {
         source_url: result.source_url || "",
         credit: result.credit || "",

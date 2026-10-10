@@ -120,6 +120,28 @@ test.describe("image search", () => {
     await expect(page.locator(".image-credit")).toContainText("Photographer");
   });
 
+  // On a phone the results run longer than the screen, and picking one from
+  // the bottom used to collapse the page under the scroll position: the image
+  // was set, and the user was looking at some other card entirely.
+  test("brings the picked image into view on a phone", async ({ page }) => {
+    await page.setViewportSize({ width: 324, height: 756 });
+    await page.goto(`/trips/${tripId}/locations/new`);
+    await page.locator('input[name="title"]').fill("Stub Article");
+    await page.locator('[data-action="search-image"]').click();
+
+    const results = page.locator(".image-search__result");
+    await expect(results).toHaveCount(3, { timeout: 30_000 });
+    const field = page.locator(".image-field");
+    await results.last().scrollIntoViewIfNeeded();
+    // The precondition, or the test proves nothing: the field is off screen
+    // when the pick is made.
+    await expect(field.locator(".image-field__controls")).not.toBeInViewport();
+
+    await results.last().click();
+    await expect(page.locator(".image-search")).toBeHidden();
+    await expect(field.locator(".image-field__preview")).toBeInViewport();
+  });
+
   test("says so when there is nothing to offer", async ({ page }) => {
     await page.goto(`/trips/${tripId}/locations/new`);
     await page.locator('[data-action="search-image"]').click();

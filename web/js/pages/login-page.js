@@ -2,6 +2,7 @@ import { api, ApiError } from "../api.js";
 import { guardForm } from "../busy.js";
 import { t, translatePage } from "../i18n.js";
 import { icon } from "../icon.js";
+import { WEBSITE_URL, REPO_URL } from "../project-links.js";
 
 // Renders the combined login/register screen into `container` and resolves
 // with the authenticated user once login/registration succeeds.
@@ -86,6 +87,14 @@ export function renderLoginPage(container) {
               }
             </form>
           </div>
+          <!-- Where the software comes from, for somebody who was sent a link to
+               an instance and wonders what this is. Links only: the hero above
+               already names the app and says what it does. Outside the mode
+               switch, so login and registration both carry it. -->
+          <footer class="auth-footer">
+            <a class="auth-footer__link" href="${WEBSITE_URL}" target="_blank" rel="noopener noreferrer">${icon("book-open")} <span data-i18n="auth.footer.docs"></span></a>
+            <a class="auth-footer__link" href="${REPO_URL}" target="_blank" rel="noopener noreferrer">${icon("code")} <span data-i18n="auth.footer.github"></span></a>
+          </footer>
         </div>
       `;
       translatePage(container);

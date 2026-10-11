@@ -14,6 +14,11 @@ import { DEEP_DOM_SOURCE, ACCESSIBLE_NAME_SOURCE } from "./helpers/deep-dom.js";
 
 const MIN_TAP_TARGET_PX = 44;
 
+const FOOTER_LINKS = {
+  en: ["Documentation", "GitHub"],
+  de: ["Dokumentation", "GitHub"],
+};
+
 for (const locale of ["en", "de"]) {
   for (const viewport of VIEWPORTS) {
     test.describe(`login screen (${locale}, ${viewport.name})`, () => {
@@ -69,6 +74,34 @@ for (const locale of ["en", "de"]) {
           }
         );
         expect(failures, `login screen (${locale}, ${viewport.name})`).toEqual([]);
+      });
+
+      // Stage 50: two links to the project under the hero. Links only - the
+      // hero already names the app - so the claims are the hrefs, that they
+      // open a new tab without a handle back, that they clear the tap floor
+      // on a phone (the sweep above checks buttons and inputs, not links), and
+      // that they add no heading to a page that must keep exactly one h1.
+      test(`links to the project's docs and source (${locale}, ${viewport.name})`, async ({ page }) => {
+        await blockExternalRequests(page);
+        await page.goto("/");
+        await expect(page.locator(".auth-form")).toBeVisible();
+
+        const footer = page.locator("footer.auth-footer");
+        const links = footer.locator("a");
+        await expect(links).toHaveText(FOOTER_LINKS[locale]);
+        await expect(links.nth(0)).toHaveAttribute("href", "https://lkiesow.github.io/caravel/");
+        await expect(links.nth(1)).toHaveAttribute("href", "https://github.com/lkiesow/caravel");
+        for (const link of await links.all()) {
+          await expect(link).toHaveAttribute("target", "_blank");
+          await expect(link).toHaveAttribute("rel", "noopener noreferrer");
+          await expect(link.locator("svg.icon")).toHaveCount(1);
+          if (viewport.name !== "desktop") {
+            const box = await link.boundingBox();
+            expect(box.height, "footer link height").toBeGreaterThanOrEqual(MIN_TAP_TARGET_PX);
+          }
+        }
+        await expect(footer.locator("h1, h2, h3, h4, h5, h6")).toHaveCount(0);
+        await expect(page.locator("h1")).toHaveCount(1);
       });
 
       test(`offers no registration while signup is closed (${locale}, ${viewport.name})`, async ({ page }) => {

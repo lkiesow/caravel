@@ -195,6 +195,37 @@ Verified:
     with correct hrefs, in both modes, both locales and both viewports, with no overflow
   - make sure `headings.spec.js` and `brand.spec.js` still pass, since the footer adds no heading
 
+**Done.** The login and registration screens now end in a
+`<footer class="auth-footer">` below the hero card, with two links:
+Documentation (`book-open`, the website) and GitHub (`code`).
+- **Markup and behaviour:**
+  - The URLs come from `project-links.js`.
+  - Both links open a new tab with `rel="noopener noreferrer"`.
+  - The footer is outside the mode conditional, so registering keeps it.
+- **Styling:** muted (`--color-text-muted`, `--color-text` on hover), 0.875rem,
+  and centred. The row wraps rather than overflowing.
+- **Tap floor:** each link is `min-height: var(--tap-min)`, as in the About
+  dialog.
+- **No new-tab hint:** nothing in the app uses one, so per the plan the links
+  carry none.
+- **No screenshot change:** none of the docs screenshots shows the login
+  screen.
+
+Verified:
+- **`unauthenticated.spec.js`** has a new test for each locale × viewport
+  (6 runs):
+  - link texts, hrefs, `target`, `rel` and one icon each;
+  - links at least 44px on the phone viewports;
+  - no heading inside the footer, and the page still has exactly one h1.
+  - The existing overflow test now covers the footer too.
+- **`register.spec.js`**: the footer is still there after switching to
+  register mode, en and de.
+- **`headings.spec.js` and `brand.spec.js`** green.
+- **Contrast**, by hand (`check-contrast` measures logged-in routes only):
+  7.73:1 light and 6.91:1 dark against the page background.
+- **By hand** on `make dev`: screenshots at 324px (light) and 1280px (dark).
+- `make ci` and the full `make test-ui` green.
+
 ## Build order
 
 0 → 1 → 2 → 3. Milestone 2 depends on 1's `build` field. Milestone 3 depends only

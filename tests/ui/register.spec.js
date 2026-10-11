@@ -94,6 +94,10 @@ test.describe("registration", () => {
         // falling back — the guard that stops this half being decoration.
         const expected = locale === "de" ? "Konto erstellen" : "Create an account";
         await expect(form.locator("h2")).toHaveText(expected);
+
+        // The project footer sits outside the mode switch, so registering
+        // keeps it (Stage 50).
+        await expect(visitor.locator("footer.auth-footer a")).toHaveCount(2);
       }
     } finally {
       await setOpenSignup(page, false);

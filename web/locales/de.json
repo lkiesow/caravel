@@ -485,5 +485,7 @@
   "about.version": "Version",
   "about.website": "Website & Dokumentation",
   "about.github": "Quellcode auf GitHub",
-  "about.reportProblem": "Problem melden"
+  "about.reportProblem": "Problem melden",
+  "auth.footer.docs": "Dokumentation",
+  "auth.footer.github": "GitHub"
 }

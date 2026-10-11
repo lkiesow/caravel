@@ -485,5 +485,7 @@
   "about.version": "Version",
   "about.website": "Website & documentation",
   "about.github": "Source code on GitHub",
-  "about.reportProblem": "Report a problem"
+  "about.reportProblem": "Report a problem",
+  "auth.footer.docs": "Documentation",
+  "auth.footer.github": "GitHub"
 }

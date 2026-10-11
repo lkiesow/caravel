@@ -24,6 +24,14 @@ older stage plan or an earlier version of this file without asking.
 
 ## Bugs and rough edges
 
+- **Focus after a dialog launched from a menu.** (Stage 50.) Closing the About
+  dialog leaves focus on `<body>`, not on the user-menu trigger. `<dialog>`
+  hands focus back to whatever had it, and that was the menu item, which is
+  hidden by then. Keyboard and screen-reader users lose their place. Other
+  menu-launched dialogs (delete confirmations) probably do the same, but that
+  is not checked. A fix likely belongs in `menu.js`: refocus the trigger once
+  an action's returned promise settles.
+
 - **Abort a page's stale GETs when it is left.** (Stage 48.) The router's
   per-render signal (`router.js`) cancels redirects, listeners and assist
   streams, but not ordinary fetches: `api.request` and `postForm` take no

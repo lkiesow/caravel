@@ -480,5 +480,10 @@
   "tripNotes.saveFailed": "Could not save the note.",
   "tripNotes.mentions": "Locations",
   "tripNotes.loadFailed": "Could not load the note.",
-  "tripNotes.deletedLocation": "deleted location"
+  "tripNotes.deletedLocation": "deleted location",
+  "about.title": "About Caravel",
+  "about.version": "Version",
+  "about.website": "Website & documentation",
+  "about.github": "Source code on GitHub",
+  "about.reportProblem": "Report a problem"
 }

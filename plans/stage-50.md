@@ -130,6 +130,53 @@ Verified:
     - no horizontal overflow at 324×756
     - both locales
 
+**Done.** The user menu has a fourth entry, "About Caravel" (icon `info`),
+between Administration and Log out.
+- **The dialog shows:**
+  - the hero's lockup, tagline and subtitle;
+  - "Version <v>", where the version is a link only when `/auth/me` gave a URL;
+  - the website, GitHub and "Report a problem" links, all
+    `target="_blank" rel="noopener noreferrer"`.
+- **`dialog.js`**:
+  - gained `contentDialog({ messageKey, content, hideMessage, className })`;
+  - its message stays the `aria-labelledby` name but is `.sr-only`, because
+    the lockup already says "Caravel".
+- **Deviations:**
+  - A content dialog focuses Close explicitly. `<dialog>` would otherwise put
+    the focus on the version link, and Enter would open a tab.
+  - The links are `min-height: var(--tap-min)` (44px), not the planned 2rem.
+    They stand on their own lines, so they are controls, not body copy.
+- **Icons:** `book-open`, `code` and `bug` came from lucide-static 1.55.0; the
+  41 existing symbols came out byte-identical.
+- **Locale files:** keys were appended as text. Re-serialising the JSON would
+  have decoded existing `\u` escapes in `de.json`.
+- **Not fixed here:** after the dialog closes, focus falls to `<body>`, not
+  back to the menu trigger. `<dialog>` restores focus to the menu item that
+  opened it, and that item is hidden by then. Other dialogs launched from a
+  menu probably share this (not checked), so it went to todo.md as a general
+  entry.
+- **A Stage 49 follow-up, committed separately as c6a46e4:** while verifying,
+  `make check-contrast` turned out to have failed since 46fcdd8. The Makefile
+  still asked for `{item}` routes.
+
+Verified:
+- **`tests/ui/about.spec.js`** (new), en and de at 324×756:
+  - the dialog's accessible name, the lockup, the version text against
+    `/auth/me`, and the three hrefs;
+  - `target` and `rel` on every link;
+  - Close focused, links at least 44px, no overflow, Escape closes.
+- **Two forced-build cases** intercept `/auth/me`: `1.4.0` with a release URL
+  is linked, `…-dirty` is not. The suite's own server is built without
+  `-ldflags` and always reports `dev`, so this is the only automated coverage
+  of the linked case.
+- **`menu.spec.js`**: the item list now includes the new entry.
+- **Contrast** of the open dialog (`check-contrast` measures routes, not
+  dialogs) was computed in the browser. Every text is at least 4.7:1 in both
+  themes; the links are 4.70 light and 5.86 dark.
+- **By hand** on `make dev` at 324px: screenshots in light and dark, Escape
+  closes the dialog and releases the menu's busy state.
+- `make ci`, `make check-contrast` and the full `make test-ui` green.
+
 ## 3. Login/registration footer
 
 - **`web/js/pages/login-page.js`**: add a `<footer class="auth-footer">` after

@@ -54,6 +54,9 @@ ICONS = [
     "notebook-pen",
     "maximize",
     "minimize",
+    "book-open",
+    "code",
+    "bug",
 ]
 
 

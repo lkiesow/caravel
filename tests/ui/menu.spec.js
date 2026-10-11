@@ -372,14 +372,14 @@ for (const locale of ["en", "de"]) {
 // from auth.setup.js. Everything up to the click is covered — the roles, both
 // locales, the avatar, and that the old markup really is gone.
 //
-// Three items, not two: the seeded demo user is an administrator (Stage 14
-// Milestone 6), so the menu carries Administration between Settings and Log
-// out. That the list is spelled out here rather than read from user-menu.js is
+// Four items: the seeded demo user is an administrator (Stage 14 Milestone 6),
+// so the menu carries Administration after Settings, and About Caravel (Stage
+// 50) sits just above Log out. That the list is spelled out here rather than read from user-menu.js is
 // what turned the seeder change into a failure instead of a silent pass — worth
 // keeping in mind before "fixing" this by generating it.
 const USER_MENU_LABELS = {
-  en: { menu: "User menu", items: ["Account settings", "Administration", "Log out"] },
-  de: { menu: "Benutzermenü", items: ["Kontoeinstellungen", "Verwaltung", "Abmelden"] },
+  en: { menu: "User menu", items: ["Account settings", "Administration", "About Caravel", "Log out"] },
+  de: { menu: "Benutzermenü", items: ["Kontoeinstellungen", "Verwaltung", "Über Caravel", "Abmelden"] },
 };
 
 for (const locale of ["en", "de"]) {
@@ -434,9 +434,9 @@ for (const locale of ["en", "de"]) {
       await expect(trigger).toHaveAttribute("aria-expanded", "false");
 
       // The item that has somewhere to go, goes there — and the menu closes
-      // behind it. This is the only clickable item in here (Log out would end
-      // the shared session), so it is also the proof that action items in this
-      // menu fire at all.
+      // behind it. This is the proof that action items in this menu fire at
+      // all; Log out would end the shared session, and About has its own spec
+      // (about.spec.js).
       await trigger.click();
       await dropdown.locator('[role="menuitem"]').first().click();
       await expect(dropdown).toBeHidden();

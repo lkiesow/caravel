@@ -1245,6 +1245,54 @@ textarea {
   justify-content: flex-end;
 }
 
+/* The About dialog (components/about-dialog.js): the lockup, the hero's
+   tagline, the running version, and three links out. Its message is the
+   accessible name only (sr-only), so the lockup is the first thing seen. */
+.about-dialog__brand {
+  margin: 0 0 0.75rem;
+}
+
+.about-dialog__tagline {
+  margin: 0 0 0.25rem;
+  font-weight: 600;
+}
+
+.about-dialog__subtitle {
+  margin: 0 0 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.about-dialog__version {
+  margin: 0 0 1rem;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+/* A SHA or a release number: tabular, and never broken mid-string. */
+.about-dialog__version-value {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.about-dialog__links {
+  margin: 0 0 1.25rem;
+  padding: 1rem 0 0;
+  border-top: 1px solid var(--color-border);
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Each link is a line of its own, so it is a control rather than body copy and
+   gets the tap floor - as height, not padding, so the list still reads as
+   three links rather than a row of buttons. */
+.about-dialog__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: var(--tap-min);
+}
+
 button {
   font-family: inherit;
 }

@@ -110,21 +110,40 @@ export function alertDialog({ messageKey, message }) {
   }).then(() => undefined);
 }
 
+// A message plus a block of the caller's own markup above a Close button -
+// the About dialog. `content` is a node, built by the caller with DOM APIs, so
+// nothing here parses markup. `hideMessage` keeps the message as the dialog's
+// accessible name but off screen, for content that already says what it is
+// (a logo saying "Caravel" under a line saying "About Caravel" would say it
+// twice). `className` is added to the <dialog> so the content can be styled.
+export function contentDialog({ messageKey, message, content, hideMessage = false, className }) {
+  return open({
+    messageKey,
+    message,
+    content,
+    hideMessage,
+    className,
+    buttons: [{ labelKey: "common.close", value: "close", className: "btn-primary", iconName: "check" }],
+  }).then(() => undefined);
+}
+
 let nextId = 0;
 
 // `message` (a ready string) wins over `messageKey` when both are given, for
 // the rare caller that has to interpolate.
-function open({ messageKey, message, buttons, input, select }) {
+function open({ messageKey, message, buttons, input, select, content, hideMessage, className }) {
   const dialog = document.createElement("dialog");
-  dialog.className = "dialog";
+  dialog.className = className ? `dialog ${className}` : "dialog";
   const messageId = `dialog-message-${nextId++}`;
   dialog.setAttribute("aria-labelledby", messageId);
 
   const text = document.createElement("p");
-  text.className = "dialog__message";
+  text.className = hideMessage ? "dialog__message sr-only" : "dialog__message";
   text.id = messageId;
   text.textContent = message ?? t(messageKey);
   dialog.appendChild(text);
+
+  if (content) dialog.appendChild(content);
 
   let inputEl = null;
   if (input) {
@@ -223,5 +242,9 @@ function open({ messageKey, message, buttons, input, select }) {
     inputEl?.focus();
     inputEl?.select();
     selectEl?.focus();
+    // Content can hold links, and <dialog> would focus the first of them: a
+    // ring on a link nobody chose, and Enter following it to another tab.
+    // Close is the one control every content dialog has.
+    if (content) actions.querySelector("button")?.focus();
   });
 }

@@ -480,5 +480,10 @@
   "tripNotes.saveFailed": "Die Notiz konnte nicht gespeichert werden.",
   "tripNotes.mentions": "Orte",
   "tripNotes.loadFailed": "Die Notiz konnte nicht geladen werden.",
-  "tripNotes.deletedLocation": "gelöschter Ort"
+  "tripNotes.deletedLocation": "gelöschter Ort",
+  "about.title": "Über Caravel",
+  "about.version": "Version",
+  "about.website": "Website & Dokumentation",
+  "about.github": "Quellcode auf GitHub",
+  "about.reportProblem": "Problem melden"
 }

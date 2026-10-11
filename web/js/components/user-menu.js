@@ -2,10 +2,11 @@ import { t } from "../i18n.js";
 import { navigate } from "../router.js";
 import { renderMenu } from "./menu.js";
 import { escapeHtml } from "../escape.js";
+import { openAboutDialog } from "./about-dialog.js";
 
 // Renders an initials-avatar user menu into `container`, at the far right of
-// the header. Clicking the avatar opens a small dropdown: account settings and
-// Log out.
+// the header. Clicking the avatar opens a small dropdown: account settings,
+// About Caravel and Log out.
 //
 // This is a thin wrapper over components/menu.js: until Stage 12 Milestone 1
 // it carried its own copy of the popup behaviour (hidden-attribute
@@ -28,19 +29,22 @@ export function renderUserMenu(container, user, { onLogout }) {
     // label is pinned rather than tracking a selection.
     label: user.display_name,
     ariaLabel: "auth.userMenu",
-    // Both are actions, not a selection: neither is a state the menu is now
-    // in. Settings leads because it is the one you might use twice.
+    // All actions, not a selection: none is a state the menu is now in.
+    // Settings leads because it is the one you might use twice; About sits
+    // just above Log out, the place most apps keep it.
     items: [
       { value: "settings", label: t("settings.title"), iconName: "settings", action: true },
       // Only for an admin, and only as a convenience: the page re-checks and
       // the server checks again on every /api/admin route. A menu item is not
       // a permission.
       ...(user.is_admin ? [{ value: "admin", label: t("admin.title"), iconName: "shield-user", action: true }] : []),
+      { value: "about", label: t("about.title"), iconName: "info", action: true },
       { value: "logout", label: t("auth.logout"), iconName: "log-out", action: true },
     ],
     onSelect: (value) => {
       if (value === "settings") navigate("/settings");
       if (value === "admin") navigate("/admin");
+      if (value === "about") return openAboutDialog();
       // Returned, not just called: menu.js keeps its guard held for as long as
       // this resolves, so the logout POST is what the ⋮ stays busy for.
       if (value === "logout") return onLogout?.();

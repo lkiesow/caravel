@@ -9,6 +9,8 @@
 // link time is always there.
 package buildinfo
 
+import "regexp"
+
 // Version identifies the build. The Makefile stamps it at link time:
 //
 //	go build -ldflags "-X caravel/internal/buildinfo.Version=$(VERSION)"
@@ -22,3 +24,32 @@ package buildinfo
 // one uncommitted state from another, so `make dev-marker` is still the tool
 // for "is my specific edit in this binary".
 var Version = "dev"
+
+// RepoURL is the project's home on GitHub, which URL builds its links on.
+const RepoURL = "https://github.com/lkiesow/caravel"
+
+var (
+	releaseVersion = regexp.MustCompile(`^\d+\.\d+\.\d+([-+][0-9A-Za-z.+-]*)?$`)
+	commitVersion  = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
+)
+
+// URL is where Version can be looked up: the release notes of a tagged
+// release, or the commit a SHA build came from. It is "" for anything that
+// names no published state - "dev", "unknown", and every "-dirty" build, whose
+// SHA is a commit the build only started from.
+//
+// Release tags are assumed to be "v" plus the version, which is the form the
+// image workflow's semver tag rule parses and strips back off.
+func URL() string {
+	return urlFor(Version)
+}
+
+func urlFor(version string) string {
+	switch {
+	case releaseVersion.MatchString(version):
+		return RepoURL + "/releases/tag/v" + version
+	case commitVersion.MatchString(version):
+		return RepoURL + "/commit/" + version
+	}
+	return ""
+}

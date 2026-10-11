@@ -63,6 +63,20 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
+      # Not steps.meta.outputs.version: that is the highest-priority tag, which
+      # on main is "latest" (raw, 200) rather than the SHA (100) - a name that
+      # says nothing about which build it is. A version tag gives the version
+      # without its "v", which buildinfo.URL turns back into the release link;
+      # anything else gives the short SHA, as a source build would.
+      - name: Determine the version
+        id: version
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=$(scripts/version.sh)" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
@@ -72,7 +86,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            VERSION=${{ steps.meta.outputs.version }}
+            VERSION=${{ steps.version.outputs.version }}
           # Layer cache in the Actions cache, so an unchanged go.mod does not
           # re-download the module cache on every run.
           cache-from: type=gha

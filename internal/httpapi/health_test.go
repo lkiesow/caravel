@@ -40,3 +40,26 @@ func TestHealthReportsStatusAndVersion(t *testing.T) {
 		t.Error("version is empty — a build with no -ldflags should still report the \"dev\" default")
 	}
 }
+
+// /auth/me carries the build too, for the About dialog. The version is swapped
+// for a release one first: the "dev" a test binary reports has no URL, and an
+// empty URL matching an empty URL would pass with the field never wired up.
+func TestAuthMeReportsBuild(t *testing.T) {
+	saved := buildinfo.Version
+	buildinfo.Version = "1.4.0"
+	t.Cleanup(func() { buildinfo.Version = saved })
+
+	ts := newTestServer(t)
+	w := ts.do(http.MethodGet, "/api/auth/me", ts.login("alice"), "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET /api/auth/me: got %d, want 200 (body: %s)", w.Code, w.Body.String())
+	}
+	var got userResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode body %q: %v", w.Body.String(), err)
+	}
+	want := buildResponse{Version: "1.4.0", URL: buildinfo.RepoURL + "/releases/tag/v1.4.0"}
+	if got.Build != want {
+		t.Errorf("build: got %+v, want %+v", got.Build, want)
+	}
+}

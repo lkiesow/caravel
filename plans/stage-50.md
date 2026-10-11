@@ -55,6 +55,36 @@ Commit this as `plans/stage-50.md`, on its own.
     on tag pushes and `scripts/version.sh` otherwise.
   - This can only be fully verified on the next real CI run; say so in the commit.
 
+**Done.** `/api/auth/me` now carries `"build": {"version", "url"}`.
+- **`buildinfo.URL()`**:
+  - A release (`1.4.0`, also `1.4.0-rc.1`) links to `releases/tag/v…`.
+  - A bare 7–40 hex SHA links to `commit/…`.
+  - Everything else gets `""`: `dev`, `unknown`, `latest`, `-dirty`.
+  - `RepoURL` is an exported const in the same package.
+- **CI workflow**: the metadata-action docs confirm the suspicion. `version` is
+  the highest-priority tag, which on main is the raw `latest` (200) and not the
+  sha tag (100). A new "Determine the version" step now passes
+  `${GITHUB_REF_NAME#v}` on tag pushes and `scripts/version.sh` otherwise, so
+  main images report their short SHA.
+- **Deviation from the Context section**: keeping the version behind login does
+  not hide it. `/api/health` has been unauthenticated and has returned it since
+  Stage 10, which was a deliberate choice (see `handleHealth`).
+  `/auth/me` is still the right place, because it is the call the app already
+  makes at boot.
+
+Verified:
+- `buildinfo_test.go`: table test over release, rc, short/long SHA, dirty, dev,
+  unknown, latest and too-short.
+- `TestAuthMeReportsBuild` (`health_test.go`): sets the version to `1.4.0`, so
+  an unwired URL cannot pass as `"" == ""`. It fails with `URL:` empty when the
+  field is left out.
+- The workflow step was dry-run locally for both ref types: `v1.4.0` gives
+  `1.4.0`, and `main` gives the SHA. The real check is the next push to main.
+- Against `make dev`, logged in as demo, `/api/auth/me` returns
+  `{"version":"bc3d84e-dirty","url":""}`, and the endpoint answers 401 without
+  a session.
+- `make ci` green.
+
 ## 2. About Caravel dialog
 
 - **Icons:** add `book-open`, `code` and `bug` to `ICONS` in

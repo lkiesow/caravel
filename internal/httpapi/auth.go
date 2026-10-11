@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"caravel/internal/auth"
+	"caravel/internal/buildinfo"
 	"caravel/internal/db"
 )
 
@@ -40,6 +41,18 @@ type userResponse struct {
 	// entry in the user menu; the server checks it again on every /api/admin
 	// route, because a hidden menu item is not a permission.
 	IsAdmin bool `json:"is_admin"`
+	// Build is the running server's version, for the About dialog. Like
+	// Capabilities it is about the server rather than the account, and rides
+	// along for the same reason: /auth/me is the call the app already makes.
+	Build buildResponse `json:"build"`
+}
+
+// buildResponse names the running build. URL is where it can be looked up --
+// its release notes or its commit -- and empty for a build that names no
+// published state ("dev", "unknown", "-dirty"); see buildinfo.URL.
+type buildResponse struct {
+	Version string `json:"version"`
+	URL     string `json:"url"`
 }
 
 // capabilitiesResponse is what the instance is configured to do.
@@ -87,6 +100,7 @@ func (s *Server) userToResponse(r *http.Request, u db.User) userResponse {
 			ReverseGeocoding: s.Geocoder.ReverseAvailable(),
 		},
 		IsAdmin: u.IsAdmin,
+		Build:   buildResponse{Version: buildinfo.Version, URL: buildinfo.URL()},
 	}
 }
 

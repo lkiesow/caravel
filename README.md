@@ -7,7 +7,7 @@ visit, places to stay, and transportation, lay them out on a map, build a
 day-by-day itinerary, split the costs, and attach documents and photos along the
 way.
 
-**[Documentation and project website →](https://lkiesow.github.io/caravel/)**
+**[Documentation and project website →](https://explore-caravel.org/)**
 
 ## Quick start
 
@@ -26,7 +26,7 @@ and add `--build`.
 
 The full install guide, every configuration variable, the optional AI assistant,
 backups and reverse-proxy setup are all on the
-[documentation site](https://lkiesow.github.io/caravel/).
+[documentation site](https://explore-caravel.org/).
 
 ## Development
 

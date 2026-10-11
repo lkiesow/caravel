@@ -19,7 +19,7 @@ const COPY = {
 };
 
 const LINK_HREFS = [
-  "https://lkiesow.github.io/caravel/",
+  "https://explore-caravel.org/",
   "https://github.com/lkiesow/caravel",
   "https://github.com/lkiesow/caravel/issues/new",
 ];

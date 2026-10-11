@@ -1,6 +1,6 @@
 [Unit]
 Description=Caravel - self-hosted trip planner
-Documentation=https://lkiesow.github.io/caravel/
+Documentation=https://explore-caravel.org/
 After=network-online.target
 Wants=network-online.target
 

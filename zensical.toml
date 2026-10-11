@@ -12,7 +12,7 @@
 [project]
 site_name = "Caravel"
 site_description = "Self-hosted trip planning that keeps the map, the plan and the group in sync."
-site_url = "https://lkiesow.github.io/caravel/"
+site_url = "https://explore-caravel.org/"
 site_author = "Lars Kiesow"
 repo_url = "https://github.com/lkiesow/caravel"
 repo_name = "lkiesow/caravel"

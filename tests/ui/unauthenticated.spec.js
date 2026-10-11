@@ -89,7 +89,7 @@ for (const locale of ["en", "de"]) {
         const footer = page.locator("footer.auth-footer");
         const links = footer.locator("a");
         await expect(links).toHaveText(FOOTER_LINKS[locale]);
-        await expect(links.nth(0)).toHaveAttribute("href", "https://lkiesow.github.io/caravel/");
+        await expect(links.nth(0)).toHaveAttribute("href", "https://explore-caravel.org/");
         await expect(links.nth(1)).toHaveAttribute("href", "https://github.com/lkiesow/caravel");
         for (const link of await links.all()) {
           await expect(link).toHaveAttribute("target", "_blank");

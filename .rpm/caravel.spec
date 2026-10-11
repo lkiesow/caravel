@@ -27,7 +27,7 @@ way.
 The frontend is embedded in the binary and the only runtime dependency is a
 database -- SQLite by default, with nothing to install. Configuration is read
 from /etc/caravel/caravel.conf; documentation is at
-https://lkiesow.github.io/caravel/
+https://explore-caravel.org/
 
 %prep
 # Nothing to unpack: the sources are one binary and two text files.

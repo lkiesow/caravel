@@ -104,6 +104,27 @@ for (const locale of ["en", "de"]) {
         await expect(page.locator("h1")).toHaveCount(1);
       });
 
+      // On a desktop the hero and footer sit in the middle of the viewport as
+      // one group; before, they hung from the top with the rest of the screen
+      // empty. Measured as the gap above the hero against the gap below the
+      // footer, plus a floor well over the 3rem padding, so the old
+      // top-aligned layout fails rather than passing by symmetry. A phone
+      // stays top-aligned, which the overflow sweep above already covers.
+      if (viewport.name === "desktop") {
+        test(`centres the screen vertically (${locale}, ${viewport.name})`, async ({ page }) => {
+          await blockExternalRequests(page);
+          await page.goto("/");
+          await expect(page.locator(".auth-form")).toBeVisible();
+
+          const hero = await page.locator(".auth-hero").boundingBox();
+          const footer = await page.locator("footer.auth-footer").boundingBox();
+          const above = hero.y;
+          const below = viewport.height - (footer.y + footer.height);
+          expect(above, "gap above the hero").toBeGreaterThan(100);
+          expect(Math.abs(above - below), "gap above vs. below").toBeLessThanOrEqual(2);
+        });
+      }
+
       test(`offers no registration while signup is closed (${locale}, ${viewport.name})`, async ({ page }) => {
         await blockExternalRequests(page);
         await page.goto("/");

@@ -534,6 +534,18 @@ textarea {
    rather than as a watermark. Tied to the column variable so the two cannot
    drift apart. */
 @media (min-width: 56rem) {
+  /* On a desktop the screen sits in the middle of the viewport rather than at
+     the top of it, hero and footer as one group. The register form is the
+     same screen in another mode, so it is centred too. A floor, not a height:
+     a window shorter than the content scrolls as before, with the padding as
+     the margin. dvh for the same reason as the boot loader's below. Not on a
+     phone, where the single-column hero fills most of the screen anyway. */
+  .auth-screen {
+    min-height: 100vh;
+    min-height: 100dvh;
+    justify-content: center;
+  }
+
   .auth-hero {
     grid-template-columns: 1fr var(--auth-form-column);
     /* A floor rather than a height: the form grows by a field in register

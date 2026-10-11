@@ -226,6 +226,30 @@ Verified:
 - **By hand** on `make dev`: screenshots at 324px (light) and 1280px (dark).
 - `make ci` and the full `make test-ui` green.
 
+**Follow-up (committed separately): centred vertically on desktop.** On a tall
+desktop window the hero and footer hung from the top, with everything below
+them empty. From the two-column breakpoint (56rem) up, `.auth-screen` now has
+`min-height: 100dvh` and `justify-content: center`. That centres the hero and
+footer as one group, in both login and register mode, since they are the same
+screen. Phones stay top-aligned.
+- **Short windows:** a window shorter than the content still scrolls, with the
+  3rem padding as the margin.
+- **Accepted trade-off:** the register card is 70px taller than the login card
+  (511px vs 441px with signup open), so switching modes moves the card up
+  35px. The other options were equal min-heights (a bigger login card and a
+  bigger sail) or a fixed top offset. Both were rejected.
+
+Verified:
+- **New desktop test** in `unauthenticated.spec.js`, en and de: the gap above
+  the hero equals the gap below the footer within 2px and is over 100px. It
+  fails without the CSS change.
+- **By hand** on `make dev`:
+  - equal gaps at 1280×800 (146/146px) and 1920×1080 (286/286px), in both
+    modes;
+  - 1280×600 scrolls normally;
+  - 324×756 is unchanged.
+- `make ci`, `unauthenticated.spec.js` and `register.spec.js` green.
+
 ## Build order
 
 0 → 1 → 2 → 3. Milestone 2 depends on 1's `build` field. Milestone 3 depends only

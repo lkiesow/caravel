@@ -142,6 +142,51 @@ test.describe("checklists, end to end", () => {
     ).toHaveCount(0);
   });
 
+  // A long item used to keep its one-line width and push its menu onto a line
+  // of its own below it - both kinds of long: words that wrap, and a single
+  // compound wider than the text column. The text wraps now, and the box, the
+  // first line and the menu share one centre line.
+  test("a long item wraps its text and keeps its menu beside the first line", async ({ page }) => {
+    const list = await page.request.post(`/api/trips/${tripId}/checklists`, { data: { title: "Japan" } });
+    const listId = (await list.json()).id;
+    for (const text of ["Visit Japan Web – Vorabregistrierung", "Auslandskrankenversicherung", "Akku"]) {
+      await page.request.post(`/api/checklists/${listId}/items`, { data: { text } });
+    }
+
+    await page.goto(`/trips/${tripId}/checklists`);
+    await expect(page.locator(".checklist-item__trigger")).toHaveCount(3);
+
+    const rows = await page.locator(".checklist-item").evaluateAll((items) =>
+      items.map((li) => {
+        const row = li.getBoundingClientRect();
+        const centre = (r) => r.top + r.height / 2 - row.top;
+        const text = document.createRange();
+        text.selectNodeContents(li.querySelector("label span"));
+        const lines = [...text.getClientRects()];
+        const menu = li.querySelector(".checklist-item__trigger").getBoundingClientRect();
+        return {
+          lines: new Set(lines.map((l) => Math.round(l.top))).size,
+          box: centre(li.querySelector("input").getBoundingClientRect()),
+          firstLine: centre(lines[0]),
+          menu: centre(menu),
+          menuRightGap: row.right - menu.right,
+          textRight: Math.max(...lines.map((l) => l.right)),
+          menuLeft: menu.left,
+        };
+      })
+    );
+
+    expect(rows.map((r) => r.lines), "the two long items wrap, the short one does not").toEqual([2, 2, 1]);
+    // 3px of slack: a text range measures the font's glyph box, not its line
+    // box, and Firefox puts the two 1.5px apart. The bug is a whole line off.
+    for (const r of rows) {
+      expect(Math.abs(r.box - r.firstLine), "box level with the first line").toBeLessThan(3);
+      expect(Math.abs(r.menu - r.firstLine), "menu level with the first line").toBeLessThan(3);
+      expect(r.menuRightGap, "menu at the row's right edge").toBeLessThan(1);
+      expect(r.textRight, "text stays clear of the menu").toBeLessThanOrEqual(r.menuLeft);
+    }
+  });
+
   test("renames a list, then deletes it behind its confirmation", async ({ page }) => {
     const list = await page.request.post(`/api/trips/${tripId}/checklists`, { data: { title: "Route plan" } });
     expect(list.status()).toBe(201);

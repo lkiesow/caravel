@@ -3313,12 +3313,15 @@ button {
 }
 
 .checklist-item {
+  --check-size: 1rem;
   display: flex;
   /* Wraps since Stage 22 Milestone 7, so a failed tick can put its message on
      a line of its own under the row rather than squeezing into it. Nothing
      else in the row wraps: the label takes the space and the menu is fixed. */
   flex-wrap: wrap;
-  align-items: center;
+  /* Top, not centre: a long item grows downward, and the checkbox and the menu
+     both stay level with its first line. */
+  align-items: flex-start;
   justify-content: space-between;
   gap: 0.5rem;
 }
@@ -3335,10 +3338,32 @@ button {
   display: none;
 }
 
+/* The label has to be the part that gives: without the zero basis and min-width
+   it claimed its whole one-line width, so a long item pushed the menu onto a
+   line of its own below it rather than wrapping its own text. */
 .checklist-item label {
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.5rem;
+  /* Long German compounds ("Auslandskrankenversicherung") are wider than a
+     phone's text column. Not `hyphens: auto`: that follows the page's lang,
+     which is the UI language, not the language the item is written in. */
+  overflow-wrap: anywhere;
+}
+
+/* Centred on the first line of text, whatever its height. */
+.checklist-item input[type="checkbox"] {
+  flex-shrink: 0;
+  width: var(--check-size);
+  height: var(--check-size);
+  margin-block: calc((1lh - var(--check-size)) / 2) 0;
+}
+
+/* One line tall, so the trigger is centred on the first line too. */
+.checklist-item__actions {
+  height: 1lh;
 }
 
 .checklist-item__text--done {
@@ -3410,7 +3435,6 @@ button {
   .back-link,
   .link-list li a,
   .location-view__maps-link,
-  .checklist-item label,
   .geo-form label.geo-form__checkbox {
     display: flex;
     align-items: center;
@@ -3697,15 +3721,23 @@ button {
      checkbox, sitting right next to a 44x44 delete button - so the easiest
      thing to hit was "remove", not "done". The label is what carries the
      tap area (it wraps both the box and the text), so the min-height goes
-     there; the box itself grows to stay proportionate. */
-  .checklist-item label {
-    min-height: var(--tap-min);
+     there; the box itself grows to stay proportionate.
+
+     It is not centred in that height like the other labels above: a two-line
+     item would put its checkbox between the lines. The padding centres the
+     first line in the 44px instead, and the menu's column is the same 44px,
+     so box, first line and trigger share one centre line. */
+  .checklist-item {
+    --check-size: 1.25rem;
   }
 
-  .checklist-item input[type="checkbox"] {
-    width: 1.25rem;
-    height: 1.25rem;
-    flex-shrink: 0;
+  .checklist-item label {
+    min-height: var(--tap-min);
+    padding-block: calc((var(--tap-min) - 1lh) / 2);
+  }
+
+  .checklist-item__actions {
+    height: var(--tap-min);
   }
 
   /* Buttons that live in a space-constrained row (an add-form next to an

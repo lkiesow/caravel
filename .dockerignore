@@ -35,7 +35,6 @@ credentials.yml
 .github/
 .rpm/
 docs/
-plans/
 README.md
 CLAUDE.md
 

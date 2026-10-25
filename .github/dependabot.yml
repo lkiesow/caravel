@@ -1,6 +1,6 @@
-# Dependabot version updates, for the two dependencies that otherwise go stale
-# silently because nothing else bumps them. Both monthly: each bump is
-# reviewed by hand.
+# Dependabot version updates, for the dependencies that otherwise go stale
+# silently because nothing else bumps them. All monthly: each bump is reviewed
+# by hand.
 version: 2
 updates:
   # The documentation site's Python pin (requirements.txt, next to this file).
@@ -28,3 +28,33 @@ updates:
       actions:
         patterns:
           - "*"
+
+  # The Go modules in go.mod. Before this they moved only when a feature
+  # happened to need a newer one, and goldmark -- which renders user-written
+  # Markdown -- had fallen four years behind. Grouped into one pull request,
+  # whose CI run is the full suite: the Go tests on SQLite and on Postgres, and
+  # the UI suite on the bundle esbuild builds. A bump of evanw/esbuild changes
+  # that bundle, so TestRealTreeBundles has to stay warning-free. Not covered:
+  # the go directive in go.mod and the Go version in the workflows and the
+  # Dockerfile, which are moved by hand.
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: deps
+    groups:
+      go:
+        patterns:
+          - "*"
+
+  # The UI test suite's only dependency, @playwright/test (package.json). Dev
+  # tooling, never shipped, and the ui job in ci.yml runs it in full. A new
+  # Playwright brings new browser builds, which can move layout assertions,
+  # the contrast check and the output of make screenshots.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: test

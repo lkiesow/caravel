@@ -49,14 +49,6 @@ older stage plan or an earlier version of this file without asking.
   schemas, or pass `-timeout` in `scripts/test_postgres.sh`. Until then, do
   not run it alongside the UI suite.
 
-- **`de.json` and `en.json` are not in `i18n.py`'s canonical format.** (Stage
-  49.) A handful of values are written with `\u` escapes (`\u2014`,
-  `\u00fc`, ...) where the tool writes literal characters, so
-  `scripts/i18n.py unused` refuses to run rather than reformat the files.
-  Normalise both in a commit of their own (it changes no value), then the
-  unused-key check works again. Stage 49 ran it on a normalised scratch copy
-  instead: no unused keys.
-
 - **The assistant's build-from-a-prompt spec can time out under load.**
   (Stage 49.) `assist.spec.js` "builds a location from a prompt" waited the
   full 60 s for the title suggestion once in a full `make test-ui` run, then

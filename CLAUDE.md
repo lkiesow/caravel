@@ -1,53 +1,9 @@
 # Working conventions for Caravel
 
-## Stage-based development workflow
+## Before committing
 
-Work happens in **stages**, each covering a related set of fixes/features,
-planned up front and built one **milestone** at a time. Follow this for any
-new stage unless told otherwise.
-
-### Planning a stage
-
-- Use plan mode to scope the stage before writing any code. Explore the
-  actual current code rather than assuming prior stages' behavior still
-  holds — line numbers, function names, and even file existence drift.
-- Land the approved plan as `plans/stage-NN.md` (next sequential number)
-  *before* implementation starts: a Context section (why this stage
-  exists), one numbered section per milestone, a Build order, a Workflow
-  section restating the loop below, and a Verification section.
-- If a milestone's scope wants revisiting mid-stage, do the smaller fix as
-  a follow-up commit on the same milestone rather than restarting the plan.
-
-### The milestone loop
-
-For each milestone, in order:
-
-1. **Implement.**
-2. **Verify** — `make ci` (build, vet, JS syntax check, i18n key parity,
-   go test) must be green, plus a manual/Playwright pass proving the
-   actual behavior changed (not just that the code compiles). Prefer
-   assertions over screenshots: computed styles, DOM counts, accessible
-   names, `window.location.pathname`, `go test` coverage.
-3. **Update `plans/stage-NN.md`** — add a "**Done.**" paragraph to that
-   milestone's section: what actually landed (including deviations from
-   the plan) and how it was verified. Then update `plans/todo.md`, the
-   unprioritized backlog where every entry cites the stage that surfaced
-   it, in both directions: remove entries this milestone implemented (a
-   stale "outstanding" item is worse than a missing one), add anything it
-   deferred.
-4. **Commit** — one commit per milestone (a same-day follow-up fix gets its
-   own commit, titled "... follow-up: ..."), always after a green
-   `make ci` — also for commits outside a stage; don't rely on CI to catch
-   it. Message: what changed, why, and exactly how it was verified, so
-   it's clear from the message alone whether re-testing is needed.
-5. **Make sure the dev server is running** (`make dev`), then **stop and
-   hand back control.**
-6. **Wait.** Do not start the next milestone until told to continue.
-   Feedback given at a checkpoint gets fixed and re-verified *before*
-   moving on, not folded silently into the next milestone.
-
-Each milestone should be independently reviewable and revertible; racing
-ahead removes the checkpoint where it gets looked at.
+Run `make ci` (build, vet, JS syntax check, i18n key parity, go test) and
+commit only once it is green. Don't rely on CI to catch it.
 
 ## Common gotchas
 

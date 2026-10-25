@@ -48,9 +48,9 @@ Other targets worth knowing:
 | `make test-postgres` | The Go suite against a Postgres container, rather than SQLite |
 | `make docs` | Builds the documentation site into `site/` |
 
-Conventions for working in this repository — the stage-based workflow, the
-gotchas worth knowing before touching migrations or `sqlc` — are in
-[CLAUDE.md](CLAUDE.md), and the plans and backlog are under [plans/](plans/).
+Conventions for working in this repository — the gotchas worth knowing
+before touching migrations or `sqlc` — are in [CLAUDE.md](CLAUDE.md), and
+planned work is in the [issue tracker](https://github.com/lkiesow/caravel/issues).
 
 ## Architecture
 
